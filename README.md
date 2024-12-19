@@ -33,7 +33,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 <img src="/images/power-supply.png" width="400" />
 
 * 110V/220V -> 5V2A converter that fits in the wall box.
-* [Aliexpress link](https://www.aliexpress.com/item/1005005142108650.html?spm=a2g0o.order_list.order_list_main.308.4eeb1802UQpgAz)
+* [Aliexpress link](https://www.aliexpress.com/item/1005005142108650.html)
 * Price: ~6 USD
 
 ## Outlet box
@@ -43,7 +43,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 * The casing is designed for 83.5mm installation distance.
 * Any other outlet box with the same installation distance will fit.
 * The deeper the outlet box is, the better.
-* [Aliexpress link](https://www.aliexpress.com/item/1005005865130146.html?spm=a2g0o.productlist.main.59.c0e17ff9Mz8dso&algo_pvid=e44c0d21-2397-49d5-8838-3257c9a65c1f&algo_exp_id=e44c0d21-2397-49d5-8838-3257c9a65c1f-29&pdp_npi=4%40dis%21ILS%2111.60%217.06%21%21%2122.95%2113.97%21%4021015b7d17343347140493961e8af6%2112000034663396929%21sea%21IL%21195186770%21X&curPageLogUid=1BVAMTXiQN1k&utparam-url=scene%3Asearch%7Cquery_from%3A)
+* [Aliexpress link](https://www.aliexpress.com/item/1005005865130146.html)
 * Price: ~2 USD
 
 ## Motion sensor - LD2410b
@@ -58,7 +58,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 * JST 1.25mm, Single head, ~100mm, 4Pins
 * Three are needed
-* [Aliexpress link](https://www.aliexpress.com/item/1005007342411330.html?spm=a2g0o.order_list.order_list_main.333.46311802jShO83)
+* [Aliexpress link](https://www.aliexpress.com/item/1005007342411330.html)
 * Price: ~4 USD for a pack of 10 (~1.2 USD for 3)
 
 # On the wall wiring diagram
