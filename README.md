@@ -21,7 +21,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 ## Touch screen - [CYD](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
 
-<img src="/images/display.png" width="400" />
+<img src="/images/display.png" width="200" />
 
 * This is a variant of the original CYD with USB-C port.
 * Model: ESP32-2432S028
@@ -30,7 +30,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 ## Power supply - AC-DC to DC Step-Down Power Supply Module AC85-220V to DC 5V 2A
 
-<img src="/images/power-supply.png" width="400" />
+<img src="/images/power-supply.png" width="200" />
 
 * 110V/220V -> 5V2A converter that fits in the wall box.
 * [Aliexpress link](https://www.aliexpress.com/item/1005005142108650.html)
@@ -38,7 +38,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 ## Outlet box
 
-<img src="/images/wall-box.png" width="400" />
+<img src="/images/wall-box.png" width="200" />
 
 * The casing is designed for 83.5mm installation distance.
 * Any other outlet box with the same installation distance will fit.
@@ -48,7 +48,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 ## Motion sensor - LD2410b
 
-<img src="/images/ld2410b.png" width="400" />
+<img src="/images/ld2410b.png" width="200" />
 
 * Choose a model where there are welded pins.
 * [Aliexpress link](https://www.aliexpress.com/item/1005005242873516.html)
