@@ -32,6 +32,12 @@ captive_portal:
 time:
   - platform: homeassistant
     id: esptime
+    on_time: 
+      - seconds: 0
+        minutes: 0
+        hours: 3
+        then:
+          - button.press: restart_button
 
 spi:
   - id: tft
@@ -381,6 +387,11 @@ light:
     green: output_green
     blue: output_blue
     restore_mode: ALWAYS_OFF
+
+button:
+  - platform: restart
+    name: "Restart EPS32"
+    id: restart_button
 
 binary_sensor:  
   - platform: ld2410
