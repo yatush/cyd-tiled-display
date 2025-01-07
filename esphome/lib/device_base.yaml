@@ -32,12 +32,12 @@ captive_portal:
 time:
   - platform: homeassistant
     id: esptime
-    on_time: 
-      - seconds: 0
-        minutes: 0
-        hours: 3
-        then:
-          - button.press: restart_button
+#    on_time: 
+#      - seconds: 0
+#        minutes: 0
+#        hours: 3
+#        then:
+#          - button.press: restart_button
 
 spi:
   - id: tft
