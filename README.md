@@ -118,6 +118,7 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
 * After construction, more modifications can be done using post-initialization functions:
   * ```setRequiresFastRefreshFunc``` - Gets a function defined in ```device_base.yaml``` that returns true iff the page should fast refresh. This is useful for tiles we don't want to fast refresh, unless a condition (for example, blinds are moving) is true.
   * ```setDisplayPageIfNoEntity``` - In case the entities that are passed to the constructor contain ```$DYNAMIC_ENTITIES```, and the dynamic entities is empty, this is the page that will be presented (the HAAction will not perform). This is useful if, for example, ```$DYNAMIC_ENTITIES``` represent a list of lights, and no light is chosen, the page can be the one where we choose which light to control with the tile.
+* Instead of the Action function, there's another version that gets location action function - gets 3 parameters, x percentile in the tile, y percentile in the tile and the entities passed to the function. The function can also get both types of functions.
 
 ### ```MovePageTile```
 * A tile that acts as navigation from one screen to the other.
