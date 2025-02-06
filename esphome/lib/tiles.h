@@ -123,11 +123,32 @@ class HAActionTile : public Tile {
           draw_funcs,
       std::vector<esphome::script::Script<std::vector<std::string>>*>
           action_funcs,
+      std::vector<esphome::script::Script<float, float, std::vector<std::string>>*>
+          location_action_funcs,
       std::vector<std::string> entities)
       : Tile(x, y, draw_funcs) {
     this->action_funcs_ = action_funcs;
+    this->location_action_funcs_ = location_action_funcs;
     this->entities_ = entities;
   }
+
+  HAActionTile(
+      int x, int y,
+      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+          draw_funcs,
+      std::vector<esphome::script::Script<std::vector<std::string>>*>
+          action_funcs,
+      std::vector<std::string> entities)
+      : HAActionTile(x, y, draw_funcs, action_funcs, {}, entities) {}
+
+  HAActionTile(
+      int x, int y,
+      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+          draw_funcs,
+      std::vector<esphome::script::Script<float, float, std::vector<std::string>>*>
+          location_action_funcs,
+      std::vector<std::string> entities)
+      : HAActionTile(x, y, draw_funcs, {}, location_action_funcs, entities) {}
 
   // Sets a function to determine if the tile requires fast refresh.
   HAActionTile* setRequiresFastRefreshFunc(std::function<bool()> func) {
@@ -179,6 +200,13 @@ class HAActionTile : public Tile {
         for (auto* script : this->action_funcs_) {
           script->execute(this->decoded_entities_);
         }
+        if (this->location_action_funcs_.size() > 0) {
+          float x_precent = 1.0 * (id(last_x) - id(x_start)[this->x_]) / id(x_rect);
+          float y_precent = 1.0 * (id(last_y) - id(y_start)[this->y_]) / id(y_rect);
+          for (auto* script : this->location_action_funcs_) {
+            script->execute(x_precent, y_precent, this->decoded_entities_);
+          }
+        }
       });
     }
   }
@@ -194,6 +222,8 @@ class HAActionTile : public Tile {
   std::function<bool()> requiresFastRefreshFunc_ = []() { return false; };
   // Vector of scripts to execute when the tile is pressed.
   std::vector<esphome::script::Script<std::vector<std::string>>*> action_funcs_;
+  // Vector of scripts to execute when the tile is pressed.
+  std::vector<esphome::script::Script<float, float, std::vector<std::string>>*> location_action_funcs_;
   // Vector of entities associated with the tile.
   std::vector<std::string> entities_;
   // Vector of decoded entities (after dynamic replacement).
@@ -288,7 +318,7 @@ class TitleTile : public HAActionTile {
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
           draw_funcs,
       std::vector<std::string> entities)
-      : HAActionTile(x, y, draw_funcs, {}, entities) {}
+      : HAActionTile(x, y, draw_funcs, {}, {}, entities) {}
 
  protected:
   void customInit() override {
