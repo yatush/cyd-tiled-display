@@ -32,12 +32,6 @@ captive_portal:
 time:
   - platform: homeassistant
     id: esptime
-#    on_time: 
-#      - seconds: 0
-#        minutes: 0
-#        hours: 3
-#        then:
-#          - button.press: restart_button
 
 spi:
   - id: tft
@@ -203,6 +197,13 @@ font:
         "\U0000e286", # Blinds
         "\U0000e536", # Walking man
         "\U0000e913", # Touch
+      ]
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_50
+    size: 40
+    glyphs: [
+        "\U0000eacf", # Arrow up
+        "\U0000ead0", # Arrow down
       ]
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_large
@@ -698,6 +699,42 @@ script:
             PerformHaAction(blind, "set_cover_position", {{"position", "40"}});
           }
 
+  - id: action_blinds_up_down
+    parameters:
+      x: float
+      y: float
+      entities: string[]
+    then:
+      - lambda: |-
+          id(set_blinds_status)->execute(entities);
+          for (const std::string& blind : entities) {
+            if (id(blinds_moving_up) || id(blinds_moving_down)) {
+              PerformHaAction(blind, "stop_cover");  
+            } else {
+              PerformHaAction(blind, (x + y < 1) ? "open_cover" : "close_cover");
+            }
+          }
+
+  - id: tile_blinds_up_down
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          id(set_blinds_status)->execute(entities);
+          if (!id(blinds_moving_up) && !id(blinds_moving_down)) {
+            id(disp).print(id(x_mid)[x] - id(x_rect) / 5, id(y_mid)[y] - id(y_rect) / 5, id(mdi_50), id(light_blue), TextAlign::CENTER, "\U0000eacf");
+            id(disp).print(id(x_mid)[x] + id(x_rect) / 5, id(y_mid)[y] + id(y_rect) / 5, id(mdi_50), id(light_red), TextAlign::CENTER, "\U0000ead0");
+            id(disp).line(id(x_start)[x] + 15, id(y_start)[y] + id(y_rect) - 15, id(x_start)[x] + id(x_rect) - 15, id(y_start)[y] + 15, id(gray));
+          }
+          if (id(blinds_moving_down)) {
+            id(disp).print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis() / 1000.0 * 12) % 41 - 20, id(mdi_large), id(red), TextAlign::CENTER, "\U0000ead0");
+          }
+          if (id(blinds_moving_up)) {
+            id(disp).print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis() / 1000.0 * 12) % 41 + 20, id(mdi_large), id(blue), TextAlign::CENTER, "\U0000eacf");
+          }
+
   - id: tile_lights
     parameters:
       x: int
@@ -1082,6 +1119,8 @@ touchscreen:
           auto now = millis();
           id(last_activity_ms) = now;
           id(last_touch_ms) = now;
+          id(last_x) = touch.x;
+          id(last_y) = touch.y;
           if (id(turn_on_ms) == 0) {
             id(turn_on_ms) = now;
           }
