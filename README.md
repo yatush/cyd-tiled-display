@@ -163,10 +163,20 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
     * A list of two strings:
       * The first represents the ```$SIMPLE_ENTITY``` that the tile refers to.
       * The second represents a presentation name string to be shown on the tile.
-  * ```string``` - Identifier of the ```$DYNAMIC_ENTITIES``` to set. This should be just the string representatino of the ```$VAR_NAME```.
+  * ```string``` - Identifier of the ```$DYNAMIC_ENTITIES``` to set. This should be just the string representation of the ```$VAR_NAME```.
   * ```string``` - Identifier of the ```$SIMPLE_ENTITY``` to add/remove from the ```$DYNAMIC_ENTITY```.
   * ```string``` - Presentation name to pass to the draw function.
   * ```bool``` (optional, defaults to FALSE) - Should this entity be initially chosen when the display is turned on.
+
+### ```CycleEntityTile```
+* A tile that changes a ```$DYNAMIC_ENTITY``` to one of the given ```$SIMPLE_ENTITIES``` every time it is pressed.
+* Constructor parameters:
+  * ```int``` - The x coordinate of the tile, 0 based.
+  * ```int``` - The y coordinate of the tile, 0 based.
+  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions. They will get a parameter of the presentation name.
+  * ```string``` - Identifier of the ```$DYNAMIC_ENTITIY``` to set. This should be just the string representation of the ```$VAR_NAME```.
+  * ```std::vector<std::pair<std::string, std::string>>``` - A vector of the ```$SIMPLE_ENTITIES``` to cycle by, and their presentation names.
+
 
 ## utils.h
 Common utility functions to be used in yaml files.
