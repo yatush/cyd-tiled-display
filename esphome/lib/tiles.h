@@ -380,3 +380,54 @@ class ToggleEntityTile : public Tile {
   // Flag to indicate if the entity is initially chosen.
   bool initially_chosen_;
 };
+
+// A tile that cycles an entity from a given list
+class CycleEntityTile : public Tile {
+ public:
+  CycleEntityTile(
+      int x, int y,
+      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+          draw_funcs,
+      const std::string& identifier,
+      std::vector<std::pair<std::string, std::string>> entities_and_presntation_names)
+      : Tile(x, y, draw_funcs),
+        identifier_(identifier),
+        entities_and_presntation_names_(entities_and_presntation_names) {}
+
+  void initSensors() override {
+    for (const auto& pair : this->entities_and_presntation_names_) {
+      InitSensor(pair.first);
+    }
+  };
+
+ protected:
+  void customInit() override {
+    this->binary_sensor_->add_on_state_callback([&](bool x) {
+      if (!x) {
+        return;
+      }
+      std::rotate(
+        this->entities_and_presntation_names_.begin(),
+        this->entities_and_presntation_names_.begin() + 1,
+        this->entities_and_presntation_names_.end());
+      
+      EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
+      this->change_entities_callback_();
+      id(disp).update();
+    });
+    EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
+  }
+
+  void customDraw() override {
+    for (auto* func : this->draw_funcs_) {
+      func->execute(
+        this->x_, this->y_,
+        { this->entities_and_presntation_names_.at(0).second });
+    }
+  }
+
+  // Identifier to change.
+  std::string identifier_;
+  // The entities to set into the identifier and their presentation names
+  std::vector<std::pair<std::string, std::string>> entities_and_presntation_names_;
+};
