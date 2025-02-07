@@ -152,7 +152,7 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
   * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, see [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) for more details.
   * ```std::vector<std::string>``` - Entities, see [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) for more details
 
-### ```ChooseEntityTile```
+### ```ToggleEntityTile```
 * A tile that adds/removes a ```$SIMPLE_ENTITY``` from ```$DYNAMIC_ENTITIES```. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
 * Constructor parameters:
   * ```int``` - The x coordinate of the tile, 0 based.
