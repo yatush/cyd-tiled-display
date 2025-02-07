@@ -68,18 +68,18 @@ script:
             new TiledScreen(
               id(light_settings), {TEMPORARY},
               {
-                new ChooseEntityTile(0, 0, { id(tile_choose_light) }, "LIGHT", "$LIGHT_1_ID", "Closet", true),
-                new ChooseEntityTile(1, 0, { id(tile_choose_light) }, "LIGHT", "$LIGHT_2_ID", "Ceiling"),
-                new ChooseEntityTile(0, 1, { id(tile_choose_light) }, "LIGHT", "$LIGHT_3_ID", "Comp"),
-                new ChooseEntityTile(1, 1, { id(tile_choose_light) }, "LIGHT", "$LIGHT_4_ID", "Bed"),
+                new ToggleEntityTile(0, 0, { id(tile_choose_light) }, "LIGHT", "$LIGHT_1_ID", "Closet", true),
+                new ToggleEntityTile(1, 0, { id(tile_choose_light) }, "LIGHT", "$LIGHT_2_ID", "Ceiling"),
+                new ToggleEntityTile(0, 1, { id(tile_choose_light) }, "LIGHT", "$LIGHT_3_ID", "Comp"),
+                new ToggleEntityTile(1, 1, { id(tile_choose_light) }, "LIGHT", "$LIGHT_4_ID", "Bed"),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
             ),
             new TiledScreen(
               id(cover_settings), {TEMPORARY},
               {
-                new ChooseEntityTile(0, 0, { id(tile_choose_cover) }, "COVER", "$COVER_1_ID", "PR1", true),
-                new ChooseEntityTile(0, 1, { id(tile_choose_cover) }, "COVER", "$COVER_2_ID", "PR2", true),
+                new ToggleEntityTile(0, 0, { id(tile_choose_cover) }, "COVER", "$COVER_1_ID", "PR1", true),
+                new ToggleEntityTile(0, 1, { id(tile_choose_cover) }, "COVER", "$COVER_2_ID", "PR2", true),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
             ),
