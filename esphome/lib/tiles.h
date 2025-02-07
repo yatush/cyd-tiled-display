@@ -328,9 +328,9 @@ class TitleTile : public HAActionTile {
 };
 
 // A tile that allows the user to choose an entity from a list.
-class ChooseEntityTile : public Tile {
+class ToggleEntityTile : public Tile {
  public:
-  ChooseEntityTile(
+  ToggleEntityTile(
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
           draw_funcs,
