@@ -44,6 +44,7 @@ script:
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
                 (new MovePageTile(0, 1, { id(tile_ac_settings) }, id(ac_settings)))->setDynamicEntry("AC", { "$AC_1_ID" }),
                 new MovePageTile(1, 1, { id(tile_cover_settings) }, id(cover_settings)),
+                new MovePageTile(2, 1, { id(tile_cover_settings) }, id(cover_settings_2)),
               }
             ),
             new TiledScreen(
@@ -80,6 +81,17 @@ script:
               {
                 new ToggleEntityTile(0, 0, { id(tile_choose_cover) }, "COVER", "$COVER_1_ID", "PR1", true),
                 new ToggleEntityTile(0, 1, { id(tile_choose_cover) }, "COVER", "$COVER_2_ID", "PR2", true),
+                new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
+              }
+            ),
+            new TiledScreen(
+              id(cover_settings_2), {TEMPORARY},
+              {
+                new CycleEntityTile(0, 0, { id(tile_cover_name) }, "COVER_TEMP",
+                  { { "$COVER_1_ID", "PR1" },
+                    { "$COVER_2_ID", "PR2" } } ),
+                (new HAActionTile(1, 0, { id(tile_blinds_up_down) }, { id(action_blinds_up_down) }, { "#{COVER_TEMP}"}))
+                  ->setRequiresFastRefreshFunc([]() { return id(blinds_moving_up) || id(blinds_moving_down); }),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
             ),
