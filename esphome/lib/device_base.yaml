@@ -723,17 +723,19 @@ script:
     then:
       - lambda: |-
           id(set_blinds_status)->execute(entities);
-          if (!id(blinds_moving_up) && !id(blinds_moving_down)) {
-            id(disp).print(id(x_mid)[x] - id(x_rect) / 5, id(y_mid)[y] - id(y_rect) / 5, id(mdi_50), id(light_blue), TextAlign::CENTER, "\U0000eacf");
-            id(disp).print(id(x_mid)[x] + id(x_rect) / 5, id(y_mid)[y] + id(y_rect) / 5, id(mdi_50), id(light_red), TextAlign::CENTER, "\U0000ead0");
+          bool one = id(blinds_moving_up) != id(blinds_moving_down);
+          bool both = id(blinds_moving_up) && id(blinds_moving_down);
+          bool any = one || both;
+          
+          auto font = one ? id(mdi_large) : id(mdi_50);
+          auto delta_x = one ? 0 : id(x_rect) / 5;
+          auto delta_y = any ? static_cast<int>(millis() / 1000.0 * 12) % 41 + 20 : id(y_rect) / 5;
+
+          id(disp).print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, font, id(blue), TextAlign::CENTER, "\U0000eacf");
+          id(disp).print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, font, id(red), TextAlign::CENTER, "\U0000ead0");
+
+          if (!any) {
             id(disp).line(id(x_start)[x] + 15, id(y_start)[y] + id(y_rect) - 15, id(x_start)[x] + id(x_rect) - 15, id(y_start)[y] + 15, id(gray));
-          } else if (id(blinds_moving_up) && id(blinds_moving_down)) {
-            id(disp).print(id(x_mid)[x] - id(x_rect) / 5, id(y_mid)[y] - static_cast<int>(millis() / 1000.0 * 12) % 41 + 20, id(mdi_50), id(blue), TextAlign::CENTER, "\U0000eacf");
-            id(disp).print(id(x_mid)[x] + id(x_rect) / 5, id(y_mid)[y] + static_cast<int>(millis() / 1000.0 * 12) % 41 - 20, id(mdi_50), id(red), TextAlign::CENTER, "\U0000ead0");
-          } else if (id(blinds_moving_down)) {
-            id(disp).print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis() / 1000.0 * 12) % 41 - 20, id(mdi_large), id(red), TextAlign::CENTER, "\U0000ead0");
-          } else if (id(blinds_moving_up)) {
-            id(disp).print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis() / 1000.0 * 12) % 41 + 20, id(mdi_large), id(blue), TextAlign::CENTER, "\U0000eacf");
           }
 
   - id: tile_lights
