@@ -723,16 +723,23 @@ script:
     then:
       - lambda: |-
           id(set_blinds_status)->execute(entities);
-          bool one = id(blinds_moving_up) != id(blinds_moving_down);
-          bool both = id(blinds_moving_up) && id(blinds_moving_down);
-          bool any = one || both;
-          
+          bool up = id(blinds_moving_up);
+          bool down = id(blinds_moving_down);
+          bool one = up != down;
+          bool any = up || down;
+          bool show_up = !one || up;
+          bool show_down = !one || down;
+
           auto font = one ? id(mdi_large) : id(mdi_50);
           auto delta_x = one ? 0 : id(x_rect) / 5;
-          auto delta_y = any ? static_cast<int>(millis() / 1000.0 * 12) % 41 + 20 : id(y_rect) / 5;
+          auto delta_y = any ? static_cast<int>(millis() / 1000.0 * 12) % 41 - 20 : id(y_rect) / 5;
 
-          id(disp).print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, font, id(blue), TextAlign::CENTER, "\U0000eacf");
-          id(disp).print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, font, id(red), TextAlign::CENTER, "\U0000ead0");
+          if (show_up) {
+            id(disp).print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, font, id(blue), TextAlign::CENTER, "\U0000eacf");
+          }
+          if (show_down) {
+            id(disp).print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, font, id(red), TextAlign::CENTER, "\U0000ead0");
+          }
 
           if (!any) {
             id(disp).line(id(x_start)[x] + 15, id(y_start)[y] + id(y_rect) - 15, id(x_start)[x] + id(x_rect) - 15, id(y_start)[y] + 15, id(gray));
@@ -903,6 +910,16 @@ script:
           }
           id(disp).print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000e286");
           id(disp).print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, entities[1].c_str());
+
+  - id: tile_cover_name
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          id(disp).print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e286");
+          id(disp).print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, entities[0].c_str());
 
   - id: tile_back_arrow
     parameters:
@@ -1103,6 +1120,10 @@ display:
           id(draw_page).execute();
 
       - id: cover_settings
+        lambda: |-
+          id(draw_page).execute();
+
+      - id: cover_settings_2
         lambda: |-
           id(draw_page).execute();
 
