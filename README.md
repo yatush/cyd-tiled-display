@@ -173,7 +173,12 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
 * Constructor parameters:
   * ```int``` - The x coordinate of the tile, 0 based.
   * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions. They will get a parameter of the presentation name.
+  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, This is a special case of function that gets the following:
+    * The x coordinate.
+    * The y coordinate.
+    * A list of two strings:
+      * The first represents the ```$SIMPLE_ENTITY``` that the tile refers to.
+      * The second represents a presentation name string to be shown on the tile.
   * ```string``` - Identifier of the ```$DYNAMIC_ENTITIY``` to set. This should be just the string representation of the ```$VAR_NAME```.
   * ```std::vector<std::pair<std::string, std::string>>``` - A vector of the ```$SIMPLE_ENTITIES``` to cycle by, and their presentation names.
 
