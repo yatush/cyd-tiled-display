@@ -47,6 +47,14 @@ std::vector<std::string> EMGetValues(const std::string& key) {
                                   id(entities_map)[key].end());
 }
 
+// Sets the value for the given key in the entity map.
+void EMSet(const std::string& key, const std::string& value) {
+  if (value.empty()) {
+    return;
+  }
+  id(entities_map)[key] = {value};
+}
+
 // --- String Utility Functions ---
 
 // Checks if a string represents an integer.
@@ -90,8 +98,11 @@ bool IsBinSensor(const std::string& key) {
 
 // Returns a vector of required attributes for a given sensor.
 std::vector<std::string> getRequiredAttributes(const std::string& sensor) {
-  if (sensor.find("climate." == 0)) {
+  if (sensor.substr(0, 7) == "climate") {
     return {"temperature"};
+  }
+  if (sensor.substr(0, 5) == "cover") {
+    return {"current_position"};
   }
   return {};
 }
