@@ -197,6 +197,9 @@ font:
         "\U0000e286", # Blinds
         "\U0000e536", # Walking man
         "\U0000e913", # Touch
+        "\U0000e5cc", # Chevron right
+        "\U0000e5cb", # Chevron left
+        
       ]
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_50
@@ -918,6 +921,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
+          id(disp).print(id(x_start)[x] + 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
+          id(disp).print(id(x_start)[x] + id(x_rect) - 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
           id(disp).print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e286");
           id(disp).print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, entities[0].c_str());
 
