@@ -85,7 +85,9 @@ class TiledScreen : public Screen {
 
   void draw() override {
     for (Tile* tile : this->tiles_) {
-      tile->draw();
+      if (tile->isActive()) {
+        tile->draw();
+      }
     }
     this->drawWifiHour();
   }
