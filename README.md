@@ -161,7 +161,7 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
     * The x coordinate.
     * The y coordinate.
     * A list of two strings:
-      * The first represents the ```$SIMPLE_ENTITY``` that the tile refers to.
+      * The first is either "ON" in case the ```$SIMPLE_ENTITY``` is part of ```$DYNAMIC_ENTITIES``` or "OFF" otherwise.
       * The second represents a presentation name string to be shown on the tile.
   * ```string``` - Identifier of the ```$DYNAMIC_ENTITIES``` to set. This should be just the string representation of the ```$VAR_NAME```.
   * ```string``` - Identifier of the ```$SIMPLE_ENTITY``` to add/remove from the ```$DYNAMIC_ENTITY```.
