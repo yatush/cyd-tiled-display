@@ -54,6 +54,29 @@ class Tile {
     this->change_entities_callback_ = change_entities_callback;
   }
 
+  // The dynamic variable name and value for this tile to be active.
+  Tile* setActivationVar(const std::string& var_name, const std::string& var_value) {
+    this->var_name_ = var_name;
+    this->var_value_ = var_value;
+    this->always_active_ = false;
+    return this;
+  }
+
+  bool isActive() {
+    if (this->always_active_) {
+      return true;
+    }
+    if (EMContains(this->var_name_, this->var_value_)) {
+      if (!this->was_active_) {
+        this->onActivation();
+      }
+      this->was_active_ = true;
+      return true;
+    }
+    this->was_active_ = false;
+    return false;
+  }
+
   friend class TiledScreen;
 
  protected:
@@ -67,6 +90,8 @@ class Tile {
       func->execute(this->x_, this->y_, {});
     }
   }
+
+  virtual void onActivation() {}
 
   // Pointer to the display page this tile belongs to.
   esphome::display::DisplayPage* display_page_ = nullptr;
@@ -83,6 +108,13 @@ class Tile {
   bool omit_frame_ = false;
   // Callback function for entity changes.
   std::function<void()> change_entities_callback_ = []() {};
+  // A dynamic variable name to check for value for this tile to be active
+  std::string var_name_;
+  // A simple value to check the var_name against
+  std::string var_value_;
+  // Indicates if the tile was active before - to preserve activation state.
+  bool was_active_ = false;
+  bool always_active_ = true;
 
  private:
   // Initialize the Tile
@@ -91,7 +123,7 @@ class Tile {
     this->customInit();
     if (this->binary_sensor_ != nullptr) {
       this->binary_sensor_->add_filter(new esphome::binary_sensor::LambdaFilter(
-          [](bool x) -> optional<bool> {
+          [this](bool x) -> optional<bool> {
             // Ignore touch events shortly after a page change.
             auto now = millis();
             if (x && (now - id(change_page_ms)) < 500) {
@@ -99,6 +131,9 @@ class Tile {
             }
             if (!x || (now - id(turn_on_ms) < id(inactive_ms)) ||
                 id(touch_calibration).state) {
+              return false;
+            }
+            if (!this->isActive()) {
               return false;
             }
             return true;
@@ -422,8 +457,14 @@ class CycleEntityTile : public Tile {
     for (auto* func : this->draw_funcs_) {
       func->execute(
         this->x_, this->y_,
-        { this->entities_and_presntation_names_.at(0).second });
+        { this->entities_and_presntation_names_.at(0).first,
+          this->entities_and_presntation_names_.at(0).second });
     }
+  }
+
+  void onActivation() override {
+    EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
+    this->change_entities_callback_();
   }
 
   // Identifier to change.
