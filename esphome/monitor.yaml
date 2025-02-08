@@ -87,10 +87,18 @@ script:
             new TiledScreen(
               id(cover_settings_2), {TEMPORARY},
               {
-                new CycleEntityTile(0, 0, { id(tile_cover_name) }, "COVER_TEMP",
+                new CycleEntityTile(0, 0, { id(tile_room) }, "ROOM",
+                  { { "LR", "LR" },
+                    { "TOYS", "TOYS" } } ),
+                (new CycleEntityTile(1, 0, { id(tile_cover_name) }, "COVER_TEMP",
                   { { "$COVER_1_ID", "PR1" },
-                    { "$COVER_2_ID", "PR2" } } ),
-                (new HAActionTile(1, 0, { id(tile_blinds_up_down) }, { id(action_blinds_up_down) }, { "#{COVER_TEMP}"}))
+                    { "$COVER_2_ID", "PR2" } } ) ) )
+                  ->setActivationVar( "ROOM", "LR" ),
+                (new CycleEntityTile(1, 0, { id(tile_cover_name) }, "COVER_TEMP",
+                  { { "$COVER_3_ID", "TR1" },
+                    { "$COVER_4_ID", "TR2" } } ) ) )
+                  ->setActivationVar( "ROOM", "TOYS" ),
+                (new HAActionTile(0, 1, { id(tile_blinds_up_down) }, { id(action_blinds_up_down) }, { "#{COVER_TEMP}"}))
                   ->setRequiresFastRefreshFunc([]() { return id(blinds_moving_up) || id(blinds_moving_down); }),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
