@@ -102,7 +102,8 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
 ### ```Tile```
 * The base class for all tiles.
 * Post initialization modification functions:
-  * ````omitFrame``` - In case this function is called, the tile will not have the default frame.
+  * ```omitFrame``` - In case this function is called, the tile will not have the default frame.
+  * ```setActivationVar``` - A function that gets two string variables, first one being the ```$DYNAMIC_ENTITIES```, and in case the value of it contains the second variable, this tile is activated. In case this is false, the tile is inactive - will not render and will not perform actions. In case this function is not called, the tile is always active. This is used to have two tiles on the same place, and activated based on an external rule.
 
 ### ```HAActionTile```
 * A tile that performs an action in HomeAssistant (toggle light, toggle AC, open blinds, etc.).
