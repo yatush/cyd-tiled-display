@@ -101,14 +101,14 @@ globals:
     initial_value: "60"
   - id: blinds_moving_up
     type: bool
-    initial_value: "false"  
+    initial_value: "false"
   - id: blinds_moving_down
     type: bool
-    initial_value: "false"  
+    initial_value: "false"
   - id: adaptive_brightness
     type: bool
     restore_value: yes
-    initial_value: "false"  
+    initial_value: "false"
   - id: wakeup_distance
     type: int
     restore_value: yes
@@ -124,7 +124,7 @@ globals:
     initial_value: "0"
   - id: inactive_back_to_base_sec
     type: int
-    initial_value: "60"  
+    initial_value: "60"
   - id: width
     type: int
     initial_value: "320"
@@ -199,7 +199,7 @@ font:
         "\U0000e913", # Touch
         "\U0000e5cc", # Chevron right
         "\U0000e5cb", # Chevron left
-        
+
       ]
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_50
@@ -226,7 +226,9 @@ font:
         "\U0000f4b6", # Arrow cool down
         "\U0000eb97", # Display settings
         "\U0000e28b", # Light settings
+        "\U0000e8d5", # Arrow up/down
       ]
+
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_largish
     size: 70
@@ -248,6 +250,7 @@ font:
         "\U0000f55b", # AC settings
         "\U0000eb97", # Display settings
         "\U0000f02a", # Light from ceiling
+        "\U0000e88a", # House
       ]
 
   - file: "gfonts://Material+Symbols+Outlined"
@@ -273,7 +276,24 @@ font:
     id: roboto_12
     size: 12
     glyphs:
-      ["\U0000003c", "\U0000003e", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "c", "m","\U00000020", "\U00000022"]
+      [
+        "\U0000003c",
+        "\U0000003e",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "c",
+        "m",
+        "\U00000020",
+        "\U00000022",
+      ]
 
 # This is BGR for some strange reason :/
 color:
@@ -397,7 +417,7 @@ button:
     name: "Restart EPS32"
     id: restart_button
 
-binary_sensor:  
+binary_sensor:
   - platform: ld2410
     has_target:
       name: Radar Target
@@ -440,7 +460,7 @@ sensor:
     id: wifi_signal_pct
     update_interval: 60s
     entity_category: "diagnostic"
-  
+
   - platform: adc
     pin: GPIO34
     id: board_ldr
@@ -449,7 +469,7 @@ sensor:
     entity_category: "diagnostic"
     accuracy_decimals: 3
     internal: true
-  
+
   - platform: copy
     source_id: board_ldr
     id: board_ldr_p
@@ -464,17 +484,54 @@ sensor:
     still_distance: { name: Radar Still Distance, id: still_distance }
     moving_energy: { name: Radar Move Energy }
     still_energy: { name: Radar Still Energy }
-    detection_distance: { name: Radar Detection Distance, id: radar_detection_distance }
+    detection_distance:
+      { name: Radar Detection Distance, id: radar_detection_distance }
     light: { name: Radar Light, id: radar_light }
-    g0: { move_energy: { name: g0 move energy }, still_energy: { name: g0 still energy } }
-    g1: { move_energy: { name: g1 move energy }, still_energy: { name: g1 still energy } }
-    g2: { move_energy: { name: g2 move energy }, still_energy: { name: g2 still energy } }
-    g3: { move_energy: { name: g3 move energy }, still_energy: { name: g3 still energy } }
-    g4: { move_energy: { name: g4 move energy }, still_energy: { name: g4 still energy } }
-    g5: { move_energy: { name: g5 move energy }, still_energy: { name: g5 still energy } }
-    g6: { move_energy: { name: g6 move energy }, still_energy: { name: g6 still energy } }
-    g7: { move_energy: { name: g7 move energy }, still_energy: { name: g7 still energy } }
-    g8: { move_energy: { name: g8 move energy }, still_energy: { name: g8 still energy } }
+    g0:
+      {
+        move_energy: { name: g0 move energy },
+        still_energy: { name: g0 still energy },
+      }
+    g1:
+      {
+        move_energy: { name: g1 move energy },
+        still_energy: { name: g1 still energy },
+      }
+    g2:
+      {
+        move_energy: { name: g2 move energy },
+        still_energy: { name: g2 still energy },
+      }
+    g3:
+      {
+        move_energy: { name: g3 move energy },
+        still_energy: { name: g3 still energy },
+      }
+    g4:
+      {
+        move_energy: { name: g4 move energy },
+        still_energy: { name: g4 still energy },
+      }
+    g5:
+      {
+        move_energy: { name: g5 move energy },
+        still_energy: { name: g5 still energy },
+      }
+    g6:
+      {
+        move_energy: { name: g6 move energy },
+        still_energy: { name: g6 still energy },
+      }
+    g7:
+      {
+        move_energy: { name: g7 move energy },
+        still_energy: { name: g7 still energy },
+      }
+    g8:
+      {
+        move_energy: { name: g8 move energy },
+        still_energy: { name: g8 still energy },
+      }
 
 script:
   - id: on_brightness_press
@@ -499,7 +556,7 @@ script:
           for (auto& value : values) {
             value.first->make_call().set_value(value.second).perform();
           }
-    
+
   - id: init_coordinates
     then:
       - lambda: |-
@@ -514,7 +571,7 @@ script:
             id(y_start).push_back( (i+1) * id(y_pad) + i * id(y_rect));
             id(y_mid).push_back( (i+1) * id(y_pad) + (2*i + 1) * id(y_rect) / 2);
           }
-    
+
   - id: rounded_rectangle
     parameters: { x: int, y: int, w: int, h: int, r: int, c: Color }
     then:
@@ -551,7 +608,7 @@ script:
             new_brightness = 0.3;
           }
           id(backlight).make_call().set_brightness(new_brightness).set_transition_length(0).perform();
-  
+
   - id: adapt_bright
     then:
       - lambda: |-
@@ -563,7 +620,6 @@ script:
           auto current_bright = id(backlight).remote_values.get_brightness();
           auto delta = min(0.1, max(-0.1, computed_bright - current_bright));
           id(backlight).make_call().set_brightness(current_bright + delta).perform();
-
 
   - id: change_sleep_time
     then:
@@ -635,7 +691,7 @@ script:
     then:
       - lambda: |-
           id(rounded_rectangle).execute(id(x_start)[i], id(y_start)[j], id(x_rect), id(y_rect), id(border_r), id(gray));
-  
+
   - id: tile_blinds_up
     parameters:
       x: int
@@ -649,7 +705,7 @@ script:
           } else {
             id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_blue), TextAlign::CENTER, "\U0000eacf");
           }
-  
+
   - id: action_blinds_up
     parameters:
       entities: string[]
@@ -673,7 +729,7 @@ script:
           } else {
             id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_red), TextAlign::CENTER, "\U0000ead0");
           }
-  
+
   - id: action_blinds_down
     parameters:
       entities: string[]
@@ -692,7 +748,7 @@ script:
     then:
       - lambda: |-
           id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_largish), id(light_purple), TextAlign::CENTER, "\U0000e286");
-  
+
   - id: action_blinds_mid
     parameters:
       entities: string[]
@@ -765,7 +821,7 @@ script:
           std::string action = IsAnyOn(entities) ? "turn_off" : "turn_on";
           for (const std::string& light : entities) {
             PerformHaAction(light, action);
-          }       
+          }
 
   - id: tile_ac
     parameters:
@@ -788,7 +844,7 @@ script:
           std::string action = IsAnyOn(entities) ? "turn_off" : "turn_on";
           for (const std::string& ac : entities) {
             PerformHaAction(ac, action);
-          }       
+          }
 
   - id: tile_brightness
     parameters:
@@ -851,7 +907,6 @@ script:
       - lambda: |-
           id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e8b8");
 
-  
   - id: tile_ac_settings
     parameters:
       x: int
@@ -878,6 +933,15 @@ script:
     then:
       - lambda: |-
           id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000e286");
+
+  - id: tile_cover_up_down
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000e8d5");
 
   - id: tile_disp_settings
     parameters:
@@ -924,6 +988,22 @@ script:
           id(disp).print(id(x_start)[x] + 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
           id(disp).print(id(x_start)[x] + id(x_rect) - 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
           id(disp).print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e286");
+          id(disp).print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, entities[1].c_str());
+          if (entities[0] != "*") {
+            std::string position = GetTextSensorValue(entities[0] + "|current_position") + "%";
+            id(disp).print(id(x_mid)[x], id(y_start)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, position.c_str());
+          }
+
+  - id: tile_room
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          id(disp).print(id(x_start)[x] + 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
+          id(disp).print(id(x_start)[x] + id(x_rect) - 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
+          id(disp).print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e88a");
           id(disp).print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, entities[0].c_str());
 
   - id: tile_back_arrow
@@ -943,7 +1023,7 @@ script:
     then:
       - lambda: |-
           id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_red), TextAlign::CENTER, "\U0000f4b5");
-  
+
   - id: action_temp_up
     parameters:
       entities: string[]
@@ -956,7 +1036,7 @@ script:
             } else {
               ESP_LOGE("ActionTempDown", "Failed getting temp for %s", ac.c_str());
             }
-          }  
+          }
 
   - id: tile_temp_down
     parameters:
@@ -979,7 +1059,7 @@ script:
             } else {
               ESP_LOGE("ActionTempDown", "Failed getting temp for %s", ac.c_str());
             }
-          }  
+          }
 
   - id: tile_ac_mode
     parameters:
@@ -1021,7 +1101,7 @@ script:
           }
           id(update_ui_values).execute();
           view->getActiveScreen()->draw();
-          
+
 interval:
   - interval: 250ms
     then:
@@ -1073,7 +1153,7 @@ interval:
             - lambda: |-
                 return id(adaptive_brightness);
           then:
-            - script.execute: adapt_bright 
+            - script.execute: adapt_bright
 
 display:
   - platform: ili9xxx
@@ -1089,10 +1169,10 @@ display:
       height: 240
     invert_colors: false
     on_page_change:
-      then: 
+      then:
         - lambda: |-
             id(change_page_ms) = millis();
-    pages: 
+    pages:
       - id: calib
         lambda: |-
           if (id(touch_calibration).state) {
@@ -1107,7 +1187,7 @@ display:
       - id: pref
         lambda: |-
           id(draw_page).execute();
-      
+
       - id: controllers
         lambda: |-
           id(draw_page).execute();
@@ -1119,7 +1199,7 @@ display:
       - id: disp_settings
         lambda: |-
           id(draw_page).execute();
-          
+
       - id: light_settings
         lambda: |-
           id(draw_page).execute();
