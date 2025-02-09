@@ -85,7 +85,7 @@ class TiledScreen : public Screen {
 
   void draw() override {
     for (Tile* tile : this->tiles_) {
-      if (tile->isActive()) {
+      if (tile->checkActivationMaybeToggle()) {
         tile->draw();
       }
     }
