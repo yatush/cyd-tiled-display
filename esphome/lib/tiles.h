@@ -88,9 +88,7 @@ class Tile {
   // Performs custom drawing for the tile.
   // Default implementation executes provided draw functions.
   virtual void customDraw() {
-    for (auto* func : this->draw_funcs_) {
-      func->execute(this->x_, this->y_, {});
-    }
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, {});
   }
 
   virtual void onActivation() {}
@@ -234,24 +232,18 @@ class HAActionTile : public Tile {
         if (!x) {
           return;
         }
-        for (auto* script : this->action_funcs_) {
-          script->execute(this->decoded_entities_);
-        }
+        ExecuteScripts(this->action_funcs_, this->decoded_entities_);
         if (this->location_action_funcs_.size() > 0) {
           float x_precent = 1.0 * (id(last_x) - id(x_start)[this->x_]) / id(x_rect);
           float y_precent = 1.0 * (id(last_y) - id(y_start)[this->y_]) / id(y_rect);
-          for (auto* script : this->location_action_funcs_) {
-            script->execute(x_precent, y_precent, this->decoded_entities_);
-          }
+          ExecuteScripts(this->location_action_funcs_, x_precent, y_precent, this->decoded_entities_);
         }
       });
     }
   }
 
   void customDraw() override {
-    for (auto* func : this->draw_funcs_) {
-      func->execute(this->x_, this->y_, this->decoded_entities_);
-    }
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, this->decoded_entities_);
   }
 
  private:
@@ -402,10 +394,8 @@ class ToggleEntityTile : public Tile {
 
   void customDraw() override {
     bool isOn = EMContains(this->identifier_, this->entity_);
-    for (auto* func : this->draw_funcs_) {
-      func->execute(this->x_, this->y_,
-                    {isOn ? "ON" : "OFF", this->presentation_name_});
-    }
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_,
+                   {isOn ? "ON" : "OFF", this->presentation_name_});
   }
 
   // Identifier for the group of entities this tile belongs to.
@@ -457,12 +447,9 @@ class CycleEntityTile : public Tile {
   }
 
   void customDraw() override {
-    for (auto* func : this->draw_funcs_) {
-      func->execute(
-        this->x_, this->y_,
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_,
         { this->entities_and_presntation_names_.at(0).first,
           this->entities_and_presntation_names_.at(0).second });
-    }
   }
 
   void onActivation() override {
