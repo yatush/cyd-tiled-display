@@ -91,11 +91,13 @@ script:
                   { { "LR", "LR" },
                     { "TOYS", "TOYS" } } ),
                 (new CycleEntityTile(1, 0, { id(tile_cover_name) }, "COVER_TEMP",
-                  { { "$COVER_1_ID", "PR1" },
+                  { { "*", "ALL" },
+                    { "$COVER_1_ID", "PR1" },
                     { "$COVER_2_ID", "PR2" } } ) ) )
                   ->setActivationVar( "ROOM", "LR" ),
                 (new CycleEntityTile(1, 0, { id(tile_cover_name) }, "COVER_TEMP",
-                  { { "$COVER_3_ID", "TR1" },
+                  { { "*", "ALL" },
+                    { "$COVER_3_ID", "TR1" },
                     { "$COVER_4_ID", "TR2" } } ) ) )
                   ->setActivationVar( "ROOM", "TOYS" ),
                 (new HAActionTile(0, 1, { id(tile_blinds_up_down) }, { id(action_blinds_up_down) }, { "#{COVER_TEMP}"}))
