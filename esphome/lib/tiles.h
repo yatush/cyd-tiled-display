@@ -431,7 +431,9 @@ class CycleEntityTile : public Tile {
 
   void initSensors() override {
     for (const auto& pair : this->entities_and_presntation_names_) {
-      InitSensor(pair.first);
+      if (pair.first != "*") {
+        InitSensor(pair.first);
+      }
     }
   };
 
@@ -446,11 +448,10 @@ class CycleEntityTile : public Tile {
         this->entities_and_presntation_names_.begin() + 1,
         this->entities_and_presntation_names_.end());
       
-      EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
-      this->change_entities_callback_();
+      this->updateEntities();
       id(disp).update();
     });
-    EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
+    this->updateEntities();
   }
 
   void customDraw() override {
@@ -463,10 +464,21 @@ class CycleEntityTile : public Tile {
   }
 
   void onActivation() override {
-    EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
+    this->updateEntities();
+  }
+ 
+ private:
+  void updateEntities() {
+    if (this->entities_and_presntation_names_.at(0).first == "*") {
+      EMClear(this->identifier_);
+      for (int i = 1; i < this->entities_and_presntation_names_.size(); ++i) {
+        EMAdd(this->identifier_, this->entities_and_presntation_names_.at(i).first);
+      }
+    } else {
+      EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
+    }
     this->change_entities_callback_();
   }
-
   // Identifier to change.
   std::string identifier_;
   // The entities to set into the identifier and their presentation names
