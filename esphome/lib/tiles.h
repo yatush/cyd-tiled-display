@@ -62,21 +62,6 @@ class Tile {
     return this;
   }
 
-  bool isActive() {
-    if (this->always_active_) {
-      return true;
-    }
-    if (EMContains(this->var_name_, this->var_value_)) {
-      if (!this->was_active_) {
-        this->onActivation();
-      }
-      this->was_active_ = true;
-      return true;
-    }
-    this->was_active_ = false;
-    return false;
-  }
-
   friend class TiledScreen;
 
  protected:
@@ -133,7 +118,7 @@ class Tile {
                 id(touch_calibration).state) {
               return false;
             }
-            if (!this->isActive()) {
+            if (!this->checkActivationMaybeToggle()) {
               return false;
             }
             return true;
@@ -146,6 +131,23 @@ class Tile {
       this->binary_sensor_->setup();
     }
     this->initSensors();
+  }
+
+  // Indicates if this tile is active or not. In case this is becoming active,
+  // run the onActivation function.
+  bool checkActivationMaybeToggle() {
+    if (this->always_active_) {
+      return true;
+    }
+    if (EMContains(this->var_name_, this->var_value_)) {
+      if (!this->was_active_) {
+        this->onActivation();
+      }
+      this->was_active_ = true;
+      return true;
+    }
+    this->was_active_ = false;
+    return false;
   }
 };
 
@@ -468,6 +470,7 @@ class CycleEntityTile : public Tile {
   }
  
  private:
+  // Updates the entities according to the status of the tile.
   void updateEntities() {
     if (this->entities_and_presntation_names_.at(0).first == "*") {
       EMClear(this->identifier_);
@@ -479,8 +482,10 @@ class CycleEntityTile : public Tile {
     }
     this->change_entities_callback_();
   }
+
   // Identifier to change.
   std::string identifier_;
-  // The entities to set into the identifier and their presentation names
+  // The entities to set into the identifier and their presentation names. The one
+  // used is always the first one, and the vector is rotating.
   std::vector<std::pair<std::string, std::string>> entities_and_presntation_names_;
 };
