@@ -62,6 +62,23 @@ class Tile {
     return this;
   }
 
+  // Indicates if this tile is active or not. In case this is becoming active,
+  // run the onActivation function.
+  bool checkActivationMaybeToggle() {
+    if (this->always_active_) {
+      return true;
+    }
+    if (EMContains(this->var_name_, this->var_value_)) {
+      if (!this->was_active_) {
+        this->onActivation();
+      }
+      this->was_active_ = true;
+      return true;
+    }
+    this->was_active_ = false;
+    return false;
+  }
+
   friend class TiledScreen;
 
  protected:
@@ -131,23 +148,6 @@ class Tile {
       this->binary_sensor_->setup();
     }
     this->initSensors();
-  }
-
-  // Indicates if this tile is active or not. In case this is becoming active,
-  // run the onActivation function.
-  bool checkActivationMaybeToggle() {
-    if (this->always_active_) {
-      return true;
-    }
-    if (EMContains(this->var_name_, this->var_value_)) {
-      if (!this->was_active_) {
-        this->onActivation();
-      }
-      this->was_active_ = true;
-      return true;
-    }
-    this->was_active_ = false;
-    return false;
   }
 };
 
