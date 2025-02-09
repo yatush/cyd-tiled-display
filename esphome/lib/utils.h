@@ -303,3 +303,10 @@ bool MissingDynamicEntity(std::vector<std::string>& source) {
   }
   return false;
 }
+
+template <typename... Args>
+void ExecuteScripts(const std::vector<esphome::script::Script<Args...>*>& scripts, Args... args) {
+  for (auto* script : scripts) {
+    script->execute(args...);
+  }
+}
