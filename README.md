@@ -165,12 +165,12 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
       * The first is either "ON" in case the ```$SIMPLE_ENTITY``` is part of ```$DYNAMIC_ENTITIES``` or "OFF" otherwise.
       * The second represents a presentation name string to be shown on the tile.
   * ```string``` - Identifier of the ```$DYNAMIC_ENTITIES``` to set. This should be just the string representation of the ```$VAR_NAME```.
-  * ```string``` - Identifier of the ```$SIMPLE_ENTITY``` to add/remove from the ```$DYNAMIC_ENTITY```.
+  * ```string``` - Identifier of the ```$SIMPLE_ENTITY``` to add/remove from the ```$DYNAMIC_ENTITIES```.
   * ```string``` - Presentation name to pass to the draw function.
   * ```bool``` (optional, defaults to FALSE) - Should this entity be initially chosen when the display is turned on.
 
 ### ```CycleEntityTile```
-* A tile that changes a ```$DYNAMIC_ENTITY``` to one of the given ```$SIMPLE_ENTITIES``` every time it is pressed.
+* A tile that changes a ```$DYNAMIC_ENTITIES``` to one of the given ```$SIMPLE_ENTITY```s every time it is pressed.
 * Constructor parameters:
   * ```int``` - The x coordinate of the tile, 0 based.
   * ```int``` - The y coordinate of the tile, 0 based.
@@ -181,7 +181,8 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
       * The first represents the ```$SIMPLE_ENTITY``` that the tile refers to.
       * The second represents a presentation name string to be shown on the tile.
   * ```string``` - Identifier of the ```$DYNAMIC_ENTITIY``` to set. This should be just the string representation of the ```$VAR_NAME```.
-  * ```std::vector<std::pair<std::string, std::string>>``` - A vector of the ```$SIMPLE_ENTITIES``` to cycle by, and their presentation names.
+  * ```std::vector<std::pair<std::string, std::string>>``` - A vector of the ```$SIMPLE_ENTITY```s to cycle by, and their presentation names.
+    * A special case is when a ```SIMPLE_ENTITY``` name is equal to "*" - in that case, the ```$DYNAMIC_ENTITIES``` will be set to all of the other ```SIMPLE_ENTITY```s in the vector.
 
 
 ## utils.h
