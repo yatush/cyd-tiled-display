@@ -55,6 +55,14 @@ void EMSet(const std::string& key, const std::string& value) {
   id(entities_map)[key] = {value};
 }
 
+// Clears the values for the given key in the entity map.
+void EMClear(const std::string& key) {
+  if (key.empty()) {
+    return;
+  }
+  id(entities_map)[key] = {};
+}
+
 // --- String Utility Functions ---
 
 // Checks if a string represents an integer.
