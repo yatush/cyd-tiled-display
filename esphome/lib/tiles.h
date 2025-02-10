@@ -93,6 +93,8 @@ class Tile {
 
   virtual void onActivation() {}
 
+  virtual void onScreenLeave() {};
+
   // Pointer to the display page this tile belongs to.
   esphome::display::DisplayPage* display_page_ = nullptr;
   // Pointer to the binary sensor for touch input.
@@ -108,6 +110,8 @@ class Tile {
   bool omit_frame_ = false;
   // Callback function for entity changes.
   std::function<void()> change_entities_callback_ = []() {};
+  // Callback function when leaving the screen
+  std::function<void()> change_screen_callback_ = []() {};
   // A dynamic variable name to check for value for this tile to be active
   std::string var_name_;
   // A simple value to check the var_name against
@@ -118,8 +122,10 @@ class Tile {
 
  private:
   // Initialize the Tile
-  void init(esphome::display::DisplayPage* display_page) {
+  void init(esphome::display::DisplayPage* display_page,
+            std::function<void()> change_screen_callback) {
     this->display_page_ = display_page;
+    this->change_screen_callback_ = change_screen_callback;
     this->customInit();
     if (this->binary_sensor_ != nullptr) {
       this->binary_sensor_->add_filter(new esphome::binary_sensor::LambdaFilter(
@@ -216,6 +222,7 @@ class HAActionTile : public Tile {
     this->binary_sensor_->add_filter(new esphome::binary_sensor::LambdaFilter(
         [target_display_page, this](bool x) -> optional<bool> {
           if (x && this->decoded_entities_.empty()) {
+            this->change_screen_callback_();
             id(disp).show_page(target_display_page);
             id(disp).update();
             return {};
@@ -296,6 +303,7 @@ class MovePageTile : public Tile {
       if (!x) {
         return;
       }
+      this->change_screen_callback_();
       id(disp).show_page(this->target_display_page_);
       id(disp).update();
     });
@@ -416,10 +424,12 @@ class CycleEntityTile : public Tile {
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
           draw_funcs,
       const std::string& identifier,
-      std::vector<std::pair<std::string, std::string>> entities_and_presntation_names)
+      std::vector<std::pair<std::string, std::string>> entities_and_presntation_names,
+      bool reset_on_leave = false)
       : Tile(x, y, draw_funcs),
         identifier_(identifier),
-        entities_and_presntation_names_(entities_and_presntation_names) {}
+        entities_and_presntation_names_(entities_and_presntation_names),
+        reset_on_leave_(reset_on_leave) {}
 
   void initSensors() override {
     for (const auto& pair : this->entities_and_presntation_names_) {
@@ -435,11 +445,8 @@ class CycleEntityTile : public Tile {
       if (!x) {
         return;
       }
-      std::rotate(
-        this->entities_and_presntation_names_.begin(),
-        this->entities_and_presntation_names_.begin() + 1,
-        this->entities_and_presntation_names_.end());
-      
+      this->current_index_ =
+          (this->current_index_ + 1) % this->entities_and_presntation_names_.size();
       this->updateEntities();
       id(disp).update();
     });
@@ -448,24 +455,33 @@ class CycleEntityTile : public Tile {
 
   void customDraw() override {
     ExecuteScripts(this->draw_funcs_, this->x_, this->y_,
-        { this->entities_and_presntation_names_.at(0).first,
-          this->entities_and_presntation_names_.at(0).second });
+        { this->entities_and_presntation_names_.at(this->current_index_).first,
+          this->entities_and_presntation_names_.at(this->current_index_).second });
   }
 
   void onActivation() override {
     this->updateEntities();
   }
+
+  void onScreenLeave() override {
+    if (this->reset_on_leave_) {
+      this->current_index_ = 0;
+    }
+  }
  
  private:
   // Updates the entities according to the status of the tile.
   void updateEntities() {
-    if (this->entities_and_presntation_names_.at(0).first == "*") {
+    if (this->entities_and_presntation_names_.at(this->current_index_).first == "*") {
       EMClear(this->identifier_);
-      for (int i = 1; i < this->entities_and_presntation_names_.size(); ++i) {
+      for (int i = 0; i < this->entities_and_presntation_names_.size(); ++i) {
+        if (i == this->current_index_) {
+          continue;
+        }
         EMAdd(this->identifier_, this->entities_and_presntation_names_.at(i).first);
       }
     } else {
-      EMSet(this->identifier_, this->entities_and_presntation_names_.at(0).first);
+      EMSet(this->identifier_, this->entities_and_presntation_names_.at(this->current_index_).first);
     }
     this->change_entities_callback_();
   }
@@ -475,4 +491,8 @@ class CycleEntityTile : public Tile {
   // The entities to set into the identifier and their presentation names. The one
   // used is always the first one, and the vector is rotating.
   std::vector<std::pair<std::string, std::string>> entities_and_presntation_names_;
+  // The current indeex.
+  int current_index_ = 0;
+  // Indicates if should be reset on screen leave
+  bool reset_on_leave_ = false;
 };
