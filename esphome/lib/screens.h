@@ -44,6 +44,9 @@ class Screen {
   virtual void setChangeEntitiesCallback(
       std::function<void()> change_entities_callback) {};
 
+  // A function that is called when the screen is changed.
+  virtual void onScreenLeave() {};
+
  private:
   // Pointer to the DisplayPage associated with this screen.
   esphome::display::DisplayPage* display_page_;
@@ -60,7 +63,8 @@ class TiledScreen : public Screen {
               std::set<ScreenAtt> attributes, std::vector<Tile*> tiles)
       : Screen(display_page, attributes), tiles_(tiles) {
     for (Tile* tile : tiles) {
-      tile->init(this->getDisplayPage());
+      tile->init(this->getDisplayPage(),
+                [&]() { this->onScreenLeave(); });
     }
   }
 
@@ -113,6 +117,12 @@ class TiledScreen : public Screen {
       tile->setChangeEntitiesCallback(change_entities_callback);
     }
   };
+
+  void onScreenLeave() override {
+    for (Tile* tile : this->tiles_) {
+      tile->onScreenLeave();
+    }
+  }
 
  private:
   // Vector of Tile pointers representing the tiles on this screen.
