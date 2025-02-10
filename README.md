@@ -183,6 +183,7 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
   * ```string``` - Identifier of the ```$DYNAMIC_ENTITIY``` to set. This should be just the string representation of the ```$VAR_NAME```.
   * ```std::vector<std::pair<std::string, std::string>>``` - A vector of the ```$SIMPLE_ENTITY```s to cycle by, and their presentation names.
     * A special case is when a ```SIMPLE_ENTITY``` name is equal to "*" - in that case, the ```$DYNAMIC_ENTITIES``` will be set to all of the other ```SIMPLE_ENTITY```s in the vector.
+  * An optional boolean (defaults to false) that indicates if the state of the tile should be reset once the screen is changed.
 
 
 ## utils.h
