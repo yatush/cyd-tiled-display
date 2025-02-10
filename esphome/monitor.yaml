@@ -64,6 +64,7 @@ script:
                 new FunctionTile(1, 0, { id(tile_distance) }, id(change_wakeup_distance)),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
                 new FunctionTile(0, 1, { id(tile_wakeup_time) }, id(change_sleep_time)),
+                new FunctionTile(1, 1, { id(tile_power) }, id(action_power)),
               }
             ),
             new TiledScreen(
