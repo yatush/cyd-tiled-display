@@ -227,6 +227,7 @@ font:
         "\U0000eb97", # Display settings
         "\U0000e28b", # Light settings
         "\U0000e8d5", # Arrow up/down
+        "\U0000f418", # Power
       ]
 
   - file: "gfonts://Material+Symbols+Outlined"
@@ -915,6 +916,20 @@ script:
     then:
       - lambda: |-
           id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000f55b");
+
+  - id: tile_power
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          id(disp).print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000f418");
+
+  - id: action_power
+    then:
+      - lambda: |-
+          id(restart_button).press();
 
   - id: tile_light_settings
     parameters:
