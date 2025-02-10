@@ -93,12 +93,12 @@ script:
                 (new CycleEntityTile(1, 0, { id(tile_cover_name) }, "COVER_TEMP",
                   { { "*", "ALL" },
                     { "$COVER_1_ID", "PR1" },
-                    { "$COVER_2_ID", "PR2" } } ) ) )
+                    { "$COVER_2_ID", "PR2" } }, true ) ) )
                   ->setActivationVar( "ROOM", "LR" ),
                 (new CycleEntityTile(1, 0, { id(tile_cover_name) }, "COVER_TEMP",
                   { { "*", "ALL" },
                     { "$COVER_3_ID", "TR1" },
-                    { "$COVER_4_ID", "TR2" } } ) ) )
+                    { "$COVER_4_ID", "TR2" } }, true ) ) )
                   ->setActivationVar( "ROOM", "TOYS" ),
                 (new HAActionTile(0, 1, { id(tile_blinds_up_down) }, { id(action_blinds_up_down) }, { "#{COVER_TEMP}"}))
                   ->setRequiresFastRefreshFunc([]() { return id(blinds_moving_up) || id(blinds_moving_down); }),
