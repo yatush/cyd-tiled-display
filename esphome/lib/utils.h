@@ -4,70 +4,71 @@
 #include <string>
 #include <vector>
 
+// --- String repository ---
 class Repository {
 private:
-    std::set<std::string> strings_; // Store strings directly
-    mutable std::mutex mutex_;
+  std::set<std::string> strings_; // Store strings directly
+  mutable std::mutex mutex_;
 
 public:
-    static Repository& instance() {
-        static Repository repo;
-        return repo;
+  static Repository& instance() {
+    static Repository repo;
+    return repo;
+  }
+
+  const std::string* ptr(const std::string& str) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto it = strings_.find(str);
+    if (it != strings_.end()) {
+      return &(*it); // Return pointer to existing string
     }
 
-    const std::string* ptr(const std::string& str) {
-        std::lock_guard<std::mutex> lock(mutex_);
+    it = strings_.insert(str).first; // Insert and get iterator
+    return &(*it); // Return pointer to newly inserted string
+  }
 
-        auto it = strings_.find(str);
-        if (it != strings_.end()) {
-            return &(*it); // Return pointer to existing string
-        }
+  std::vector<const std::string*> ptr(const std::vector<std::string>& str_vec) {
+    std::vector<const std::string*> result;
+    result.reserve(str_vec.size());
 
-        it = strings_.insert(str).first; // Insert and get iterator
-        return &(*it); // Return pointer to newly inserted string
-    }
+    std::transform(
+      str_vec.begin(), str_vec.end(), std::back_inserter(result),
+      [this](const std::string& str) { return this->ptr(str); });
 
-    std::vector<const std::string*> ptr(const std::vector<std::string>& str_vec) {
-        std::vector<const std::string*> result;
-        result.reserve(str_vec.size());
+    return result;
+  }
 
-        std::transform(
-          str_vec.begin(), str_vec.end(), std::back_inserter(result),
-          [this](const std::string& str) { return this->ptr(str); });
+  std::vector<std::string> dereference(const std::vector<const std::string*>& str_ptr_vec) const {
+    std::vector<std::string> result;
+    result.reserve(str_ptr_vec.size());
 
-        return result;
-    }
-
-    std::vector<std::string> dereference(const std::vector<const std::string*>& str_ptr_vec) const {
-      std::vector<std::string> result;
-      result.reserve(str_ptr_vec.size());
-
-      std::transform(
-        str_ptr_vec.begin(), str_ptr_vec.end(), std::back_inserter(result),
-        [](const std::string* str_ptr) {
-          return *str_ptr;
-        });
-        return result;
-    }
-
-    const std::pair<const std::string*, const std::string*> ptr(
-      const std::pair<std::string, std::string>& str_pair) {
-        return std::make_pair(ptr(str_pair.first), ptr(str_pair.second));
-    }
-
-    std::vector<std::pair<const std::string*, const std::string*>> ptr(
-      const std::vector<std::pair<std::string, std::string>>& vec) {
-      std::vector<std::pair<const std::string*, const std::string*>> result;
-      result.reserve(vec.size());
-
-      std::transform(
-        vec.begin(), vec.end(), std::back_inserter(result),
-        [this](const std::pair<const std::string&, const std::string&> pair) {
-          return this->ptr(pair);
-        });
-
+    std::transform(
+      str_ptr_vec.begin(), str_ptr_vec.end(), std::back_inserter(result),
+      [](const std::string* str_ptr) {
+        return *str_ptr;
+      });
       return result;
-    }
+  }
+
+  const std::pair<const std::string*, const std::string*> ptr(
+      const std::pair<std::string, std::string>& str_pair) {
+    return std::make_pair(ptr(str_pair.first), ptr(str_pair.second));
+  }
+
+  std::vector<std::pair<const std::string*, const std::string*>> ptr(
+      const std::vector<std::pair<std::string, std::string>>& vec) {
+    std::vector<std::pair<const std::string*, const std::string*>> result;
+    result.reserve(vec.size());
+
+    std::transform(
+      vec.begin(), vec.end(), std::back_inserter(result),
+      [this](const std::pair<const std::string&, const std::string&> pair) {
+        return this->ptr(pair);
+      });
+
+    return result;
+  }
 };
 
 const std::string* Pointer(const std::string& str) {
