@@ -4,37 +4,120 @@
 #include <string>
 #include <vector>
 
+class Repository {
+private:
+    std::set<std::string> strings_; // Store strings directly
+    mutable std::mutex mutex_;
+
+public:
+    static Repository& instance() {
+        static Repository repo;
+        return repo;
+    }
+
+    const std::string* ptr(const std::string& str) {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto it = strings_.find(str);
+        if (it != strings_.end()) {
+            return &(*it); // Return pointer to existing string
+        }
+
+        it = strings_.insert(str).first; // Insert and get iterator
+        return &(*it); // Return pointer to newly inserted string
+    }
+
+    std::vector<const std::string*> ptr(const std::vector<std::string>& str_vec) {
+        std::vector<const std::string*> result;
+        result.reserve(str_vec.size());
+
+        std::transform(
+          str_vec.begin(), str_vec.end(), std::back_inserter(result),
+          [this](const std::string& str) { return this->ptr(str); });
+
+        return result;
+    }
+
+    std::vector<std::string> dereference(const std::vector<const std::string*>& str_ptr_vec) const {
+      std::vector<std::string> result;
+      result.reserve(str_ptr_vec.size());
+
+      std::transform(
+        str_ptr_vec.begin(), str_ptr_vec.end(), std::back_inserter(result),
+        [](const std::string* str_ptr) {
+          return *str_ptr;
+        });
+        return result;
+    }
+
+    const std::pair<const std::string*, const std::string*> ptr(
+      const std::pair<std::string, std::string>& str_pair) {
+        return std::make_pair(ptr(str_pair.first), ptr(str_pair.second));
+    }
+
+    std::vector<std::pair<const std::string*, const std::string*>> ptr(
+      const std::vector<std::pair<std::string, std::string>>& vec) {
+      std::vector<std::pair<const std::string*, const std::string*>> result;
+      result.reserve(vec.size());
+
+      std::transform(
+        vec.begin(), vec.end(), std::back_inserter(result),
+        [this](const std::pair<const std::string&, const std::string&> pair) {
+          return this->ptr(pair);
+        });
+
+      return result;
+    }
+};
+
+const std::string* Pointer(const std::string& str) {
+  return Repository::instance().ptr(str);
+}
+
+std::vector<const std::string*> Pointer(const std::vector<std::string>& vec) {
+  return Repository::instance().ptr(vec);
+}
+
+std::vector<std::pair<const std::string*, const std::string*>> Pointer(
+  const std::vector<std::pair<std::string, std::string>>& str_vec) {
+  return Repository::instance().ptr(str_vec);
+}
+
+std::vector<std::string> Deref(const std::vector<const std::string*>& vec) {
+  return Repository::instance().dereference(vec);
+}
+
 // --- Entity Map Functions ---
 
 // Checks if the entity map contains the given key and value.
-bool EMContains(const std::string& key, const std::string& value) {
+bool EMContains(const std::string* key, const std::string* value) {
   return id(entities_map).count(key) > 0 &&
          id(entities_map)[key].find(value) != id(entities_map)[key].end();
 }
 
 // Checks if the entity map contains the given key.
-bool EMContains(const std::string& key) {
+bool EMContains(const std::string* key) {
   return id(entities_map).count(key) > 0;
 }
 
 // Adds a key-value pair to the entity map.
-void EMAdd(const std::string& key, const std::string& value) {
-  if (value.empty()) {
+void EMAdd(const std::string* key, const std::string* value) {
+  if (value->empty()) {
     return;
   }
   id(entities_map)[key].insert(value);
 }
 
 // Adds multiple values to the entity map for the given key.
-void EMAdd(const std::string& key, const std::vector<std::string>& values) {
-  for (const std::string& value : values) {
+void EMAdd(const std::string* key, const std::vector<const std::string*>& values) {
+  for (const std::string* value : values) {
     EMAdd(key, value);
   }
 }
 
 // Removes a value from the entity map for the given key.
 // If the key has no more values, it's removed from the map.
-void EMRemove(const std::string& key, const std::string& value) {
+void EMRemove(const std::string* key, const std::string* value) {
   id(entities_map)[key].erase(value);
   if (id(entities_map)[key].size() == 0) {
     id(entities_map).erase(key);
@@ -42,22 +125,22 @@ void EMRemove(const std::string& key, const std::string& value) {
 }
 
 // Returns all values associated with the given key in the entity map.
-std::vector<std::string> EMGetValues(const std::string& key) {
-  return std::vector<std::string>(id(entities_map)[key].begin(),
-                                  id(entities_map)[key].end());
+std::vector<const std::string*> EMGetValues(const std::string* key) {
+  return std::vector<const std::string*>(
+    id(entities_map)[key].begin(), id(entities_map)[key].end());
 }
 
 // Sets the value for the given key in the entity map.
-void EMSet(const std::string& key, const std::string& value) {
-  if (value.empty()) {
+void EMSet(const std::string* key, const std::string* value) {
+  if (value->empty()) {
     return;
   }
   id(entities_map)[key] = {value};
 }
 
 // Clears the values for the given key in the entity map.
-void EMClear(const std::string& key) {
-  if (key.empty()) {
+void EMClear(const std::string* key) {
+  if (key->empty()) {
     return;
   }
   id(entities_map)[key] = {};
@@ -250,23 +333,23 @@ std::string ReplaceFirstOccurrence(const std::string& input,
 
 // Replaces dynamic entity placeholders (e.g., "#{some_id}") with actual entity
 // IDs from the entity map.
-std::vector<std::string> ReplaceDynamicEntities(
-    std::vector<std::string>& source) {
-  std::vector<std::string> result = {};
+std::vector<const std::string*> ReplaceDynamicEntities(
+    std::vector<const std::string*>& source) {
+  std::vector<const std::string*> result = {};
   for (int i = 0; i < source.size(); ++i) {
-    if (source[i].find("#") == -1) {
+    if (source[i]->find("#") == -1) {
       result.push_back(source[i]);
       continue;
     }
-    std::string key = ExtractId(source[i]);
+    const std::string* key = Pointer(ExtractId(*source[i]));
     if (!EMContains(key)) {
       continue;
     }
     auto replacements = EMGetValues(key);
-    for (const std::string& replacement : replacements) {
-      if (!replacement.empty()) {
-        result.push_back(
-            ReplaceFirstOccurrence(source[i], "#{" + key + "}", replacement));
+    for (const std::string* replacement : replacements) {
+      if (!replacement->empty()) {
+        result.push_back(Pointer(
+            ReplaceFirstOccurrence(*source[i], "#{" + *key + "}", *replacement)));
       }
     }
   }
@@ -274,20 +357,20 @@ std::vector<std::string> ReplaceDynamicEntities(
 }
 
 // Checks if a vector of strings contains any dynamic entity placeholders.
-bool HasDynamicEntity(const std::vector<std::string>& vec) {
-  return std::any_of(vec.begin(), vec.end(), [](const std::string& str) {
-    return str.find("#") != -1;
+bool HasDynamicEntity(const std::vector<const std::string*>& vec) {
+  return std::any_of(vec.begin(), vec.end(), [](const std::string* str) {
+    return str->find("#") != -1;
   });
 }
 
 // Checks if a vector of strings contains any dynamic entity placeholders
 // that are missing or have no valid replacements in the entity map.
-bool MissingDynamicEntity(std::vector<std::string>& source) {
+bool MissingDynamicEntity(std::vector<const std::string*>& source) {
   for (int i = 0; i < source.size(); ++i) {
-    if (source[i].find("#") == -1) {
+    if (source[i]->find("#") == -1) {
       continue;
     }
-    std::string key = ExtractId(source[i]);
+    const std::string* key = Pointer(ExtractId(*source[i]));
     if (!EMContains(key)) {
       return true;
     }
@@ -297,7 +380,7 @@ bool MissingDynamicEntity(std::vector<std::string>& source) {
     }
     // Check if all replacements are empty strings.
     if (std::all_of(replacements.begin(), replacements.end(),
-                    [](const std::string& str) { return str.length() == 0; })) {
+                    [](const std::string* str) { return str->length() == 0; })) {
       return true;
     }
   }
