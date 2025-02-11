@@ -1,8 +1,8 @@
 class Tile {
- public:
+public:
   Tile(int x, int y,
-       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
-           draw_funcs)
+      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+        draw_funcs)
       : x_(x), y_(y), draw_funcs_(draw_funcs) {
     // Initialize the binary sensor for touch detection.
     this->binary_sensor_ = new TouchscreenBinarySensor();
@@ -56,8 +56,8 @@ class Tile {
 
   // The dynamic variable name and value for this tile to be active.
   Tile* setActivationVar(const std::string& var_name, const std::string& var_value) {
-    this->var_name_ = var_name;
-    this->var_value_ = var_value;
+    this->var_name_ = Pointer(var_name);
+    this->var_value_ = Pointer(var_value);
     this->always_active_ = false;
     return this;
   }
@@ -81,7 +81,7 @@ class Tile {
 
   friend class TiledScreen;
 
- protected:
+protected:
   // Performs custom initialization specific to the tile type (pure virtual).
   virtual void customInit() = 0;
 
@@ -113,14 +113,14 @@ class Tile {
   // Callback function when leaving the screen
   std::function<void()> change_screen_callback_ = []() {};
   // A dynamic variable name to check for value for this tile to be active
-  std::string var_name_;
+  const std::string* var_name_;
   // A simple value to check the var_name against
-  std::string var_value_;
+  const std::string* var_value_;
   // Indicates if the tile was active before - to preserve activation state.
   bool was_active_ = false;
   bool always_active_ = true;
 
- private:
+private:
   // Initialize the Tile
   void init(esphome::display::DisplayPage* display_page,
             std::function<void()> change_screen_callback) {
@@ -157,7 +157,7 @@ class Tile {
 
 // A tile that performs actions on Home Assistant entities when pressed.
 class HAActionTile : public Tile {
- public:
+public:
   HAActionTile(
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
@@ -167,11 +167,10 @@ class HAActionTile : public Tile {
       std::vector<esphome::script::Script<float, float, std::vector<std::string>>*>
           location_action_funcs,
       std::vector<std::string> entities)
-      : Tile(x, y, draw_funcs) {
-    this->action_funcs_ = action_funcs;
-    this->location_action_funcs_ = location_action_funcs;
-    this->entities_ = entities;
-  }
+      : Tile(x, y, draw_funcs),
+        action_funcs_ (action_funcs),
+        location_action_funcs_(location_action_funcs),
+        entities_(Pointer(entities)) {}
 
   HAActionTile(
       int x, int y,
@@ -202,8 +201,8 @@ class HAActionTile : public Tile {
   }
 
   void initSensors() override {
-    for (const std::string& entity : this->entities_) {
-      InitSensor(entity);
+    for (const std::string* entity : this->entities_) {
+      InitSensor(*entity);
     }
   };
 
@@ -232,28 +231,29 @@ class HAActionTile : public Tile {
     return this;
   }
 
- protected:
+protected:
   void customInit() override {
     if (this->binary_sensor_ != nullptr) {
       this->binary_sensor_->add_on_state_callback([&](bool x) {
         if (!x) {
           return;
         }
-        ExecuteScripts(this->action_funcs_, this->decoded_entities_);
+        auto entities_vec = Deref(this->decoded_entities_);
+        ExecuteScripts(this->action_funcs_, entities_vec);
         if (this->location_action_funcs_.size() > 0) {
           float x_precent = 1.0 * (id(last_x) - id(x_start)[this->x_]) / id(x_rect);
           float y_precent = 1.0 * (id(last_y) - id(y_start)[this->y_]) / id(y_rect);
-          ExecuteScripts(this->location_action_funcs_, x_precent, y_precent, this->decoded_entities_);
+          ExecuteScripts(this->location_action_funcs_, x_precent, y_precent, entities_vec);
         }
       });
     }
   }
 
   void customDraw() override {
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, this->decoded_entities_);
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, Deref(this->decoded_entities_));
   }
 
- private:
+private:
   // Function to determine if the tile requires fast refresh (default: false).
   std::function<bool()> requiresFastRefreshFunc_ = []() { return false; };
   // Vector of scripts to execute when the tile is pressed.
@@ -261,14 +261,14 @@ class HAActionTile : public Tile {
   // Vector of scripts to execute when the tile is pressed.
   std::vector<esphome::script::Script<float, float, std::vector<std::string>>*> location_action_funcs_;
   // Vector of entities associated with the tile.
-  std::vector<std::string> entities_;
+  std::vector<const std::string*> entities_;
   // Vector of decoded entities (after dynamic replacement).
-  std::vector<std::string> decoded_entities_;
+  std::vector<const std::string*> decoded_entities_;
 };
 
 // A tile that navigates to a different page when pressed.
 class MovePageTile : public Tile {
- public:
+public:
   MovePageTile(
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
@@ -283,21 +283,22 @@ class MovePageTile : public Tile {
       if (!x) {
         return;
       }
-      EMAdd(key, val);
+      EMAdd(Pointer(key), Pointer(val));
       this->change_entities_callback_();
     });
-    this->dynamic_entities_.insert(this->dynamic_entities_.end(), val.begin(),
-                                   val.end());
+    auto ptr_vec = Pointer(val);
+    this->dynamic_entities_.insert(
+      this->dynamic_entities_.end(), ptr_vec.begin(), ptr_vec.end());
     return this;
   }
 
   void initSensors() override {
-    for (const std::string& entity : this->dynamic_entities_) {
-      InitSensor(entity);
+    for (const std::string* entity : this->dynamic_entities_) {
+      InitSensor(*entity);
     }
   };
 
- protected:
+protected:
   void customInit() override {
     this->binary_sensor_->add_on_state_callback([&](bool x) {
       if (!x) {
@@ -309,16 +310,16 @@ class MovePageTile : public Tile {
     });
   }
 
- private:
+private:
   // Pointer to the target display page to navigate to.
   esphome::display::DisplayPage* target_display_page_;
   // Vector of dynamic entities associated with the tile.
-  std::vector<std::string> dynamic_entities_;
+  std::vector<const std::string*> dynamic_entities_;
 };
 
 // A tile that executes functions when pressed and/or released.
 class FunctionTile : public Tile {
- public:
+public:
   FunctionTile(
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
@@ -327,7 +328,7 @@ class FunctionTile : public Tile {
       esphome::script::Script<>* on_release = nullptr)
       : Tile(x, y, draw_funcs), on_press_(on_press), on_release_(on_release) {}
 
- protected:
+protected:
   void customInit() override {
     this->binary_sensor_->add_on_state_callback([&](bool x) {
       if (x && this->on_press_ != nullptr) {
@@ -340,7 +341,7 @@ class FunctionTile : public Tile {
     });
   }
 
- private:
+private:
   // Pointer to the script to execute when the tile is pressed.
   esphome::script::Script<>* on_press_;
   // Pointer to the script to execute when the tile is released.
@@ -349,7 +350,7 @@ class FunctionTile : public Tile {
 
 // A tile that displays a title.
 class TitleTile : public HAActionTile {
- public:
+public:
   TitleTile(
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
@@ -357,7 +358,7 @@ class TitleTile : public HAActionTile {
       std::vector<std::string> entities)
       : HAActionTile(x, y, draw_funcs, {}, {}, entities) {}
 
- protected:
+protected:
   void customInit() override {
     this->binary_sensor_ = nullptr;
     HAActionTile::customInit();
@@ -366,7 +367,7 @@ class TitleTile : public HAActionTile {
 
 // A tile that allows the user to choose an entity from a list.
 class ToggleEntityTile : public Tile {
- public:
+public:
   ToggleEntityTile(
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
@@ -374,14 +375,14 @@ class ToggleEntityTile : public Tile {
       const std::string& identifier, const std::string& entity,
       const std::string& presentation_name, bool initially_chosen = false)
       : Tile(x, y, draw_funcs),
-        identifier_(identifier),
-        entity_(entity),
+        identifier_(Pointer(identifier)),
+        entity_(Pointer(entity)),
         presentation_name_(presentation_name),
         initially_chosen_(initially_chosen) {}
 
-  void initSensors() override { InitSensor(this->entity_); };
+  void initSensors() override { InitSensor(*this->entity_); };
 
- protected:
+protected:
   void customInit() override {
     this->binary_sensor_->add_on_state_callback([&](bool x) {
       if (!x) {
@@ -402,14 +403,15 @@ class ToggleEntityTile : public Tile {
 
   void customDraw() override {
     bool isOn = EMContains(this->identifier_, this->entity_);
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_,
-                   {isOn ? "ON" : "OFF", this->presentation_name_});
+    ExecuteScripts(
+      this->draw_funcs_, this->x_, this->y_,
+      {isOn ? "ON" : "OFF", this->presentation_name_});
   }
 
   // Identifier for the group of entities this tile belongs to.
-  std::string identifier_;
+  const std::string* identifier_;
   // The entity associated with this tile.
-  std::string entity_;
+  const std::string* entity_;
   // The name to display for the entity.
   std::string presentation_name_;
   // Flag to indicate if the entity is initially chosen.
@@ -418,7 +420,7 @@ class ToggleEntityTile : public Tile {
 
 // A tile that cycles an entity from a given list
 class CycleEntityTile : public Tile {
- public:
+public:
   CycleEntityTile(
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
@@ -427,19 +429,19 @@ class CycleEntityTile : public Tile {
       std::vector<std::pair<std::string, std::string>> entities_and_presntation_names,
       bool reset_on_leave = false)
       : Tile(x, y, draw_funcs),
-        identifier_(identifier),
-        entities_and_presntation_names_(entities_and_presntation_names),
+        identifier_(Pointer(identifier)),
+        entities_and_presntation_names_(Pointer(entities_and_presntation_names)),
         reset_on_leave_(reset_on_leave) {}
 
   void initSensors() override {
     for (const auto& pair : this->entities_and_presntation_names_) {
-      if (pair.first != "*") {
-        InitSensor(pair.first);
+      if (*pair.first != "*") {
+        InitSensor(*pair.first);
       }
     }
   };
 
- protected:
+protected:
   void customInit() override {
     this->binary_sensor_->add_on_state_callback([&](bool x) {
       if (!x) {
@@ -455,8 +457,8 @@ class CycleEntityTile : public Tile {
 
   void customDraw() override {
     ExecuteScripts(this->draw_funcs_, this->x_, this->y_,
-        { this->entities_and_presntation_names_.at(this->current_index_).first,
-          this->entities_and_presntation_names_.at(this->current_index_).second });
+        { *this->entities_and_presntation_names_.at(this->current_index_).first,
+          *this->entities_and_presntation_names_.at(this->current_index_).second });
   }
 
   void onActivation() override {
@@ -464,15 +466,16 @@ class CycleEntityTile : public Tile {
   }
 
   void onScreenLeave() override {
-    if (this->reset_on_leave_) {
+    if (this->checkActivationMaybeToggle() && this->reset_on_leave_) {
       this->current_index_ = 0;
+      this->updateEntities();
     }
   }
- 
- private:
+
+private:
   // Updates the entities according to the status of the tile.
   void updateEntities() {
-    if (this->entities_and_presntation_names_.at(this->current_index_).first == "*") {
+    if (*this->entities_and_presntation_names_.at(this->current_index_).first == "*") {
       EMClear(this->identifier_);
       for (int i = 0; i < this->entities_and_presntation_names_.size(); ++i) {
         if (i == this->current_index_) {
@@ -487,10 +490,10 @@ class CycleEntityTile : public Tile {
   }
 
   // Identifier to change.
-  std::string identifier_;
+  const std::string* identifier_;
   // The entities to set into the identifier and their presentation names. The one
   // used is always the first one, and the vector is rotating.
-  std::vector<std::pair<std::string, std::string>> entities_and_presntation_names_;
+  std::vector<std::pair<const std::string*, const std::string*>> entities_and_presntation_names_;
   // The current indeex.
   int current_index_ = 0;
   // Indicates if should be reset on screen leave

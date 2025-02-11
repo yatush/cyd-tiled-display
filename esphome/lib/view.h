@@ -1,6 +1,6 @@
 // Represents a collection of screens and manages the active screen.
 class View {
- public:
+public:
   View(std::vector<Screen*> screens) {
     for (Screen* screen : screens) {
       this->repository_[screen->getDisplayPage()] = screen;
@@ -36,7 +36,7 @@ class View {
     }
   }
 
- private:
+private:
   // Map to store screens, keyed by their DisplayPage.
   std::map<const esphome::display::DisplayPage*, Screen*> repository_ = {};
   // Pointer to the base screen of the view.

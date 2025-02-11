@@ -163,7 +163,7 @@ globals:
   - id: text_sensors
     type: std::map< std::string, esphome::homeassistant::HomeassistantTextSensor* >
   - id: entities_map
-    type: std::map<std::string, std::set<std::string>>
+    type: std::map<const std::string*, std::set<const std::string*>>
 
 switch:
   - platform: ld2410

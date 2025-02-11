@@ -8,7 +8,7 @@ enum ScreenAtt {
 
 // Base class for screens displayed on the device.
 class Screen {
- public:
+public:
   Screen(esphome::display::DisplayPage* display_page,
          std::set<ScreenAtt> attributes)
       : display_page_(display_page), attributes_(attributes) {}
@@ -47,7 +47,7 @@ class Screen {
   // A function that is called when the screen is changed.
   virtual void onScreenLeave() {};
 
- private:
+private:
   // Pointer to the DisplayPage associated with this screen.
   esphome::display::DisplayPage* display_page_;
   // Set of attributes for this screen.
@@ -56,7 +56,7 @@ class Screen {
 
 // A screen composed of multiple tiles.
 class TiledScreen : public Screen {
- public:
+public:
   // Constructor to initialize a TiledScreen with a DisplayPage, attributes, and
   // a vector of Tile pointers.
   TiledScreen(esphome::display::DisplayPage* display_page,
@@ -124,7 +124,7 @@ class TiledScreen : public Screen {
     }
   }
 
- private:
+private:
   // Vector of Tile pointers representing the tiles on this screen.
   std::vector<Tile*> tiles_;
 };
