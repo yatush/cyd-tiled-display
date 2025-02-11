@@ -5,6 +5,7 @@
 #include <vector>
 
 // --- String repository ---
+
 class Repository {
 private:
   std::set<std::string> strings_; // Store strings directly
