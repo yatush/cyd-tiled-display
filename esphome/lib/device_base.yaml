@@ -1176,6 +1176,7 @@ display:
     update_interval: 10s
     model: ili9341
     spi_id: tft
+    color_palette: 8BIT
     cs_pin: GPIO15
     dc_pin: GPIO2
     id: disp
