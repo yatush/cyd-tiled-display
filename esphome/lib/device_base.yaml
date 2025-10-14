@@ -9,6 +9,9 @@ esphome:
       - script.execute: init_radar
       - script.execute: init_coordinates
       - script.execute: init_tiles
+  platformio_options:
+    build_flags:
+      - -DUSE_API_HOMEASSISTANT_SERVICES
 
 esp32:
   board: esp32dev
