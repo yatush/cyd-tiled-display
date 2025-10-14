@@ -291,17 +291,17 @@ void PerformHaAction(
     std::vector<std::pair<std::string, std::string>> data = {}) {
   HomeassistantServiceResponse resp;
   // Construct the service name based on the entity and action.
-  resp.service =
+  resp.set_service(StringRef(
       (action.find('.') == -1)
           ? entity.substr(0, entity.find('.')).append(".").append(action)
-          : action;
+          : action));
   HomeassistantServiceMap entity_id_kv;
-  entity_id_kv.key = "entity_id";
+  entity_id_kv.set_key(StringRef("entity_id"));
   entity_id_kv.value = entity;
   resp.data.push_back(entity_id_kv);
   // Add any additional data to the service call.
   for (const auto pair : data) {
-    entity_id_kv.key = pair.first;
+    entity_id_kv.set_key(StringRef(pair.first));
     entity_id_kv.value = pair.second;
     resp.data.push_back(entity_id_kv);
   }
