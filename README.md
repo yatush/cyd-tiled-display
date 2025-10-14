@@ -71,7 +71,7 @@ In order to customize the display, some programming knowledge is required (C++/y
 ## Notes
 
 * Connection between the ends of the jst cables can be done in any method, as long as it's compact (it has to go in the outlet box).
-* The JST connector on the ld2410b sensor is connected to 4 pins only (although there are 5 pins available)ץ
+* The JST connector on the ld2410b sensor is connected to 4 pins only (although there are 5 pins available).
 
 # Library
 
