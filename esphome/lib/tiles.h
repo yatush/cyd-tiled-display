@@ -258,7 +258,7 @@ private:
   std::function<bool()> requiresFastRefreshFunc_ = []() { return false; };
   // Vector of scripts to execute when the tile is pressed.
   std::vector<esphome::script::Script<std::vector<std::string>>*> action_funcs_;
-  // Vector of scripts to execute when the tile is pressed.
+  // Vector of scripts to execute when the tile is pressed, based on location of the press in the tile.
   std::vector<esphome::script::Script<float, float, std::vector<std::string>>*> location_action_funcs_;
   // Vector of entities associated with the tile.
   std::vector<const std::string*> entities_;
