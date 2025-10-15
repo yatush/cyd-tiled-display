@@ -19,7 +19,9 @@ script:
   - id: init_tiles
     then:
       - lambda: |-
-          view = new View({
+          view = new View();
+      - lambda: |-
+          view->addScreen(
             new TiledScreen(
               id(controllers), {BASE},
               {
@@ -35,7 +37,10 @@ script:
                 (new HAActionTile(2, 1, { id(tile_blinds_mid) }, { id(action_blinds_mid) }, { "#{COVER}"}))
                   ->setDisplayPageIfNoEntity(id(cover_settings)),
               }
-            ),
+            )
+          );
+      - lambda: |-
+          view->addScreen(
             new TiledScreen(
               id(pref), {TEMPORARY},
               {
@@ -46,7 +51,10 @@ script:
                 new MovePageTile(1, 1, { id(tile_cover_settings) }, id(cover_settings)),
                 new MovePageTile(2, 1, { id(tile_cover_settings) }, id(cover_settings_2)),
               }
-            ),
+            )
+          );
+      - lambda: |-
+          view->addScreen(
             new TiledScreen(
               id(ac_settings), {TEMPORARY},
               {
@@ -56,7 +64,10 @@ script:
                 (new TitleTile(1, 1, { id(tile_ac_status) }, { "#{AC}", "#{AC}|temperature" }))->omitFrame(),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
-            ),
+            )
+          );
+      - lambda: |-
+          view->addScreen(
             new TiledScreen(
               id(disp_settings), {FAST_REFRESH, TEMPORARY},
               {
@@ -66,7 +77,10 @@ script:
                 new FunctionTile(0, 1, { id(tile_wakeup_time) }, id(change_sleep_time)),
                 new FunctionTile(1, 1, { id(tile_power) }, id(action_power)),
               }
-            ),
+            )
+          );
+      - lambda: |-
+          view->addScreen(
             new TiledScreen(
               id(light_settings), {TEMPORARY},
               {
@@ -76,7 +90,10 @@ script:
                 new ToggleEntityTile(1, 1, { id(tile_choose_light) }, "LIGHT", "$LIGHT_4_ID", "Bed"),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
-            ),
+            )
+          );
+      - lambda: |-
+          view->addScreen(
             new TiledScreen(
               id(cover_settings), {TEMPORARY},
               {
@@ -84,7 +101,10 @@ script:
                 new ToggleEntityTile(0, 1, { id(tile_choose_cover) }, "COVER", "$COVER_2_ID", "PR2", true),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
-            ),
+            )
+          );
+      - lambda: |-
+          view->addScreen(
             new TiledScreen(
               id(cover_settings_2), {TEMPORARY},
               {
@@ -105,5 +125,7 @@ script:
                   ->setRequiresFastRefreshFunc([]() { return id(blinds_moving_up) || id(blinds_moving_down); }),
                 new MovePageTile(2, 0, { id(tile_back_arrow) }, id(controllers)),
               }
-            ),
-          });
+            )
+          );
+      - lambda: |-
+          view->init();
