@@ -1,18 +1,26 @@
+#include <cstring>
+
 // Represents a collection of screens and manages the active screen.
 class View {
 public:
+  View() = default;
+  
   View(std::vector<Screen*> screens) {
     for (Screen* screen : screens) {
-      this->repository_[screen->getDisplayPage()] = screen;
-      if (screen->hasAtt(BASE)) {
+      this->addScreen(screen);
+    }
+	this->init();
+  }
+  
+  void addScreen(Screen* screen) {
+	  this->repository_[screen->getDisplayPage()] = screen;
+      if (screen->hasAtt(BASE) || this->base_screen_ == nullptr) {
         this->base_screen_ = screen;
       }
       screen->setChangeEntitiesCallback([this]() { this->decodeEntities(); });
-    }
-    // If no base screen was found (shouldn't happen), use the first screen.
-    if (this->base_screen_ == nullptr) {  // This should never happen
-      this->base_screen_ = screens.at(0);
-    }
+  }
+  
+  void init() {
     // Decode entities for all screens initially.
     this->decodeEntities();
   }
