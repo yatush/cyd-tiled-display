@@ -19,7 +19,7 @@ script:
   - id: init_tiles
     then:
       - lambda: |-
-          view = new View();
+          view_ptr.reset(new View());
       - lambda: |-
           view->addScreen(
             new TiledScreen(
