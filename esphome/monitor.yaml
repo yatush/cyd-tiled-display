@@ -21,7 +21,7 @@ script:
       - lambda: |-
           view_ptr.reset(new View());
       - lambda: |-
-          view->addScreen(
+          view_ptr->addScreen(
             new TiledScreen(
               id(controllers), {BASE},
               {
@@ -40,7 +40,7 @@ script:
             )
           );
       - lambda: |-
-          view->addScreen(
+          view_ptr->addScreen(
             new TiledScreen(
               id(pref), {TEMPORARY},
               {
@@ -54,7 +54,7 @@ script:
             )
           );
       - lambda: |-
-          view->addScreen(
+          view_ptr->addScreen(
             new TiledScreen(
               id(ac_settings), {TEMPORARY},
               {
@@ -67,7 +67,7 @@ script:
             )
           );
       - lambda: |-
-          view->addScreen(
+          view_ptr->addScreen(
             new TiledScreen(
               id(disp_settings), {FAST_REFRESH, TEMPORARY},
               {
@@ -80,7 +80,7 @@ script:
             )
           );
       - lambda: |-
-          view->addScreen(
+          view_ptr->addScreen(
             new TiledScreen(
               id(light_settings), {TEMPORARY},
               {
@@ -93,7 +93,7 @@ script:
             )
           );
       - lambda: |-
-          view->addScreen(
+          view_ptr->addScreen(
             new TiledScreen(
               id(cover_settings), {TEMPORARY},
               {
@@ -104,7 +104,7 @@ script:
             )
           );
       - lambda: |-
-          view->addScreen(
+          view_ptr->addScreen(
             new TiledScreen(
               id(cover_settings_2), {TEMPORARY},
               {
@@ -128,4 +128,4 @@ script:
             )
           );
       - lambda: |-
-          view->init();
+          view_ptr->init();

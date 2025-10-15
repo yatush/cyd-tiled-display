@@ -54,12 +54,3 @@ private:
 // HEAP ALLOCATION: Use unique_ptr for automatic memory management
 std::unique_ptr<View> view_ptr = nullptr;
 
-// Helper function to access the view (with null check)
-inline View* getView() {
-  if (!view_ptr) {
-    ESP_LOGE("View", "View not initialized!");
-  }
-  return view_ptr.get();
-}
-
-#define view getView()

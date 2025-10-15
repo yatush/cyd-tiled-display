@@ -1140,7 +1140,7 @@ script:
             return;
           }
           id(update_ui_values).execute();
-          view->getActiveScreen()->draw();
+          view_ptr->getActiveScreen()->draw();
 
 interval:
   - interval: 250ms
@@ -1149,7 +1149,7 @@ interval:
           condition:
             or:
               - lambda: "return id(disp).get_active_page() == id(calib);"
-              - lambda: "return view->getActiveScreen()->hasAtt(FAST_REFRESH);"
+              - lambda: "return view_ptr->getActiveScreen()->hasAtt(FAST_REFRESH);"
           then:
             - component.update: disp
       - if:
@@ -1182,10 +1182,10 @@ interval:
       # Leave temporary screens after too much inactivity there.
       - lambda: |-
           if (id(disp).get_active_page() != id(calib) &&
-              view->getActiveScreen()->hasAtt(TEMPORARY) &&
+              view_ptr->getActiveScreen()->hasAtt(TEMPORARY) &&
               ((millis() - id(last_touch_ms)) > (id(inactive_back_to_base_sec) * 1000))) {
-            view->getActiveScreen()->onScreenLeave();
-            id(disp).show_page(view->getBaseScreen()->getDisplayPage());
+            view_ptr->getActiveScreen()->onScreenLeave();
+            id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());
             id(disp).update();
           }
       # Adapt brightness
