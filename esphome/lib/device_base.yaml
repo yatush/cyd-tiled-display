@@ -582,28 +582,28 @@ script:
     parameters: { x: int, y: int, w: int, h: int, r: int, c: Color }
     then:
       - lambda: |-
-          id(disp).start_clipping(x, y, x + r, y + r);
+          id(disp).start_clipping(x, y, x + r + 1, y + r + 1);
           id(disp).circle(x + r, y + r, r, c);
           id(disp).end_clipping();
 
-          id(disp).start_clipping(x + w - r - 1, y, x + w, y + r);
+          id(disp).start_clipping(x + w - r - 1, y, x + w, y + r + 1);
           id(disp).circle(x + w - r - 1, y + r, r, c);
           id(disp).end_clipping();
 
-          id(disp).start_clipping(x + w - r - 1, y + h - r - 1, x + w, y + h);
+          id(disp).start_clipping(x + w - r - 1, y + h - r, x + w, y + h);
           id(disp).circle(x + w - r - 1, y + h - r - 1, r, c);
           id(disp).end_clipping();
 
-          id(disp).start_clipping(x, y + h - r - 1, x + r, y + h);
+          id(disp).start_clipping(x, y + h - r - 1, x + r + 1, y + h);
           id(disp).circle(x + r, y + h - r - 1, r, c);
           id(disp).end_clipping();
 
-          id(disp).start_clipping(x + r + 1, y, x + w - r - 2, y + h);
-          id(disp).rectangle(x + r, y, w - 2 * r, h, c);
+          id(disp).start_clipping(x + r, y, x + w - r, y + h);
+          id(disp).rectangle(x + r - 1, y, w - 2 * r + 2, h, c);
           id(disp).end_clipping();
 
-          id(disp).start_clipping(x, y + r + 1, x + w, y + h - r - 2);
-          id(disp).rectangle(x, y + r, w, h - 2 * r, c);
+          id(disp).start_clipping(x, y + r, x + w, y + h - r);
+          id(disp).rectangle(x, y + r - 1, w, h - 2 * r + 2, c);
           id(disp).end_clipping();
 
   - id: increase_bright
