@@ -15,12 +15,17 @@ public:
 
   // Virtual function to draw the Wi-Fi signal strength and current hour.
   virtual void drawWifiHour() {
+    static std::string wifi_icon;
+    static esphome::ESPTime espt;
+    if (do_draw) {
+      wifi_icon = id(wifi_iconstring);
+      espt = id(esptime).now();
+    }
+    
     // Print the Wi-Fi icon.
-    id(disp).print(296, 0, &id(mdi_medium), id(wifi_color),
-                   id(wifi_iconstring).c_str());
+    print(296, 0, &id(mdi_medium), id(wifi_color), wifi_icon.c_str());
     // Print the current time.
-    id(disp).strftime(290, 3, &id(roboto_20), id(dark_gray),
-                      TextAlign::TOP_RIGHT, "%H:%M", id(esptime).now());
+    strftime(290, 3, &id(roboto_20), id(dark_gray), TextAlign::TOP_RIGHT, "%H:%M", espt);
   }
 
   // Returns the DisplayPage associated with this screen.
@@ -78,19 +83,27 @@ public:
            h = id(y_rect), r = id(border_r), start_x = id(width) - 83,
            end_y = 30;
       id(disp).start_clipping(x + w - r - 1, y, x + w, y + r);
-      id(disp).circle(x + w - r - 1, y + r, r, id(dark_dark_gray));
+      circle(x + w - r - 1, y + r, r, id(dark_dark_gray));
       id(disp).end_clipping();
-      id(disp).line(start_x, y, x + w - r - 1, y, id(dark_dark_gray));
-      id(disp).line(x + w - 1, y + r, x + w - 1, end_y, id(dark_dark_gray));
+      line(start_x, y, x + w - r - 1, y, id(dark_dark_gray));
+      line(x + w - 1, y + r, x + w - 1, end_y, id(dark_dark_gray));
     }
     // Call the base class function to draw the Wi-Fi icon and time.
     Screen::drawWifiHour();
   }
 
   void draw() override {
+    do_draw = false;
+    for (Tile* tile : prev_tiles) {
+      tile->draw();
+    }
+    prev_tiles.clear();
+    this->drawWifiHour();
+    do_draw = true;
     for (Tile* tile : this->tiles_) {
       if (tile->checkActivationMaybeToggle()) {
         tile->draw();
+        prev_tiles.push_back(tile);
       }
     }
     this->drawWifiHour();
@@ -124,7 +137,11 @@ public:
     }
   }
 
+  static std::vector<Tile*> prev_tiles;
+
 private:
   // Vector of Tile pointers representing the tiles on this screen.
   std::vector<Tile*> tiles_;
 };
+
+std::vector<Tile*> TiledScreen::prev_tiles = {};
