@@ -79,6 +79,8 @@ Here is a short descrtiption of the files that appear under ```/esphome/lib/``` 
 
 ## device_base.yaml
 The yaml file that contains all the common definitions to all displays. Each display will need to define a yaml file that will "include" the device_base.yaml file. This file also points to the header files that contain parts of the implementation.
+### Important
+> We're not using the clear screen before each frame is rendered, because it takes quite a few milliseconds. We actually overrite the last actions we had in black. This is done in a bit of a hacky way, please pay attention that any drawing function you add should have this capability. Look at other functions for reference, and pay attention that the actual color change happens in the display overriding functions in the utils file.
 
 ## view.h
 Represents a collection of screens and manages the active screen. There is a single view to the display.
