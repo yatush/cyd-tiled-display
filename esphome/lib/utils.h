@@ -395,3 +395,49 @@ void ExecuteScripts(const std::vector<esphome::script::Script<Args...>*>& script
     script->execute(args...);
   }
 }
+
+// Black drawing functionality - erase effectively.
+boolean do_draw = false;
+
+Color mbb(Color value) {
+  if (!do_draw) { return Color::BLACK; }
+  return value;
+}
+
+void print (int x, int y, BaseFont *font, Color color, TextAlign align, const char *text) {
+  id(disp).print(x, y, font, mbb(color), align, text);
+}
+
+void print (int x, int y, BaseFont *font, Color color, const char *text) {
+  id(disp).print(x, y, font, mbb(color), text);
+}
+
+void line (int x1, int y1, int x2, int y2, Color color) {
+  id(disp).line(x1, y1, x2, y2, mbb(color));
+}
+
+void circle (int center_x, int center_y, int radius, Color color) {
+  id(disp).circle(center_x, center_y, radius, mbb(color));
+}
+
+void rectangle (int x1, int y1, int width, int height, Color color) {
+  id(disp).rectangle(x1, y1, width, height, mbb(color));
+}
+
+void filled_rectangle (int x1, int y1, int width, int height, Color color) {
+  id(disp).filled_rectangle(x1, y1, width, height, mbb(color));
+}
+
+template<typename... Args>
+void printf(int x, int y, BaseFont *font, Color color, const char *format, Args&&... args) {
+  id(disp).printf(x, y, font, mbb(color), format, std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+void printf(int x, int y, BaseFont *font, Color color, TextAlign align, const char *format, Args&&... args) {
+  id(disp).printf(x, y, font, mbb(color), align, format, std::forward<Args>(args)...);
+}
+
+void strftime (int x, int y, BaseFont *font, Color color, TextAlign align, const char *format, ESPTime time) {
+  id(disp).strftime(x, y, font, mbb(color), align, format, time);
+}
