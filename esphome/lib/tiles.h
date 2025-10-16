@@ -11,7 +11,7 @@ public:
 
   // Draw the tile on the display.
   void draw() {
-    if (this->display_page_ != id(disp).get_active_page()) {
+    if (do_draw && (this->display_page_ != id(disp).get_active_page())) {
       return;
     }
     if (!this->omit_frame_) {
@@ -258,7 +258,7 @@ private:
   std::function<bool()> requiresFastRefreshFunc_ = []() { return false; };
   // Vector of scripts to execute when the tile is pressed.
   std::vector<esphome::script::Script<std::vector<std::string>>*> action_funcs_;
-  // Vector of scripts to execute when the tile is pressed, based on location of the press in the tile.
+  // Vector of scripts to execute when the tile is pressed.
   std::vector<esphome::script::Script<float, float, std::vector<std::string>>*> location_action_funcs_;
   // Vector of entities associated with the tile.
   std::vector<const std::string*> entities_;
