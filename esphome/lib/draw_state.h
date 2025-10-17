@@ -10,12 +10,10 @@ using RawData = std::vector<uint8_t>;
 // Global cache manager (replace with your actual ESPHome component class)
 class DrawState {
 public:
-    // Flag is now 'is_delete_mode'. If true, data is retrieved (restored). If false, data is saved.
     static bool is_delete_mode;
     static std::map<CoordKey, RawData> storage;
 };
 
-// INITIALIZATION: Defining and initializing static members inline in the header
 inline bool DrawState::is_delete_mode = false;
 inline std::map<CoordKey, RawData> DrawState::storage = {};
 
@@ -25,8 +23,6 @@ inline std::map<CoordKey, RawData> DrawState::storage = {};
 // ----------------------------------------------------
 
 // --- Helper 1: Generic (POD) Save/Load ---
-
-// Append raw bytes for Plain Old Data (POD) types using memcpy
 template<typename T>
 void serialize_value_to_buffer(RawData& buffer, const T& value) {
     size_t size = sizeof(T);
@@ -35,7 +31,6 @@ void serialize_value_to_buffer(RawData& buffer, const T& value) {
     std::memcpy(buffer.data() + current_size, &value, size);
 }
 
-// Read raw bytes for POD types using memcpy. Returns false on error.
 template<typename T>
 bool deserialize_value_from_buffer(const RawData& buffer, size_t& offset, T& value) {
     size_t size = sizeof(T);
@@ -94,35 +89,23 @@ bool deserialize_value_from_buffer<std::string>(const RawData& buffer, size_t& o
 
 // ----------------- SAVE LOGIC (References -> Buffer) -----------------
 
-// Base case for saving recursion
 void save_recursive(RawData& buffer) {}
 
-// Recursive step: processes one reference (Head) and forwards the rest (Tail)
 template<typename HeadType, typename... TailTypes>
 void save_recursive(RawData& buffer, HeadType& head_ref, TailTypes&... tail_refs) {
-    
-    // Calls the correct serialize_value_to_buffer overload (POD or std::string)
     serialize_value_to_buffer(buffer, head_ref);
-
-    // Recurse on the remaining references
     save_recursive(buffer, tail_refs...);
 }
 
 // ----------------- RETRIEVE LOGIC (Buffer -> References) -----------------
 
-// Base case for retrieval recursion
 bool retrieve_recursive(const RawData& buffer, size_t& offset) { return true; }
 
-// Recursive step: processes one reference (Head) and forwards the rest (Tail)
 template<typename HeadType, typename... TailTypes>
 bool retrieve_recursive(const RawData& buffer, size_t& offset, HeadType& head_ref, TailTypes&... tail_refs) {
-    
-    // Calls the correct deserialize_value_from_buffer overload
     if (!deserialize_value_from_buffer(buffer, offset, head_ref)) {
-        return false; // Stop recursion on failure
+        return false;
     }
-
-    // Recurse on the remaining references
     return retrieve_recursive(buffer, offset, tail_refs...);
 }
 
@@ -139,12 +122,11 @@ void handle_caching(int x, int y, RefTypes&... refs) {
     if (!DrawState::is_delete_mode) {
         // --- SAVE MODE ---
         RawData new_data;
-        save_recursive(new_data, refs...); // Passing references
+        save_recursive(new_data, refs...);
         DrawState::storage[key] = std::move(new_data);
     } else {
         // --- RESTORE MODE ---
         if (DrawState::storage.count(key) == 0) {
-            // Used ESP_LOGD for non-critical information
             ESP_LOGD(TAG, "Retrieval skipped at (%d, %d): No cache found.", x, y); 
             return;
         }
@@ -158,7 +140,6 @@ void handle_caching(int x, int y, RefTypes&... refs) {
             return; 
         }
             
-        // Final size check
         if (offset != cached_data.size()) {
              ESP_LOGE(TAG, "Cache load warning at (%d, %d): Deserialized size %zu does not match expected cache size %zu! Data may be corrupted.", 
                  x, y, offset, cached_data.size());
