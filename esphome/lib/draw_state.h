@@ -1,5 +1,5 @@
 // Define the TAG for ESPHome logging
-static const char *const TAG = "CACHE_MGR"; // Define logging tag
+static const char *const TAG = "CACHE_MGR";
 
 // Key type is now canonicalized to std::string for maximum flexibility 
 // in the static map storage.
