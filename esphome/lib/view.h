@@ -1,5 +1,3 @@
-#include <cstring>
-
 // Represents a collection of screens and manages the active screen.
 class View {
 public:
