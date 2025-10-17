@@ -133,12 +133,6 @@ bool retrieve_recursive(const RawData& buffer, size_t& offset, HeadType& head_re
 
 template<typename... RefTypes>
 void handle_caching(int x, int y, RefTypes&... refs) {
-    
-    // DEBUGGING: Log the count of variables being cached/retrieved 
-    // This is useful for checking if the SAVE and RETRIEVE calls match in count.
-    ESP_LOGD(TAG, "Handling cache for (%d, %d). Mode: %s. Variable Count: %zu", 
-        x, y, DrawState::is_delete_mode ? "DELETE" : "SAVE", sizeof...(RefTypes));
-    
     CoordKey key = {x, y};
 
     // If NOT in restore mode, we are in SAVE mode
