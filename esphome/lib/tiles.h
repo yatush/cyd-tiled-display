@@ -11,7 +11,9 @@ public:
 
   // Draw the tile on the display.
   void draw() {
-    if (do_draw && (this->display_page_ != id(disp).get_active_page())) {
+    // In restore mode we only call the tiles we want to delete, and they might not be in the current
+    // page in case it was changed recently.
+    if (!DrawState::is_delete_mode && (this->display_page_ != id(disp).get_active_page())) {
       return;
     }
     if (!this->omit_frame_) {
