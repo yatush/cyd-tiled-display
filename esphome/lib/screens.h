@@ -17,7 +17,7 @@ public:
   virtual void drawWifiHour() {
     static std::string wifi_icon;
     static esphome::ESPTime espt;
-    if (do_draw) {
+    if (!DrawState::is_delete_mode) {
       wifi_icon = id(wifi_iconstring);
       espt = id(esptime).now();
     }
@@ -93,13 +93,13 @@ public:
   }
 
   void draw() override {
-    do_draw = false;
+    DrawState::is_delete_mode = true;
     for (Tile* tile : prev_tiles) {
       tile->draw();
     }
     prev_tiles.clear();
     this->drawWifiHour();
-    do_draw = true;
+    DrawState::is_delete_mode = false;
     for (Tile* tile : this->tiles_) {
       if (tile->checkActivationMaybeToggle()) {
         tile->draw();
