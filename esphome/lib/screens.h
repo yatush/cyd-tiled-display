@@ -17,7 +17,7 @@ public:
   virtual void drawWifiHour() {
     std::string wifi_icon = DRAW_ONLY(id(wifi_iconstring));
     esphome::ESPTime espt = DRAW_ONLY(id(esptime).now());
-    handle_caching(-1, -1, wifi_icon, espt);
+    handle_caching("time", wifi_icon, espt);
     
     // Print the Wi-Fi icon.
     print(296, 0, &id(mdi_medium), id(wifi_color), wifi_icon.c_str());
