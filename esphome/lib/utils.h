@@ -397,10 +397,8 @@ void ExecuteScripts(const std::vector<esphome::script::Script<Args...>*>& script
 }
 
 // Black drawing functionality - erase effectively.
-boolean do_draw = false;
-
 Color mbb(Color value) {
-  if (!do_draw) { return Color::BLACK; }
+  if (DrawState::is_delete_mode) { return Color::BLACK; }
   return value;
 }
 
