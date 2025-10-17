@@ -15,12 +15,9 @@ public:
 
   // Virtual function to draw the Wi-Fi signal strength and current hour.
   virtual void drawWifiHour() {
-    static std::string wifi_icon;
-    static esphome::ESPTime espt;
-    if (!DrawState::is_delete_mode) {
-      wifi_icon = id(wifi_iconstring);
-      espt = id(esptime).now();
-    }
+    std::string wifi_icon = DRAW_ONLY(id(wifi_iconstring));
+    esphome::ESPTime espt = DRAW_ONLY(id(esptime).now());
+    handle_caching(-1, -1, wifi_icon, espt);
     
     // Print the Wi-Fi icon.
     print(296, 0, &id(mdi_medium), id(wifi_color), wifi_icon.c_str());
@@ -144,4 +141,4 @@ private:
   std::vector<Tile*> tiles_;
 };
 
-std::vector<Tile*> TiledScreen::prev_tiles = {};
+inline std::vector<Tile*> TiledScreen::prev_tiles = {};
