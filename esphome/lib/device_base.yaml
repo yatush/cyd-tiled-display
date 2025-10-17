@@ -1,5 +1,6 @@
 esphome:
   includes:
+    - lib/draw_state.h
     - lib/utils.h
     - lib/tiles.h
     - lib/screens.h
@@ -705,13 +706,12 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          static int location;
-          if (do_draw) {
-            location =  static_cast<int>(millis() / 1000.0 * 12) % 41 + 20;
-            id(set_blinds_status)->execute(entities);
-          }
-          if (id(blinds_moving_up)) {
-            print(id(x_mid)[x], id(y_mid)[y] - location, id(mdi_large), id(blue), TextAlign::CENTER, "\U0000eacf");
+          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          uint32_t millis = DRAW_ONLY(millis());
+          bool up = DRAW_ONLY(id(blinds_moving_up));
+          handle_caching(x, y, millis, up);
+          if (up) {
+            print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis / 1000.0 * 12) % 41 + 20, id(mdi_large), id(blue), TextAlign::CENTER, "\U0000eacf");
           } else {
             print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_blue), TextAlign::CENTER, "\U0000eacf");
           }
@@ -735,13 +735,12 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          static int location;
-          if (do_draw) {
-            location =  static_cast<int>(millis() / 1000.0 * 12) % 41 - 20;
-            id(set_blinds_status)->execute(entities);
-          }
-          if (id(blinds_moving_down)) {
-            print(id(x_mid)[x], id(y_mid)[y] + location, id(mdi_large), id(red), TextAlign::CENTER, "\U0000ead0");
+          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          uint32_t millis = DRAW_ONLY(millis());
+          bool down = DRAW_ONLY(id(blinds_moving_down));
+          handle_caching(x, y, millis, down);
+          if (down) {
+            print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis() / 1000.0 * 12) % 41 - 20, id(mdi_large), id(red), TextAlign::CENTER, "\U0000ead0");
           } else {
             print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_red), TextAlign::CENTER, "\U0000ead0");
           }
@@ -806,25 +805,11 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          static std::map<std::pair<int, int>, bool> up_map = {};
-          static std::map<std::pair<int, int>, bool> down_map = {};
-          static std::map<std::pair<int, int>, uint32_t> millis_map = {};
-          static uint32_t millis;
-          static bool up;
-          static bool down;
-          if (do_draw) {
-              millis = millis();
-              up = id(blinds_moving_up);
-              down = id(blinds_moving_down);
-              id(set_blinds_status)->execute(entities);
-              millis_map[{x, y}] = millis;
-              up_map[{x,y}] = up;
-              down_map[{x,y}] = down;
-          } else if (millis_map.count({x, y})) {
-              up = up_map.at({x,y});
-              down = down_map.at({x,y});
-              millis = millis_map.at({x,y});
-          }
+          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          uint32_t millis = DRAW_ONLY(millis());
+          bool up = DRAW_ONLY(id(blinds_moving_up));
+          bool down = DRAW_ONLY(id(blinds_moving_down));
+          handle_caching(x, y, millis, up, down);
           bool one = up != down;
           bool any = up || down;
           bool show_up = !one || up;
@@ -897,12 +882,9 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          static int slider_pos;
-          static bool adapt;
-          if (do_draw) {
-            slider_pos = id(backlight).remote_values.get_brightness() * 100 - 32;
-            adapt = id(adaptive_brightness);
-          }
+          int slider_pos = DRAW_ONLY(id(backlight).remote_values.get_brightness() * 100 - 32);
+          bool adapt = DRAW_ONLY(id(adaptive_brightness));
+          handle_caching(x, y, slider_pos, adapt);
           print(id(x_mid)[x], id(y_mid)[y] - 10, id(mdi_60), id(light_yellow), TextAlign::CENTER, "\U0000e518");
           int slider_width = 70, slider_height = 10, slider_start = id(x_pad) + (id(x_rect) - slider_width) / 2 + 1;
           filled_rectangle(
@@ -921,12 +903,9 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          static int sleep_t;
-          static int counter;
-          if (do_draw) {
-            sleep_t = id(sleep_time);
-            counter =  ((millis() - id(last_activity_ms)) / 1000); 
-          }
+          int sleep_t = DRAW_ONLY(id(sleep_time));
+          int counter = DRAW_ONLY(((millis() - id(last_activity_ms)) / 1000)); 
+          handle_caching(x, y, sleep_t, counter);
           print(id(x_mid)[x], id(y_mid)[y] - 9, id(mdi_60), id(light_purple), TextAlign::CENTER, "\U0000e425");
           printf(id(x_mid)[x], id(y_mid)[y] + 37, id(roboto_20), id(light_purple), TextAlign::CENTER, "%d", sleep_t);
           printf(id(x_mid)[x], id(y_mid)[y] + 2, id(roboto_12), id(light_blue), TextAlign::CENTER, "%d", counter);
@@ -938,13 +917,9 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          // Motion / Touch
-          static int wakeup_dist;
-          static int moving_dist;
-          if (do_draw) {
-            wakeup_dist = id(wakeup_distance);
-            moving_dist = id(moving_distance).state;
-          }
+          int wakeup_dist = DRAW_ONLY(id(wakeup_distance));
+          int moving_dist = DRAW_ONLY(id(moving_distance).state);
+          handle_caching(x, y, wakeup_dist, moving_dist);
           if (wakeup_dist == 0) {
             print(id(x_mid)[x], id(y_mid)[y], id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e913");
           } else {
@@ -1038,14 +1013,8 @@ script:
           if (entities.size() != 2) {
             ESP_LOGE("TileChooseLight", "Wrong number of params: %d", entities.size());
           }
-          static std::map<std::pair<int, int>, std::string> names = {};
-          std::string cur_name;
-          if (do_draw) {
-              cur_name = entities[1];
-              names[{x, y}] = cur_name;
-          } else if (names.count({x, y})) {
-              cur_name = names.at({x,y}); 
-          }
+          std::string cur_name = DRAW_ONLY(entities[1]);
+          handle_caching(x, y, cur_name);
           print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000f02a");
           print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
@@ -1059,15 +1028,9 @@ script:
           if (entities.size() != 2) {
               ESP_LOGE("TileChooseCover", "Wrong number of params: %d", entities.size());
           }
-          static std::map<std::pair<int, int>, std::string> names = {};
-          std::string cur_name;
-          if (do_draw) {
-              cur_name = entities[1];
-              names[{x, y}] = cur_name;
-          } 
-          else if (names.count({x, y})) {
-              cur_name = names.at({x,y}); 
-          }
+          std::string cur_name = DRAW_ONLY(entities[1]);
+          handle_caching(x, y, cur_name);
+          
           print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000e286");
           print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
@@ -1078,12 +1041,9 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          static std::string name = "";
-          static std::string entity = "";
-          if (do_draw) {
-            entity = entities[0];
-            name = entities[1];
-          }
+          std::string entity = DRAW_ONLY(entities[0]);
+          std::string name = DRAW_ONLY(entities[1]);
+          handle_caching(x, y, entity, name);
           print(id(x_start)[x] + 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
           print(id(x_start)[x] + id(x_rect) - 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
           print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e286");
@@ -1100,10 +1060,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          static std::string name = "";
-          if (do_draw) {
-            name = entities[1];
-          }
+          std::string name = DRAW_ONLY(entities[1]);
+          handle_caching(x, y, name);
           print(id(x_start)[x] + 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
           print(id(x_start)[x] + id(x_rect) - 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
           print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e88a");
@@ -1199,12 +1157,9 @@ script:
           if (entities.size() != 2) {
             return;
           }
-          static std::string state = "";
-          static std::string entity = "";
-          if (do_draw) {
-            state = entities[0];
-            entity = entities[1];
-          }
+          std::string state = DRAW_ONLY(entities[0]);
+          std::string entity = DRAW_ONLY(entities[1]);
+          handle_caching(x, y, state, entity);
           print((id(x_mid)[x] + id(x_mid)[x+1]) / 2, id(y_mid)[y], id(roboto_30_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
 
   - id: draw_page
