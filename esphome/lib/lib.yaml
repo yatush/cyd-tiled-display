@@ -1,0 +1,1178 @@
+esphome:
+  includes:
+    - lib/draw_state.h
+    - lib/utils.h
+    - lib/tiles.h
+    - lib/screens.h
+    - lib/view.h
+  on_boot:
+    then:
+      - script.execute: init_radar
+      - script.execute: init_coordinates
+      - script.execute: init_tiles
+  platformio_options:
+    build_flags:
+      - -DUSE_API_HOMEASSISTANT_SERVICES
+
+logger:
+
+api:
+  id: api_server
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: esptime
+
+ld2410:
+  id: ld2410_radar
+
+globals:
+  - id: wifi_iconstring
+    type: std::string
+    restore_value: no
+    initial_value: '"\U0000f063"'
+  - id: wifi_color
+    type: Color
+    initial_value: "Color(128, 128, 128)"
+  - id: last_x
+    type: int
+  - id: last_y
+    type: int
+  - id: last_x_raw
+    type: int
+  - id: last_y_raw
+    type: int
+  - id: last_activity_ms
+    type: unsigned long
+    initial_value: "0"
+  - id: last_touch_ms
+    type: unsigned long
+    initial_value: "0"
+  - id: turn_on_ms
+    type: unsigned long
+    initial_value: "1" # This is one to differ from other times where it is 0 and the backlight is off.
+  - id: sleep_time
+    type: int
+    restore_value: yes
+    initial_value: "60"
+  - id: blinds_moving_up
+    type: bool
+    initial_value: "false"
+  - id: blinds_moving_down
+    type: bool
+    initial_value: "false"
+  - id: adaptive_brightness
+    type: bool
+    restore_value: yes
+    initial_value: "false"
+  - id: wakeup_distance
+    type: int
+    restore_value: yes
+    initial_value: "100"
+  - id: inactive_ms
+    type: unsigned long
+    initial_value: "500"
+  - id: change_page_ms
+    type: unsigned long
+    initial_value: "0"
+  - id: bright_start_press_ms
+    type: unsigned long
+    initial_value: "0"
+  - id: inactive_back_to_base_sec
+    type: int
+    initial_value: "60"
+  - id: width
+    type: int
+    initial_value: "320"
+  - id: height
+    type: int
+    initial_value: "240"
+  - id: x_pad
+    type: int
+    initial_value: "10"
+  - id: y_pad
+    type: int
+    initial_value: "10"
+  - id: border_r
+    type: int
+    initial_value: "8"
+  - id: rows
+    type: int
+    initial_value: "2"
+  - id: cols
+    type: int
+    initial_value: "3"
+  - id: x_rect
+    type: int
+  - id: y_rect
+    type: int
+  - id: x_start
+    type: std::vector<int>
+  - id: y_start
+    type: std::vector<int>
+  - id: x_mid
+    type: std::vector<int>
+  - id: y_mid
+    type: std::vector<int>
+  - id: binary_sensors
+    type: std::map<std::string, esphome::homeassistant::HomeassistantBinarySensor* >
+  - id: text_sensors
+    type: std::map<std::string, esphome::homeassistant::HomeassistantTextSensor* >
+  - id: entities_map
+    type: std::map<const std::string*, std::set<const std::string*>>
+
+switch:
+  - platform: ld2410
+    engineering_mode:
+      name: "engineering mode"
+    bluetooth:
+      name: "control bluetooth"
+
+  - platform: template
+    id: touch_calibration
+    name: Touch calibration
+    optimistic: true
+    on_turn_off:
+      then:
+        - display.page.show: controllers
+    on_turn_on:
+      then:
+        - display.page.show: calib
+
+font:
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_medium
+    size: 24
+    glyphs: [
+        "\U0000f063", # No wifi
+        "\U0000f0b0", # Low wifi
+        "\U0000ebe4", # Wifi 1
+        "\U0000ebd6", # Wifi 2
+        "\U0000ebe1", # Wifi 3
+        "\U0000e1d8", # Wifi 4
+        "\U0000e286", # Blinds
+        "\U0000e536", # Walking man
+        "\U0000e913", # Touch
+        "\U0000e5cc", # Chevron right
+        "\U0000e5cb", # Chevron left
+
+      ]
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_50
+    size: 40
+    glyphs: [
+        "\U0000eacf", # Arrow up
+        "\U0000ead0", # Arrow down
+      ]
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_large
+    size: 80
+    glyphs: [
+        "\U0000e9b8", # Light off
+        "\U0000e0f0", # Light on
+        "\U0000f154", # Airwave
+        "\U0000eacf", # Arrow up
+        "\U0000ead0", # Arrow down
+        "\U0000e286", # Blinds
+        "\U0000e536", # Walking man
+        "\U0000e913", # Touch
+        "\U0000e518", # Brightness
+        "\U0000f55b", # AC settings
+        "\U0000f4b5", # Arrow warm up
+        "\U0000f4b6", # Arrow cool down
+        "\U0000eb97", # Display settings
+        "\U0000e28b", # Light settings
+        "\U0000e8d5", # Arrow up/down
+        "\U0000f418", # Power
+      ]
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_largish
+    size: 70
+    glyphs: [
+        "\U0000e286", # Blinds
+      ]
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_60
+    size: 60
+    glyphs: [
+        "\U0000e536", # Walking man
+        "\U0000e913", # Touch
+        "\U0000e8b8", # Settings
+        "\U0000e425", # Timer
+        "\U0000e5c4", # Back
+        "\U0000e286", # Blinds
+        "\U0000e518", # Brightness
+        "\U0000f55b", # AC settings
+        "\U0000eb97", # Display settings
+        "\U0000f02a", # Light from ceiling
+        "\U0000e88a", # House
+      ]
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_small
+    size: 12
+    glyphs: [
+        "\U0000e286", # Blinds
+      ]
+
+  - file: "gfonts://Roboto"
+    id: roboto_20
+    size: 20
+
+  - file: "gfonts://Roboto@900"
+    id: roboto_20_bold
+    size: 20
+
+  - file: "gfonts://Roboto@900"
+    id: roboto_30_bold
+    size: 30
+
+  - file: "gfonts://Roboto@900"
+    id: roboto_12
+    size: 12
+    glyphs:
+      [
+        "\U0000003c",
+        "\U0000003e",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "c",
+        "m",
+        "\U00000020",
+        "\U00000022",
+      ]
+
+# This is BGR for some strange reason :/
+color:
+  - id: blue
+    hex: "FF0000"
+  - id: light_blue
+    hex: "aa3333"
+  - id: red
+    hex: "0000ff"
+  - id: light_red
+    hex: "3333aa"
+  - id: light_green
+    hex: "33aa33"
+  - id: light_purple
+    hex: "aa33aa"
+  - id: gray
+    red: 50%
+    green: 50%
+    blue: 50%
+  - id: dark_gray
+    red: 30%
+    green: 30%
+    blue: 30%
+  - id: dark_dark_gray
+    red: 20%
+    green: 20%
+    blue: 20%
+  - id: yellow
+    hex: "00FFFF"
+  - id: light_yellow
+    hex: "33aaaa"
+
+number:
+  - platform: template
+    name: "Wakeup distance"
+    id: "wakeup_distance_connect"
+    min_value: 0
+    max_value: 300
+    step: 50
+    device_class: distance
+    unit_of_measurement: "cm"
+    lambda: |-
+      return id(wakeup_distance);
+    set_action:
+      then:
+        - globals.set:
+            id: wakeup_distance
+            value: !lambda "return x;"
+
+  - platform: template
+    name: "Sleep time"
+    id: "sleep_time_connect"
+    min_value: 15
+    max_value: 960
+    step: 1
+    device_class: duration
+    unit_of_measurement: "sec"
+    lambda: |-
+      return id(sleep_time);
+    set_action:
+      then:
+        - globals.set:
+            id: sleep_time
+            value: !lambda "return x;"
+
+  - platform: ld2410
+    timeout: { name: Radar Timeout }
+    max_move_distance_gate: { name: Radar Max Move Distance }
+    max_still_distance_gate: { name: Radar Max Still Distance }
+    light_threshold: { name: light threshold }
+    g0:
+      move_threshold: { name: g0 move threshold, id: g0m }
+      still_threshold: { name: g0 still threshold, id: g0s }
+    g1:
+      move_threshold: { name: g1 move threshold, id: g1m }
+      still_threshold: { name: g1 still threshold, id: g1s }
+    g2:
+      move_threshold: { name: g2 move threshold, id: g2m }
+      still_threshold: { name: g2 still threshold, id: g2s }
+    g3:
+      move_threshold: { name: g3 move threshold, id: g3m }
+      still_threshold: { name: g3 still threshold, id: g3s }
+    g4:
+      move_threshold: { name: g4 move threshold, id: g4m }
+      still_threshold: { name: g4 still threshold, id: g4s }
+    g5:
+      move_threshold: { name: g5 move threshold, id: g5m }
+      still_threshold: { name: g5 still threshold, id: g5s }
+    g6:
+      move_threshold: { name: g6 move threshold, id: g6m }
+      still_threshold: { name: g6 still threshold, id: g6s }
+    g7:
+      move_threshold: { name: g7 move threshold, id: g7m }
+      still_threshold: { name: g7 still threshold, id: g7s }
+    g8:
+      move_threshold: { name: g8 move threshold, id: g8m }
+      still_threshold: { name: g8 still threshold, id: g8s }
+
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    name: Display Backlight
+    id: backlight
+    restore_mode: ALWAYS_ON
+    on_turn_on:
+      then:
+        - component.update: disp
+        - lambda: |-
+            id(last_activity_ms) = millis();
+
+  - platform: rgb
+    name: LED
+    id: led
+    red: output_red
+    green: output_green
+    blue: output_blue
+    restore_mode: ALWAYS_OFF
+
+button:
+  - platform: restart
+    name: "Restart EPS32"
+    id: restart_button
+
+binary_sensor:
+  - platform: ld2410
+    has_target:
+      name: Radar Target
+      id: radar_has_target
+    has_moving_target:
+      name: Radar Moving Target
+      id: radar_has_moving_target
+      on_state:
+        then:
+          - script.execute: on_movement
+    has_still_target:
+      name: Radar Still Target
+
+  - platform: homeassistant
+    id: dummy_dont_delete
+    entity_id: dummy.entity
+    internal: true
+
+  - platform: touchscreen
+    name: Dummy2
+    id: btn_dummy_dont_delete
+    x_min: 0
+    x_max: 0
+    y_min: 0
+    y_max: 0
+    internal: true
+
+text_sensor:
+  - platform: homeassistant
+    id: dummy_dont_delete2
+    entity_id: dummy.dummy
+    internal: true
+
+sensor:
+  - platform: wifi_signal # Reports the WiFi signal strength in %
+    name: "WiFi Signal Percent"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "Signal %"
+    id: wifi_signal_pct
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  - platform: copy
+    source_id: board_ldr
+    id: board_ldr_p
+    name: "Ambient Light"
+    filters:
+      - lambda: return min(max((100 - (((x - 0.075) / (1.039 - 0.075)) * 100)), 0.0), 100.0);
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+  - platform: ld2410
+    moving_distance: { name: Radar Moving Distance, id: moving_distance }
+    still_distance: { name: Radar Still Distance, id: still_distance }
+    moving_energy: { name: Radar Move Energy }
+    still_energy: { name: Radar Still Energy }
+    detection_distance:
+      { name: Radar Detection Distance, id: radar_detection_distance }
+    light: { name: Radar Light, id: radar_light }
+    g0:
+      {
+        move_energy: { name: g0 move energy },
+        still_energy: { name: g0 still energy },
+      }
+    g1:
+      {
+        move_energy: { name: g1 move energy },
+        still_energy: { name: g1 still energy },
+      }
+    g2:
+      {
+        move_energy: { name: g2 move energy },
+        still_energy: { name: g2 still energy },
+      }
+    g3:
+      {
+        move_energy: { name: g3 move energy },
+        still_energy: { name: g3 still energy },
+      }
+    g4:
+      {
+        move_energy: { name: g4 move energy },
+        still_energy: { name: g4 still energy },
+      }
+    g5:
+      {
+        move_energy: { name: g5 move energy },
+        still_energy: { name: g5 still energy },
+      }
+    g6:
+      {
+        move_energy: { name: g6 move energy },
+        still_energy: { name: g6 still energy },
+      }
+    g7:
+      {
+        move_energy: { name: g7 move energy },
+        still_energy: { name: g7 still energy },
+      }
+    g8:
+      {
+        move_energy: { name: g8 move energy },
+        still_energy: { name: g8 still energy },
+      }
+
+script:
+  - id: on_brightness_press
+    then:
+      - lambda: |-
+          id(adaptive_brightness) = false;
+          id(bright_start_press_ms) = millis();
+          id(increase_bright).execute();
+          id(disp).update();
+
+  - id: on_brightness_release
+    then:
+      - lambda: |-
+          id(bright_start_press_ms) = 0;
+
+  - id: init_radar
+    then:
+      - lambda: |-
+          static const struct { esphome::ld2410::GateThresholdNumber* gate; int val; } values[] = {
+            {id(g0m), 50}, {id(g1m), 50}, {id(g2m), 40}, {id(g3m), 40}, {id(g4m), 40},
+            {id(g5m), 40}, {id(g6m), 30}, {id(g7m), 30}, {id(g8m), 30},
+            {id(g0s), 0},  {id(g1s), 0},  {id(g2s), 40}, {id(g3s), 40}, {id(g4s), 40},
+            {id(g5s), 40}, {id(g6s), 15}, {id(g7s), 15}, {id(g8s), 15}
+          };
+          for (auto &v : values)
+            v.gate->make_call().set_value(v.val).perform();
+
+  - id: init_coordinates
+    then:
+      - lambda: |-
+          id(x_rect) = (id(width) - (id(cols) + 1) * id(x_pad)) / id(cols);
+          id(y_rect) = (id(height) - (id(rows) + 1) * id(y_pad)) / id(rows);
+          id(x_start) = {}, id(y_start) = {}, id(x_mid) = {}, id(y_mid) = {};
+          for (int i = 0; i < id(cols); ++i) {
+            id(x_start).push_back( (i+1) * id(x_pad) + i * id(x_rect));
+            id(x_mid).push_back( (i+1) * id(x_pad) + (2*i + 1) * id(x_rect) / 2);
+          }
+          for (int i = 0; i < id(rows); ++i) {
+            id(y_start).push_back( (i+1) * id(y_pad) + i * id(y_rect));
+            id(y_mid).push_back( (i+1) * id(y_pad) + (2*i + 1) * id(y_rect) / 2);
+          }
+
+  - id: rounded_rectangle
+    parameters: { x: int, y: int, w: int, h: int, r: int, c: Color }
+    then:
+      - lambda: |-
+          id(disp).start_clipping(x, y, x + r + 1, y + r + 1);
+          circle(x + r, y + r, r, c);
+          id(disp).end_clipping();
+
+          id(disp).start_clipping(x + w - r - 1, y, x + w, y + r + 1);
+          circle(x + w - r - 1, y + r, r, c);
+          id(disp).end_clipping();
+
+          id(disp).start_clipping(x + w - r - 1, y + h - r, x + w, y + h);
+          circle(x + w - r - 1, y + h - r - 1, r, c);
+          id(disp).end_clipping();
+
+          id(disp).start_clipping(x, y + h - r - 1, x + r + 1, y + h);
+          circle(x + r, y + h - r - 1, r, c);
+          id(disp).end_clipping();
+
+          id(disp).start_clipping(x + r, y, x + w - r, y + h);
+          rectangle(x + r - 1, y, w - 2 * r + 2, h, c);
+          id(disp).end_clipping();
+
+          id(disp).start_clipping(x, y + r, x + w, y + h - r);
+          rectangle(x, y + r - 1, w, h - 2 * r + 2, c);
+          id(disp).end_clipping();
+
+  - id: increase_bright
+    then:
+      - lambda: |-
+          auto new_brightness = id(backlight).remote_values.get_brightness() + 0.1;
+          if (new_brightness > 1.01 || new_brightness < 0.3) {
+            new_brightness = 0.3;
+          }
+          id(backlight).make_call().set_brightness(new_brightness).set_transition_length(0).perform();
+
+  - id: adapt_bright
+    then:
+      - lambda: |-
+          auto computed_bright = max(3, static_cast<int>(id(board_ldr_p).state) / 10) / 10.0;
+          if (computed_bright <= 0.8 && id(backlight).remote_values.is_on()) {
+            computed_bright = max(0.3, computed_bright - 0.2);
+          }
+          // Do at most 0.1 steps.
+          auto current_bright = id(backlight).remote_values.get_brightness();
+          auto delta = min(0.1, max(-0.1, computed_bright - current_bright));
+          id(backlight).make_call().set_brightness(current_bright + delta).perform();
+
+  - id: change_sleep_time
+    then:
+      - lambda: |-
+          id(sleep_time) *= 2;
+          if (id(sleep_time) >= 1920) {
+            id(sleep_time) = 15;
+          }
+          id(sleep_time_connect).update();
+
+  - id: change_wakeup_distance
+    then:
+      - lambda: |-
+          id(wakeup_distance) += 50;
+          id(wakeup_distance) %= 350;
+          id(wakeup_distance_connect).update();
+
+  - id: on_movement
+    then:
+      - lambda: |-
+          if (id(wakeup_distance) == 0 ||
+              !id(radar_has_moving_target).state ||
+              id(moving_distance)->state > id(wakeup_distance)) {
+            return;
+          }
+          auto now = millis();
+          if (!id(backlight).remote_values.is_on()) {
+            id(backlight).turn_on().perform();
+            id(turn_on_ms) = now;
+          }
+          id(last_activity_ms) = now;
+
+  - id: update_ui_values
+    then:
+      - lambda: |-
+          if (isnan(id(wifi_signal_pct).state) ||
+              id(wifi_signal_pct).state < 30)
+            id(wifi_color) = id(light_red);
+          else if (id(wifi_signal_pct).state >= 60)
+            id(wifi_color) = id(light_green);
+          else
+            id(wifi_color) = id(gray);
+
+          if (isnan(id(wifi_signal_pct).state))
+            id(wifi_iconstring) = "\U0000f063"; // No-wifi
+          else if (id(wifi_signal_pct).state < 10)
+            id(wifi_iconstring) = "\U0000f0b0";  // low-wifi
+          else if (id(wifi_signal_pct).state < 30)
+            id(wifi_iconstring) = "\U0000ebe4"; // wifi-1
+          else if (id(wifi_signal_pct).state < 50)
+            id(wifi_iconstring) = "\U0000ebd6"; // wifi-2
+          else if (id(wifi_signal_pct).state < 75)
+            id(wifi_iconstring) = "\U0000ebe1"; // wifi-3
+          else
+            id(wifi_iconstring) = "\U0000e1d8"; // wifi-4
+
+  - id: set_blinds_status
+    parameters:
+      covers: string[]
+    then:
+      - lambda: |-
+          id(blinds_moving_down) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "closing"; });
+          id(blinds_moving_up) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "opening"; });
+
+  - id: draw_tile_frame
+    parameters:
+      i: int
+      j: int
+    then:
+      - lambda: |-
+          id(rounded_rectangle).execute(id(x_start)[i], id(y_start)[j], id(x_rect), id(y_rect), id(border_r), id(gray));
+
+  - id: tile_blinds_up
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          uint32_t millis = DRAW_ONLY(millis());
+          bool up = DRAW_ONLY(id(blinds_moving_up));
+          handle_caching(std::make_pair(x, y), millis, up);
+          if (up) {
+            print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis / 1000.0 * 12) % 41 + 20, id(mdi_large), id(blue), TextAlign::CENTER, "\U0000eacf");
+          } else {
+            print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_blue), TextAlign::CENTER, "\U0000eacf");
+          }
+
+  - id: action_blinds_up
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          id(set_blinds_status)->execute(entities);
+          static const char* STOP_COVER = "stop_cover";
+          static const char* OPEN_COVER = "open_cover";
+          for (const std::string& blind : entities) {
+            PerformHaAction(blind, id(blinds_moving_up) ? STOP_COVER : OPEN_COVER);
+          }
+ 
+  - id: tile_blinds_down
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          uint32_t millis = DRAW_ONLY(millis());
+          bool down = DRAW_ONLY(id(blinds_moving_down));
+          handle_caching(std::make_pair(x, y), millis, down);
+          if (down) {
+            print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis() / 1000.0 * 12) % 41 - 20, id(mdi_large), id(red), TextAlign::CENTER, "\U0000ead0");
+          } else {
+            print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_red), TextAlign::CENTER, "\U0000ead0");
+          }
+
+  - id: action_blinds_down
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          id(set_blinds_status)->execute(entities);
+          static const char* STOP_COVER = "stop_cover";
+          static const char* CLOSE_COVER = "close_cover";
+          for (const std::string& blind : entities) {
+            PerformHaAction(blind, id(blinds_moving_down) ? STOP_COVER : CLOSE_COVER);
+          }
+
+  - id: tile_blinds_mid
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_largish), id(light_purple), TextAlign::CENTER, "\U0000e286");
+
+  - id: action_blinds_mid
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          static std::string set_cover_position = "set_cover_position";
+          static const char* SET_COVER_POSITION = "set_cover_position";
+          static const char* POSITION = "position";
+          static const char* FOURTY = "40";
+          for (const std::string& blind : entities) {
+            PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, FOURTY}});
+          }
+
+  - id: action_blinds_up_down
+    parameters:
+      x: float
+      y: float
+      entities: string[]
+    then:
+      - lambda: |-
+          static const char* STOP_COVER = "stop_cover";
+          static const char* OPEN_COVER = "open_cover";
+          static const char* CLOSE_COVER = "close_cover";
+          id(set_blinds_status)->execute(entities);
+          for (const std::string& blind : entities) {
+            if (id(blinds_moving_up) || id(blinds_moving_down)) {
+              PerformHaAction(blind, STOP_COVER);
+            } else {
+              PerformHaAction(blind, (x + y < 1) ? OPEN_COVER : CLOSE_COVER);
+            }
+          }
+
+  - id: tile_blinds_up_down
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          uint32_t millis = DRAW_ONLY(millis());
+          bool up = DRAW_ONLY(id(blinds_moving_up));
+          bool down = DRAW_ONLY(id(blinds_moving_down));
+          handle_caching(std::make_pair(x, y), millis, up, down);
+          bool one = up != down;
+          bool any = up || down;
+          bool show_up = !one || up;
+          bool show_down = !one || down;
+
+          auto font = one ? id(mdi_large) : id(mdi_50);
+          auto delta_x = one ? 0 : id(x_rect) / 5;
+          auto delta_y = any ? static_cast<int>(millis / 1000.0 * 12) % 41 - 20 : id(y_rect) / 5;
+
+          if (show_up) {
+            print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, font, id(blue), TextAlign::CENTER, "\U0000eacf");
+          }
+          if (show_down) {
+            print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, font, id(red), TextAlign::CENTER, "\U0000ead0");
+          }
+
+          if (!any) {
+            line(id(x_start)[x] + 15, id(y_start)[y] + id(y_rect) - 15, id(x_start)[x] + id(x_rect) - 15, id(y_start)[y] + 15, id(gray));
+          }
+
+  - id: tile_lights
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), IsAnyOn(entities) ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000e0f0");
+
+  - id: action_lights
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          static const char* TURN_ON = "turn_on";
+          static const char* TURN_OFF = "turn_off";
+          std::string action = IsAnyOn(entities) ? TURN_OFF : TURN_ON;
+          for (const std::string& light : entities) {
+            PerformHaAction(light, action);
+          }
+
+  - id: tile_ac
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          auto state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0)).c_str();
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large),
+                      strcmp(state, "cool") == 0   ? id(blue) : strcmp(state, "heat") == 0 ? id(red) : id(gray),
+                      TextAlign::CENTER, "\U0000f154");
+
+  - id: action_ac
+    parameters:
+      entities: string[]
+    then:
+     - lambda: |-
+          static const char* TURN_ON = "turn_on";
+          static const char* TURN_OFF = "turn_off";
+          std::string action = IsAnyOn(entities) ? TURN_OFF : TURN_ON;
+          for (const std::string& ac : entities) {
+            PerformHaAction(ac, action);
+          }
+
+  - id: tile_brightness
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          int slider_pos = DRAW_ONLY(id(backlight).remote_values.get_brightness() * 100 - 32);
+          bool adapt = DRAW_ONLY(id(adaptive_brightness));
+          handle_caching(std::make_pair(x, y), slider_pos, adapt);
+          print(id(x_mid)[x], id(y_mid)[y] - 10, id(mdi_60), id(light_yellow), TextAlign::CENTER, "\U0000e518");
+          int slider_width = 70, slider_height = 10, slider_start = id(x_pad) + (id(x_rect) - slider_width) / 2 + 1;
+          filled_rectangle(
+              slider_start + 1, id(y_mid)[y] + 33,
+              slider_pos,
+              slider_height - 2, adapt ? id(dark_gray) : id(yellow));
+          rectangle(slider_start, id(y_mid)[y] + 32, slider_width, slider_height, adapt ? id(gray) : id(light_yellow));
+          if (adapt) {
+            print(id(x_mid)[x], id(y_mid)[y] + 37, id(roboto_20_bold), id(yellow), TextAlign::CENTER, "Auto");
+          }
+
+  - id: tile_wakeup_time
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          int sleep_t = DRAW_ONLY(id(sleep_time));
+          int counter = DRAW_ONLY(((millis() - id(last_activity_ms)) / 1000)); 
+          handle_caching(std::make_pair(x, y), sleep_t, counter);
+          print(id(x_mid)[x], id(y_mid)[y] - 9, id(mdi_60), id(light_purple), TextAlign::CENTER, "\U0000e425");
+          printf(id(x_mid)[x], id(y_mid)[y] + 37, id(roboto_20), id(light_purple), TextAlign::CENTER, "%d", sleep_t);
+          printf(id(x_mid)[x], id(y_mid)[y] + 2, id(roboto_12), id(light_blue), TextAlign::CENTER, "%d", counter);
+
+  - id: tile_distance
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          int wakeup_dist = DRAW_ONLY(id(wakeup_distance));
+          int moving_dist = DRAW_ONLY(id(moving_distance).state);
+          handle_caching(std::make_pair(x, y), wakeup_dist, moving_dist);
+          if (wakeup_dist == 0) {
+            print(id(x_mid)[x], id(y_mid)[y], id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e913");
+          } else {
+            auto person_color = id(radar_has_moving_target).state ? id(red) : id(gray);
+            auto numbers_color = wakeup_dist > moving_dist ? id(light_red) : id(gray);
+            printf(id(x_mid)[x] + 22, id(y_mid)[y] - 25, id(roboto_20_bold), numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
+            printf(id(x_mid)[x] + 22, id(y_mid)[y] - 10, id(roboto_12), numbers_color, TextAlign::CENTER, "< c m >");
+            print(id(x_mid)[x] - 22, id(y_mid)[y] - 10, id(mdi_60), person_color, TextAlign::CENTER, "\U0000e536");
+            if (isnan(moving_dist)) {
+              printf(id(x_mid)[x], id(y_mid)[y] + 33, id(roboto_20), id(gray), TextAlign::CENTER, "------");
+            } else {
+              printf(id(x_mid)[x], id(y_mid)[y] + 33, id(roboto_20), numbers_color, TextAlign::CENTER, "%.0fcm", moving_dist);
+            }
+          }
+
+  - id: tile_settings
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e8b8");
+
+  - id: tile_ac_settings
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000f55b");
+
+  - id: tile_power
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000f418");
+
+  - id: action_power
+    then:
+      - lambda: |-
+          id(restart_button).press();
+
+  - id: tile_light_settings
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000e28b");
+
+  - id: tile_cover_settings
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000e286");
+
+  - id: tile_cover_up_down
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000e8d5");
+
+  - id: tile_disp_settings
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), Color::WHITE, TextAlign::CENTER, "\U0000eb97");
+
+  - id: tile_choose_light
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          if (entities.size() != 2) {
+            ESP_LOGE("TileChooseLight", "Wrong number of params: %d", entities.size());
+          }
+          std::string cur_name = DRAW_ONLY(entities[1]);
+          handle_caching(std::make_pair(x, y), cur_name);
+          print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000f02a");
+          print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+
+  - id: tile_choose_cover
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          if (entities.size() != 2) {
+              ESP_LOGE("TileChooseCover", "Wrong number of params: %d", entities.size());
+          }
+          std::string cur_name = DRAW_ONLY(entities[1]);
+          handle_caching(std::make_pair(x, y), cur_name);
+          
+          print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000e286");
+          print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+
+  - id: tile_cover_name
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          std::string entity = DRAW_ONLY(entities[0]);
+          std::string name = DRAW_ONLY(entities[1]);
+          handle_caching(std::make_pair(x, y), entity, name);
+          print(id(x_start)[x] + 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
+          print(id(x_start)[x] + id(x_rect) - 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
+          print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e286");
+          print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, name.c_str());
+          if (entity != "*") {
+            std::string position = GetTextSensorValue(entity + "|current_position") + "%";
+            print(id(x_mid)[x], id(y_start)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, position.c_str());
+          }
+
+  - id: tile_room
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          std::string name = DRAW_ONLY(entities[1]);
+          handle_caching(std::make_pair(x, y), name);
+          print(id(x_start)[x] + 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
+          print(id(x_start)[x] + id(x_rect) - 15, id(y_mid)[y] - 20, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
+          print(id(x_mid)[x], id(y_mid)[y]-20, id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e88a");
+          print(id(x_mid)[x], id(y_mid)[y]+25, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, name.c_str());
+
+  - id: tile_back_arrow
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e5c4");
+
+  - id: tile_temp_up
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_red), TextAlign::CENTER, "\U0000f4b5");
+
+  - id: action_temp_up
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          for (const std::string& ac : entities) {
+            std::string temp = GetTextSensorValue(ac);
+            if (IsInteger(temp)) {
+              int new_temp = stoi(temp) + 1;
+              PerformHaAction(GetSensor(ac), "set_temperature", {{"temperature", std::to_string(new_temp)}});
+            } else {
+              ESP_LOGE("ActionTempUp", "Failed getting temp for %s", ac.c_str());
+            }
+          }
+
+  - id: tile_temp_down
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_blue), TextAlign::CENTER, "\U0000f4b6");
+
+  - id: action_temp_down
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          for (const std::string& ac : entities) {
+            std::string temp = GetTextSensorValue(ac);
+            if (IsInteger(temp)) {
+              int new_temp = stoi(temp) - 1;
+              PerformHaAction(GetSensor(ac), "set_temperature", {{"temperature", std::to_string(new_temp)}});
+            } else {
+              ESP_LOGE("ActionTempDown", "Failed getting temp for %s", ac.c_str());
+            }
+          }
+
+  - id: tile_ac_mode
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          print(id(x_mid)[x], id(y_mid)[y], id(roboto_30_bold), id(gray), TextAlign::CENTER, "Mode");
+
+  - id: action_ac_mode
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          for (const std::string& ac : entities) {
+            std::string current = GetTextSensorValue(ac);
+            static const char* OFF = "off";
+            static const char* COOL = "cool";
+            static const char* HEAT = "heat";
+            const char* next = (current == OFF) ? COOL : (current == COOL) ? HEAT : OFF;
+            PerformHaAction(GetSensor(ac), "set_hvac_mode", {{"hvac_mode", std::string(next)}});
+          }
+
+  - id: tile_ac_status
+    parameters:
+      x: int
+      y: int
+      entities: string[]
+    then:
+      - lambda: |-
+          if (entities.size() != 2) {
+            return;
+          }
+          std::string state = DRAW_ONLY(entities[0]);
+          std::string entity = DRAW_ONLY(entities[1]);
+          handle_caching(std::make_pair(x, y), state, entity);
+          print((id(x_mid)[x] + id(x_mid)[x+1]) / 2, id(y_mid)[y], id(roboto_30_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
+
+  - id: draw_page
+    then:
+      - lambda: |-
+          if (!id(backlight).remote_values.is_on()) {
+            return;
+          }
+          id(update_ui_values).execute();
+          view_ptr->getActiveScreen()->draw();
+
+interval:
+  - interval: 250ms
+    then:
+      - if:
+          condition:
+            or:
+              - lambda: "return id(disp).get_active_page() == id(calib);"
+              - lambda: "return view_ptr->getActiveScreen()->hasAtt(FAST_REFRESH);"
+          then:
+            - component.update: disp
+      - if:
+          condition:
+            - lambda: "return id(bright_start_press_ms) != 0;"
+          then:
+            - lambda: |-
+                if (millis() - id(bright_start_press_ms) > 2000) {
+                  id(adaptive_brightness) = true;
+                  id(bright_start_press_ms) = 0;
+                }
+
+  - interval: 1s
+    then:
+      - script.execute: on_movement
+
+  - interval: 5s
+    then:
+      # Turn off screen if needed.
+      - if:
+          condition:
+            - lambda: |-
+                if (!id(backlight).remote_values.is_on())
+                  return false;
+                return (millis() - id(last_activity_ms)) > id(sleep_time) * 1000;
+          then:
+            - lambda: |-
+                id(backlight).turn_off().perform();
+                id(turn_on_ms) = 0;
+      # Leave temporary screens after too much inactivity there.
+      - lambda: |-
+          if (id(disp).get_active_page() != id(calib) &&
+              view_ptr->getActiveScreen()->hasAtt(TEMPORARY) &&
+              ((millis() - id(last_touch_ms)) > (id(inactive_back_to_base_sec) * 1000))) {
+            view_ptr->getActiveScreen()->onScreenLeave();
+            id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());
+            id(disp).update();
+          }
+      # Adapt brightness
+      - if:
+          condition:
+            - lambda: |-
+                return id(adaptive_brightness);
+          then:
+            - script.execute: adapt_bright

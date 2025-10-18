@@ -78,7 +78,9 @@ In order to customize the display, some programming knowledge is required (C++/y
 Here is a short descrtiption of the files that appear under ```/esphome/lib/``` directory.
 
 ## device_base.yaml
-The yaml file that contains all the common definitions to all displays. Each display will need to define a yaml file that will "include" the device_base.yaml file. This file also points to the header files that contain parts of the implementation.
+Model specific definitions Each display will need to define a yaml file that will "include" the device_base.yaml file. This file also points to the header files that contain parts of the implementation.
+## lib.yaml
+The yaml file that contains all the common definitions to all displays. Each display will need to define a yaml file that will "include" the lib.yaml file.
 ### Important
 > We're not using the clear screen before each frame is rendered, because it takes quite a few milliseconds. We actually overrite the last actions we had in black. This is done in a bit of a hacky way, please pay attention that any drawing function you add should have this capability. Look at other functions for reference, and pay attention that the actual color change happens in the display overriding functions in the utils file.
 
@@ -91,7 +93,7 @@ Definition of different types of screens in the display. A screen is what we see
 ### ```TiledScreen```
 * This is currently the only type of supported screenץ
 * Constructor parameters:
-  * ```esphome::display::DisplayPage*``` - A pointer to a screen that is defined in the ```device_base.yaml``` file. The screen is defined in ```device_base.yaml``` under ```display->pages```.
+  * ```esphome::display::DisplayPage*``` - A pointer to a screen that is defined in the ```lib.yaml``` file. The screen is defined in ```lib.yaml``` under ```display->pages```.
   * ```std::set<ScreenAtt>``` - A set of attributes:
     * *FAST_REFRESH* - Indicates if the screen requires fast refresh, this is needed in case we have animation in the screen.
     * *TEMPORARY* - Indicates if the screen is temporary - i.e. it will be replaced by another screen after a certain period of time.
@@ -112,14 +114,14 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
 * Constructor parameters:
   * ```int``` - The x coordinate of the tile, 0 based.
   * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - The functions that draw the tile. These functions are defined in ```device_base.yaml```, and are executed in order. They get three parameters:
+  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - The functions that draw the tile. These functions are defined in ```lib.yaml```, and are executed in order. They get three parameters:
     * The x coordinate.
     * The y coordinate.
     * A vector of strings, which represent the entities that appear in the tile. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
-  * ```std::vector<esphome::script::Script<std::vector<std::string>>*>``` - Action function that are executed once the tile is tapped. The functions are defined in ```device_base.yaml```. The functions get a vector of strings, which represent the entities that are "acted upon" once the tile is tapped. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
+  * ```std::vector<esphome::script::Script<std::vector<std::string>>*>``` - Action function that are executed once the tile is tapped. The functions are defined in ```lib.yaml```. The functions get a vector of strings, which represent the entities that are "acted upon" once the tile is tapped. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
     * ```std::vector<std::string>``` The entities that are passed to the draw functions and the actions functions in this tile. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
 * After construction, more modifications can be done using post-initialization functions:
-  * ```setRequiresFastRefreshFunc``` - Gets a function defined in ```device_base.yaml``` that returns true iff the page should fast refresh. This is useful for tiles we don't want to fast refresh, unless a condition (for example, blinds are moving) is true.
+  * ```setRequiresFastRefreshFunc``` - Gets a function defined in ```lib.yaml``` that returns true iff the page should fast refresh. This is useful for tiles we don't want to fast refresh, unless a condition (for example, blinds are moving) is true.
   * ```setDisplayPageIfNoEntity``` - In case the entities that are passed to the constructor contain ```$DYNAMIC_ENTITIES```, and the dynamic entities is empty, this is the page that will be presented (the HAAction will not perform). This is useful if, for example, ```$DYNAMIC_ENTITIES``` represent a list of lights, and no light is chosen, the page can be the one where we choose which light to control with the tile.
 * Instead of the Action function, there's another version that gets location action function - gets 3 parameters, x percentile in the tile, y percentile in the tile and the entities passed to the function. The function can also get both types of functions.
 
@@ -136,14 +138,14 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
     * ```const std::vector<std::string>&``` - The ```$SIMPLE_ENTITY```s, or ```$ENTITY_WITH_ATTRIBUTE``` values to set as the ```$DYNAMIC_ENTITIES```.
 
 ### ```FunctionTile```
-* A tile that performs functions that are defined in ```device_base.yaml```.
+* A tile that performs functions that are defined in ```lib.yaml```.
 * This is useful for changing parameters of the display itself, for example, brighness.
 * Constructor parameters:
   * ```int``` - The x coordinate of the tile, 0 based.
   * ```int``` - The y coordinate of the tile, 0 based.
   * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, see [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) for more details.
-  * ```esphome::script::Script<>*``` - A function defined in ```device_base.yaml``` to perform once the tile is pressed.
-  * ```esphome::script::Script<>*``` - A function defined in ```device_base.yaml``` to perform once the tile is released.
+  * ```esphome::script::Script<>*``` - A function defined in ```lib.yaml``` to perform once the tile is pressed.
+  * ```esphome::script::Script<>*``` - A function defined in ```lib.yaml``` to perform once the tile is released.
 
 ### ```TitleTile```
 * A special case of [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) that does no action.
@@ -198,7 +200,7 @@ In the configuration (yaml) file, when defining the UI using the C++ objects, th
 * **$SIMPLE_ENTITY** An entity as it is defined in HomeAssistant (string).
 * **DYNAMIC_ENTITIES** A placeholder (variable) that is set from a different place. This is a unique string that can represent a list of entities. The format in the configuration should be ```"#{$VAR_NAME}"```
 * **$ENTITY_WITH_ATTRIBUTE** An entity and attribute, encoded as ```$SIMPLE_ENTITY|$ATTRIBUTE```, or ```$DYNAMIC_ENTITIES|$ATTRIBUTE```. The attribute is a string that is used in HA.
-On execution time, when entities are passed to functions defined in ```device_base.yaml```, the ```$DYNAMIC_ENTITIES```s are resolved. This means that for any entity that is part of the ```DYNAMIC_ENTITIES``` a ```$SIMPLE_ENTITY``` or ```$SIMPLE_ENTITY|$ATTRIBUTE``` is passed.
+On execution time, when entities are passed to functions defined in ```lib.yaml```, the ```$DYNAMIC_ENTITIES```s are resolved. This means that for any entity that is part of the ```DYNAMIC_ENTITIES``` a ```$SIMPLE_ENTITY``` or ```$SIMPLE_ENTITY|$ATTRIBUTE``` is passed.
 
 **<ins>Example</ins>**
 
@@ -224,5 +226,5 @@ The following is initialization of a ```HAActionTile```. The entities that will 
   * In case the screen is not calibrated (touch is not happening in the right place), a calibration might be needed.
   * In HomeAssistant, go to: *Settings -> Devices and Services -> ESPHome -> Your Device*
   * Toggle *Touch calibration*.
-  * This enters a calibration mode. the red dot should be in the place where you tap the screen, in case this is incorrect, change the values in ```device_base.yaml``` ```touchscreen -> calibration``` to match the minimum and maximum *x_raw, y_raw* values.
+  * This enters a calibration mode. the red dot should be in the place where you tap the screen, in case this is incorrect, change the values in ```lib.yaml``` ```touchscreen -> calibration``` to match the minimum and maximum *x_raw, y_raw* values.
   * Please note, the x/y axis are flipped, this is WAI.
