@@ -61,6 +61,29 @@ globals:
     type: int
     initial_value: "1"
 
+font:
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: tile_font
+    size: 80
+    glyphs: [
+        "\U0000e9b8", # Light off
+        "\U0000e0f0", # Light on
+        "\U0000f154", # Airwave
+        "\U0000eacf", # Arrow up
+        "\U0000ead0", # Arrow down
+        "\U0000e286", # Blinds
+        "\U0000e536", # Walking man
+        "\U0000e913", # Touch
+        "\U0000e518", # Brightness
+        "\U0000f55b", # AC settings
+        "\U0000f4b5", # Arrow warm up
+        "\U0000f4b6", # Arrow cool down
+        "\U0000eb97", # Display settings
+        "\U0000e28b", # Light settings
+        "\U0000e8d5", # Arrow up/down
+        "\U0000f418", # Power
+      ]
+
 display:
   - platform: ili9xxx
     update_interval: 10s
