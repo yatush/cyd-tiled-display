@@ -20,9 +20,9 @@ public:
     handle_caching("time", wifi_icon, espt);
     
     // Print the Wi-Fi icon.
-    print(296, 0, &id(mdi_medium), id(wifi_color), wifi_icon.c_str());
+    print(id(width) - 24, 0, &id(mdi_medium), id(wifi_color), wifi_icon.c_str());
     // Print the current time.
-    strftime(290, 3, &id(roboto_20), id(dark_gray), TextAlign::TOP_RIGHT, "%H:%M", espt);
+    strftime(id(width) - 30, 3, &id(roboto_20), id(dark_gray), TextAlign::TOP_RIGHT, "%H:%M", espt);
   }
 
   // Returns the DisplayPage associated with this screen.
@@ -90,12 +90,14 @@ public:
   }
 
   void draw() override {
-    DrawState::is_delete_mode = true;
-    for (Tile* tile : prev_tiles) {
-      tile->draw();
+    if (id(render_diffs)) {
+      DrawState::is_delete_mode = true;
+      for (Tile* tile : prev_tiles) {
+        tile->draw();
+      }
+      prev_tiles.clear();
+      this->drawWifiHour();
     }
-    prev_tiles.clear();
-    this->drawWifiHour();
     DrawState::is_delete_mode = false;
     for (Tile* tile : this->tiles_) {
       if (tile->checkActivationMaybeToggle()) {

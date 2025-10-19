@@ -21,6 +21,8 @@ public:
   void init() {
     // Decode entities for all screens initially.
     this->decodeEntities();
+    View::initialized = true;
+    id(disp).set_auto_clear(!id(render_diffs));
   }
 
   // Returns the currently active screen based on the active DisplayPage.
@@ -42,6 +44,8 @@ public:
     }
   }
 
+  static bool initialized;
+
 private:
   // Map to store screens, keyed by their DisplayPage.
   std::map<const esphome::display::DisplayPage*, Screen*> repository_ = {};
@@ -52,3 +56,4 @@ private:
 // HEAP ALLOCATION: Use unique_ptr for automatic memory management
 std::unique_ptr<View> view_ptr = nullptr;
 
+inline bool View::initialized = false;

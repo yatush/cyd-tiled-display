@@ -134,7 +134,7 @@ private:
           [this](bool x) -> optional<bool> {
             // Ignore touch events shortly after a page change.
             auto now = millis();
-            if (x && (now - id(change_page_ms)) < 500) {
+            if (x && (now - id(change_page_ms)) < id(between_pages_ms)) {
               return {};
             }
             if (!x || (now - id(turn_on_ms) < id(inactive_ms)) ||

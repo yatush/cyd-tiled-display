@@ -9,6 +9,7 @@ esphome:
     then:
       - script.execute: init_radar
       - script.execute: init_coordinates
+      - delay: 2s
       - script.execute: init_tiles
   platformio_options:
     build_flags:
@@ -81,6 +82,9 @@ globals:
   - id: inactive_ms
     type: unsigned long
     initial_value: "500"
+  - id: between_pages_ms
+    type: unsigned long
+    initial_value: "500"
   - id: change_page_ms
     type: unsigned long
     initial_value: "0"
@@ -90,12 +94,6 @@ globals:
   - id: inactive_back_to_base_sec
     type: int
     initial_value: "60"
-  - id: width
-    type: int
-    initial_value: "320"
-  - id: height
-    type: int
-    initial_value: "240"
   - id: x_pad
     type: int
     initial_value: "10"
@@ -870,8 +868,9 @@ script:
     then:
       - lambda: |-
           int wakeup_dist = DRAW_ONLY(id(wakeup_distance));
+          bool nan_moving_dist = DRAW_ONLY(isnan(id(moving_distance).state));
           int moving_dist = DRAW_ONLY(id(moving_distance).state);
-          handle_caching(std::make_pair(x, y), wakeup_dist, moving_dist);
+          handle_caching(std::make_pair(x, y), wakeup_dist, moving_dist, nan_moving_dist);
           if (wakeup_dist == 0) {
             print(id(x_mid)[x], id(y_mid)[y], id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e913");
           } else {
@@ -880,7 +879,7 @@ script:
             printf(id(x_mid)[x] + 22, id(y_mid)[y] - 25, id(roboto_20_bold), numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
             printf(id(x_mid)[x] + 22, id(y_mid)[y] - 10, id(roboto_12), numbers_color, TextAlign::CENTER, "< c m >");
             print(id(x_mid)[x] - 22, id(y_mid)[y] - 10, id(mdi_60), person_color, TextAlign::CENTER, "\U0000e536");
-            if (isnan(moving_dist)) {
+            if (nan_moving_dist) {
               printf(id(x_mid)[x], id(y_mid)[y] + 33, id(roboto_20), id(gray), TextAlign::CENTER, "------");
             } else {
               printf(id(x_mid)[x], id(y_mid)[y] + 33, id(roboto_20), numbers_color, TextAlign::CENTER, "%.0fcm", moving_dist);
@@ -1117,6 +1116,10 @@ script:
   - id: draw_page
     then:
       - lambda: |-
+          if (!View::initialized) {
+            ESP_LOGE("DrawPage", "View not initialized yet.");
+            return;
+          }
           if (!id(backlight).remote_values.is_on()) {
             return;
           }
@@ -1130,7 +1133,7 @@ interval:
           condition:
             or:
               - lambda: "return id(disp).get_active_page() == id(calib);"
-              - lambda: "return view_ptr->getActiveScreen()->hasAtt(FAST_REFRESH);"
+              - lambda: "if (!View::initialized) return false; return view_ptr->getActiveScreen()->hasAtt(FAST_REFRESH);"
           then:
             - component.update: disp
       - if:
@@ -1162,6 +1165,9 @@ interval:
                 id(turn_on_ms) = 0;
       # Leave temporary screens after too much inactivity there.
       - lambda: |-
+          if (!View::initialized) {
+            return;
+          }
           if (id(disp).get_active_page() != id(calib) &&
               view_ptr->getActiveScreen()->hasAtt(TEMPORARY) &&
               ((millis() - id(last_touch_ms)) > (id(inactive_back_to_base_sec) * 1000))) {

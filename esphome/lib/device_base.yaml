@@ -47,6 +47,17 @@ sensor:
     accuracy_decimals: 3
     internal: true
 
+globals:
+  - id: render_diffs
+    type: bool
+    initial_value: "true"
+  - id: width
+    type: int
+    initial_value: "320"
+  - id: height
+    type: int
+    initial_value: "240"
+
 display:
   - platform: ili9xxx
     update_interval: 10s
@@ -56,7 +67,6 @@ display:
     cs_pin: GPIO15
     dc_pin: GPIO2
     id: disp
-    auto_clear_enabled: false
     transform: { mirror_y: true }
     dimensions:
       width: 320
