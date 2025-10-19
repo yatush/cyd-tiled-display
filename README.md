@@ -21,12 +21,21 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 ## Touch screen - [CYD](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
 
+### Option 1:
 <img src="/images/display.png" width="200" />
 
 * This is a variant of the original CYD with USB-C port.
-* Model: ESP32-2432S028
+* Model: ESP32-2432S028 - 2.8 inch, resistive touch screen.
 * [Aliexpress link](https://www.aliexpress.com/item/1005006470918908.html)
 * Price: ~10 USD
+
+### Option 2:
+<img src="/images/3248s035.jpg" width="300" />
+
+* This is a variant of the original CYD with micro-USB port.
+* Model: ESP32-3248s035C - 3.5 inch, capacitive touch screen.
+* [Aliexpress link](https://www.aliexpress.com/item/1005008624700714.html)
+* Price: ~20 USD
 
 ## Power supply - AC-DC to DC Step-Down Power Supply Module AC85-220V to DC 5V 2A
 
@@ -79,6 +88,9 @@ Here is a short descrtiption of the files that appear under ```/esphome/lib/``` 
 
 ## device_base.yaml
 Model specific definitions Each display will need to define a yaml file that will "include" the device_base.yaml file. This file also points to the header files that contain parts of the implementation.
+This is the file for the 2.8 inch display.
+## 3248s035_base.yaml
+Same as above, for the 3.5 inch display.
 ## lib.yaml
 The yaml file that contains all the common definitions to all displays. Each display will need to define a yaml file that will "include" the lib.yaml file.
 ### Important
@@ -193,6 +205,9 @@ Tiles that can appear under ```TiledScreen``` are defined in this file.
 ## utils.h
 Common utility functions to be used in yaml files.
 
+## draw_state.h
+Commn utility functions.
+
 ## HomeAssistant Entities
 
 ### Entities in configuration
@@ -212,7 +227,7 @@ The following is initialization of a ```HAActionTile```. The entities that will 
 
 * **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
 * **Copy library files** - Copy the files under ```/esphome/lib/``` to a newly created ```/esphome/lib/``` directory in your homeassistant.
-* **Edit device files** - Once the CYD is connected to HA, edit the configuration file of the specific display. This is done through the [ESPHome interface](https://esphome.io/guides/getting_started_hassio.html#esphome-interface). Defining the actual menus is done here, please follow the given example in ```monitor.yaml``` and the documentation [above](https://github.com/yatush/cyd-tiled-display/tree/main?tab=readme-ov-file#library).
+* **Edit device files** - Once the CYD is connected to HA, edit the configuration file of the specific display. This is done through the [ESPHome interface](https://esphome.io/guides/getting_started_hassio.html#esphome-interface). Defining the actual menus is done here, please follow the given example in ```monitor.yaml```, or ```3248s035_monitor.yaml``` and the documentation [above](https://github.com/yatush/cyd-tiled-display/tree/main?tab=readme-ov-file#library).
   * Make sure to update *api->encryption->key*.
 * **Enable CYD to execute HA commands** - In your HA, go to *Settings -> Devices and Services -> ESPHome -> <sub>(on your device)</sub> Configure -> Enable "Allow the device to perform Home Assistant actions"*
 * On ESPHome interface, go to the device, and click ```Update```
