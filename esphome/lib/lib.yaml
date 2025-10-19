@@ -647,7 +647,9 @@ script:
       j: int
     then:
       - lambda: |-
-          id(rounded_rectangle).execute(id(x_start)[i], id(y_start)[j], id(x_rect), id(y_rect), id(border_r), id(gray));
+          for (int delta = 0; delta < id(tile_border_width); ++delta) {
+            id(rounded_rectangle).execute(id(x_start)[i]+delta, id(y_start)[j]+delta, id(x_rect) - 2*delta, id(y_rect) - 2*delta, id(border_r) - delta, id(gray));
+          }
 
   - id: tile_blinds_up
     parameters:

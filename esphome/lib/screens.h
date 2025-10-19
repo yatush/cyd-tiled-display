@@ -79,11 +79,13 @@ public:
       auto x = id(x_start)[id(cols) - 1], y = id(x_start)[0], w = id(x_rect),
            h = id(y_rect), r = id(border_r), start_x = id(width) - 83,
            end_y = 30;
-      id(disp).start_clipping(x + w - r - 1, y, x + w, y + r);
-      circle(x + w - r - 1, y + r, r, id(dark_dark_gray));
-      id(disp).end_clipping();
-      line(start_x, y, x + w - r - 1, y, id(dark_dark_gray));
-      line(x + w - 1, y + r, x + w - 1, end_y, id(dark_dark_gray));
+      for (int delta = 0; delta < id(tile_border_width); ++delta) {
+        id(disp).start_clipping(x + w - r - 1, y, x + w, y + r);
+        circle(x + w - r - 1, y + r, r - delta, id(dark_dark_gray));
+        id(disp).end_clipping();
+        line(start_x, y + delta, x + w - r - 1, y + delta, id(dark_dark_gray));
+        line(x + w - 1 - delta, y + r, x + w - 1 - delta, end_y, id(dark_dark_gray));
+      }
     }
     // Call the base class function to draw the Wi-Fi icon and time.
     Screen::drawWifiHour();

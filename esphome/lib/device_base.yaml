@@ -57,6 +57,9 @@ globals:
   - id: height
     type: int
     initial_value: "240"
+  - id: tile_border_width
+    type: int
+    initial_value: "1"
 
 display:
   - platform: ili9xxx
