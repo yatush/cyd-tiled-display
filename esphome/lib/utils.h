@@ -1,8 +1,12 @@
+#ifndef UTILS_H_
+#define UTILS_H_
+
 #include <iostream>
 #include <regex>
 #include <set>
 #include <string>
 #include <vector>
+#include <map>
 
 // --- String repository ---
 
@@ -402,12 +406,32 @@ Color mbb(Color value) {
   return value;
 }
 
+class TileFonts {
+public:
+  enum Size {
+    BIG,
+    SMALL
+  };
+  static std::map<TileFonts::Size, BaseFont*> fonts;
+};
+
+inline std::map<TileFonts::Size, BaseFont*> TileFonts::fonts = {};
+
+
 void print (int x, int y, BaseFont *font, Color color, TextAlign align, const char *text) {
   id(disp).print(x, y, font, mbb(color), align, text);
 }
 
+void print (int x, int y, TileFonts::Size font_size, Color color, TextAlign align, const char *text) {
+  id(disp).print(x, y, TileFonts::fonts[font_size], mbb(color), align, text);
+}
+
 void print (int x, int y, BaseFont *font, Color color, const char *text) {
   id(disp).print(x, y, font, mbb(color), text);
+}
+
+void print (int x, int y, TileFonts::Size font_size, Color color, const char *text) {
+  id(disp).print(x, y, TileFonts::fonts[font_size], mbb(color), text);
 }
 
 void line (int x1, int y1, int x2, int y2, Color color) {
@@ -439,3 +463,5 @@ void printf(int x, int y, BaseFont *font, Color color, TextAlign align, const ch
 void strftime (int x, int y, BaseFont *font, Color color, TextAlign align, const char *format, ESPTime time) {
   id(disp).strftime(x, y, font, mbb(color), align, format, time);
 }
+
+#endif // UTILS_H_
