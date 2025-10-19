@@ -716,7 +716,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], id(mdi_largish), id(light_purple), TextAlign::CENTER, "\U0000e286");
+          print(id(x_mid)[x], id(y_mid)[y], id(mdi_large), id(light_purple), TextAlign::CENTER, "\U0000e286");
 
   - id: action_blinds_mid
     parameters:
