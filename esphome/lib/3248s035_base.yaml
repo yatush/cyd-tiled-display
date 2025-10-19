@@ -1,0 +1,161 @@
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+captive_portal:
+
+spi:
+  id: spi_bus1
+  clk_pin: GPIO14
+  mosi_pin: GPIO13
+  miso_pin: GPIO12
+
+output: 
+  - platform: ledc
+    pin: GPIO27
+    id: backlight_pwm
+  - platform: ledc
+    id: output_red
+    pin: GPIO4
+    inverted: true
+  - platform: ledc
+    id: output_green
+    pin: GPIO16
+    inverted: true
+  - platform: ledc
+    id: output_blue
+    pin: GPIO17
+    inverted: true
+
+i2c:
+  id: i2c_bus1
+  sda: GPIO33
+  scl: GPIO32
+
+sensor:
+  - platform: adc
+    pin: GPIO34
+    id: board_ldr
+    name: "board_ldr"
+    update_interval: 1000ms
+    entity_category: "diagnostic"
+    accuracy_decimals: 3
+    internal: true
+
+uart:
+  tx_pin: GPIO22
+  rx_pin: GPIO21
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+
+globals:
+  - id: render_diffs
+    type: bool
+    initial_value: "false"
+  - id: width
+    type: int
+    initial_value: "480"
+  - id: height
+    type: int
+    initial_value: "320"
+  - id: tile_border_width
+    type: int
+    initial_value: "2"
+
+display:
+  - platform: mipi_spi
+    id: disp
+    model: ST7796
+    spi_id: spi_bus1
+    dc_pin: GPIO2
+    cs_pin: GPIO15
+    invert_colors: False
+    update_interval: 10s
+    color_order: RGB
+    color_depth: 8BIT
+    buffer_size : 70%
+    dimensions:
+      height: 320
+      width: 480
+    data_rate: 40000000.0
+    rotation: 90
+    on_page_change:
+      then:
+        - lambda: |-
+            id(change_page_ms) = millis();
+    pages:
+      - id: calib
+        lambda: |-
+          if (id(touch_calibration).state) {
+            id(disp).fill(id(Color::WHITE));
+            id(disp).filled_circle(id(last_x), id(last_y), 10, id(red));
+            id(disp).printf(id(width) / 2, id(height) / 2 - 15, id(roboto_20), Color::BLACK, TextAlign::CENTER,
+                          "x=%d, y=%d", id(last_x), id(last_y));
+            id(disp).printf(id(width) / 2, id(height) / 2 + 15, id(roboto_20), Color::BLACK, TextAlign::CENTER,
+                          "x_raw=%d, y_raw=%0d", id(last_x_raw), id(last_y_raw));
+          }
+
+      - id: pref
+        lambda: |-
+          id(draw_page).execute();
+
+      - id: controllers
+        lambda: |-
+          id(draw_page).execute();
+
+      - id: ac_settings
+        lambda: |-
+          id(draw_page).execute();
+
+      - id: disp_settings
+        lambda: |-
+          id(draw_page).execute();
+
+      - id: light_settings
+        lambda: |-
+          id(draw_page).execute();
+
+      - id: cover_settings
+        lambda: |-
+          id(draw_page).execute();
+
+      - id: cover_settings_2
+        lambda: |-
+          id(draw_page).execute();
+
+touchscreen:
+  - platform: gt911
+    address: 0x5D
+    id: touchscreen_id
+    display: disp
+    i2c_id: i2c_bus1
+    transform: 
+      swap_xy: True
+      mirror_x: False
+      mirror_y: True
+    on_touch:
+      then:
+        - light.turn_on: backlight
+        - lambda: |-
+            auto now = millis();
+            id(last_activity_ms) = now;
+            id(last_touch_ms) = now;
+            id(last_x) = touch.x;
+            id(last_y) = touch.y;
+            if (id(turn_on_ms) == 0) {
+              id(turn_on_ms) = now;
+            }
+            if (id(touch_calibration).state) {
+              id(last_x) = touch.x;
+              id(last_y) = touch.y;
+              id(last_x_raw) = touch.x_raw;
+              id(last_y_raw) = touch.y_raw;
+            }
