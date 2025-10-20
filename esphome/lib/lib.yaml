@@ -881,8 +881,33 @@ script:
           int slider_pos = DRAW_ONLY(id(backlight).remote_values.get_brightness() * 100 - 32);
           bool adapt = DRAW_ONLY(id(adaptive_brightness));
           handle_caching(std::make_pair(x, y), slider_pos, adapt);
+ 
+          // Sizes
+          auto icon_size = measure(id(mdi_60), icon.c_str());
+          auto cm_size = measure(id(roboto_12), cm.c_str());
+          auto numbers_size = measure(id(roboto_20_bold), "0");
+
+          ESP_LOGE("TileDistance", "Sizes: icon(%d,%d), cm(%d,%d), numbers(%d,%d)",
+                   icon_size.first, icon_size.second,
+                   cm_size.first, cm_size.second,
+                   numbers_size.first, numbers_size.second); Sizes: icon(45,72), cm(37,14), numbers(11,23)
+          
+          std::string icon = "\U0000e518";
+          auto icon_size = measure(id(mdi_60), icon.c_str());
+          int slider_width = id(x_rect) / 9 * 7, slider_height = id(y_rect) / 9, slider_start = id(x_pad) + (id(x_rect) - slider_width) / 2 + 1;
+          int slide_y_gap = 
+          auto time_size = measure(id(roboto_20), "0");
+          auto counter_size = measure(id(roboto_12), "0");
+
+          int y_gap = id(y_rect) / 10;
+          int total_y = icon_size.second + y_gap + time_size.second;
+          int icon_y = id(y_mid)[y] - (time_size.second + y_gap) / 2;
+          int time_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+          int counter_y = icon_y + (counter_size.second) / 2 + icon_size.second / 8;
+
+
+
           print(id(x_mid)[x], id(y_mid)[y] - 10, id(mdi_60), id(light_yellow), TextAlign::CENTER, "\U0000e518");
-          int slider_width = 70, slider_height = 10, slider_start = id(x_pad) + (id(x_rect) - slider_width) / 2 + 1;
           filled_rectangle(
               slider_start + 1, id(y_mid)[y] + 33,
               slider_pos,
@@ -902,9 +927,21 @@ script:
           int sleep_t = DRAW_ONLY(id(sleep_time));
           int counter = DRAW_ONLY(((millis() - id(last_activity_ms)) / 1000)); 
           handle_caching(std::make_pair(x, y), sleep_t, counter);
-          print(id(x_mid)[x], id(y_mid)[y] - 9, id(mdi_60), id(light_purple), TextAlign::CENTER, "\U0000e425");
-          printf(id(x_mid)[x], id(y_mid)[y] + 37, id(roboto_20), id(light_purple), TextAlign::CENTER, "%d", sleep_t);
-          printf(id(x_mid)[x], id(y_mid)[y] + 2, id(roboto_12), id(light_blue), TextAlign::CENTER, "%d", counter);
+
+          std::string icon = "\U0000e425";
+          auto icon_size = measure(id(mdi_60), icon.c_str());
+          auto time_size = measure(id(roboto_20), "0");
+          auto counter_size = measure(id(roboto_12), "0");
+
+          int y_gap = id(y_rect) / 10;
+          int total_y = icon_size.second + y_gap + time_size.second;
+          int icon_y = id(y_mid)[y] - (time_size.second + y_gap) / 2;
+          int time_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+          int counter_y = icon_y + (counter_size.second) / 2 + icon_size.second / 8;
+
+          print(id(x_mid)[x], icon_y, id(mdi_60), id(light_purple), TextAlign::CENTER, icon.c_str());
+          printf(id(x_mid)[x], time_y, id(roboto_20), id(light_purple), TextAlign::CENTER, "%d", sleep_t);
+          printf(id(x_mid)[x], counter_y, id(roboto_12), id(light_blue), TextAlign::CENTER, "%d", counter);
 
   - id: tile_distance
     parameters:
@@ -917,34 +954,37 @@ script:
           bool nan_moving_dist = DRAW_ONLY(isnan(id(moving_distance).state));
           int moving_dist = DRAW_ONLY(id(moving_distance).state);
           handle_caching(std::make_pair(x, y), wakeup_dist, moving_dist, nan_moving_dist);
-          
-          // Strings
-          std::string icon = "\U0000e536";
-          std::string cm = "< c m >";
-          
-          // Sizes
-          auto icon_size = measure(id(mdi_60), icon.c_str());
-          auto cm_size = measure(id(roboto_12), cm.c_str());
-          auto numbers_size = measure(id(roboto_20_bold), "0");
 
-          ESP_LOGE("TileDistance", "Sizes: icon(%d,%d), cm(%d,%d), numbers(%d,%d)",
-                   icon_size.first, icon_size.second,
-                   cm_size.first, cm_size.second,
-                   numbers_size.first, numbers_size.second); Sizes: icon(45,72), cm(37,14), numbers(11,23)
-
-          int icon_width = icon_size.first;
           if (wakeup_dist == 0) {
             print(id(x_mid)[x], id(y_mid)[y], TileFonts::SMALL, id(gray), TextAlign::CENTER, "\U0000e913");
           } else {
+            // Strings
+            std::string icon = "\U0000e536";
+            std::string cm = "< c m >";
+            
+            // Sizes
+            auto icon_size = measure(id(mdi_60), icon.c_str());
+            auto cm_size = measure(id(roboto_12), cm.c_str());
+            auto numbers_size = measure(id(roboto_20_bold), "0");
+
+            int y_gap = id(y_rect) / 15;
+            int icon_y = id(y_mid)[y] - (number_size.second + y_gap) / 2;
+
+            int x_diff = std::abs(icon_size.first - cm_size.first);
+            int delta_x = std::max(icon_size.first, cm_size.first) / 2 + math.max(0, id(y_rect) / 18 - x_diff);
+
             auto person_color = id(radar_has_moving_target).state ? id(red) : id(gray);
             auto numbers_color = wakeup_dist > moving_dist ? id(light_red) : id(gray);
-            printf(id(x_mid)[x] + icon_width / 2, id(y_mid)[y] - 25, id(roboto_20_bold), numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
-            printf(id(x_mid)[x] + 22, id(y_mid)[y] - 10, id(roboto_12), numbers_color, TextAlign::CENTER, "< c m >");
-            print(id(x_mid)[x] - 22, id(y_mid)[y] - 10, id(mdi_60), person_color, TextAlign::CENTER, "\U0000e536");
+
+            printf(id(x_mid)[x] + delta_x, icon_y - number_size.second / 2 - cm_size.second / 2 - 3, id(roboto_20_bold), numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
+            printf(id(x_mid)[x] + delta_x, icon_y, id(roboto_12), numbers_color, TextAlign::CENTER, cm.c_str());
+            print(id(x_mid)[x] - delta_x, icon_y, id(mdi_60), person_color, TextAlign::CENTER, icon.c_str());
+
+            int bottom_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
             if (nan_moving_dist) {
-              printf(id(x_mid)[x], id(y_mid)[y] + 33, id(roboto_20), id(gray), TextAlign::CENTER, "------");
+              printf(id(x_mid)[x], bottom_y, id(roboto_20), id(gray), TextAlign::CENTER, "------");
             } else {
-              printf(id(x_mid)[x], id(y_mid)[y] + 33, id(roboto_20), numbers_color, TextAlign::CENTER, "%.0fcm", moving_dist);
+              printf(id(x_mid)[x], bottom_y, id(roboto_20), numbers_color, TextAlign::CENTER, "%.0fcm", moving_dist);
             }
           }
 
