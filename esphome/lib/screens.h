@@ -104,7 +104,9 @@ public:
     for (Tile* tile : this->tiles_) {
       if (tile->checkActivationMaybeToggle()) {
         tile->draw();
-        prev_tiles.push_back(tile);
+        if (id(render_diffs)) {
+          prev_tiles.push_back(tile);
+        }
       }
     }
     this->drawWifiHour();
