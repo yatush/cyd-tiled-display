@@ -457,7 +457,7 @@ void printf(int x, int y, BaseFont *font, Color color, const char *format, Args&
 
 template<typename... Args>
 void printf(int x, int y, TileFonts::Size font_size, Color color, const char *format, Args&&... args) {
-  id(disp).printf(x, y, ileFonts::fonts[font_size], mbb(color), format, std::forward<Args>(args)...);
+  id(disp).printf(x, y, TileFonts::fonts[font_size], mbb(color), format, std::forward<Args>(args)...);
 }
 
 template<typename... Args>
@@ -479,15 +479,13 @@ void strftime (int x, int y, TileFonts::Size font_size, Color color, TextAlign a
 }
 
 std::pair<int, int> measure(BaseFont* font, const char* str) {
-  int width, x_offset, baseline, heightף
+  int width, x_offset, baseline, height;
   font->measure(str, &width, &x_offset, &baseline, &height);
-  return {width, height};
+  return std::pair{width, height};
 }
 
 std::pair<int, int> measure(TileFonts::Size font_size, const char* str) {
-  int width, x_offset, baseline, heightף
-  TileFonts::fonts[font_size]->measure(str, &width, &x_offset, &baseline, &height);
-  return {width, height};
+  return measure(TileFonts::fonts[font_size], str);
 }
 
 #endif // UTILS_H_
