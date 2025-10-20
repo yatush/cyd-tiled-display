@@ -66,7 +66,12 @@ script:
     then:
       - lambda: |-
           TileFonts::fonts[TileFonts::Size::BIG] = id(mdi_80);
-          TileFonts::fonts[TileFonts::Size::SMALL] = id(mdi_60);
+          TileFonts::fonts[TileFonts::Size::MEDIUM] = id(mdi_60);
+          TileFonts::fonts[TileFonts::Size::SMALL] = id(mdi_40);
+          TileFonts::fonts[TileFonts::Size::TEXT_BOLD] = id(roboto_20_bold);
+          TileFonts::fonts[TileFonts::Size::TEXT] = id(roboto_20);
+          TileFonts::fonts[TileFonts::Size::TEXT_SMALL] = id(roboto_12);
+          TileFonts::fonts[TileFonts::Size::TEXT_BIG_BOLD] = id(roboto_30_bold);
 
 display:
   - platform: ili9xxx

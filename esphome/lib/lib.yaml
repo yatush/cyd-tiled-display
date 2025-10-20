@@ -196,6 +196,8 @@ font:
         "\U0000eb97", # Display settings
         "\U0000f02a", # Light from ceiling
         "\U0000e88a", # House
+        "\U0000eacf", # Arrow up
+        "\U0000ead0", # Arrow down
       ]
 
   - file: "gfonts://Material+Symbols+Outlined"
@@ -220,6 +222,9 @@ font:
         "\U0000f418", # Power
         "\U0000e8b8", # Settings
         "\U0000e5c4", # Back
+        "\U0000e425", # Timer
+        "\U0000f02a", # Light from ceiling
+        "\U0000e88a", # House
       ]
 
   - file: "gfonts://Material+Symbols+Outlined"
@@ -243,6 +248,7 @@ font:
         "\U0000e8d5", # Arrow up/down
         "\U0000f418", # Power
         "\U0000e8b8", # Settings
+        "\U0000e5c4", # Back
       ]
 
   - file: "gfonts://Material+Symbols+Outlined"
@@ -255,6 +261,10 @@ font:
   - file: "gfonts://Roboto"
     id: roboto_20
     size: 20
+  
+  - file: "gfonts://Roboto"
+    id: roboto_30
+    size: 30
 
   - file: "gfonts://Roboto@900"
     id: roboto_20_bold
@@ -263,10 +273,36 @@ font:
   - file: "gfonts://Roboto@900"
     id: roboto_30_bold
     size: 30
+  - file: "gfonts://Roboto@900"
+    id: roboto_40_bold
+    size: 40
 
   - file: "gfonts://Roboto@900"
     id: roboto_12
     size: 12
+    glyphs:
+      [
+        "\U0000003c",
+        "\U0000003e",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "c",
+        "m",
+        "\U00000020",
+        "\U00000022",
+      ]
+
+  - file: "gfonts://Roboto@900"
+    id: roboto_18
+    size: 18
     glyphs:
       [
         "\U0000003c",
@@ -801,24 +837,20 @@ script:
           int text_y = id(y_mid)[y] + (show_up ? -1 : 1) * delta_y;
           auto color = show_up ? id(blue) : id(red);
           const char* symbol = show_up ? "\U0000eacf" : "\U0000ead0";
-          if (one) {
-            print(text_x, text_y, TileFonts::BIG, color, TextAlign::CENTER, symbol);
-          } else {
-            print(text_x, text_y, id(mdi_40), color, TextAlign::CENTER, symbol);
-          }
+          print(text_x, text_y, one ? TileFonts::BIG : TileFonts::SMALL, color, TextAlign::CENTER, symbol);
 
           if (show_up) {
             if (one) {
               print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, TileFonts::BIG, id(blue), TextAlign::CENTER, "\U0000eacf");
             } else {
-              print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, id(mdi_40), id(blue), TextAlign::CENTER, "\U0000eacf");
+              print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, TileFonts::SMALL, id(blue), TextAlign::CENTER, "\U0000eacf");
             }
           }
           if (show_down) {
             if (one) {
               print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, TileFonts::BIG, id(red), TextAlign::CENTER, "\U0000ead0");
             } else {
-              print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, id(mdi_40),  id(red), TextAlign::CENTER, "\U0000ead0");
+              print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, TileFonts::SMALL, id(red), TextAlign::CENTER, "\U0000ead0");
             }
           }
 
@@ -883,23 +915,23 @@ script:
           handle_caching(std::make_pair(x, y), brightness, adapt);
           
           std::string icon = "\U0000e518";
-          auto icon_size = measure(id(mdi_60), icon.c_str());
+          auto icon_size = measure(TileFonts::MEDIUM, icon.c_str());
           int slider_width = id(x_rect) / 9 * 7;
           int slider_height = id(y_rect) / 9 / 2 * 2;
           int slider_start = id(x_pad) + (id(x_rect) - slider_width) / 2 + 1;
-          int y_gap = 5;
-          auto auto_size = measure(id(roboto_20_bold), "0");
+          int y_gap = 2;
+          auto auto_size = measure(TileFonts::TEXT_BOLD, "0");
           int icon_y = id(y_mid)[y] - (auto_size.second + y_gap) / 2;
           int slider_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
 
-          print(id(x_mid)[x], icon_y, id(mdi_60), id(light_yellow), TextAlign::CENTER, icon.c_str());
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(light_yellow), TextAlign::CENTER, icon.c_str());
           filled_rectangle(
               slider_start + 1, slider_y - slider_height / 2 + 1,
               brightness * slider_width / 100 - 2,
               slider_height - 2, adapt ? id(dark_gray) : id(yellow));
           rectangle(slider_start, slider_y - slider_height / 2, slider_width, slider_height, adapt ? id(gray) : id(light_yellow));
           if (adapt) {
-            print(id(x_mid)[x], slider_y, id(roboto_20_bold), id(yellow), TextAlign::CENTER, "Auto");
+            print(id(x_mid)[x], slider_y, TileFonts::TEXT_BOLD, id(yellow), TextAlign::CENTER, "Auto");
           }
 
   - id: tile_wakeup_time
@@ -914,18 +946,17 @@ script:
           handle_caching(std::make_pair(x, y), sleep_t, counter);
 
           std::string icon = "\U0000e425";
-          auto icon_size = measure(id(mdi_60), icon.c_str());
-          auto time_size = measure(id(roboto_20), "0");
-          auto counter_size = measure(id(roboto_12), "0");
+          auto icon_size = measure(TileFonts::MEDIUM, icon.c_str());
+          auto time_size = measure(TileFonts::TEXT, "0");
+          auto counter_size = measure(TileFonts::TEXT_SMALL, "0");
 
-          int y_gap = 5;
-          int icon_y = id(y_mid)[y] - (time_size.second + y_gap) / 2;
-          int time_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
-          int counter_y = icon_y + (counter_size.second) / 2 + icon_size.second / 7;
+          int icon_y = id(y_mid)[y] - time_size.second / 2;
+          int time_y = id(y_mid)[y] + icon_size.second / 2;
+          int counter_y = icon_y + counter_size.second / 2 + icon_size.second / 12;
 
-          print(id(x_mid)[x], icon_y, id(mdi_60), id(light_purple), TextAlign::CENTER, icon.c_str());
-          printf(id(x_mid)[x], time_y, id(roboto_20), id(light_purple), TextAlign::CENTER, "%d", sleep_t);
-          printf(id(x_mid)[x], counter_y, id(roboto_12), id(light_blue), TextAlign::CENTER, "%d", counter);
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(light_purple), TextAlign::CENTER, icon.c_str());
+          printf(id(x_mid)[x], time_y, TileFonts::TEXT, id(light_purple), TextAlign::CENTER, "%d", sleep_t);
+          printf(id(x_mid)[x], counter_y, TileFonts::TEXT_SMALL, id(light_blue), TextAlign::CENTER, "%d", counter);
 
   - id: tile_distance
     parameters:
@@ -940,19 +971,18 @@ script:
           handle_caching(std::make_pair(x, y), wakeup_dist, moving_dist, nan_moving_dist);
 
           if (wakeup_dist == 0) {
-            print(id(x_mid)[x], id(y_mid)[y], TileFonts::SMALL, id(gray), TextAlign::CENTER, "\U0000e913");
+            print(id(x_mid)[x], id(y_mid)[y], TileFonts::MEDIUM, id(gray), TextAlign::CENTER, "\U0000e913");
           } else {
             // Strings
             std::string icon = "\U0000e536";
             std::string cm = "< c m >";
             
             // Sizes
-            auto icon_size = measure(id(mdi_60), icon.c_str());
-            auto cm_size = measure(id(roboto_12), cm.c_str());
-            auto numbers_size = measure(id(roboto_20_bold), "0");
+            auto icon_size = measure(TileFonts::MEDIUM, icon.c_str());
+            auto cm_size = measure(TileFonts::TEXT_SMALL, cm.c_str());
+            auto numbers_size = measure(TileFonts::TEXT_BOLD, "0");
 
-            int y_gap = 3;
-            int icon_y = id(y_mid)[y] - (numbers_size.second + y_gap) / 2;
+            int icon_y = id(y_mid)[y] - numbers_size.second / 2;
 
             int x_diff = std::abs(icon_size.first - cm_size.first);
             int delta_x = std::max(icon_size.first, cm_size.first) / 2 + std::max(0, id(y_rect) / 18 - x_diff);
@@ -960,15 +990,15 @@ script:
             auto person_color = id(radar_has_moving_target).state ? id(red) : id(gray);
             auto numbers_color = wakeup_dist > moving_dist ? id(light_red) : id(gray);
 
-            printf(id(x_mid)[x] + delta_x, icon_y - numbers_size.second / 2 - cm_size.second / 2 - 3, id(roboto_20_bold), numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
-            printf(id(x_mid)[x] + delta_x, icon_y, id(roboto_12), numbers_color, TextAlign::CENTER, cm.c_str());
-            print(id(x_mid)[x] - delta_x, icon_y, id(mdi_60), person_color, TextAlign::CENTER, icon.c_str());
+            printf(id(x_mid)[x] + delta_x, icon_y - numbers_size.second / 2 - cm_size.second / 2, TileFonts::TEXT_BOLD, numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
+            printf(id(x_mid)[x] + delta_x, icon_y, TileFonts::TEXT_SMALL, numbers_color, TextAlign::CENTER, cm.c_str());
+            print(id(x_mid)[x] - delta_x, icon_y, TileFonts::MEDIUM, person_color, TextAlign::CENTER, icon.c_str());
 
-            int bottom_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+            int bottom_y = id(y_mid)[y] + icon_size.second / 2;
             if (nan_moving_dist) {
-              printf(id(x_mid)[x], bottom_y, id(roboto_20), id(gray), TextAlign::CENTER, "------");
+              printf(id(x_mid)[x], bottom_y, TileFonts::TEXT, id(gray), TextAlign::CENTER, "------");
             } else {
-              printf(id(x_mid)[x], bottom_y, id(roboto_20), numbers_color, TextAlign::CENTER, "%.0fcm", moving_dist);
+              printf(id(x_mid)[x], bottom_y, TileFonts::TEXT, numbers_color, TextAlign::CENTER, "%.0fcm", moving_dist);
             }
           }
 
@@ -979,7 +1009,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::SMALL, id(gray), TextAlign::CENTER, "\U0000e8b8");
+          print(id(x_mid)[x], id(y_mid)[y], TileFonts::MEDIUM, id(gray), TextAlign::CENTER, "\U0000e8b8");
 
   - id: tile_ac_settings
     parameters:
@@ -1055,15 +1085,14 @@ script:
           
           std::string icon = "\U0000f02a";
           // Sizes
-          auto icon_size = measure(id(mdi_60), icon.c_str());
-          auto text_size = measure(id(roboto_20_bold), "0");
-          int y_gap = 5;
+          auto icon_size = measure(TileFonts::MEDIUM, icon.c_str());
+          auto text_size = measure(TileFonts::TEXT_BOLD, "0");
 
-          int icon_y = id(y_mid)[y] - (text_size.second + y_gap) / 2;
-          int text_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+          int icon_y = id(y_mid)[y] - text_size.second / 2;
+          int text_y = id(y_mid)[y] + icon_size.second / 2;
 
-          print(id(x_mid)[x], icon_y, id(mdi_60), entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
   - id: tile_choose_cover
     parameters:
@@ -1080,15 +1109,14 @@ script:
 
           std::string icon = "\U0000e286";
           // Sizes
-          auto icon_size = measure(id(mdi_60), icon.c_str());
-          auto text_size = measure(id(roboto_20_bold), "0");
-          int y_gap = 5;
+          auto icon_size = measure(TileFonts::MEDIUM, icon.c_str());
+          auto text_size = measure(TileFonts::TEXT_BOLD, "0");
 
-          int icon_y = id(y_mid)[y] - (text_size.second + y_gap) / 2;
-          int text_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+          int icon_y = id(y_mid)[y] - text_size.second / 2;
+          int text_y = id(y_mid)[y] + icon_size.second / 2;
 
-          print(id(x_mid)[x], icon_y, id(mdi_60), entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
   - id: tile_cover_name
     parameters:
@@ -1103,20 +1131,19 @@ script:
 
           std::string icon = "\U0000e286";
           // Sizes
-          auto icon_size = measure(id(mdi_60), icon.c_str());
-          auto text_size = measure(id(roboto_20_bold), "0");
-          int y_gap = 5;
+          auto icon_size = measure(TileFonts::MEDIUM, icon.c_str());
+          auto text_size = measure(TileFonts::TEXT_BOLD, "0");
 
-          int icon_y = id(y_mid)[y] - (text_size.second + y_gap) / 2;
-          int text_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+          int icon_y = id(y_mid)[y] - text_size.second / 2;
+          int text_y = id(y_mid)[y] + icon_size.second / 2;
 
           print(id(x_start)[x] + 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
           print(id(x_start)[x] + id(x_rect) - 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
-          print(id(x_mid)[x], icon_y, id(mdi_60), id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, name.c_str());
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
+          print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
           if (entity != "*") {
             std::string position = GetTextSensorValue(entity + "|current_position") + "%";
-            print(id(x_mid)[x], text_y - (text_size.second + y_gap), id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, position.c_str());
+            print(id(x_mid)[x], text_y - (text_size.second + y_gap), TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, position.c_str());
           }
 
   - id: tile_room
@@ -1131,17 +1158,16 @@ script:
 
           std::string icon = "\U0000e88a";
           // Sizes
-          auto icon_size = measure(id(mdi_60), icon.c_str());
-          auto text_size = measure(id(roboto_20_bold), "0");
-          int y_gap = 5;
+          auto icon_size = measure(TileFonts::MEDIUM, icon.c_str());
+          auto text_size = measure(TileFonts::TEXT_BOLD, "0");
 
-          int icon_y = id(y_mid)[y] - (text_size.second + y_gap) / 2;
-          int text_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+          int icon_y = id(y_mid)[y] - text_size.second / 2;
+          int text_y = id(y_mid)[y] + icon_size.second / 2;
 
           print(id(x_start)[x] + 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
           print(id(x_start)[x] + id(x_rect) - 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
-          print(id(x_mid)[x], icon_y, id(mdi_60), id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(roboto_20_bold), Color::WHITE, TextAlign::CENTER, name.c_str());
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
+          print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
 
   - id: tile_back_arrow
     parameters:
@@ -1150,7 +1176,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::SMALL, id(gray), TextAlign::CENTER, "\U0000e5c4");
+          print(id(x_mid)[x], id(y_mid)[y], TileFonts::MEDIUM, id(gray), TextAlign::CENTER, "\U0000e5c4");
 
   - id: tile_temp_up
     parameters:
@@ -1207,7 +1233,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], id(roboto_30_bold), id(gray), TextAlign::CENTER, "Mode");
+          print(id(x_mid)[x], id(y_mid)[y], TileFonts::TEXT_BIG_BOLD, id(gray), TextAlign::CENTER, "Mode");
 
   - id: action_ac_mode
     parameters:
@@ -1236,7 +1262,7 @@ script:
           std::string state = DRAW_ONLY(entities[0]);
           std::string entity = DRAW_ONLY(entities[1]);
           handle_caching(std::make_pair(x, y), state, entity);
-          print((id(x_mid)[x] + id(x_mid)[x+1]) / 2, id(y_mid)[y], id(roboto_30_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
+          print((id(x_mid)[x] + id(x_mid)[x+1]) / 2, id(y_mid)[y], TileFonts::TEXT_BIG_BOLD, id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
 
   - id: draw_page
     then:

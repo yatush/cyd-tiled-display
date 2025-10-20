@@ -410,7 +410,12 @@ class TileFonts {
 public:
   enum Size {
     BIG,
-    SMALL
+    MEDIUM,
+    SMALL,
+    TEXT_BOLD,
+    TEXT,
+    TEXT_SMALL,
+    TEXT_BIG_BOLD,
   };
   static std::map<TileFonts::Size, BaseFont*> fonts;
 };
