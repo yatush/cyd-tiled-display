@@ -13,8 +13,10 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 <p align="center">
   <img src="/images/cyd-tiled-display.png" width="400" />
-  <img src="/images/cyd-vid.gif" />
-  <img src="/images/cyd-move.png" width="400" /></br>  
+  <img src="/images/cyd-vid.gif" width="300"/>
+  <img src="/images/cyd-move.png" width="400" />
+  <img src="/images/2displays.png" width="300" />
+  </br>  
 </p>
 
 # Hardware
