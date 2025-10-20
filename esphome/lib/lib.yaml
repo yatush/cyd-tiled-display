@@ -917,6 +917,16 @@ script:
           bool nan_moving_dist = DRAW_ONLY(isnan(id(moving_distance).state));
           int moving_dist = DRAW_ONLY(id(moving_distance).state);
           handle_caching(std::make_pair(x, y), wakeup_dist, moving_dist, nan_moving_dist);
+          
+          // Strings
+          std::string icon = "\U0000e913";
+          std::string cm = "< c m >";
+          
+          // Sizes
+          auto icon_size = measure(id(mdi_60), icon.c_str());
+          auto cm_size = measure(id(roboto_12), cm.c_str());
+          auto numbers_size = measure(id(roboto_20_bold), "0");
+
           if (wakeup_dist == 0) {
             print(id(x_mid)[x], id(y_mid)[y], id(mdi_60), id(gray), TextAlign::CENTER, "\U0000e913");
           } else {
