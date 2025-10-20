@@ -97,16 +97,14 @@ public:
       for (Tile* tile : prev_tiles) {
         tile->draw();
       }
-      prev_tiles.clear();
       this->drawWifiHour();
     }
+    prev_tiles.clear();
     DrawState::is_delete_mode = false;
     for (Tile* tile : this->tiles_) {
       if (tile->checkActivationMaybeToggle()) {
         tile->draw();
-        if (id(render_diffs)) {
-          prev_tiles.push_back(tile);
-        }
+        prev_tiles.push_back(tile);
       }
     }
     this->drawWifiHour();
