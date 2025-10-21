@@ -412,6 +412,7 @@ public:
     BIG,
     MEDIUM,
     SMALL,
+    TINY,
     TEXT_BOLD,
     TEXT,
     TEXT_SMALL,

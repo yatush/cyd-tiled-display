@@ -149,7 +149,7 @@ switch:
 
 font:
   - file: "gfonts://Material+Symbols+Outlined"
-    id: mdi_medium
+    id: mdi_24
     size: 24
     glyphs: [
         "\U0000f063", # No wifi
@@ -163,7 +163,23 @@ font:
         "\U0000e913", # Touch
         "\U0000e5cc", # Chevron right
         "\U0000e5cb", # Chevron left
-
+      ]
+  
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: mdi_32
+    size: 32
+    glyphs: [
+        "\U0000f063", # No wifi
+        "\U0000f0b0", # Low wifi
+        "\U0000ebe4", # Wifi 1
+        "\U0000ebd6", # Wifi 2
+        "\U0000ebe1", # Wifi 3
+        "\U0000e1d8", # Wifi 4
+        "\U0000e286", # Blinds
+        "\U0000e536", # Walking man
+        "\U0000e913", # Touch
+        "\U0000e5cc", # Chevron right
+        "\U0000e5cb", # Chevron left
       ]
 
   - file: "gfonts://Material+Symbols+Outlined"
@@ -855,7 +871,7 @@ script:
           }
 
           if (!any) {
-            int gap = id(tile_x) / 6;
+            int gap = id(x_rect) / 6;
             line(id(x_start)[x] + gap, id(y_start)[y] + id(y_rect) - gap, id(x_start)[x] + id(x_rect) - gap, id(y_start)[y] + gap, id(gray));
           }
 
@@ -1138,13 +1154,13 @@ script:
           int icon_y = id(y_mid)[y] - text_size.second / 2;
           int text_y = id(y_mid)[y] + icon_size.second / 2;
 
-          print(id(x_start)[x] + 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
-          print(id(x_start)[x] + id(x_rect) - 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
+          print(id(x_start)[x] + 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cb");
+          print(id(x_start)[x] + id(x_rect) - 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cc");
           print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
           print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
           if (entity != "*") {
             std::string position = GetTextSensorValue(entity + "|current_position") + "%";
-            print(id(x_mid)[x], text_y - (text_size.second + y_gap), TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, position.c_str());
+            print(id(x_mid)[x], text_y - (text_size.second), TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, position.c_str());
           }
 
   - id: tile_room
@@ -1165,8 +1181,8 @@ script:
           int icon_y = id(y_mid)[y] - text_size.second / 2;
           int text_y = id(y_mid)[y] + icon_size.second / 2;
 
-          print(id(x_start)[x] + 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cb");
-          print(id(x_start)[x] + id(x_rect) - 15, icon_y, id(mdi_medium), id(gray), TextAlign::CENTER, "\U0000e5cc");
+          print(id(x_start)[x] + 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cb");
+          print(id(x_start)[x] + id(x_rect) - 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cc");
           print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
           print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
 

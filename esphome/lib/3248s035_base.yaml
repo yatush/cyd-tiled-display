@@ -77,6 +77,7 @@ script:
           TileFonts::fonts[TileFonts::Size::BIG] = id(mdi_100);
           TileFonts::fonts[TileFonts::Size::MEDIUM] = id(mdi_80);
           TileFonts::fonts[TileFonts::Size::SMALL] = id(mdi_60);
+          TileFonts::fonts[TileFonts::Size::TINY] = id(mdi_32);
           TileFonts::fonts[TileFonts::Size::TEXT_BOLD] = id(roboto_30_bold);
           TileFonts::fonts[TileFonts::Size::TEXT] = id(roboto_30);
           TileFonts::fonts[TileFonts::Size::TEXT_SMALL] = id(roboto_18);

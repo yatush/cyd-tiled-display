@@ -18,11 +18,21 @@ public:
     std::string wifi_icon = DRAW_ONLY(id(wifi_iconstring));
     esphome::ESPTime espt = DRAW_ONLY(id(esptime).now());
     handle_caching("time", wifi_icon, espt);
-    
+
+    auto sizes = wifiHourWidth();
+    int y = std::get<0>(sizes).second / 2;
+
     // Print the Wi-Fi icon.
-    print(id(width) - 24, 0, &id(mdi_medium), id(wifi_color), wifi_icon.c_str());
+    print(id(width), y, TileFonts::TINY, id(wifi_color), TextAlign::CENTER_RIGHT, wifi_icon.c_str());
     // Print the current time.
-    strftime(id(width) - 30, 3, &id(roboto_20), id(dark_gray), TextAlign::TOP_RIGHT, "%H:%M", espt);
+    strftime(id(width) - std::get<0>(sizes).first - std::get<2>(sizes), y, TileFonts::TEXT, id(dark_gray), TextAlign::CENTER_RIGHT, "%H:%M", espt);
+  }
+
+  std::tuple<std::pair<int, int>, std::pair<int, int>, int> wifiHourWidth() {
+    auto icon_size = measure(TileFonts::TINY, "\U0000e1d8");
+    auto time_size = measure(TileFonts::TEXT, "88:88");
+    int gap = 4;
+    return std::make_tuple(icon_size, time_size, gap);
   }
 
   // Returns the DisplayPage associated with this screen.
@@ -76,15 +86,18 @@ public:
     // Check if any tile is below the Wi-Fi icon.
     if (std::any_of(this->tiles_.begin(), this->tiles_.end(),
                     [](const Tile* tile) { return tile->isBelowWifi(); })) {
-      auto x = id(x_start)[id(cols) - 1], y = id(x_start)[0], w = id(x_rect),
-           h = id(y_rect), r = id(border_r), start_x = id(width) - 83,
-           end_y = 30;
+      auto sizes = wifiHourWidth();
+      auto y = id(x_start)[0], w = id(x_rect),
+           end_x = id(x_start)[id(cols) - 1] + w,
+           h = id(y_rect), r = id(border_r),
+           start_x = id(width) - (std::get<0>(sizes).first + std::get<1>(sizes).first + 2 * std::get<2>(sizes)),
+           end_y = std::get<0>(sizes).second + std::get<2>(sizes);
       for (int delta = 0; delta < id(tile_border_width); ++delta) {
-        id(disp).start_clipping(x + w - r - 1, y, x + w, y + r);
-        circle(x + w - r - 1, y + r, r - delta, id(dark_dark_gray));
+        id(disp).start_clipping(end_x - r - 1, y, end_x, y + r);
+        circle(end_x - r - 1, y + r, r - delta, id(dark_dark_gray));
         id(disp).end_clipping();
-        line(start_x, y + delta, x + w - r - 1, y + delta, id(dark_dark_gray));
-        line(x + w - 1 - delta, y + r, x + w - 1 - delta, end_y, id(dark_dark_gray));
+        line(start_x, y + delta, end_x - r - 1, y + delta, id(dark_dark_gray));
+        line(end_x - 1 - delta, y + r, end_x - 1 - delta, end_y, id(dark_dark_gray));
       }
     }
     // Call the base class function to draw the Wi-Fi icon and time.
