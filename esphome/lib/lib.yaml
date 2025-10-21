@@ -855,7 +855,8 @@ script:
           }
 
           if (!any) {
-            line(id(x_start)[x] + 15, id(y_start)[y] + id(y_rect) - 15, id(x_start)[x] + id(x_rect) - 15, id(y_start)[y] + 15, id(gray));
+            int gap = id(tile_x) / 6;
+            line(id(x_start)[x] + gap, id(y_start)[y] + id(y_rect) - gap, id(x_start)[x] + id(x_rect) - gap, id(y_start)[y] + gap, id(gray));
           }
 
   - id: tile_lights
