@@ -293,23 +293,23 @@ std::function<bool(const std::vector<std::string>&)> IsAnyOn =
 void PerformHaAction(
     const std::string& entity, const std::string& action,
     std::vector<std::pair<std::string, std::string>> data = {}) {
-  HomeassistantServiceResponse resp;
+  HomeassistantActionRequest request;
   // Construct the service name based on the entity and action.
-  resp.set_service(StringRef(
+  request.set_service(StringRef(
       (action.find('.') == -1)
           ? entity.substr(0, entity.find('.')).append(".").append(action)
           : action));
   HomeassistantServiceMap entity_id_kv;
   entity_id_kv.set_key(StringRef("entity_id"));
   entity_id_kv.value = entity;
-  resp.data.push_back(entity_id_kv);
+  request.data.push_back(entity_id_kv);
   // Add any additional data to the service call.
   for (const auto pair : data) {
     entity_id_kv.set_key(StringRef(pair.first));
     entity_id_kv.value = pair.second;
-    resp.data.push_back(entity_id_kv);
+    request.data.push_back(entity_id_kv);
   }
-  id(api_server).send_homeassistant_service_call(resp);
+  id(api_server).send_homeassistant_action(request);
 }
 
 // Extracts an ID from a string using a regular expression.

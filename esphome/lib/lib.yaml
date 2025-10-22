@@ -739,11 +739,11 @@ script:
     then:
       - lambda: |-
           DRAW_ONLY(id(set_blinds_status)->execute(entities));
-          uint32_t millis = DRAW_ONLY(millis());
+          uint32_t millis_val = DRAW_ONLY(millis());
           bool up = DRAW_ONLY(id(blinds_moving_up));
-          handle_caching(std::make_pair(x, y), millis, up);
+          handle_caching(std::make_pair(x, y), millis_val, up);
           if (up) {
-            print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis / 1000.0 * 12) % 41 + 20, TileFonts::BIG, id(blue), TextAlign::CENTER, "\U0000eacf");
+            print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis_val / 1000.0 * 12) % 41 + 20, TileFonts::BIG, id(blue), TextAlign::CENTER, "\U0000eacf");
           } else {
             print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, id(light_blue), TextAlign::CENTER, "\U0000eacf");
           }
@@ -768,11 +768,11 @@ script:
     then:
       - lambda: |-
           DRAW_ONLY(id(set_blinds_status)->execute(entities));
-          uint32_t millis = DRAW_ONLY(millis());
+          uint32_t millis_val = DRAW_ONLY(millis());
           bool down = DRAW_ONLY(id(blinds_moving_down));
-          handle_caching(std::make_pair(x, y), millis, down);
+          handle_caching(std::make_pair(x, y), millis_val, down);
           if (down) {
-            print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis() / 1000.0 * 12) % 41 - 20, TileFonts::BIG, id(red), TextAlign::CENTER, "\U0000ead0");
+            print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis_val / 1000.0 * 12) % 41 - 20, TileFonts::BIG, id(red), TextAlign::CENTER, "\U0000ead0");
           } else {
             print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, id(light_red), TextAlign::CENTER, "\U0000ead0");
           }
@@ -838,17 +838,17 @@ script:
     then:
       - lambda: |-
           DRAW_ONLY(id(set_blinds_status)->execute(entities));
-          uint32_t millis = DRAW_ONLY(millis());
+          uint32_t millis_val = DRAW_ONLY(millis());
           bool up = DRAW_ONLY(id(blinds_moving_up));
           bool down = DRAW_ONLY(id(blinds_moving_down));
-          handle_caching(std::make_pair(x, y), millis, up, down);
+          handle_caching(std::make_pair(x, y), millis_val, up, down);
           bool one = up != down;
           bool any = up || down;
           bool show_up = !one || up;
           bool show_down = !one || down;
 
           auto delta_x = one ? 0 : id(x_rect) / 5;
-          auto delta_y = any ? static_cast<int>(millis / 1000.0 * 12) % 41 - 20 : id(y_rect) / 5;
+          auto delta_y = any ? static_cast<int>(millis_val / 1000.0 * 12) % 41 - 20 : id(y_rect) / 5;
           int text_x = id(x_mid)[x] + (show_up ? -1 : 1) * delta_x;
           int text_y = id(y_mid)[y] + (show_up ? -1 : 1) * delta_y;
           auto color = show_up ? id(blue) : id(red);
