@@ -1010,12 +1010,11 @@ script:
             printf(id(x_mid)[x] + delta_x, icon_y - numbers_size.second / 2 - cm_size.second / 2, TileFonts::TEXT_BOLD, numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
             printf(id(x_mid)[x] + delta_x, icon_y, TileFonts::TEXT_SMALL, numbers_color, TextAlign::CENTER, cm.c_str());
             print(id(x_mid)[x] - delta_x, icon_y, TileFonts::MEDIUM, person_color, TextAlign::CENTER, icon.c_str());
-
             int bottom_y = id(y_mid)[y] + icon_size.second / 2;
             if (nan_moving_dist) {
               printf(id(x_mid)[x], bottom_y, TileFonts::TEXT, id(gray), TextAlign::CENTER, "------");
             } else {
-              printf(id(x_mid)[x], bottom_y, TileFonts::TEXT, numbers_color, TextAlign::CENTER, "%.0fcm", moving_dist);
+              printf(id(x_mid)[x], bottom_y, TileFonts::TEXT, numbers_color, TextAlign::CENTER, "%dcm", moving_dist);
             }
           }
 
