@@ -1284,7 +1284,7 @@ script:
     then:
       - lambda: |-
           if (!View::initialized) {
-            ESP_LOGE("DrawPage", "View not initialized yet.");
+            ESP_LOGE("DrawPage", "Calling DrawPage when View not initialized. You should never see it after initialization");
             return;
           }
           if (!id(backlight).remote_values.is_on()) {
