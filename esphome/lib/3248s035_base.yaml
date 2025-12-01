@@ -95,7 +95,7 @@ display:
     update_interval: 10s
     color_order: RGB
     color_depth: 8BIT
-    buffer_size : 70%
+    buffer_size : 75%
     dimensions:
       height: 320
       width: 480
