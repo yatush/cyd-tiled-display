@@ -500,9 +500,10 @@ sensor:
     name: "WiFi Signal Percent"
     filters:
       - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+      - delta: 5.0
     unit_of_measurement: "Signal %"
     id: wifi_signal_pct
-    update_interval: 60s
+    update_interval: 1s
     entity_category: "diagnostic"
 
   - platform: copy
@@ -511,6 +512,7 @@ sensor:
     name: "Ambient Light"
     filters:
       - lambda: return min(max((100 - (((x - 0.075) / (1.039 - 0.075)) * 100)), 0.0), 100.0);
+      - delta: 5.0
     unit_of_measurement: "%"
     accuracy_decimals: 0
 

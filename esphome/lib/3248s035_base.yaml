@@ -6,8 +6,8 @@ esp32:
 logger:
 
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
+  power_save_mode: NONE
+  fast_connect : true
 
 captive_portal:
 
@@ -48,6 +48,8 @@ sensor:
     entity_category: "diagnostic"
     accuracy_decimals: 3
     internal: true
+    filters:
+      - delta: 0.01
 
 uart:
   tx_pin: GPIO22
