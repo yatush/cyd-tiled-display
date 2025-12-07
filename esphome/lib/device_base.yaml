@@ -46,6 +46,8 @@ sensor:
     entity_category: "diagnostic"
     accuracy_decimals: 3
     internal: true
+    filters:
+      - delta: 0.01
 
 globals:
   - id: render_diffs
