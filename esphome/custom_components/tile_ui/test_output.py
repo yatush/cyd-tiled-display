@@ -33,6 +33,7 @@ try:
     mock_cv.Optional = vol.Optional
     mock_cv.Required = vol.Required
     mock_cv.Any = vol.Any
+    mock_cv.All = vol.All
     mock_cv.Invalid = vol.Invalid
     mock_cv.string = str
     mock_cv.boolean = bool

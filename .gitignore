@@ -1,8 +1,2 @@
 esphome/secrets.yaml
-esphome/custom_components/tile_ui/__pycache__/__init__.cpython-312.pyc
-esphome/custom_components/tile_ui/__pycache__/data_collection.cpython-312.pyc
-esphome/custom_components/tile_ui/__pycache__/schema.cpython-312.pyc
-esphome/custom_components/tile_ui/__pycache__/script_types.cpython-312.pyc
-esphome/custom_components/tile_ui/__pycache__/tile_generation.cpython-312.pyc
-esphome/custom_components/tile_ui/__pycache__/tile_utils.cpython-312.pyc
-esphome/custom_components/tile_ui/__pycache__/validation.cpython-312.pyc
+esphome/custom_components/tile_ui/__pycache__/*

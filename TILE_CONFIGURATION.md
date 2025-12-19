@@ -37,9 +37,9 @@ screens:
 
 - **id**: Unique identifier for the screen (used in `destination` fields for navigation)
 - **flags**: List of optional flags that control screen behavior
-  - `BASE`: This is the base/home screen that loads first
-  - `TEMPORARY`: Screen is temporary (can be left/dismissed)
-  - `FAST_REFRESH`: Screen has fast-refresh tiles that need frequent updates
+  - `BASE`: This is the base/home screen that loads first, also `TEMPORARY` screens fall back to this screen after timeout. There should be exactly 1 `BASE` screen.
+  - `TEMPORARY`: Screen is temporary - i.e. after 60 seconds of inactivity, it will change back to the `BASE` screen
+  - `FAST_REFRESH`: Screen that refresh several times per second, in contrast to others that might refesh every few seconds. This should be set in case the screen has values that change often.
 
 ### Screen Layout
 
@@ -69,8 +69,8 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
-- **entities**: *(Required)* List of entities to display (see Entity Formats below)
-- **display**: *(Required)* List of display functions to render the tile
+- **entities**: *(Required)* List of entities to be passed to the display script (see Entity Formats below)
+- **display**: *(Required)* List of display scripts to render the tile
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ### 2. HA Action Tile (Entity Control)
@@ -97,13 +97,13 @@ Displays entity state and performs an action (typically toggle) when pressed.
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
-- **entities**: *(Required)* List of entities to display
-- **display**: *(Required)* List of display functions
+- **entities**: *(Required)* List of entities to be passed to the display script
+- **display**: *(Required)* List of display scripts
 - **perform**: *(Required if location_perform not set)* Action function(s) to call when tile is pressed
 - **location_perform**: *(Required if perform not set)* Location-based action functions for multiple locations
 - **display_page_if_no_entity**: (Optional) Navigate to screen if entity is not available (requires dynamic_entity)
 - **requires_fast_refresh**: (Optional) Condition (see [Conditions](#conditions) section) determining if fast refresh is needed
-- **activation_var**: (Optional) Set an activation variable when pressed
+- **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ### 3. Move Page Tile (Navigation)
@@ -118,23 +118,19 @@ Navigates to another screen when pressed.
       - tile_settings
     destination: settings_screen
     activation_var:
-      name: ROOM
+      dynamic_entity: ROOM
       value: LIVING_ROOM
     dynamic_entry:
-      key: LIGHT
+      dynamic_entity: LIGHT
       value: light_entity_1
 ```
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
-- **display**: *(Required)* List of display functions
+- **display**: *(Required)* List of display scripts
 - **destination**: *(Required)* Screen ID to navigate to (must be valid screen ID)
-- **activation_var**: (Optional) Set an activation variable when navigating
-  - **name**: *(Required if activation_var set)* Variable name
-  - **value**: *(Required if activation_var set)* Variable value
-- **dynamic_entry**: (Optional) Populate a dynamic entity when entering screen
-  - **key**: *(Required if dynamic_entry set)* Identifier key for the dynamic entity
-  - **value**: *(Required if dynamic_entry set)* Entity ID to populate for this key
+- **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
+- **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ### 4. Function Tile (Script Execution)
@@ -154,15 +150,15 @@ Calls a script/function when pressed.
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
-- **display**: *(Required)* List of display functions
+- **display**: *(Required)* List of display scripts
 - **on_press**: *(Required)* Function to call when tile is pressed
 - **on_release**: (Optional) Function to call when tile is released
-- **activation_var**: (Optional) Set an activation variable when pressed
+- **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ### 5. Toggle Entity Tile (Entity Selection)
 
-Allows user to select from a set of entities (radio button style). All tiles with the same identifier share the selection.
+Allows user to set the value of a dynamic_entity to an entity when tapping the tile. The tile automatically sets to be selected/not-selected according to the dynamic_entity value.
 
 ```yaml
 - toggle_entity:
@@ -170,7 +166,7 @@ Allows user to select from a set of entities (radio button style). All tiles wit
     y: 0
     display:
       - tile_choose_light
-    identifier: LIGHT
+    dynamic_entity: LIGHT
     entity: light_entity_1
     presentation_name: Kitchen
     initially_chosen: true
@@ -178,17 +174,17 @@ Allows user to select from a set of entities (radio button style). All tiles wit
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
-- **display**: *(Required)* List of display functions
-- **identifier**: *(Required)* Key for entity grouping (shared across multiple toggle_entity tiles, must be unique per tile type)
-- **entity**: *(Required)* The entity ID this toggle controls
-- **presentation_name**: *(Required)* Display name for this option
+- **display**: *(Required)* List of display scripts
+- **dynamic_entity**: *(Required)* Key for the dynamic_entity whose value is set by this tile.
+- **entity**: *(Required)* The entity ID that is set to hte dynamic_entity by this tile
+- **presentation_name**: *(Required)* Display name for this option - sent tothe display scripts
 - **initially_chosen**: (Optional, default: false) Whether this is the initially selected option
-- **activation_var**: (Optional) Set an activation variable when selected
+- **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ### 6. Cycle Entity Tile (Entity Cycling)
 
-Cycles through multiple options on each press. All tiles with the same dynamic_entity key share the cycling state.
+Cycles through multiple options on each press. Sets the value of the dynamic_entity to one of the static ones each time.
 
 ```yaml
 - cycle_entity:
@@ -198,25 +194,25 @@ Cycles through multiple options on each press. All tiles with the same dynamic_e
       - tile_cycle_light
     dynamic_entity: LIGHT
     options:
-      - value: light_entity_1
+      - entity: light_entity_1
         label: Kitchen
-      - value: light_entity_2
+      - entity: light_entity_2
         label: Bedroom
-      - value: light_entity_3
+      - entity: light_entity_3
         label: Living Room
     reset_on_leave: true
 ```
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
-- **display**: *(Required)* List of display functions
+- **display**: *(Required)* List of display scripts
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
 - **options**: *(Required)* List of options to cycle through (at least one required)
   - Each item must have:
-    - **value**: *(Required)* The value that will be set for the *dynamic_entity*
-    - **label**: *(Required)* Display name for this option
+    - **entity**: *(Required)* The entity ID that will be set for the *dynamic_entity*
+    - **label**: *(Required)* Display name for this option, passed to the display script
 - **reset_on_leave**: (Optional, default: false) Reset to first option when leaving screen
-- **activation_var**: (Optional) Set an activation variable when selected
+- **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ## Entity Formats
@@ -244,7 +240,7 @@ Generates output like: `light|brightness`
 
 ### Dynamic Entity
 
-Reference an entity from the dynamic entity map (populated at runtime):
+Reference an entity from the dynamic entity map (populated at runtime). This acts like a variable, and is a key concept in the UI.
 
 ```yaml
 entities:
@@ -287,7 +283,7 @@ Hide the tile's border/frame:
 
 ### Activation Variable
 
-Set a variable when the tile is interacted with or screen is entered:
+Show the tile, only in case the value of the dynamic_entity is as given.
 
 ```yaml
 - move_page:
@@ -295,15 +291,29 @@ Set a variable when the tile is interacted with or screen is entered:
     y: 0
     # ... other properties ...
     activation_var:
-      name: ROOM
+      dynamic_entity: ROOM
       value: LIVING_ROOM
 ```
 
-- **activation_var**: (Optional) Display the tile only in case a dynamic_entity with the given *name* has the given *value*
-  - **name**: *(Required if activation_var set)* Dynamic entity name
-  - **value**: *(Required if activation_var set)* Variable value
+- **activation_var**: (Optional) Set an activation variable
+  - **dynamic_entity**: *(Required)* Dynamic entity name
+  - **value**: *(Required)* Variable value
 
 Multiple tiles can use the same variable name to track context (e.g., which room is selected).
+
+### Dynamic Entry
+
+Populate a dynamic entity when entering a screen (used in `move_page`):
+
+```yaml
+dynamic_entry:
+  dynamic_entity: LIGHT
+  value: light_entity_1
+```
+
+- **dynamic_entry**: (Optional)
+  - **dynamic_entity**: *(Required)* Identifier key for the dynamic entity
+  - **value**: *(Required)* Entity ID to populate for this key
 
 ## Conditions
 
@@ -428,7 +438,7 @@ screens:
           y: 0
           display:
             - tile_choose_light
-          identifier: LIGHT
+          dynamic_entity: LIGHT
           entity: kitchen_light
           presentation_name: Kitchen
           initially_chosen: true
@@ -438,7 +448,7 @@ screens:
           y: 0
           display:
             - tile_choose_light
-          identifier: LIGHT
+          dynamic_entity: LIGHT
           entity: bedroom_light
           presentation_name: Bedroom
       
@@ -449,9 +459,9 @@ screens:
             - tile_cycle_light
           dynamic_entity: LIGHT
           options:
-            - value: kitchen_light
+            - entity: kitchen_light
               label: Kitchen
-            - value: bedroom_light
+            - entity: bedroom_light
               label: Bedroom
           reset_on_leave: true
       

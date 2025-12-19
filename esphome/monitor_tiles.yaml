@@ -102,7 +102,7 @@ screens:
             - tile_ac_settings
           destination: ac_settings
           dynamic_entry:
-            key: AC
+            dynamic_entity: AC
             value: AC_1_ID
 
       - move_page:
@@ -219,7 +219,7 @@ screens:
           y: 0
           display:
             - tile_choose_light
-          identifier: LIGHT
+          dynamic_entity: LIGHT
           entity: LIGHT_1_ID
           presentation_name: Closet
           initially_chosen: true
@@ -229,7 +229,7 @@ screens:
           y: 0
           display:
             - tile_choose_light
-          identifier: LIGHT
+          dynamic_entity: LIGHT
           entity: LIGHT_2_ID
           presentation_name: Ceiling
 
@@ -238,7 +238,7 @@ screens:
           y: 1
           display:
             - tile_choose_light
-          identifier: LIGHT
+          dynamic_entity: LIGHT
           entity: LIGHT_3_ID
           presentation_name: Comp
 
@@ -247,7 +247,7 @@ screens:
           y: 1
           display:
             - tile_choose_light
-          identifier: LIGHT
+          dynamic_entity: LIGHT
           entity: LIGHT_4_ID
           presentation_name: Bed
 
@@ -266,7 +266,7 @@ screens:
           y: 0
           display:
             - tile_choose_cover
-          identifier: COVER
+          dynamic_entity: COVER
           entity: COVER_1_ID
           presentation_name: "PR1"
           initially_chosen: true
@@ -276,7 +276,7 @@ screens:
           y: 1
           display:
             - tile_choose_cover
-          identifier: COVER
+          dynamic_entity: COVER
           entity: COVER_2_ID
           presentation_name: "PR2"
           initially_chosen: true
@@ -296,17 +296,17 @@ screens:
           y: 0
           dynamic_entity: ROOM
           options:
-            - value: "LR"
+            - entity: "LR"
               label: "LR"
-            - value: "TOYS"
+            - entity: "TOYS"
               label: "TOYS"
-            - value: "A"
+            - entity: "A"
               label: "A"
-            - value: "B"
+            - entity: "B"
               label: "B"
-            - value: "C"
+            - entity: "C"
               label: "C"
-            - value: "D"
+            - entity: "D"
               label: "D"
           display:
             - tile_room
@@ -316,16 +316,16 @@ screens:
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - value: "*"
+            - entity: "*"
               label: "ALL"
-            - value: COVER_1_ID
+            - entity: COVER_1_ID
               label: "PR1"
-            - value: COVER_2_ID
+            - entity: COVER_2_ID
               label: "PR2"
           display:
             - tile_cover_name
           activation_var:
-            name: ROOM
+            dynamic_entity: ROOM
             value: "LR"
 
       - cycle_entity:
@@ -333,16 +333,16 @@ screens:
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - value: "*"
+            - entity: "*"
               label: "ALL"
-            - value: COVER_3_ID
+            - entity: COVER_3_ID
               label: "TR1"
-            - value: COVER_4_ID
+            - entity: COVER_4_ID
               label: "TR2"
           display:
             - tile_cover_name
           activation_var:
-            name: ROOM
+            dynamic_entity: ROOM
             value: "TOYS"
 
       - cycle_entity:
@@ -350,20 +350,20 @@ screens:
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - value: "*"
+            - entity: "*"
               label: "ALL"
-            - value: A1_ID
+            - entity: A1_ID
               label: "A1"
-            - value: A2_ID
+            - entity: A2_ID
               label: "A2"
-            - value: A3_ID
+            - entity: A3_ID
               label: "A3"
-            - value: A4_ID
+            - entity: A4_ID
               label: "A4"
           display:
             - tile_cover_name
           activation_var:
-            name: ROOM
+            dynamic_entity: ROOM
             value: "A"
 
       - cycle_entity:
@@ -371,20 +371,20 @@ screens:
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - value: "*"
+            - entity: "*"
               label: "ALL"
-            - value: B1_ID
+            - entity: B1_ID
               label: "B1"
-            - value: B2_ID
+            - entity: B2_ID
               label: "B2"
-            - value: B3_ID
+            - entity: B3_ID
               label: "B3"
-            - value: B4_ID
+            - entity: B4_ID
               label: "B4"
           display:
             - tile_cover_name
           activation_var:
-            name: ROOM
+            dynamic_entity: ROOM
             value: "B"
 
       - cycle_entity:
@@ -392,20 +392,20 @@ screens:
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - value: "*"
+            - entity: "*"
               label: "ALL"
-            - value: C1_ID
+            - entity: C1_ID
               label: "C1"
-            - value: C2_ID
+            - entity: C2_ID
               label: "C2"
-            - value: C3_ID
+            - entity: C3_ID
               label: "C3"
-            - value: C4_ID
+            - entity: C4_ID
               label: "C4"
           display:
             - tile_cover_name
           activation_var:
-            name: ROOM
+            dynamic_entity: ROOM
             value: "C"
 
       - cycle_entity:
@@ -413,20 +413,20 @@ screens:
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - value: "*"
+            - entity: "*"
               label: "ALL"
-            - value: D1_ID
+            - entity: D1_ID
               label: "D1"
-            - value: D2_ID
+            - entity: D2_ID
               label: "D2"
-            - value: D3_ID
+            - entity: D3_ID
               label: "D3"
-            - value: D4_ID
+            - entity: D4_ID
               label: "D4"
           display:
             - tile_cover_name
           activation_var:
-            name: ROOM
+            dynamic_entity: ROOM
             value: "D"
 
       - ha_action:

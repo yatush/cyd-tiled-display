@@ -64,6 +64,15 @@ def entities_list(value):
     return value
 
 
+def activation_var_schema(value):
+    """Validate activation_var configuration."""
+    schema = cv.Schema({
+        cv.Required("dynamic_entity"): non_empty_string,
+        cv.Required("value"): non_empty_string,
+    }, extra=PREVENT_EXTRA)
+    return schema(value)
+
+
 def ha_action_schema(value):
     """Validate ha_action tile configuration."""
     schema = cv.Schema({
@@ -75,8 +84,17 @@ def ha_action_schema(value):
         cv.Optional("location_perform"): string_list,
         cv.Optional("display_page_if_no_entity"): non_empty_string,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): dict,
+        cv.Optional("activation_var"): activation_var_schema,
         cv.Optional("omit_frame"): bool,
+    }, extra=PREVENT_EXTRA)
+    return schema(value)
+
+
+def dynamic_entry_schema(value):
+    """Validate dynamic_entry configuration."""
+    schema = cv.Schema({
+        cv.Required("dynamic_entity"): non_empty_string,
+        cv.Required("value"): non_empty_string,
     }, extra=PREVENT_EXTRA)
     return schema(value)
 
@@ -89,8 +107,8 @@ def move_page_schema(value):
         cv.Required("display"): string_list,
         cv.Required("destination"): non_empty_string,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): dict,
-        cv.Optional("dynamic_entry"): dict,
+        cv.Optional("activation_var"): activation_var_schema,
+        cv.Optional("dynamic_entry"): dynamic_entry_schema,
         cv.Optional("omit_frame"): bool,
     }, extra=PREVENT_EXTRA)
     return schema(value)
@@ -105,7 +123,7 @@ def title_schema(value):
         cv.Optional("entities"): entities_list,
         cv.Optional("omit_frame"): bool,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): dict,
+        cv.Optional("activation_var"): activation_var_schema,
     }, extra=PREVENT_EXTRA)
     return schema(value)
 
@@ -119,7 +137,7 @@ def function_schema(value):
         cv.Optional("on_press"): non_empty_string,
         cv.Optional("on_release"): non_empty_string,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): dict,
+        cv.Optional("activation_var"): activation_var_schema,
         cv.Optional("omit_frame"): bool,
     }, extra=PREVENT_EXTRA)
     return schema(value)
@@ -131,12 +149,12 @@ def toggle_entity_schema(value):
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
         cv.Required("display"): string_list,
-        cv.Required("identifier"): non_empty_string,
+        cv.Required("dynamic_entity"): non_empty_string,
         cv.Required("entity"): non_empty_string,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
         cv.Optional("presentation_name"): non_empty_string,
         cv.Optional("initially_chosen"): bool,
-        cv.Optional("activation_var"): dict,
+        cv.Optional("activation_var"): activation_var_schema,
         cv.Optional("omit_frame"): bool,
     }, extra=PREVENT_EXTRA)
     return schema(value)
@@ -149,10 +167,16 @@ def cycle_entity_schema(value):
         cv.Required("y"): coord_schema,
         cv.Required("display"): string_list,
         cv.Required("dynamic_entity"): non_empty_string,
-        cv.Required("options"): list,
+        cv.Required("options"): cv.All(
+            cv.ensure_list,
+            [cv.Schema({
+                cv.Required("entity"): non_empty_string,
+                cv.Required("label"): non_empty_string,
+            })]
+        ),
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
         cv.Optional("reset_on_leave"): bool,
-        cv.Optional("activation_var"): dict,
+        cv.Optional("activation_var"): activation_var_schema,
         cv.Optional("omit_frame"): bool,
     }, extra=PREVENT_EXTRA)
     return schema(value)

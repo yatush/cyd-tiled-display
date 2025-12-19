@@ -160,13 +160,13 @@ def get_tile_modifiers(config):
     
     activation_var = config.get("activation_var", None)
     if activation_var:
-        var_name = activation_var.get("name", None)
+        var_name = activation_var.get("dynamic_entity", None)
         var_value = activation_var.get("value", None)
         
         if var_name and var_value:
             method_chains.append(f'setActivationVar("{var_name}", "{var_value}")')
         else:
-            raise ValueError(f"activation_var must have both 'name' and 'value' fields")
+            raise ValueError(f"activation_var must have both 'dynamic_entity' and 'value' fields")
     
     return method_chains
 

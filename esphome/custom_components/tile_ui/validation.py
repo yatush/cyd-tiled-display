@@ -112,9 +112,9 @@ def validate_tiles_config(screens, available_scripts=None, available_globals=Non
                 collect_dynamic_entities(entities_config, valid_dynamic_entities)
             
             if tile_type == "toggle_entity":
-                identifier = config.get("identifier", "")
-                if identifier:
-                    valid_dynamic_entities.add(identifier)
+                dynamic_entity = config.get("dynamic_entity", "")
+                if dynamic_entity:
+                    valid_dynamic_entities.add(dynamic_entity)
             
             if tile_type == "cycle_entity":
                 dynamic_entity = config.get("dynamic_entity", "")
@@ -143,15 +143,27 @@ def validate_tiles_config(screens, available_scripts=None, available_globals=Non
             # Validate required fields for each tile type
             _validate_tile_fields(screen_id, tile_type, config, x, y)
             
-            # Validate activation_var name is a valid dynamic entity
+            # Validate activation_var dynamic_entity is a valid dynamic entity
             activation_var = config.get("activation_var", None)
             if activation_var:
-                var_name = activation_var.get("name", "")
+                var_name = activation_var.get("dynamic_entity", "")
                 
                 if var_name and var_name not in valid_dynamic_entities:
                     raise ValueError(
                         f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
-                        f"activation_var name '{var_name}' is not a valid dynamic entity. "
+                        f"activation_var dynamic_entity '{var_name}' is not a valid dynamic entity. "
+                        f"Valid dynamic entities are: {', '.join(sorted(valid_dynamic_entities))}"
+                    )
+            
+            # Validate dynamic_entry dynamic_entity is a valid dynamic entity
+            dynamic_entry = config.get("dynamic_entry", None)
+            if dynamic_entry:
+                entry_name = dynamic_entry.get("dynamic_entity", "")
+                
+                if entry_name and entry_name not in valid_dynamic_entities:
+                    raise ValueError(
+                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                        f"dynamic_entry dynamic_entity '{entry_name}' is not a valid dynamic entity. "
                         f"Valid dynamic entities are: {', '.join(sorted(valid_dynamic_entities))}"
                     )
     
@@ -327,7 +339,7 @@ def _validate_tile_fields(screen_id, tile_type, config, x, y):
     
     elif tile_type == "toggle_entity":
         display = config.get("display", [])
-        identifier = config.get("identifier", "")
+        dynamic_entity = config.get("dynamic_entity", "")
         entity = config.get("entity", "")
         presentation_name = config.get("presentation_name", "")
         
@@ -340,8 +352,8 @@ def _validate_tile_fields(screen_id, tile_type, config, x, y):
             if empty_items:
                 raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
         
-        if not identifier:
-            raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'identifier' field is required")
+        if not dynamic_entity:
+            raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'dynamic_entity' field is required")
         if not entity:
             raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'entity' field is required")
         if not presentation_name:
@@ -365,3 +377,9 @@ def _validate_tile_fields(screen_id, tile_type, config, x, y):
             raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): 'dynamic_entity' field is required")
         if not options or len(options) == 0:
             raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): 'options' field is required with at least one option")
+        
+        for option in options:
+            if not isinstance(option, dict):
+                raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): options must be dicts")
+            if "entity" not in option or "label" not in option:
+                raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): each option must have 'entity' and 'label' fields")
