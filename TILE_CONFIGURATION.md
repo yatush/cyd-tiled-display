@@ -194,12 +194,12 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
       - tile_cycle_light
     dynamic_entity: LIGHT
     options:
+      - entity: "*"
+        label: All
       - entity: light_entity_1
         label: Kitchen
       - entity: light_entity_2
         label: Bedroom
-      - entity: light_entity_3
-        label: Living Room
     reset_on_leave: true
 ```
 
@@ -209,7 +209,8 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
 - **options**: *(Required)* List of options to cycle through (at least one required)
   - Each item must have:
-    - **entity**: *(Required)* The entity ID that will be set for the *dynamic_entity*
+    - **entity**: *(Required)* The entity ID that will be set for the *dynamic_entity*. 
+      - **Special Value `"*"`**: If set to `"*"`, the dynamic entity will be populated with **all other entities** defined in the `options` list.
     - **label**: *(Required)* Display name for this option, passed to the display script
 - **reset_on_leave**: (Optional, default: false) Reset to first option when leaving screen
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
@@ -249,6 +250,8 @@ entities:
 ```
 
 The dynamic entity is replaced at runtime with the actual selected entity.
+
+**Note**: A dynamic entity can store multiple entity IDs simultaneously (acting as a vector/group). This allows a single tile to control multiple devices at once. This is typically populated using the `"*"` special value in a `cycle_entity` tile.
 
 ### Mixed List
 
