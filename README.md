@@ -46,6 +46,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 * 110V/220V -> 5V2A converter that fits in the wall box.
 * [Aliexpress link](https://www.aliexpress.com/item/1005005142108650.html)
 * Price: ~6 USD
+* Another option is to have 0.6A, smaller converter, like [this](https://he.aliexpress.com/item/1005006321657147.html) - this is also cheaper, and easier to fit in the wall.
 
 ## Outlet box
 
