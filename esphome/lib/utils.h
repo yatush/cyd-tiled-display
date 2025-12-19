@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <sstream>
 
 // --- String repository ---
 
@@ -61,6 +62,11 @@ public:
     return std::make_pair(ptr(str_pair.first), ptr(str_pair.second));
   }
 
+  const std::pair<std::vector<const std::string*>, const std::string*> ptr(
+      const std::pair<std::vector<std::string>, std::string>& pair) {
+    return std::make_pair(ptr(pair.first), ptr(pair.second));
+  }
+
   std::vector<std::pair<const std::string*, const std::string*>> ptr(
       const std::vector<std::pair<std::string, std::string>>& vec) {
     std::vector<std::pair<const std::string*, const std::string*>> result;
@@ -68,7 +74,21 @@ public:
 
     std::transform(
       vec.begin(), vec.end(), std::back_inserter(result),
-      [this](const std::pair<const std::string&, const std::string&> pair) {
+      [this](const std::pair<std::string, std::string>& pair) {
+        return this->ptr(pair);
+      });
+
+    return result;
+  }
+
+  std::vector<std::pair<std::vector<const std::string*>, const std::string*>> ptr(
+      const std::vector<std::pair<std::vector<std::string>, std::string>>& vec) {
+    std::vector<std::pair<std::vector<const std::string*>, const std::string*>> result;
+    result.reserve(vec.size());
+
+    std::transform(
+      vec.begin(), vec.end(), std::back_inserter(result),
+      [this](const std::pair<std::vector<std::string>, std::string>& pair) {
         return this->ptr(pair);
       });
 
@@ -89,6 +109,11 @@ std::vector<std::pair<const std::string*, const std::string*>> Pointer(
   return Repository::instance().ptr(str_vec);
 }
 
+std::vector<std::pair<std::vector<const std::string*>, const std::string*>> Pointer(
+  const std::vector<std::pair<std::vector<std::string>, std::string>>& vec) {
+  return Repository::instance().ptr(vec);
+}
+
 std::vector<std::string> Deref(const std::vector<const std::string*>& vec) {
   return Repository::instance().dereference(vec);
 }
@@ -99,6 +124,19 @@ std::vector<std::string> Deref(const std::vector<const std::string*>& vec) {
 bool EMContains(const std::string* key, const std::string* value) {
   return id(entities_map).count(key) > 0 &&
          id(entities_map)[key].find(value) != id(entities_map)[key].end();
+}
+
+// Checks if the entity map contains the given key and ALL of the given values.
+bool EMContains(const std::string* key, const std::vector<const std::string*>& values) {
+  if (id(entities_map).count(key) == 0) {
+    return false;
+  }
+  for (const std::string* value : values) {
+    if (id(entities_map)[key].find(value) == id(entities_map)[key].end()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Checks if the entity map contains the given key.
@@ -130,6 +168,13 @@ void EMRemove(const std::string* key, const std::string* value) {
   }
 }
 
+// Removes multiple values from the entity map for the given key.
+void EMRemove(const std::string* key, const std::vector<const std::string*>& values) {
+  for (const std::string* value : values) {
+    EMRemove(key, value);
+  }
+}
+
 // Returns all values associated with the given key in the entity map.
 std::vector<const std::string*> EMGetValues(const std::string* key) {
   return std::vector<const std::string*>(
@@ -142,6 +187,16 @@ void EMSet(const std::string* key, const std::string* value) {
     return;
   }
   id(entities_map)[key] = {value};
+}
+
+// Sets multiple values for the given key in the entity map.
+void EMSet(const std::string* key, const std::vector<const std::string*>& values) {
+  id(entities_map)[key] = {};
+  for (const std::string* value : values) {
+    if (!value->empty()) {
+      id(entities_map)[key].insert(value);
+    }
+  }
 }
 
 // Clears the values for the given key in the entity map.
@@ -335,6 +390,19 @@ std::string ReplaceFirstOccurrence(const std::string& input,
   } else {
     return input;
   }
+}
+
+// Splits a string by a delimiter.
+std::vector<std::string> SplitString(const std::string& input, char delimiter) {
+  std::vector<std::string> result;
+  std::stringstream ss(input);
+  std::string item;
+  while (std::getline(ss, item, delimiter)) {
+    if (!item.empty()) {
+      result.push_back(item);
+    }
+  }
+  return result;
 }
 
 // Replaces dynamic entity placeholders (e.g., "#{some_id}") with actual entity

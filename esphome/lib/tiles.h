@@ -60,9 +60,9 @@ public:
   }
 
   // The dynamic variable name and value for this tile to be active.
-  Tile* setActivationVar(const std::string& var_name, const std::string& var_value) {
+  Tile* setActivationVar(const std::string& var_name, const std::vector<std::string>& var_values) {
     this->var_name_ = Pointer(var_name);
-    this->var_value_ = Pointer(var_value);
+    this->var_values_ = Pointer(var_values);
     this->always_active_ = false;
     return this;
   }
@@ -73,7 +73,7 @@ public:
     if (this->always_active_) {
       return true;
     }
-    if (EMContains(this->var_name_, this->var_value_)) {
+    if (EMContains(this->var_name_, this->var_values_)) {
       if (!this->was_active_) {
         this->onActivation();
       }
@@ -119,8 +119,8 @@ protected:
   std::function<void()> change_screen_callback_ = []() {};
   // A dynamic variable name to check for value for this tile to be active
   const std::string* var_name_;
-  // A simple value to check the var_name against
-  const std::string* var_value_;
+  // Simple values to check the var_name against
+  std::vector<const std::string*> var_values_;
   // Indicates if the tile was active before - to preserve activation state.
   bool was_active_ = false;
   bool always_active_ = true;
@@ -377,15 +377,19 @@ public:
       int x, int y,
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
           draw_funcs,
-      const std::string& identifier, const std::string& entity,
+      const std::string& identifier, const std::vector<std::string>& entities,
       const std::string& presentation_name, bool initially_chosen = false)
       : Tile(x, y, draw_funcs),
         identifier_(Pointer(identifier)),
-        entity_(Pointer(entity)),
+        entities_(Pointer(entities)),
         presentation_name_(presentation_name),
         initially_chosen_(initially_chosen) {}
 
-  void initSensors() override { InitSensor(*this->entity_); };
+  void initSensors() override {
+    for (const std::string* entity : this->entities_) {
+      InitSensor(*entity);
+    }
+  };
 
 protected:
   void customInit() override {
@@ -393,21 +397,21 @@ protected:
       if (!x) {
         return;
       }
-      if (!EMContains(this->identifier_, this->entity_)) {
-        EMAdd(this->identifier_, this->entity_);
+      if (!EMContains(this->identifier_, this->entities_)) {
+        EMAdd(this->identifier_, this->entities_);
       } else {
-        EMRemove(this->identifier_, this->entity_);
+        EMRemove(this->identifier_, this->entities_);
       }
       this->change_entities_callback_();
       id(disp).update();
     });
     if (this->initially_chosen_) {
-      EMAdd(this->identifier_, this->entity_);
+      EMAdd(this->identifier_, this->entities_);
     }
   }
 
   void customDraw() override {
-    bool isOn = EMContains(this->identifier_, this->entity_);
+    bool isOn = EMContains(this->identifier_, this->entities_);
     ExecuteScripts(
       this->draw_funcs_, this->x_, this->y_,
       {isOn ? "ON" : "OFF", this->presentation_name_});
@@ -415,8 +419,8 @@ protected:
 
   // Identifier for the group of entities this tile belongs to.
   const std::string* identifier_;
-  // The entity associated with this tile.
-  const std::string* entity_;
+  // The entities associated with this tile.
+  std::vector<const std::string*> entities_;
   // The name to display for the entity.
   std::string presentation_name_;
   // Flag to indicate if the entity is initially chosen.
@@ -431,7 +435,7 @@ public:
       std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
           draw_funcs,
       const std::string& identifier,
-      std::vector<std::pair<std::string, std::string>> entities_and_presntation_names,
+      std::vector<std::pair<std::vector<std::string>, std::string>> entities_and_presntation_names,
       bool reset_on_leave = false)
       : Tile(x, y, draw_funcs),
         identifier_(Pointer(identifier)),
@@ -440,8 +444,11 @@ public:
 
   void initSensors() override {
     for (const auto& pair : this->entities_and_presntation_names_) {
-      if (*pair.first != "*") {
-        InitSensor(*pair.first);
+      if (pair.first.size() == 1 && *pair.first[0] == "*") {
+        continue;
+      }
+      for (const std::string* entity : pair.first) {
+        InitSensor(*entity);
       }
     }
   };
@@ -480,7 +487,8 @@ protected:
 private:
   // Updates the entities according to the status of the tile.
   void updateEntities() {
-    if (*this->entities_and_presntation_names_.at(this->current_index_).first == "*") {
+    if (this->entities_and_presntation_names_.at(this->current_index_).first.size() == 1 &&
+        *this->entities_and_presntation_names_.at(this->current_index_).first[0] == "*") {
       EMClear(this->identifier_);
       for (int i = 0; i < this->entities_and_presntation_names_.size(); ++i) {
         if (i == this->current_index_) {
@@ -498,7 +506,7 @@ private:
   const std::string* identifier_;
   // The entities to set into the identifier and their presentation names. The one
   // used is always the first one, and the vector is rotating.
-  std::vector<std::pair<const std::string*, const std::string*>> entities_and_presntation_names_;
+  std::vector<std::pair<std::vector<const std::string*>, const std::string*>> entities_and_presntation_names_;
   // The current indeex.
   int current_index_ = 0;
   // Indicates if should be reset on screen leave

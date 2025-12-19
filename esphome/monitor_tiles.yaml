@@ -352,7 +352,7 @@ screens:
           options:
             - entity: "*"
               label: ALL
-            - entity: A1_ID
+            - entity: "A1_ID, A11_ID"
               label: A1
             - entity: A2_ID
               label: A2
