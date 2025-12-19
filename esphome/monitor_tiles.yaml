@@ -1,0 +1,451 @@
+screens:
+  - id: controllers
+    flags: [BASE]
+    tiles:
+      - ha_action:
+          x: 0
+          y: 0
+          entities:
+            - dynamic_entity: LIGHT
+          display:
+            - tile_lights
+          perform:
+            - action_lights
+          display_page_if_no_entity: light_settings
+
+      - ha_action:
+          x: 1
+          y: 0
+          entities:
+            - entity: AC_1_ID
+          display:
+            - tile_ac
+          perform:
+            - action_ac
+
+      - move_page:
+          x: 2
+          y: 0
+          display:
+            - tile_settings
+          destination: pref
+
+      - ha_action:
+          x: 0
+          y: 1
+          entities:
+            - dynamic_entity: COVER
+          display:
+            - tile_blinds_up
+          perform:
+            - action_blinds_up
+          display_page_if_no_entity: cover_settings
+          requires_fast_refresh:
+            conditions:
+              - blinds_moving_up
+              - blinds_moving_down
+
+      - ha_action:
+          x: 1
+          y: 1
+          entities:
+            - dynamic_entity: COVER
+          display:
+            - tile_blinds_down
+          perform:
+            - action_blinds_down
+          display_page_if_no_entity: cover_settings
+          requires_fast_refresh:
+            conditions:
+              - blinds_moving_up
+              - blinds_moving_down
+
+      - ha_action:
+          x: 2
+          y: 1
+          entities:
+            - dynamic_entity: COVER
+          display:
+            - tile_blinds_mid
+          perform:
+            - action_blinds_mid
+          display_page_if_no_entity: cover_settings
+
+  - id: pref
+    flags: [TEMPORARY]
+    tiles:
+      - move_page:
+          x: 0
+          y: 0
+          display:
+            - tile_disp_settings
+          destination: disp_settings
+
+      - move_page:
+          x: 1
+          y: 0
+          display:
+            - tile_light_settings
+          destination: light_settings
+
+      - move_page:
+          x: 2
+          y: 0
+          display:
+            - tile_back_arrow
+          destination: controllers
+
+      - move_page:
+          x: 0
+          y: 1
+          display:
+            - tile_ac_settings
+          destination: ac_settings
+          dynamic_entry:
+            key: AC
+            value: AC_1_ID
+
+      - move_page:
+          x: 1
+          y: 1
+          display:
+            - tile_cover_settings
+          destination: cover_settings
+
+      - move_page:
+          x: 2
+          y: 1
+          display:
+            - tile_cover_settings
+          destination: cover_settings_2
+
+  - id: ac_settings
+    flags: [TEMPORARY]
+    tiles:
+      - ha_action:
+          x: 0
+          y: 0
+          entities:
+            - dynamic_entity: AC
+              sensor: temperature
+          display:
+            - tile_temp_up
+          perform:
+            - action_temp_up
+
+      - ha_action:
+          x: 0
+          y: 1
+          entities:
+            - dynamic_entity: AC
+              sensor: temperature
+          display:
+            - tile_temp_down
+          perform:
+            - action_temp_down
+
+      - ha_action:
+          x: 1
+          y: 0
+          entities:
+            - dynamic_entity: AC
+          display:
+            - tile_ac_mode
+          perform:
+            - action_ac_mode
+
+      - title:
+          x: 1
+          y: 1
+          entities:
+            - dynamic_entity: AC
+            - dynamic_entity: AC
+              sensor: temperature
+          display:
+            - tile_ac_status
+          omit_frame: true
+
+      - move_page:
+          x: 2
+          y: 0
+          display:
+            - tile_back_arrow
+          destination: controllers
+
+  - id: disp_settings
+    flags: [FAST_REFRESH, TEMPORARY]
+    tiles:
+      - function:
+          x: 0
+          y: 0
+          display:
+            - tile_brightness
+          on_press: on_brightness_press
+          on_release: on_brightness_release
+
+      - function:
+          x: 1
+          y: 0
+          display:
+            - tile_distance
+          on_press: change_wakeup_distance
+
+      - move_page:
+          x: 2
+          y: 0
+          display:
+            - tile_back_arrow
+          destination: controllers
+
+      - function:
+          x: 0
+          y: 1
+          display:
+            - tile_wakeup_time
+          on_press: change_sleep_time
+
+      - function:
+          x: 1
+          y: 1
+          display:
+            - tile_power
+          on_press: action_power
+
+  - id: light_settings
+    flags: [TEMPORARY]
+    tiles:
+      - toggle_entity:
+          x: 0
+          y: 0
+          display:
+            - tile_choose_light
+          identifier: LIGHT
+          entity: LIGHT_1_ID
+          presentation_name: Closet
+          initially_chosen: true
+
+      - toggle_entity:
+          x: 1
+          y: 0
+          display:
+            - tile_choose_light
+          identifier: LIGHT
+          entity: LIGHT_2_ID
+          presentation_name: Ceiling
+
+      - toggle_entity:
+          x: 0
+          y: 1
+          display:
+            - tile_choose_light
+          identifier: LIGHT
+          entity: LIGHT_3_ID
+          presentation_name: Comp
+
+      - toggle_entity:
+          x: 1
+          y: 1
+          display:
+            - tile_choose_light
+          identifier: LIGHT
+          entity: LIGHT_4_ID
+          presentation_name: Bed
+
+      - move_page:
+          x: 2
+          y: 0
+          display:
+            - tile_back_arrow
+          destination: controllers
+
+  - id: cover_settings
+    flags: [TEMPORARY]
+    tiles:
+      - toggle_entity:
+          x: 0
+          y: 0
+          display:
+            - tile_choose_cover
+          identifier: COVER
+          entity: COVER_1_ID
+          presentation_name: "PR1"
+          initially_chosen: true
+
+      - toggle_entity:
+          x: 0
+          y: 1
+          display:
+            - tile_choose_cover
+          identifier: COVER
+          entity: COVER_2_ID
+          presentation_name: "PR2"
+          initially_chosen: true
+
+      - move_page:
+          x: 2
+          y: 0
+          display:
+            - tile_back_arrow
+          destination: controllers
+
+  - id: cover_settings_2
+    flags: [TEMPORARY]
+    tiles:
+      - cycle_entity:
+          x: 0
+          y: 0
+          dynamic_entity: ROOM
+          options:
+            - value: "LR"
+              label: "LR"
+            - value: "TOYS"
+              label: "TOYS"
+            - value: "A"
+              label: "A"
+            - value: "B"
+              label: "B"
+            - value: "C"
+              label: "C"
+            - value: "D"
+              label: "D"
+          display:
+            - tile_room
+
+      - cycle_entity:
+          x: 1
+          y: 0
+          dynamic_entity: COVER_TEMP
+          options:
+            - value: "*"
+              label: "ALL"
+            - value: COVER_1_ID
+              label: "PR1"
+            - value: COVER_2_ID
+              label: "PR2"
+          display:
+            - tile_cover_name
+          activation_var:
+            name: ROOM
+            value: "LR"
+
+      - cycle_entity:
+          x: 1
+          y: 0
+          dynamic_entity: COVER_TEMP
+          options:
+            - value: "*"
+              label: "ALL"
+            - value: COVER_3_ID
+              label: "TR1"
+            - value: COVER_4_ID
+              label: "TR2"
+          display:
+            - tile_cover_name
+          activation_var:
+            name: ROOM
+            value: "TOYS"
+
+      - cycle_entity:
+          x: 1
+          y: 0
+          dynamic_entity: COVER_TEMP
+          options:
+            - value: "*"
+              label: "ALL"
+            - value: A1_ID
+              label: "A1"
+            - value: A2_ID
+              label: "A2"
+            - value: A3_ID
+              label: "A3"
+            - value: A4_ID
+              label: "A4"
+          display:
+            - tile_cover_name
+          activation_var:
+            name: ROOM
+            value: "A"
+
+      - cycle_entity:
+          x: 1
+          y: 0
+          dynamic_entity: COVER_TEMP
+          options:
+            - value: "*"
+              label: "ALL"
+            - value: B1_ID
+              label: "B1"
+            - value: B2_ID
+              label: "B2"
+            - value: B3_ID
+              label: "B3"
+            - value: B4_ID
+              label: "B4"
+          display:
+            - tile_cover_name
+          activation_var:
+            name: ROOM
+            value: "B"
+
+      - cycle_entity:
+          x: 1
+          y: 0
+          dynamic_entity: COVER_TEMP
+          options:
+            - value: "*"
+              label: "ALL"
+            - value: C1_ID
+              label: "C1"
+            - value: C2_ID
+              label: "C2"
+            - value: C3_ID
+              label: "C3"
+            - value: C4_ID
+              label: "C4"
+          display:
+            - tile_cover_name
+          activation_var:
+            name: ROOM
+            value: "C"
+
+      - cycle_entity:
+          x: 1
+          y: 0
+          dynamic_entity: COVER_TEMP
+          options:
+            - value: "*"
+              label: "ALL"
+            - value: D1_ID
+              label: "D1"
+            - value: D2_ID
+              label: "D2"
+            - value: D3_ID
+              label: "D3"
+            - value: D4_ID
+              label: "D4"
+          display:
+            - tile_cover_name
+          activation_var:
+            name: ROOM
+            value: "D"
+
+      - ha_action:
+          x: 0
+          y: 1
+          entities:
+            - dynamic_entity: COVER_TEMP
+          display:
+            - tile_blinds_up_down
+          location_perform:
+            - action_blinds_up_down
+          requires_fast_refresh:
+            conditions:
+              - blinds_moving_up
+              - blinds_moving_down
+
+      - move_page:
+          x: 2
+          y: 0
+          display:
+            - tile_back_arrow
+          destination: controllers

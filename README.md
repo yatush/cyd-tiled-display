@@ -9,7 +9,7 @@ The Hardware is bought from AliExpress (I'll provide sample links, no attributio
 
 The project is based on the awesome [ESPHome](https://esphome.io/) project.
 
-In order to customize the display, some programming knowledge is required (C++/yaml).
+In order to customize the display, one has to change YAML configuration. To add new capabilities, some C++ knowledge is required.
 
 <p align="center">
   <img src="/images/cyd-tiled-display.png" width="400" />
@@ -88,151 +88,166 @@ In order to customize the display, some programming knowledge is required (C++/y
 
 Here is a short descrtiption of the files that appear under ```/esphome/lib/``` directory.
 
-## device_base.yaml
-Model specific definitions Each display will need to define a yaml file that will "include" the device_base.yaml file. This file also points to the header files that contain parts of the implementation.
+## Device base files
+Model specific definitions Each display will need to define a yaml file that will "include" the device basse file. This file also points to the header files that contain parts of the implementation.
+### 2432s028_base.yaml
 This is the file for the 2.8 inch display.
-## 3248s035_base.yaml
+### 3248s035_base.yaml
 Same as above, for the 3.5 inch display.
 ## lib.yaml
 The yaml file that contains all the common definitions to all displays. Each display will need to define a yaml file that will "include" the lib.yaml file.
 ### Important
-> We're not using the clear screen before each frame is rendered, because it takes quite a few milliseconds. We actually overrite the last actions we had in black. This is done in a bit of a hacky way, please pay attention that any drawing function you add should have this capability. Look at other functions for reference, and pay attention that the actual color change happens in the display overriding functions in the utils file.
+> In the 2432s028 model, we're not using the clear screen before each frame is rendered, because it takes quite a few milliseconds. We actually overrite the last actions we had in black. This is done in a bit of a hacky way, please pay attention that any drawing function you add should have this capability. Look at other functions for reference, and pay attention that the actual color change happens in the display overriding functions in the utils file.
 
-## view.h
-Represents a collection of screens and manages the active screen. There is a single view to the display.
+# Tiles Configuration
 
-## screens.h
-Definition of different types of screens in the display. A screen is what we see when we look at the display, there can be moves from one screen to another (for example, upon user input).
+The tile UI is now configured using YAML with comprehensive validation. Instead of defining tiles in C++, you define them in the `monitor_tiles.yaml` file. The tile_ui ESPhome component automatically generates the C++ code from your YAML configuration.
 
-### ```TiledScreen```
-* This is currently the only type of supported screenץ
-* Constructor parameters:
-  * ```esphome::display::DisplayPage*``` - A pointer to a screen that is defined in the ```lib.yaml``` file. The screen is defined in ```lib.yaml``` under ```display->pages```.
-  * ```std::set<ScreenAtt>``` - A set of attributes:
-    * *FAST_REFRESH* - Indicates if the screen requires fast refresh, this is needed in case we have animation in the screen.
-    * *TEMPORARY* - Indicates if the screen is temporary - i.e. it will be replaced by another screen after a certain period of time.
-    * *BASE* - This is the initial screen - only one screen should get this attribute. this is also the screen that temporary screens fall back to.
-  * ```std::vector<Tile*>``` - Tiles to display on the screen.
+## Validation
 
-## tiles.h
-Tiles that can appear under ```TiledScreen``` are defined in this file.
+The system performs two-tier validation at build time:
 
-### ```Tile```
-* The base class for all tiles.
-* Post initialization modification functions:
-  * ```omitFrame``` - In case this function is called, the tile will not have the default frame.
-  * ```setActivationVar``` - A function that gets two string variables, first one being the ```$DYNAMIC_ENTITIES```, and in case the value of it contains the second variable, this tile is activated. In case this is false, the tile is inactive - will not render and will not perform actions. In case this function is not called, the tile is always active. This is used to have two tiles on the same place, and activated based on an external rule.
+1. **Schema Validation**: Ensures YAML structure, required fields, and data types are correct
+2. **Runtime Validation**: Validates business logic, cross-references, and semantic correctness
 
-### ```HAActionTile```
-* A tile that performs an action in HomeAssistant (toggle light, toggle AC, open blinds, etc.).
-* Constructor parameters:
-  * ```int``` - The x coordinate of the tile, 0 based.
-  * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - The functions that draw the tile. These functions are defined in ```lib.yaml```, and are executed in order. They get three parameters:
-    * The x coordinate.
-    * The y coordinate.
-    * A vector of strings, which represent the entities that appear in the tile. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
-  * ```std::vector<esphome::script::Script<std::vector<std::string>>*>``` - Action function that are executed once the tile is tapped. The functions are defined in ```lib.yaml```. The functions get a vector of strings, which represent the entities that are "acted upon" once the tile is tapped. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
-    * ```std::vector<std::string>``` The entities that are passed to the draw functions and the actions functions in this tile. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
-* After construction, more modifications can be done using post-initialization functions:
-  * ```setRequiresFastRefreshFunc``` - Gets a function defined in ```lib.yaml``` that returns true iff the page should fast refresh. This is useful for tiles we don't want to fast refresh, unless a condition (for example, blinds are moving) is true.
-  * ```setDisplayPageIfNoEntity``` - In case the entities that are passed to the constructor contain ```$DYNAMIC_ENTITIES```, and the dynamic entities is empty, this is the page that will be presented (the HAAction will not perform). This is useful if, for example, ```$DYNAMIC_ENTITIES``` represent a list of lights, and no light is chosen, the page can be the one where we choose which light to control with the tile.
-* Instead of the Action function, there's another version that gets location action function - gets 3 parameters, x percentile in the tile, y percentile in the tile and the entities passed to the function. The function can also get both types of functions.
+All validation errors **stop compilation immediately** with detailed error messages including screen ID and tile position for easy debugging.
 
-### ```MovePageTile```
-* A tile that acts as navigation from one screen to the other.
-* Constructor parameters:
-  * ```int``` - The x coordinate of the tile, 0 based.
-  * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, see [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) for more details.
-  * ```esphome::display::DisplayPage*``` - The page to navigate to once tapped.
-* After construction, more modifications can be done using post-initialization functions:
-  * ```setDynamicEntry``` - A function that sets the value of a ```$DYNAMIC_ENTITIES``` before navigating to the target page. The function gets two parameters:
-    * ```string``` - The ```$DYNAMIC_ENTITIES``` variable name to be set.
-    * ```const std::vector<std::string>&``` - The ```$SIMPLE_ENTITY```s, or ```$ENTITY_WITH_ATTRIBUTE``` values to set as the ```$DYNAMIC_ENTITIES```.
+See [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md) for complete validation rules and [SCRIPT_VALIDATION.md](SCRIPT_VALIDATION.md) for script type validation.
 
-### ```FunctionTile```
-* A tile that performs functions that are defined in ```lib.yaml```.
-* This is useful for changing parameters of the display itself, for example, brighness.
-* Constructor parameters:
-  * ```int``` - The x coordinate of the tile, 0 based.
-  * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, see [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) for more details.
-  * ```esphome::script::Script<>*``` - A function defined in ```lib.yaml``` to perform once the tile is pressed.
-  * ```esphome::script::Script<>*``` - A function defined in ```lib.yaml``` to perform once the tile is released.
+## Configuration File
 
-### ```TitleTile```
-* A special case of [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) that does no action.
-* It is used to show information on the screen, utilizing the ```setRequiresFastRefreshFunc``` and ```setDisplayPageIfNoEntity``` functions.
-* The tile can be larger than a single tile, this is done in the draw functions.
-* Constructor parameters:
-  * ```int``` - The x coordinate of the tile, 0 based.
-  * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, see [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) for more details.
-  * ```std::vector<std::string>``` - Entities, see [```HAActionTile```](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#haactiontile) for more details
+Edit `monitor_tiles.yaml` to configure your screens and tiles. See [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md) for detailed documentation on all available tile types and configuration options.
 
-### ```ToggleEntityTile```
-* A tile that adds/removes a ```$SIMPLE_ENTITY``` from ```$DYNAMIC_ENTITIES```. See [here](https://github.com/yatush/cyd-tiled-display/blob/main/README.md#homeassistant-entities) for more info.
-* Constructor parameters:
-  * ```int``` - The x coordinate of the tile, 0 based.
-  * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, This is a special case of function that gets the following:
-    * The x coordinate.
-    * The y coordinate.
-    * A list of two strings:
-      * The first is either "ON" in case the ```$SIMPLE_ENTITY``` is part of ```$DYNAMIC_ENTITIES``` or "OFF" otherwise.
-      * The second represents a presentation name string to be shown on the tile.
-  * ```string``` - Identifier of the ```$DYNAMIC_ENTITIES``` to set. This should be just the string representation of the ```$VAR_NAME```.
-  * ```string``` - Identifier of the ```$SIMPLE_ENTITY``` to add/remove from the ```$DYNAMIC_ENTITIES```.
-  * ```string``` - Presentation name to pass to the draw function.
-  * ```bool``` (optional, defaults to FALSE) - Should this entity be initially chosen when the display is turned on.
+### Quick Example
 
-### ```CycleEntityTile```
-* A tile that changes a ```$DYNAMIC_ENTITIES``` to one of the given ```$SIMPLE_ENTITY```s every time it is pressed.
-* Constructor parameters:
-  * ```int``` - The x coordinate of the tile, 0 based.
-  * ```int``` - The y coordinate of the tile, 0 based.
-  * ```std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>``` - Draw functions, This is a special case of function that gets the following:
-    * The x coordinate.
-    * The y coordinate.
-    * A list of two strings:
-      * The first represents the ```$SIMPLE_ENTITY``` that the tile refers to.
-      * The second represents a presentation name string to be shown on the tile.
-  * ```string``` - Identifier of the ```$DYNAMIC_ENTITIY``` to set. This should be just the string representation of the ```$VAR_NAME```.
-  * ```std::vector<std::pair<std::string, std::string>>``` - A vector of the ```$SIMPLE_ENTITY```s to cycle by, and their presentation names.
-    * A special case is when a ```SIMPLE_ENTITY``` name is equal to "*" - in that case, the ```$DYNAMIC_ENTITIES``` will be set to all of the other ```SIMPLE_ENTITY```s in the vector.
-  * An optional boolean (defaults to false) that indicates if the state of the tile should be reset once the screen is changed.
+```yaml
+screens:
+  - id: main_screen
+    flags: [BASE]
+    tiles:
+      - ha_action:
+          x: 0
+          y: 0
+          entities:
+            - entity: light.living_room
+          display:
+            - tile_lights
+          perform:
+            - action_lights
+        
+      - move_page:
+          x: 1
+          y: 0
+          display:
+            - tile_settings
+          destination: settings_screen
+```
 
+## Tile Types
 
-## utils.h
-Common utility functions to be used in yaml files.
+The following tile types are available in YAML configuration:
 
-## draw_state.h
-Commn utility functions.
+### HAActionTile
+Performs actions in Home Assistant (toggle light, toggle AC, open blinds, etc.)
 
-## HomeAssistant Entities
+```yaml
+- ha_action:
+    x: 0
+    y: 0
+    entities:
+      - entity: light.my_light
+    display:
+      - tile_lights
+    perform:
+      - action_lights
+```
 
-### Entities in configuration
-In the configuration (yaml) file, when defining the UI using the C++ objects, there's a need to define which HA entities are acted upon. The following options are available:
-* **$SIMPLE_ENTITY** An entity as it is defined in HomeAssistant (string).
-* **DYNAMIC_ENTITIES** A placeholder (variable) that is set from a different place. This is a unique string that can represent a list of entities. The format in the configuration should be ```"#{$VAR_NAME}"```
-* **$ENTITY_WITH_ATTRIBUTE** An entity and attribute, encoded as ```$SIMPLE_ENTITY|$ATTRIBUTE```, or ```$DYNAMIC_ENTITIES|$ATTRIBUTE```. The attribute is a string that is used in HA.
-On execution time, when entities are passed to functions defined in ```lib.yaml```, the ```$DYNAMIC_ENTITIES```s are resolved. This means that for any entity that is part of the ```DYNAMIC_ENTITIES``` a ```$SIMPLE_ENTITY``` or ```$SIMPLE_ENTITY|$ATTRIBUTE``` is passed.
+### MovePageTile
+Navigation tile that moves to another screen.
 
-**<ins>Example</ins>**
+```yaml
+- move_page:
+    x: 1
+    y: 0
+    display:
+      - tile_settings
+    destination: settings_screen
+```
 
-```new HAActionTile(0, 0, { id(tile_temp_up) }, { id(action_temp_up) }, { "#{AC}|temperature" })```
+### FunctionTile
+Performs functions defined in `lib.yaml` (e.g., brightness adjustment).
 
-The following is initialization of a ```HAActionTile```. The entities that will be passed to the *id(tile_temp_up)* and *id(action_temp_up)* are the ones set on the variable ```AC```. For example, in case we set ```AC``` to be [climate.a, climate.b], two entities will be passed to the functions, with the "tempretaure" attribute.
+```yaml
+- function:
+    x: 0
+    y: 1
+    display:
+      - tile_brightness
+    on_press: on_brightness_press
+    on_release: on_brightness_release
+```
+
+### TitleTile
+Display-only tile that shows information.
+
+```yaml
+- title:
+    x: 2
+    y: 0
+    entities:
+      - entity: climate.ac
+    display:
+      - tile_ac_status
+```
+
+### ToggleEntityTile
+Toggle entity on/off in a dynamic list.
+
+```yaml
+- toggle_entity:
+    x: 0
+    y: 0
+    display:
+      - tile_choose_light
+    identifier: LIGHT
+    entity: light.closet
+    presentation_name: Closet
+```
+
+### CycleEntityTile
+Cycle through predefined options.
+
+```yaml
+- cycle_entity:
+    x: 1
+    y: 0
+    display:
+      - tile_mode
+    dynamic_entity: AC_MODE
+    options:
+      - value: "off"
+        label: "Off"
+      - value: "cool"
+        label: "Cool"
+      - value: "heat"
+        label: "Heat"
+```
+
+## Dynamic Entities
+
+For advanced configurations using dynamic entity lists, see [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md).
 
 # Installation steps
 
 * **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
-* **Copy library files** - Copy the files under ```/esphome/lib/``` to a newly created ```/esphome/lib/``` directory in your homeassistant.
-* **Edit device files** - Once the CYD is connected to HA, edit the configuration file of the specific display. This is done through the [ESPHome interface](https://esphome.io/guides/getting_started_hassio.html#esphome-interface). Defining the actual menus is done here, please follow the given example in ```monitor.yaml```, or ```3248s035_monitor.yaml``` and the documentation [above](https://github.com/yatush/cyd-tiled-display/tree/main?tab=readme-ov-file#library).
-  * Make sure to update *api->encryption->key*.
-* **Enable CYD to execute HA commands** - In your HA, go to *Settings -> Devices and Services -> ESPHome -> <sub>(on your device)</sub> Configure -> Enable "Allow the device to perform Home Assistant actions"*
-* On ESPHome interface, go to the device, and click ```Update```
+* **Copy library files** - Copy the files under `esphome/lib/` to your Home Assistant's ESPHome configuration directory.
+* **Configure tiles** - Edit `monitor_tiles.yaml` to define your screens and tiles. See [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md) for detailed documentation.
+* **Edit device files** - Once the CYD is connected to HA, edit the configuration file of the specific display through the [ESPHome interface](https://esphome.io/guides/getting_started_hassio.html#esphome-interface). Reference the example files:
+  * `2432s028_monitor.yaml` - For 2.8" display (ESP32-2432S028)
+  * `3248s035_monitor.yaml` - For 3.5" display (ESP32-3248s035C)
+  * Make sure to update `api->encryption->key`.
+* **Enable CYD to execute HA commands** - In your HA, go to *Settings -> Devices and Services -> ESPHome -> <device> -> Configure -> Enable "Allow the device to perform Home Assistant actions"*
+* On ESPHome interface, go to the device, and click `Update`
 * That's it, you're all set!
 
 # Built-in capabilities

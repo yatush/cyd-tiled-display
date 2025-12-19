@@ -1,0 +1,20 @@
+substitutions:
+  device_name: "monitor"
+  friendly_name: Monitor
+
+packages:
+  device_base: !include lib/2432s028_base.yaml
+  lib: !include lib/lib.yaml
+
+esphome:
+  name: $device_name
+  friendly_name: $friendly_name
+
+# https://esphome.io/components/api.html#configuration-variables
+api:
+  encryption: 
+    key: "AJ9ioMY1QzbUlAKim6G9IAYEVDv5a6iJCToD7lppTLU="
+
+# Use tile_ui component with external tiles configuration
+tile_ui:
+  tiles_file: monitor_tiles.yaml

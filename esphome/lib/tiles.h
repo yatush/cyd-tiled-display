@@ -1,3 +1,6 @@
+#ifndef TILES_H
+#define TILES_H
+
 class Tile {
 public:
   Tile(int x, int y,
@@ -501,3 +504,5 @@ private:
   // Indicates if should be reset on screen leave
   bool reset_on_leave_ = false;
 };
+
+#endif // TILES_H
