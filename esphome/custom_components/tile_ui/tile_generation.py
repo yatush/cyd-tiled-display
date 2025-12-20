@@ -162,8 +162,6 @@ def generate_toggle_entity_tile(config):
         raise ValueError(f"toggle_entity tile at ({x}, {y}) must have 'dynamic_entity' field")
     if not entity:
         raise ValueError(f"toggle_entity tile at ({x}, {y}) must have 'entity' field")
-    if not presentation_name:
-        raise ValueError(f"toggle_entity tile at ({x}, {y}) must have 'presentation_name' field")
     
     initially_chosen_cpp = "true" if initially_chosen else "false"
     

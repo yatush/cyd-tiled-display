@@ -47,6 +47,10 @@ Screens are organized as a 2D grid. Each tile occupies one position using:
 - **x**: Column (0-based, horizontal position)
 - **y**: Row (0-based, vertical position)
 
+### Screen Navigation Validation
+
+All non-TEMPORARY screens must have a navigation path (via `move_page` tiles) back to the BASE screen or to a TEMPORARY screen. TEMPORARY screens automatically return to the BASE screen after timeout, so they do not require explicit navigation back.
+
 ## Tile Types
 
 ### 1. Title Tile (Read-Only Display)
@@ -151,10 +155,12 @@ Calls a script/function when pressed.
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-- **on_press**: *(Required)* Function to call when tile is pressed
-- **on_release**: (Optional) Function to call when tile is released
+- **on_press**: (Optional*) Function to call when tile is pressed
+- **on_release**: (Optional*) Function to call when tile is released
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
+
+> **Note**: At least one of `on_press` or `on_release` must be specified.
 
 ### 5. Toggle Entity Tile (Entity Selection)
 
@@ -177,7 +183,7 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 - **display**: *(Required)* List of display scripts
 - **dynamic_entity**: *(Required)* Key for the dynamic_entity whose value is set by this tile.
 - **entity**: *(Required)* The entity ID that is set to the dynamic_entity by this tile. Can be a **comma-separated list** of entities (e.g., `light.kitchen, light.living_room`) to control multiple entities at once.
-- **presentation_name**: *(Required)* Display name for this option - sent to the display scripts
+- **presentation_name**: (Optional) Display name for this option - sent to the display scripts
 - **initially_chosen**: (Optional, default: false) Whether this is the initially selected option
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border

@@ -210,7 +210,7 @@ Toggle entity on/off in a dynamic list.
     y: 0
     display:
       - tile_choose_light
-    identifier: LIGHT
+    dynamic_entity: LIGHT
     entity: light.closet
     presentation_name: Closet
 ```
@@ -226,11 +226,11 @@ Cycle through predefined options.
       - tile_mode
     dynamic_entity: AC_MODE
     options:
-      - value: "off"
+      - entity: "off"
         label: "Off"
-      - value: "cool"
+      - entity: "cool"
         label: "Cool"
-      - value: "heat"
+      - entity: "heat"
         label: "Heat"
 ```
 

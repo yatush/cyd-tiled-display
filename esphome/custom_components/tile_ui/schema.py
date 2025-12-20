@@ -120,7 +120,7 @@ def title_schema(value):
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
         cv.Required("display"): string_list,
-        cv.Optional("entities"): entities_list,
+        cv.Required("entities"): entities_list,
         cv.Optional("omit_frame"): bool,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
         cv.Optional("activation_var"): activation_var_schema,

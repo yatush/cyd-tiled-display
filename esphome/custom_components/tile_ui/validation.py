@@ -178,6 +178,16 @@ def validate_tiles_config(screens, available_scripts=None, available_globals=Non
                         f"dynamic_entry dynamic_entity '{entry_name}' is not a valid dynamic entity. "
                         f"Valid dynamic entities are: {', '.join(sorted(valid_dynamic_entities))}"
                     )
+            
+            # Validate move_page destination is a valid screen ID
+            if tile_type == "move_page":
+                destination = config.get("destination", "")
+                if destination and destination not in valid_screen_ids:
+                    raise ValueError(
+                        f"Screen '{screen_id}', move_page tile at ({x}, {y}): "
+                        f"destination '{destination}' is not a valid screen ID. "
+                        f"Valid screen IDs are: {', '.join(sorted(valid_screen_ids))}"
+                    )
     
     # Validate all referenced scripts are available with correct types
     if available_scripts is not None:
@@ -425,6 +435,7 @@ def _validate_tile_fields(screen_id, tile_type, config, x, y):
     elif tile_type == "function":
         display = config.get("display", [])
         on_press = config.get("on_press", "")
+        on_release = config.get("on_release", "")
         
         if not display or len(display) == 0:
             raise ValueError(f"Screen '{screen_id}', function tile at ({x}, {y}): 'display' field is required")
@@ -435,8 +446,8 @@ def _validate_tile_fields(screen_id, tile_type, config, x, y):
             if empty_items:
                 raise ValueError(f"Screen '{screen_id}', function tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
         
-        if not on_press:
-            raise ValueError(f"Screen '{screen_id}', function tile at ({x}, {y}): 'on_press' field is required")
+        if not on_press and not on_release:
+            raise ValueError(f"Screen '{screen_id}', function tile at ({x}, {y}): at least one of 'on_press' or 'on_release' must be specified")
     
     elif tile_type == "toggle_entity":
         display = config.get("display", [])
@@ -457,8 +468,6 @@ def _validate_tile_fields(screen_id, tile_type, config, x, y):
             raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'dynamic_entity' field is required")
         if not entity:
             raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'entity' field is required")
-        if not presentation_name:
-            raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'presentation_name' field is required")
     
     elif tile_type == "cycle_entity":
         display = config.get("display", [])

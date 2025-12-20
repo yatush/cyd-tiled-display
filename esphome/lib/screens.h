@@ -124,9 +124,11 @@ public:
   }
 
   bool hasAtt(ScreenAtt att) {
-    for (Tile* tile : this->tiles_) {
-      if (tile->requiresFastRefresh()) {
-        return true;
+    if (att == FAST_REFRESH) {
+      for (Tile* tile : this->tiles_) {
+        if (tile->requiresFastRefresh()) {
+          return true;
+        }
       }
     }
     return Screen::hasAtt(att);
