@@ -123,7 +123,7 @@ public:
     this->drawWifiHour();
   }
 
-  bool hasAtt(ScreenAtt att) {
+  bool hasAtt(ScreenAtt att) override {
     if (att == FAST_REFRESH) {
       for (Tile* tile : this->tiles_) {
         if (tile->requiresFastRefresh()) {

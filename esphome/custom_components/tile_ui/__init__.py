@@ -1,8 +1,10 @@
 ﻿"""Tile UI ESPhome Component - C++ code generation entry point."""
-import esphome.codegen as cg
-import esphome.config_validation as cv
+from typing import Any
 import sys
 import os
+
+import esphome.codegen as cg
+import esphome.config_validation as cv
 from esphome.const import CONF_ID
 from esphome.core import CORE
 from .data_collection import load_tiles_yaml, collect_available_scripts, collect_available_globals
@@ -22,8 +24,14 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_DEBUG_OUTPUT, default=False): cv.boolean,
 }, extra=cv.ALLOW_EXTRA)
 
+__all__ = [
+    "DOMAIN",
+    "CONFIG_SCHEMA",
+    "to_code",
+]
 
-def _print_error(context, message):
+
+def _print_error(context: str, message: str) -> None:
     """Print a formatted error message and exit without traceback."""
     print(f"\n{'='*70}", file=sys.stderr)
     print(f"❌ [tile_ui] {context}:", file=sys.stderr)
@@ -31,7 +39,7 @@ def _print_error(context, message):
     print(f"{'='*70}\n", file=sys.stderr)
 
 
-def _print_success(message):
+def _print_success(message: str) -> None:
     """Print a formatted success message."""
     print(f"\n{'='*70}", file=sys.stderr)
     print(f"✅ [tile_ui] Success:", file=sys.stderr)
@@ -39,7 +47,7 @@ def _print_success(message):
     print(f"{'='*70}\n", file=sys.stderr)
 
 
-def _print_debug(message):
+def _print_debug(message: str) -> None:
     """Print a formatted debug message."""
     print(f"\n{'='*70}", file=sys.stderr)
     print(f"🐛 [tile_ui] Debug Output:", file=sys.stderr)

@@ -5,6 +5,12 @@ This module handles:
 - Script parameter signature validation
 - Script type matching against expected usage contexts
 """
+from typing import Any
+
+__all__ = [
+    "get_script_type",
+    "validate_script_type",
+]
 
 def get_script_type(parameters):
     """Determine the script type based on its parameter signature (types only).

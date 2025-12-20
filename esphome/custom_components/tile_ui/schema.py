@@ -1,28 +1,60 @@
 """Schema validation for tile configuration."""
+from enum import Enum
+from typing import Any
+
 import esphome.config_validation as cv
 from voluptuous import PREVENT_EXTRA
 
-# Tile types
-TILE_TYPE_HA_ACTION = "ha_action"
-TILE_TYPE_MOVE_PAGE = "move_page"
-TILE_TYPE_TITLE = "title"
-TILE_TYPE_FUNCTION = "function"
-TILE_TYPE_TOGGLE_ENTITY = "toggle_entity"
-TILE_TYPE_CYCLE_ENTITY = "cycle_entity"
 
-VALID_TILE_TYPES = {
-    TILE_TYPE_HA_ACTION,
-    TILE_TYPE_MOVE_PAGE,
-    TILE_TYPE_TITLE,
-    TILE_TYPE_FUNCTION,
-    TILE_TYPE_TOGGLE_ENTITY,
-    TILE_TYPE_CYCLE_ENTITY,
-}
-
-VALID_FLAGS = {"BASE", "TEMPORARY", "FAST_REFRESH"}
+class TileType(Enum):
+    """Enumeration of valid tile types."""
+    HA_ACTION = "ha_action"
+    MOVE_PAGE = "move_page"
+    TITLE = "title"
+    FUNCTION = "function"
+    TOGGLE_ENTITY = "toggle_entity"
+    CYCLE_ENTITY = "cycle_entity"
 
 
-def coord_schema(value):
+# String constants for backward compatibility
+TILE_TYPE_HA_ACTION = TileType.HA_ACTION.value
+TILE_TYPE_MOVE_PAGE = TileType.MOVE_PAGE.value
+TILE_TYPE_TITLE = TileType.TITLE.value
+TILE_TYPE_FUNCTION = TileType.FUNCTION.value
+TILE_TYPE_TOGGLE_ENTITY = TileType.TOGGLE_ENTITY.value
+TILE_TYPE_CYCLE_ENTITY = TileType.CYCLE_ENTITY.value
+
+VALID_TILE_TYPES: set[str] = {t.value for t in TileType}
+VALID_FLAGS: set[str] = {"BASE", "TEMPORARY", "FAST_REFRESH"}
+
+__all__ = [
+    "TileType",
+    "TILE_TYPE_HA_ACTION",
+    "TILE_TYPE_MOVE_PAGE", 
+    "TILE_TYPE_TITLE",
+    "TILE_TYPE_FUNCTION",
+    "TILE_TYPE_TOGGLE_ENTITY",
+    "TILE_TYPE_CYCLE_ENTITY",
+    "VALID_TILE_TYPES",
+    "VALID_FLAGS",
+    "coord_schema",
+    "non_empty_string",
+    "string_list",
+    "entities_list",
+    "activation_var_schema",
+    "ha_action_schema",
+    "move_page_schema",
+    "title_schema",
+    "function_schema",
+    "toggle_entity_schema",
+    "cycle_entity_schema",
+    "tile_schema",
+    "screen_schema",
+    "screens_list_schema",
+]
+
+
+def coord_schema(value: Any) -> int:
     """Validate coordinate (non-negative integer)."""
     if not isinstance(value, int):
         raise cv.Invalid(f"Coordinate must be integer, got {type(value).__name__}")
@@ -31,7 +63,7 @@ def coord_schema(value):
     return value
 
 
-def non_empty_string(value):
+def non_empty_string(value: Any) -> str:
     """Validate non-empty string."""
     if not isinstance(value, str):
         raise cv.Invalid(f"Must be a string, got {type(value).__name__}")
@@ -40,7 +72,7 @@ def non_empty_string(value):
     return value
 
 
-def string_list(value):
+def string_list(value: Any) -> list[str]:
     """Validate list of non-empty strings."""
     if not isinstance(value, list):
         raise cv.Invalid(f"Must be a list, got {type(value).__name__}")
@@ -50,7 +82,7 @@ def string_list(value):
     return value
 
 
-def entities_list(value):
+def entities_list(value: Any) -> list[dict]:
     """Validate entities list - can contain dicts with dynamic_entity or entity keys."""
     if not isinstance(value, list):
         raise cv.Invalid(f"entities must be a list, got {type(value).__name__}")
@@ -64,7 +96,7 @@ def entities_list(value):
     return value
 
 
-def activation_var_schema(value):
+def activation_var_schema(value: Any) -> dict:
     """Validate activation_var configuration."""
     schema = cv.Schema({
         cv.Required("dynamic_entity"): non_empty_string,
@@ -168,11 +200,11 @@ def cycle_entity_schema(value):
         cv.Required("display"): string_list,
         cv.Required("dynamic_entity"): non_empty_string,
         cv.Required("options"): cv.All(
-            cv.ensure_list,
+            list,
             [cv.Schema({
                 cv.Required("entity"): non_empty_string,
                 cv.Required("label"): non_empty_string,
-            })]
+            }, extra=PREVENT_EXTRA)]
         ),
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
         cv.Optional("reset_on_leave"): bool,

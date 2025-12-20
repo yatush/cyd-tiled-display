@@ -7,15 +7,35 @@ This module handles all validation logic including:
 - Dynamic entity validation
 - Activation variable validation
 """
+from typing import Any
+
 from .script_types import validate_script_type
 from .data_collection import (
     collect_referenced_scripts,
     collect_referenced_globals,
     collect_dynamic_entities
 )
+from .schema import (
+    VALID_TILE_TYPES,
+    VALID_FLAGS,
+    TILE_TYPE_HA_ACTION,
+    TILE_TYPE_MOVE_PAGE,
+    TILE_TYPE_TITLE,
+    TILE_TYPE_FUNCTION,
+    TILE_TYPE_TOGGLE_ENTITY,
+    TILE_TYPE_CYCLE_ENTITY,
+)
+
+__all__ = [
+    "validate_tiles_config",
+]
 
 
-def validate_tiles_config(screens, available_scripts=None, available_globals=None):
+def validate_tiles_config(
+    screens: list[dict],
+    available_scripts: dict | None = None,
+    available_globals: set | None = None
+) -> None:
     """Validate the complete tiles configuration.
     
     Performs all validations:
@@ -31,7 +51,6 @@ def validate_tiles_config(screens, available_scripts=None, available_globals=Non
     - Valid activation_var names (match dynamic entities)
     - Required fields present for each tile type
     - Action tiles have at least perform or location_perform
-    - No empty strings in lists (display, perform, location_perform, entities)
     - All referenced scripts are available and have correct types
     - All referenced boolean globals in conditions are available
     
@@ -43,9 +62,6 @@ def validate_tiles_config(screens, available_scripts=None, available_globals=Non
     Raises:
         ValueError: With detailed error messages if validation fails
     """
-    # Valid ESPhome flags that can be used
-    VALID_FLAGS = {"BASE", "TEMPORARY", "FAST_REFRESH"}
-    VALID_TILE_TYPES = {"ha_action", "move_page", "title", "function", "toggle_entity", "cycle_entity"}
     
     # Collect all screen IDs, dynamic entities, and validate BASE flag
     valid_screen_ids = set()
@@ -354,8 +370,17 @@ def _validate_global_references(screens, available_globals):
         )
 
 
-def _validate_tile_fields(screen_id, tile_type, config, x, y):
-    """Validate required fields for each tile type.
+def _validate_tile_fields(
+    screen_id: str,
+    tile_type: str,
+    config: dict,
+    x: int,
+    y: int
+) -> None:
+    """Validate tile-specific business logic that schema cannot enforce.
+    
+    Note: Basic field presence and type checks are handled by schema.py.
+    This function handles cross-field validation and business rules.
     
     Args:
         screen_id: ID of the screen containing the tile
@@ -365,131 +390,48 @@ def _validate_tile_fields(screen_id, tile_type, config, x, y):
         y: Y coordinate
         
     Raises:
-        ValueError: If required fields are missing or invalid
+        ValueError: If business logic validation fails
     """
-    if tile_type == "ha_action":
-        entities = config.get("entities", "")
-        display = config.get("display", [])
+    if tile_type == TILE_TYPE_HA_ACTION:
         perform = config.get("perform", [])
         location_perform = config.get("location_perform", [])
         
-        if not entities:
-            raise ValueError(f"Screen '{screen_id}', ha_action tile at ({x}, {y}): 'entities' field is required")
-        if not display or len(display) == 0:
-            raise ValueError(f"Screen '{screen_id}', ha_action tile at ({x}, {y}): 'display' field is required")
-        
-        # Check for empty strings in display list
-        if isinstance(display, list):
-            empty_items = [i for i, item in enumerate(display) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', ha_action tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
-        
-        # Check for empty strings in perform/location_perform lists
-        if perform and isinstance(perform, list):
-            empty_items = [i for i, item in enumerate(perform) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', ha_action tile at ({x}, {y}): 'perform' list contains empty values at indices {empty_items}")
-        
-        if location_perform and isinstance(location_perform, list):
-            empty_items = [i for i, item in enumerate(location_perform) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', ha_action tile at ({x}, {y}): 'location_perform' list contains empty values at indices {empty_items}")
-        
+        # Business rule: at least one action must be specified
         if (not perform or len(perform) == 0) and (not location_perform or len(location_perform) == 0):
             raise ValueError(
                 f"Screen '{screen_id}', ha_action tile at ({x}, {y}): "
                 f"At least one of 'perform' or 'location_perform' must be specified"
             )
     
-    elif tile_type == "title":
-        entities = config.get("entities", "")
-        display = config.get("display", [])
-        
-        if not entities:
-            raise ValueError(f"Screen '{screen_id}', title tile at ({x}, {y}): 'entities' field is required")
-        if not display or len(display) == 0:
-            raise ValueError(f"Screen '{screen_id}', title tile at ({x}, {y}): 'display' field is required")
-        
-        # Check for empty strings in display list
-        if isinstance(display, list):
-            empty_items = [i for i, item in enumerate(display) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', title tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
-    
-    elif tile_type == "move_page":
-        display = config.get("display", [])
-        destination = config.get("destination", "")
-        
-        if not display or len(display) == 0:
-            raise ValueError(f"Screen '{screen_id}', move_page tile at ({x}, {y}): 'display' field is required")
-        
-        # Check for empty strings in display list
-        if isinstance(display, list):
-            empty_items = [i for i, item in enumerate(display) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', move_page tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
-        
-        if not destination:
-            raise ValueError(f"Screen '{screen_id}', move_page tile at ({x}, {y}): 'destination' field is required")
-    
-    elif tile_type == "function":
-        display = config.get("display", [])
+    elif tile_type == TILE_TYPE_FUNCTION:
         on_press = config.get("on_press", "")
         on_release = config.get("on_release", "")
         
-        if not display or len(display) == 0:
-            raise ValueError(f"Screen '{screen_id}', function tile at ({x}, {y}): 'display' field is required")
-        
-        # Check for empty strings in display list
-        if isinstance(display, list):
-            empty_items = [i for i, item in enumerate(display) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', function tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
-        
+        # Business rule: at least one callback must be specified
         if not on_press and not on_release:
-            raise ValueError(f"Screen '{screen_id}', function tile at ({x}, {y}): at least one of 'on_press' or 'on_release' must be specified")
+            raise ValueError(
+                f"Screen '{screen_id}', function tile at ({x}, {y}): "
+                f"at least one of 'on_press' or 'on_release' must be specified"
+            )
     
-    elif tile_type == "toggle_entity":
-        display = config.get("display", [])
-        dynamic_entity = config.get("dynamic_entity", "")
-        entity = config.get("entity", "")
-        presentation_name = config.get("presentation_name", "")
-        
-        if not display or len(display) == 0:
-            raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'display' field is required")
-        
-        # Check for empty strings in display list
-        if isinstance(display, list):
-            empty_items = [i for i, item in enumerate(display) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
-        
-        if not dynamic_entity:
-            raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'dynamic_entity' field is required")
-        if not entity:
-            raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}): 'entity' field is required")
-    
-    elif tile_type == "cycle_entity":
-        display = config.get("display", [])
-        dynamic_entity = config.get("dynamic_entity", "")
+    elif tile_type == TILE_TYPE_CYCLE_ENTITY:
         options = config.get("options", [])
         
-        if not display or len(display) == 0:
-            raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): 'display' field is required")
-        
-        # Check for empty strings in display list
-        if isinstance(display, list):
-            empty_items = [i for i, item in enumerate(display) if not isinstance(item, str) or not item.strip()]
-            if empty_items:
-                raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): 'display' list contains empty values at indices {empty_items}")
-        
-        if not dynamic_entity:
-            raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): 'dynamic_entity' field is required")
-        if not options or len(options) == 0:
-            raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): 'options' field is required with at least one option")
-        
-        for option in options:
+        # Validate each option has required fields (detailed check beyond schema)
+        for idx, option in enumerate(options):
             if not isinstance(option, dict):
-                raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): options must be dicts")
-            if "entity" not in option or "label" not in option:
-                raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): each option must have 'entity' and 'label' fields")
+                raise ValueError(
+                    f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                    f"option {idx} must be a dict"
+                )
+            if "entity" not in option:
+                raise ValueError(
+                    f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                    f"option {idx} missing 'entity' field"
+                )
+            if "label" not in option:
+                raise ValueError(
+                    f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                    f"option {idx} missing 'label' field"
+                )
+

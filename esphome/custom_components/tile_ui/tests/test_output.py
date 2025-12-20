@@ -12,9 +12,10 @@ from unittest.mock import MagicMock
 # 1. Setup paths to allow importing custom_components.tile_ui
 # Assuming script is at custom_components/tile_ui/test_output.py
 current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir) # custom_components
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+parent_dir = os.path.dirname(current_dir) # tile_ui
+grandparent_dir = os.path.dirname(parent_dir) # custom_components
+if grandparent_dir not in sys.path:
+    sys.path.insert(0, grandparent_dir)
 
 # 2. Mock esphome dependencies BEFORE importing tile_ui
 # This is necessary because tile_ui/__init__.py imports esphome modules
@@ -94,23 +95,18 @@ def test_generation(file_path=None):
         screens = [
             {
                 "id": "main_screen",
-                "flags": ["home"],
+                "flags": ["BASE"],
                 "tiles": [
                     {
-                        "title": {
+                        "cycle_entity": {
                             "x": 0,
                             "y": 0,
-                            "display": ["time_sensor"],
-                            "entities": "sensor.temperature"
-                        }
-                    },
-                    {
-                        "ha_action": {
-                            "x": 0,
-                            "y": 1,
-                            "display": ["light_icon"],
-                            "perform": ["toggle_light"],
-                            "entities": "light.living_room"
+                            "display": ["fan_icon_script"],
+                            "dynamic_entity": "fan_entity_var",
+                            "options": [
+                                {"entity": "fan.low", "label": "Low"},
+                                {"entity": "fan.high", "label": "High"}
+                            ]
                         }
                     },
                     {
@@ -118,7 +114,7 @@ def test_generation(file_path=None):
                             "x": 1,
                             "y": 0,
                             "display": ["settings_icon"],
-                            "destination": "settings_screen"
+                            "destination": "main_screen"
                         }
                     }
                 ]

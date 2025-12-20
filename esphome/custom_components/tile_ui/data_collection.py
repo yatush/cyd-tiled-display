@@ -6,8 +6,18 @@ This module handles:
 - Collecting available globals
 - Collecting referenced scripts and globals from tile configuration
 """
+from typing import Any
 import yaml
 import os
+
+__all__ = [
+    "load_tiles_yaml",
+    "collect_available_scripts",
+    "collect_available_globals",
+    "collect_referenced_scripts",
+    "collect_referenced_globals",
+    "collect_dynamic_entities",
+]
 
 
 def load_tiles_yaml(tiles_file_path):
@@ -177,8 +187,6 @@ def collect_referenced_scripts(screens):
                             'usage': usage
                         })
             
-    return referenced_scripts
-    
     return referenced_scripts
 
 

@@ -1142,7 +1142,7 @@ script:
     then:
       - lambda: |-
           std::string entity = DRAW_ONLY(entities[0]);
-          std::string name = DRAW_ONLY(entities[1]);
+          std::string name = DRAW_ONLY(entities.back());
           handle_caching(std::make_pair(x, y), entity, name);
 
           std::string icon = "\U0000e286";
@@ -1157,7 +1157,7 @@ script:
           print(id(x_start)[x] + id(x_rect) - 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cc");
           print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
           print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
-          if (entity != "*") {
+          if (entities.size() == 2 && entity != "*") {
             std::string position = GetTextSensorValue(entity + "|current_position") + "%";
             print(id(x_mid)[x], text_y - (text_size.second), TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, position.c_str());
           }
@@ -1169,7 +1169,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          std::string name = DRAW_ONLY(entities[1]);
+          std::string name = DRAW_ONLY(entities.back());
           handle_caching(std::make_pair(x, y), name);
 
           std::string icon = "\U0000e88a";

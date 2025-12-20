@@ -1,9 +1,29 @@
 ﻿"""Tile generation functions - converts YAML tile configs to C++ code."""
+from typing import Any
+
 from .tile_utils import (
     format_display_list, format_functions_list, format_entity_value,
     build_fast_refresh_lambda, format_entity_cpp, get_tile_modifiers,
     flags_to_cpp
 )
+from .schema import (
+    TILE_TYPE_HA_ACTION,
+    TILE_TYPE_MOVE_PAGE,
+    TILE_TYPE_TITLE,
+    TILE_TYPE_FUNCTION,
+    TILE_TYPE_TOGGLE_ENTITY,
+    TILE_TYPE_CYCLE_ENTITY,
+)
+
+__all__ = [
+    "generate_tile_cpp",
+    "generate_action_tile",
+    "generate_title_tile",
+    "generate_move_page_tile",
+    "generate_function_tile",
+    "generate_toggle_entity_tile",
+    "generate_cycle_entity_tile",
+]
 
 
 def _generate_base_tile_args(config):
@@ -217,19 +237,19 @@ def generate_cycle_entity_tile(config):
     return tile_cpp
 
 
-def generate_tile_cpp(tile):
+def generate_tile_cpp(tile: dict) -> str:
     """Generate C++ code for a single tile."""
-    if "ha_action" in tile:
-        return generate_action_tile(tile["ha_action"])
-    elif "move_page" in tile:
-        return generate_move_page_tile(tile["move_page"])
-    elif "title" in tile:
-        return generate_title_tile(tile["title"])
-    elif "function" in tile:
-        return generate_function_tile(tile["function"])
-    elif "toggle_entity" in tile:
-        return generate_toggle_entity_tile(tile["toggle_entity"])
-    elif "cycle_entity" in tile:
-        return generate_cycle_entity_tile(tile["cycle_entity"])
+    if TILE_TYPE_HA_ACTION in tile:
+        return generate_action_tile(tile[TILE_TYPE_HA_ACTION])
+    elif TILE_TYPE_MOVE_PAGE in tile:
+        return generate_move_page_tile(tile[TILE_TYPE_MOVE_PAGE])
+    elif TILE_TYPE_TITLE in tile:
+        return generate_title_tile(tile[TILE_TYPE_TITLE])
+    elif TILE_TYPE_FUNCTION in tile:
+        return generate_function_tile(tile[TILE_TYPE_FUNCTION])
+    elif TILE_TYPE_TOGGLE_ENTITY in tile:
+        return generate_toggle_entity_tile(tile[TILE_TYPE_TOGGLE_ENTITY])
+    elif TILE_TYPE_CYCLE_ENTITY in tile:
+        return generate_cycle_entity_tile(tile[TILE_TYPE_CYCLE_ENTITY])
     else:
         return f'// Unknown tile structure: {list(tile.keys())}'

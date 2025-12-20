@@ -216,9 +216,14 @@ bool IsInteger(const std::string& str) {
   });
 }
 
-// Extracts the sensor name from a string, potentially containing a "|"
-// separator. Example: "sensor.temperature|unit_of_measurement" ->
-// "sensor.temperature"
+/**
+ * @brief Extracts the sensor name from a combined string.
+ * 
+ * Example: "sensor.temperature|unit_of_measurement" -> "sensor.temperature"
+ * 
+ * @param text The input string containing sensor and optional attribute
+ * @return std::string The sensor entity ID
+ */
 std::string GetSensor(const std::string& text) {
   if (text.find("|") == -1) {
     return text;
@@ -226,9 +231,14 @@ std::string GetSensor(const std::string& text) {
   return text.substr(0, text.find("|"));
 }
 
-// Extracts the attribute name from a string, potentially containing a "|"
-// separator. Example: "sensor.temperature|unit_of_measurement" ->
-// "unit_of_measurement"
+/**
+ * @brief Extracts the attribute name from a combined string.
+ * 
+ * Example: "sensor.temperature|unit_of_measurement" -> "unit_of_measurement"
+ * 
+ * @param text The input string containing sensor and optional attribute
+ * @return std::string The attribute name, or empty string if none
+ */
 std::string GetAtt(const std::string& text) {
   if (text.find("|") == -1) {
     return "";
@@ -238,12 +248,24 @@ std::string GetAtt(const std::string& text) {
 
 // --- Sensor Type Checking ---
 
-// Checks if a key represents a text sensor (e.g., climate, cover).
+/**
+ * @brief Checks if a key represents a text sensor (e.g., climate, cover).
+ * 
+ * @param key The entity ID to check
+ * @return true If the entity is treated as a text sensor
+ * @return false Otherwise
+ */
 bool IsTextSensor(const std::string& key) {
   return key.find("climate.") == 0 || key.find("cover.") == 0;
 }
 
-// Checks if a key represents a binary sensor (e.g., switch, light).
+/**
+ * @brief Checks if a key represents a binary sensor (e.g., switch, light).
+ * 
+ * @param key The entity ID to check
+ * @return true If the entity is treated as a binary sensor
+ * @return false Otherwise
+ */
 bool IsBinSensor(const std::string& key) {
   return key.find("switch.") == 0 || key.find("light.") == 0;
 }

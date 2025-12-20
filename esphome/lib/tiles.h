@@ -371,6 +371,7 @@ protected:
 };
 
 // A tile that allows the user to choose an entity from a list.
+// The draw function will receive {state ("ON"/"OFF"), presentation_name} as arguments.
 class ToggleEntityTile : public Tile {
 public:
   ToggleEntityTile(
@@ -428,6 +429,7 @@ protected:
 };
 
 // A tile that cycles an entity from a given list
+// The draw function will receive {entity_1, entity_2, ..., entity_n, presentation_name} as arguments.
 class CycleEntityTile : public Tile {
 public:
   CycleEntityTile(
@@ -468,9 +470,12 @@ protected:
   }
 
   void customDraw() override {
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_,
-        { *this->entities_and_presntation_names_.at(this->current_index_).first,
-          *this->entities_and_presntation_names_.at(this->current_index_).second });
+    std::vector<std::string> args;
+    for (const auto* entity : this->entities_and_presntation_names_.at(this->current_index_).first) {
+      args.push_back(*entity);
+    }
+    args.push_back(*this->entities_and_presntation_names_.at(this->current_index_).second);
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, args);
   }
 
   void onActivation() override {

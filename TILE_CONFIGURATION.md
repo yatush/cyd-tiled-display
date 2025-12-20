@@ -75,6 +75,10 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **entities**: *(Required)* List of entities to be passed to the display script (see Entity Formats below)
 - **display**: *(Required)* List of display scripts to render the tile
+  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+    - `x`: Integer - Column position of the tile
+    - `y`: Integer - Row position of the tile
+    - `entities`: String array - The resolved entity values (with dynamic entities replaced at runtime)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ### 2. HA Action Tile (Entity Control)
@@ -103,8 +107,18 @@ Displays entity state and performs an action (typically toggle) when pressed.
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **entities**: *(Required)* List of entities to be passed to the display script
 - **display**: *(Required)* List of display scripts
+  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+    - `x`: Integer - Column position of the tile
+    - `y`: Integer - Row position of the tile
+    - `entities`: String array - The resolved entity values (with dynamic entities replaced at runtime)
 - **perform**: *(Required if location_perform not set)* Action function(s) to call when tile is pressed
+  - **Action Function Arguments**: The action scripts receive `{entities}` where:
+    - `entities`: String array - The resolved entity values
 - **location_perform**: *(Required if perform not set)* Location-based action functions for multiple locations
+  - **Location Action Function Arguments**: The action scripts receive `{x_percent, y_percent, entities}` where:
+    - `x_percent`: Float - Touch position as percentage (0.0-1.0) of tile width
+    - `y_percent`: Float - Touch position as percentage (0.0-1.0) of tile height
+    - `entities`: String array - The resolved entity values
 - **display_page_if_no_entity**: (Optional) Navigate to screen if entity is not available (requires dynamic_entity)
 - **requires_fast_refresh**: (Optional) Condition (see [Conditions](#conditions) section) determining if fast refresh is needed
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
@@ -132,6 +146,10 @@ Navigates to another screen when pressed.
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
+  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+    - `x`: Integer - Column position of the tile
+    - `y`: Integer - Row position of the tile
+    - `entities`: String array - Empty array (no entities for navigation tiles)
 - **destination**: *(Required)* Screen ID to navigate to (must be valid screen ID)
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
@@ -155,8 +173,14 @@ Calls a script/function when pressed.
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
+  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+    - `x`: Integer - Column position of the tile
+    - `y`: Integer - Row position of the tile
+    - `entities`: String array - Empty array (no entities for function tiles)
 - **on_press**: (Optional*) Function to call when tile is pressed
+  - **Function Arguments**: No parameters passed to the script
 - **on_release**: (Optional*) Function to call when tile is released
+  - **Function Arguments**: No parameters passed to the script
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
@@ -181,6 +205,9 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
+  - **Draw Function Arguments**: The display scripts receive `{state, presentation_name}` where:
+    - `state`: String - `"ON"` if the tile is currently selected, `"OFF"` otherwise
+    - `presentation_name`: String - The label to display for this option
 - **dynamic_entity**: *(Required)* Key for the dynamic_entity whose value is set by this tile.
 - **entity**: *(Required)* The entity ID that is set to the dynamic_entity by this tile. Can be a **comma-separated list** of entities (e.g., `light.kitchen, light.living_room`) to control multiple entities at once.
 - **presentation_name**: (Optional) Display name for this option - sent to the display scripts
@@ -212,6 +239,9 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
+  - **Draw Function Arguments**: The display scripts receive `{entity_1, entity_2, ..., entity_n, presentation_name}` where:
+    - `entity_1, entity_2, ...`: String(s) - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: Can be `"*"` if that option is selected, which means all the entities in the cycle.
+    - `presentation_name`: String - The label for the currently selected option (always the last argument)
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
 - **options**: *(Required)* List of options to cycle through (at least one required)
   - Each item must have:
