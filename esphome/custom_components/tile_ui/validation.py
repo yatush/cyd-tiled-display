@@ -22,6 +22,7 @@ def validate_tiles_config(screens, available_scripts=None, available_globals=Non
     - Screen IDs are unique and non-empty
     - Screen flags are valid
     - Exactly one screen with BASE flag
+    - All non-TEMPORARY screens can navigate back to BASE screen via move_page tiles
     - Screens are not empty (have at least one tile)
     - No duplicate x,y positions within screens (except conditional cycle_entity tiles)
     - Coordinates are non-negative integers
@@ -127,6 +128,17 @@ def validate_tiles_config(screens, available_scripts=None, available_globals=Non
     elif base_screen_count > 1:
         raise ValueError(f"Multiple screens with 'BASE' flag found ({base_screen_count}). Only one screen must have the BASE flag.")
     
+    # Find the BASE screen ID
+    base_screen_id = None
+    for screen in screens:
+        flags = screen.get("flags", [])
+        if "BASE" in flags:
+            base_screen_id = screen.get("id")
+            break
+    
+    # Validate all screens can navigate back to BASE screen
+    _validate_base_screen_reachability(screens, base_screen_id, valid_screen_ids)
+    
     # PASS 2: Validate tile content and relationships
     for screen in screens:
         screen_id = screen.get("id", "")
@@ -198,6 +210,95 @@ def _validate_tile_positions(screen_id, tiles):
         # Only track position if not a conditional cycle_entity
         if not is_conditional_cycle:
             positions[pos_key] = tile_type
+
+
+def _validate_base_screen_reachability(screens, base_screen_id, valid_screen_ids):
+    """Validate that all non-TEMPORARY screens can navigate back to the BASE screen.
+    
+    Builds a directed graph of screen connections via move_page tiles and checks
+    that every non-TEMPORARY screen has a path to the BASE screen.
+    
+    Note: TEMPORARY screens automatically return to the BASE screen, so they are
+    not required to have explicit move_page navigation back to BASE.
+    
+    Args:
+        screens: List of screen configurations
+        base_screen_id: ID of the BASE screen
+        valid_screen_ids: Set of all valid screen IDs
+        
+    Raises:
+        ValueError: If any non-TEMPORARY screen cannot reach the BASE screen
+    """
+    from collections import deque
+    
+    # Collect TEMPORARY screen IDs
+    temporary_screen_ids = set()
+    for screen in screens:
+        flags = screen.get("flags", [])
+        if "TEMPORARY" in flags:
+            temporary_screen_ids.add(screen.get("id", ""))
+    
+    # Build a graph: screen_id -> set of screens it can navigate to
+    navigation_graph = {screen_id: set() for screen_id in valid_screen_ids}
+    
+    for screen in screens:
+        screen_id = screen.get("id", "")
+        tiles = screen.get("tiles", [])
+        
+        for tile in tiles:
+            tile_type = list(tile.keys())[0]
+            if tile_type == "move_page":
+                config = tile[tile_type]
+                destination = config.get("destination", "")
+                if destination and destination in valid_screen_ids:
+                    navigation_graph[screen_id].add(destination)
+    
+    # For each non-TEMPORARY, non-BASE screen, check if it can reach BASE screen
+    # (either directly, via TEMPORARY screens, or via other navigation)
+    unreachable_screens = []
+    
+    for screen_id in valid_screen_ids:
+        # Skip BASE screen (it's the target)
+        if screen_id == base_screen_id:
+            continue
+        
+        # Skip TEMPORARY screens (they automatically return to BASE)
+        if screen_id in temporary_screen_ids:
+            continue
+        
+        # BFS to find if we can reach BASE screen or a TEMPORARY screen from this screen
+        visited = set()
+        queue = deque([screen_id])
+        can_reach_base = False
+        
+        while queue:
+            current = queue.popleft()
+            # Reached BASE directly
+            if current == base_screen_id:
+                can_reach_base = True
+                break
+            # Reached a TEMPORARY screen (which will auto-return to BASE)
+            if current in temporary_screen_ids:
+                can_reach_base = True
+                break
+            
+            if current in visited:
+                continue
+            visited.add(current)
+            
+            for neighbor in navigation_graph.get(current, set()):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+        
+        if not can_reach_base:
+            unreachable_screens.append(screen_id)
+    
+    if unreachable_screens:
+        raise ValueError(
+            f"The following screens cannot navigate back to the BASE screen '{base_screen_id}': "
+            f"{', '.join(sorted(unreachable_screens))}. "
+            f"Each non-TEMPORARY screen must have a path (via move_page tiles) to reach the BASE screen or a TEMPORARY screen."
+        )
 
 
 def _validate_script_references(screens, available_scripts):
