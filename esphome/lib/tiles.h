@@ -471,10 +471,21 @@ protected:
 
   void customDraw() override {
     std::vector<std::string> args;
-    for (const auto* entity : this->entities_and_presntation_names_.at(this->current_index_).first) {
-      args.push_back(*entity);
+    const auto& current_option = this->entities_and_presntation_names_.at(this->current_index_);
+    if (current_option.first.size() == 1 && *current_option.first[0] == "*") {
+      for (int i = 0; i < this->entities_and_presntation_names_.size(); ++i) {
+        if (i == this->current_index_)
+          continue;
+        for (const auto* entity : this->entities_and_presntation_names_.at(i).first) {
+          args.push_back(*entity);
+        }
+      }
+    } else {
+      for (const auto* entity : current_option.first) {
+        args.push_back(*entity);
+      }
     }
-    args.push_back(*this->entities_and_presntation_names_.at(this->current_index_).second);
+    args.push_back(*current_option.second);
     ExecuteScripts(this->draw_funcs_, this->x_, this->y_, args);
   }
 

@@ -75,7 +75,7 @@ bool deserialize_value_from_buffer(const RawData& buffer, size_t& offset, T& val
 }
 
 
-// --- Helper 2: std::string Specialization ---
+// --- Helper 2: std::string Specialization and std::vector of std::string ---
 
 // SPECIALIZATION: Saves string length followed by character data
 template<>
@@ -109,6 +109,32 @@ bool deserialize_value_from_buffer<std::string>(const RawData& buffer, size_t& o
     value.resize(length);
     std::memcpy(value.data(), buffer.data() + offset, length);
     offset += length;
+    return true;
+}
+
+// SPECIALIZATION: Saves vector size followed by each string
+template<>
+void serialize_value_to_buffer<std::vector<std::string>>(RawData& buffer, const std::vector<std::string>& value) {
+    size_t size = value.size();
+    serialize_value_to_buffer(buffer, size);
+    for (const auto& str : value) {
+        serialize_value_to_buffer(buffer, str);
+    }
+}
+
+// SPECIALIZATION: Reads vector size, then each string. Returns false on error.
+template<>
+bool deserialize_value_from_buffer<std::vector<std::string>>(const RawData& buffer, size_t& offset, std::vector<std::string>& value) {
+    size_t size = 0;
+    if (!deserialize_value_from_buffer(buffer, offset, size)) {
+        return false;
+    }
+    value.resize(size);
+    for (size_t i = 0; i < size; ++i) {
+        if (!deserialize_value_from_buffer(buffer, offset, value[i])) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -202,7 +228,17 @@ void handle_caching(const KeyType& key_input, RefTypes&... refs) {
     }
 }
 
+template<typename T>
+struct draw_only_type {
+    static T get_default() { return T{}; }
+};
+
+template<>
+struct draw_only_type<void> {
+    static void get_default() {}
+};
+
 // Executes the function call only when in RESTORE/DRAW mode (is_delete_mode is true).
 // This is an expression macro. It returns a zero-initialized value during SAVE mode.
 #define DRAW_ONLY(FUNC_CALL) \
-    ((DrawState::is_delete_mode) ? (std::remove_reference_t<decltype(FUNC_CALL)>{}) : (FUNC_CALL))
+    ((DrawState::is_delete_mode) ? (draw_only_type<std::remove_reference_t<decltype(FUNC_CALL)>>::get_default()) : (FUNC_CALL))

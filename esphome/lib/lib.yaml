@@ -1141,9 +1141,12 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          std::string entity = DRAW_ONLY(entities[0]);
-          std::string name = DRAW_ONLY(entities.back());
-          handle_caching(std::make_pair(x, y), entity, name);
+          std::vector<std::string> my_entities = DRAW_ONLY(entities);
+          handle_caching(std::make_pair(x, y), my_entities);
+
+          if (my_entities.empty()) return;
+
+          std::string name = my_entities.back();
 
           std::string icon = "\U0000e286";
           // Sizes
@@ -1157,9 +1160,20 @@ script:
           print(id(x_start)[x] + id(x_rect) - 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cc");
           print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
           print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
-          if (entities.size() == 2 && entity != "*") {
-            std::string position = GetTextSensorValue(entity + "|current_position") + "%";
-            print(id(x_mid)[x], text_y - (text_size.second), TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, position.c_str());
+          std::string common_position = "";
+          bool all_same = my_entities.size() > 1;
+          for (size_t i = 0; i < my_entities.size() - 1; ++i) {
+            std::string pos = GetTextSensorValue(my_entities[i] + "|current_position");
+            if (i == 0) {
+              common_position = pos;
+            } else if (pos != common_position) {
+              all_same = false;
+              break;
+            }
+          }
+          if (all_same && !common_position.empty()) {
+            std::string position_str = common_position + "%";
+            print(id(x_mid)[x], text_y - (text_size.second), TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, position_str.c_str());
           }
 
   - id: tile_room

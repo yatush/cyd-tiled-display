@@ -240,7 +240,7 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
   - **Draw Function Arguments**: The display scripts receive `{entity_1, entity_2, ..., entity_n, presentation_name}` where:
-    - `entity_1, entity_2, ...`: String(s) - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: Can be `"*"` if that option is selected, which means all the entities in the cycle.
+    - `entity_1, entity_2, ...`: String(s) - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: If the option is `"*"` (All), this list will contain **all other entities** defined in the `options` list, instead of the literal string `"*"`.
     - `presentation_name`: String - The label for the currently selected option (always the last argument)
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
 - **options**: *(Required)* List of options to cycle through (at least one required)
