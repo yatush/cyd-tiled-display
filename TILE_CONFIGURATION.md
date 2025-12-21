@@ -552,10 +552,10 @@ Run the following command from the project root:
 
 ```powershell
 # Windows
-python esphome/custom_components/tile_ui/test_output.py esphome/monitor_tiles.yaml
+python esphome/custom_components/tile_ui/tests/test_output.py esphome/monitor_tiles.yaml
 
 # Linux/Mac
-python3 esphome/custom_components/tile_ui/test_output.py esphome/monitor_tiles.yaml
+python3 esphome/custom_components/tile_ui/tests/test_output.py esphome/monitor_tiles.yaml
 ```
 
 This will output the full C++ code for all screens defined in your YAML file, allowing you to verify:
@@ -563,3 +563,17 @@ This will output the full C++ code for all screens defined in your YAML file, al
 - Proper application of modifiers (e.g., `setDisplayPageIfNoEntity`)
 - Correct lambda generation for fast refresh
 - Valid C++ syntax
+
+### 3. Running Unit Tests
+
+The project includes a suite of unit tests to verify the logic of the tile generation, schema validation, and utility functions. These tests are located in `esphome/custom_components/tile_ui/tests/`.
+
+To run the tests, execute the following command from the project root:
+
+```powershell
+# Run all tests
+python -m unittest discover -v esphome/custom_components/tile_ui/tests
+
+# Run a specific test file
+python esphome/custom_components/tile_ui/tests/test_generation.py
+```
