@@ -1315,9 +1315,13 @@ interval:
   - interval: 1s
     then:
       - script.execute: on_movement
-
-  - interval: 5s
-    then:
+      # Adapt brightness
+      - if:
+          condition:
+            - lambda: |-
+                return id(adaptive_brightness);
+          then:
+            - script.execute: adapt_bright
       # Turn off screen if needed.
       - if:
           condition:
@@ -1341,10 +1345,3 @@ interval:
             id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());
             id(disp).update();
           }
-      # Adapt brightness
-      - if:
-          condition:
-            - lambda: |-
-                return id(adaptive_brightness);
-          then:
-            - script.execute: adapt_bright
