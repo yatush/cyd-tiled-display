@@ -924,7 +924,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           int brightness = DRAW_ONLY(id(backlight).remote_values.get_brightness() * 100);
@@ -955,7 +954,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           int sleep_t = DRAW_ONLY(id(sleep_time));
@@ -979,7 +977,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           int wakeup_dist = DRAW_ONLY(id(wakeup_distance));
@@ -1022,7 +1019,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::MEDIUM, id(gray), TextAlign::CENTER, "\U0000e8b8");
@@ -1031,7 +1027,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000f55b");
@@ -1040,7 +1035,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000f418");
@@ -1054,7 +1048,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000e28b");
@@ -1063,7 +1056,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000e286");
@@ -1072,7 +1064,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000e8d5");
@@ -1081,7 +1072,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000eb97");
@@ -1090,14 +1080,13 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
+      name: string
+      is_on: bool
     then:
       - lambda: |-
-          if (entities.size() != 2) {
-            ESP_LOGE("TileChooseLight", "Wrong number of params: %d", entities.size());
-          }
-          std::string cur_name = DRAW_ONLY(entities[1]);
-          handle_caching(std::make_pair(x, y), cur_name);
+          std::string cur_name = DRAW_ONLY(name);
+          bool cur_is_on = DRAW_ONLY(is_on);
+          handle_caching(std::make_pair(x, y), cur_is_on, cur_name);
           
           std::string icon = "\U0000f02a";
           // Sizes
@@ -1107,21 +1096,20 @@ script:
           int icon_y = id(y_mid)[y] - text_size.second / 2;
           int text_y = id(y_mid)[y] + icon_size.second / 2;
 
-          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
           print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
   - id: tile_choose_cover
     parameters:
       x: int
       y: int
-      entities: string[]
+      name: string
+      is_on: bool
     then:
       - lambda: |-
-          if (entities.size() != 2) {
-              ESP_LOGE("TileChooseCover", "Wrong number of params: %d", entities.size());
-          }
-          std::string cur_name = DRAW_ONLY(entities[1]);
-          handle_caching(std::make_pair(x, y), cur_name);
+          std::string cur_name = DRAW_ONLY(name);
+          bool cur_is_on = DRAW_ONLY(is_on);
+          handle_caching(std::make_pair(x, y), cur_is_on, cur_name);
 
           std::string icon = "\U0000e286";
           // Sizes
@@ -1131,22 +1119,22 @@ script:
           int icon_y = id(y_mid)[y] - text_size.second / 2;
           int text_y = id(y_mid)[y] + icon_size.second / 2;
 
-          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, entities[0] == "ON" ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
           print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
   - id: tile_cover_name
     parameters:
       x: int
       y: int
+      name: string
       entities: string[]
     then:
       - lambda: |-
           std::vector<std::string> my_entities = DRAW_ONLY(entities);
-          handle_caching(std::make_pair(x, y), my_entities);
+          std::string cur_name = DRAW_ONLY(name);
+          handle_caching(std::make_pair(x, y), cur_name, my_entities);
 
           if (my_entities.empty()) return;
-
-          std::string name = my_entities.back();
 
           std::string icon = "\U0000e286";
           // Sizes
@@ -1159,10 +1147,10 @@ script:
           print(id(x_start)[x] + 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cb");
           print(id(x_start)[x] + id(x_rect) - 15, icon_y, TileFonts::TINY, id(gray), TextAlign::CENTER, "\U0000e5cc");
           print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
+          print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, cur_name.c_str());
           std::string common_position = "";
-          bool all_same = my_entities.size() > 1;
-          for (size_t i = 0; i < my_entities.size() - 1; ++i) {
+          bool all_same = true;
+          for (size_t i = 0; i < my_entities.size(); ++i) {
             std::string pos = GetTextSensorValue(my_entities[i] + "|current_position");
             if (i == 0) {
               common_position = pos;
@@ -1180,11 +1168,12 @@ script:
     parameters:
       x: int
       y: int
+      name: string
       entities: string[]
     then:
       - lambda: |-
-          std::string name = DRAW_ONLY(entities.back());
-          handle_caching(std::make_pair(x, y), name);
+          std::string cur_name = DRAW_ONLY(name);
+          handle_caching(std::make_pair(x, y), cur_name);
 
           std::string icon = "\U0000e88a";
           // Sizes
@@ -1203,7 +1192,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::MEDIUM, id(gray), TextAlign::CENTER, "\U0000e5c4");

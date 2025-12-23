@@ -154,8 +154,18 @@ def collect_referenced_scripts(screens):
                     if isinstance(func, str) and func:
                         if func not in referenced_scripts:
                             referenced_scripts[func] = []
+                        
+                        # Determine expected type based on tile type
+                        expected_type = 'display'
+                        if tile_type == 'move_page' or tile_type == 'function':
+                            expected_type = 'display_simple'
+                        elif tile_type == 'toggle_entity':
+                            expected_type = 'display_toggle'
+                        elif tile_type == 'cycle_entity':
+                            expected_type = 'display_cycle'
+
                         referenced_scripts[func].append({
-                            'type': 'display',
+                            'type': expected_type,
                             'screen': screen_id,
                             'tile_type': tile_type,
                             'x': x,

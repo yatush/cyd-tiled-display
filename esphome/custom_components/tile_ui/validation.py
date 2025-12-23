@@ -18,12 +18,7 @@ from .data_collection import (
 from .schema import (
     VALID_TILE_TYPES,
     VALID_FLAGS,
-    TILE_TYPE_HA_ACTION,
-    TILE_TYPE_MOVE_PAGE,
-    TILE_TYPE_TITLE,
-    TILE_TYPE_FUNCTION,
-    TILE_TYPE_TOGGLE_ENTITY,
-    TILE_TYPE_CYCLE_ENTITY,
+    TileType,
 )
 
 __all__ = [
@@ -124,16 +119,16 @@ def validate_tiles_config(
                 raise ValueError(f"Screen '{screen_id}', {tile_type} tile: y coordinate must be a non-negative integer, got {y}")
             
             # Collect dynamic entities from various tile types
-            if tile_type == "ha_action" or tile_type == "title":
+            if tile_type == TileType.HA_ACTION.value or tile_type == TileType.TITLE.value:
                 entities_config = config.get("entities", "")
                 collect_dynamic_entities(entities_config, valid_dynamic_entities)
             
-            if tile_type == "toggle_entity":
+            if tile_type == TileType.TOGGLE_ENTITY.value:
                 dynamic_entity = config.get("dynamic_entity", "")
                 if dynamic_entity:
                     valid_dynamic_entities.add(dynamic_entity)
             
-            if tile_type == "cycle_entity":
+            if tile_type == TileType.CYCLE_ENTITY.value:
                 dynamic_entity = config.get("dynamic_entity", "")
                 if dynamic_entity:
                     valid_dynamic_entities.add(dynamic_entity)
@@ -196,7 +191,7 @@ def validate_tiles_config(
                     )
             
             # Validate move_page destination is a valid screen ID
-            if tile_type == "move_page":
+            if tile_type == TileType.MOVE_PAGE.value:
                 destination = config.get("destination", "")
                 if destination and destination not in valid_screen_ids:
                     raise ValueError(
@@ -225,7 +220,7 @@ def _validate_tile_positions(screen_id, tiles):
         pos_key = (x, y)
         
         # Allow duplicate positions for cycle_entity tiles with activation_var (conditional display)
-        is_conditional_cycle = tile_type == "cycle_entity" and config.get("activation_var") is not None
+        is_conditional_cycle = tile_type == TileType.CYCLE_ENTITY.value and config.get("activation_var") is not None
         
         if pos_key in positions and not is_conditional_cycle:
             raise ValueError(
@@ -273,7 +268,7 @@ def _validate_base_screen_reachability(screens, base_screen_id, valid_screen_ids
         
         for tile in tiles:
             tile_type = list(tile.keys())[0]
-            if tile_type == "move_page":
+            if tile_type == TileType.MOVE_PAGE.value:
                 config = tile[tile_type]
                 destination = config.get("destination", "")
                 if destination and destination in valid_screen_ids:
@@ -392,7 +387,7 @@ def _validate_tile_fields(
     Raises:
         ValueError: If business logic validation fails
     """
-    if tile_type == TILE_TYPE_HA_ACTION:
+    if tile_type == TileType.HA_ACTION.value:
         perform = config.get("perform", [])
         location_perform = config.get("location_perform", [])
         
@@ -403,7 +398,7 @@ def _validate_tile_fields(
                 f"At least one of 'perform' or 'location_perform' must be specified"
             )
     
-    elif tile_type == TILE_TYPE_FUNCTION:
+    elif tile_type == TileType.FUNCTION.value:
         on_press = config.get("on_press", "")
         on_release = config.get("on_release", "")
         
@@ -414,7 +409,7 @@ def _validate_tile_fields(
                 f"at least one of 'on_press' or 'on_release' must be specified"
             )
     
-    elif tile_type == TILE_TYPE_CYCLE_ENTITY:
+    elif tile_type == TileType.CYCLE_ENTITY.value:
         options = config.get("options", [])
         
         # Validate each option has required fields (detailed check beyond schema)

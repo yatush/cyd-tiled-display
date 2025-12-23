@@ -146,10 +146,9 @@ Navigates to another screen when pressed.
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+  - **Draw Function Arguments**: The display scripts receive `{x, y}` where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
-    - `entities`: String array - Empty array (no entities for navigation tiles)
 - **destination**: *(Required)* Screen ID to navigate to (must be valid screen ID)
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
@@ -173,10 +172,9 @@ Calls a script/function when pressed.
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+  - **Draw Function Arguments**: The display scripts receive `{x, y}` where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
-    - `entities`: String array - Empty array (no entities for function tiles)
 - **on_press**: (Optional*) Function to call when tile is pressed
   - **Function Arguments**: No parameters passed to the script
 - **on_release**: (Optional*) Function to call when tile is released
@@ -205,9 +203,11 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{state, presentation_name}` where:
-    - `state`: String - `"ON"` if the tile is currently selected, `"OFF"` otherwise
+  - **Draw Function Arguments**: The display scripts receive `{x, y, presentation_name, state}` where:
+    - `x`: Integer - Column position of the tile
+    - `y`: Integer - Row position of the tile
     - `presentation_name`: String - The label to display for this option
+    - `state`: Boolean - `true` if the tile is currently selected, `false` otherwise
 - **dynamic_entity**: *(Required)* Key for the dynamic_entity whose value is set by this tile.
 - **entity**: *(Required)* The entity ID that is set to the dynamic_entity by this tile. Can be a **comma-separated list** of entities (e.g., `light.kitchen, light.living_room`) to control multiple entities at once.
 - **presentation_name**: (Optional) Display name for this option - sent to the display scripts
@@ -239,9 +239,11 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{entity_1, entity_2, ..., entity_n, presentation_name}` where:
-    - `entity_1, entity_2, ...`: String(s) - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: If the option is `"*"` (All), this list will contain **all other entities** defined in the `options` list, instead of the literal string `"*"`.
-    - `presentation_name`: String - The label for the currently selected option (always the last argument)
+  - **Draw Function Arguments**: The display scripts receive `{x, y, presentation_name, options}` where:
+    - `x`: Integer - Column position of the tile
+    - `y`: Integer - Row position of the tile
+    - `presentation_name`: String - The label for the currently selected option
+    - `options`: String array - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: If the option is `"*"` (All), this list will contain **all other entities** defined in the `options` list, instead of the literal string `"*"`.
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
 - **options**: *(Required)* List of options to cycle through (at least one required)
   - Each item must have:

@@ -16,25 +16,11 @@ class TileType(Enum):
     CYCLE_ENTITY = "cycle_entity"
 
 
-# String constants for backward compatibility
-TILE_TYPE_HA_ACTION = TileType.HA_ACTION.value
-TILE_TYPE_MOVE_PAGE = TileType.MOVE_PAGE.value
-TILE_TYPE_TITLE = TileType.TITLE.value
-TILE_TYPE_FUNCTION = TileType.FUNCTION.value
-TILE_TYPE_TOGGLE_ENTITY = TileType.TOGGLE_ENTITY.value
-TILE_TYPE_CYCLE_ENTITY = TileType.CYCLE_ENTITY.value
-
 VALID_TILE_TYPES: set[str] = {t.value for t in TileType}
 VALID_FLAGS: set[str] = {"BASE", "TEMPORARY", "FAST_REFRESH"}
 
 __all__ = [
     "TileType",
-    "TILE_TYPE_HA_ACTION",
-    "TILE_TYPE_MOVE_PAGE", 
-    "TILE_TYPE_TITLE",
-    "TILE_TYPE_FUNCTION",
-    "TILE_TYPE_TOGGLE_ENTITY",
-    "TILE_TYPE_CYCLE_ENTITY",
     "VALID_TILE_TYPES",
     "VALID_FLAGS",
     "coord_schema",
@@ -224,17 +210,17 @@ def tile_schema(value):
     
     tile_type, tile_config = list(value.items())[0]
     
-    if tile_type == TILE_TYPE_HA_ACTION:
+    if tile_type == TileType.HA_ACTION.value:
         return {tile_type: ha_action_schema(tile_config)}
-    elif tile_type == TILE_TYPE_MOVE_PAGE:
+    elif tile_type == TileType.MOVE_PAGE.value:
         return {tile_type: move_page_schema(tile_config)}
-    elif tile_type == TILE_TYPE_TITLE:
+    elif tile_type == TileType.TITLE.value:
         return {tile_type: title_schema(tile_config)}
-    elif tile_type == TILE_TYPE_FUNCTION:
+    elif tile_type == TileType.FUNCTION.value:
         return {tile_type: function_schema(tile_config)}
-    elif tile_type == TILE_TYPE_TOGGLE_ENTITY:
+    elif tile_type == TileType.TOGGLE_ENTITY.value:
         return {tile_type: toggle_entity_schema(tile_config)}
-    elif tile_type == TILE_TYPE_CYCLE_ENTITY:
+    elif tile_type == TileType.CYCLE_ENTITY.value:
         return {tile_type: cycle_entity_schema(tile_config)}
     else:
         raise cv.Invalid(f"Unknown tile type: {tile_type}. Valid types: {VALID_TILE_TYPES}")

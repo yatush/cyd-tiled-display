@@ -6,14 +6,7 @@ from .tile_utils import (
     build_fast_refresh_lambda, format_entity_cpp, get_tile_modifiers,
     flags_to_cpp
 )
-from .schema import (
-    TILE_TYPE_HA_ACTION,
-    TILE_TYPE_MOVE_PAGE,
-    TILE_TYPE_TITLE,
-    TILE_TYPE_FUNCTION,
-    TILE_TYPE_TOGGLE_ENTITY,
-    TILE_TYPE_CYCLE_ENTITY,
-)
+from .schema import TileType
 
 __all__ = [
     "generate_tile_cpp",
@@ -239,17 +232,17 @@ def generate_cycle_entity_tile(config):
 
 def generate_tile_cpp(tile: dict) -> str:
     """Generate C++ code for a single tile."""
-    if TILE_TYPE_HA_ACTION in tile:
-        return generate_action_tile(tile[TILE_TYPE_HA_ACTION])
-    elif TILE_TYPE_MOVE_PAGE in tile:
-        return generate_move_page_tile(tile[TILE_TYPE_MOVE_PAGE])
-    elif TILE_TYPE_TITLE in tile:
-        return generate_title_tile(tile[TILE_TYPE_TITLE])
-    elif TILE_TYPE_FUNCTION in tile:
-        return generate_function_tile(tile[TILE_TYPE_FUNCTION])
-    elif TILE_TYPE_TOGGLE_ENTITY in tile:
-        return generate_toggle_entity_tile(tile[TILE_TYPE_TOGGLE_ENTITY])
-    elif TILE_TYPE_CYCLE_ENTITY in tile:
-        return generate_cycle_entity_tile(tile[TILE_TYPE_CYCLE_ENTITY])
+    if TileType.HA_ACTION.value in tile:
+        return generate_action_tile(tile[TileType.HA_ACTION.value])
+    elif TileType.MOVE_PAGE.value in tile:
+        return generate_move_page_tile(tile[TileType.MOVE_PAGE.value])
+    elif TileType.TITLE.value in tile:
+        return generate_title_tile(tile[TileType.TITLE.value])
+    elif TileType.FUNCTION.value in tile:
+        return generate_function_tile(tile[TileType.FUNCTION.value])
+    elif TileType.TOGGLE_ENTITY.value in tile:
+        return generate_toggle_entity_tile(tile[TileType.TOGGLE_ENTITY.value])
+    elif TileType.CYCLE_ENTITY.value in tile:
+        return generate_cycle_entity_tile(tile[TileType.CYCLE_ENTITY.value])
     else:
         return f'// Unknown tile structure: {list(tile.keys())}'

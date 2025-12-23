@@ -23,7 +23,7 @@ def get_script_type(parameters):
                    Can be empty dict {} for no-parameter scripts
     
     Returns:
-        String: 'display', 'action', 'location_action', or 'unknown'
+        String: 'display', 'action', 'location_action', 'display_simple', 'display_toggle', 'display_cycle', or 'unknown'
     """
     if not isinstance(parameters, dict):
         return 'unknown'
@@ -31,6 +31,22 @@ def get_script_type(parameters):
     param_types = [type_str for _, type_str in parameters.items()] if parameters else []
     param_count = len(param_types)
     
+    # Check for 4-parameter scripts
+    if param_count == 4:
+        # Toggle display script: int, int, string, bool
+        if (param_types[0] == 'int' and 
+            param_types[1] == 'int' and
+            ('string' in str(param_types[2]).lower()) and
+            ('bool' in str(param_types[3]).lower())):
+            return 'display_toggle'
+        
+        # Cycle display script: int, int, string, string[]
+        if (param_types[0] == 'int' and 
+            param_types[1] == 'int' and
+            ('string' in str(param_types[2]).lower()) and
+            ('string[]' in str(param_types[3]) or 'vector' in str(param_types[3]).lower())):
+            return 'display_cycle'
+
     # Check for 3-parameter scripts
     if param_count == 3:
         # Display script: int, int, string[]
@@ -44,6 +60,13 @@ def get_script_type(parameters):
             param_types[1] == 'float' and
             ('string[]' in str(param_types[2]) or 'vector' in str(param_types[2]).lower())):
             return 'location_action'
+    
+    # Check for 2-parameter scripts
+    if param_count == 2:
+        # Simple display script: int, int
+        if (param_types[0] == 'int' and 
+            param_types[1] == 'int'):
+            return 'display_simple'
     
     # Check for 1-parameter scripts: string[] only
     if param_count == 1:
@@ -79,7 +102,8 @@ def validate_script_type(script_id, script_info, expected_type, context):
         raise ValueError(
             f"{context}: Script '{script_id}' has unknown parameter signature. "
             f"Parameters: {parameters}. "
-            f"Expected one of: display (int, int, string[]), action (string[]), or location_action (float, float, string[])"
+            f"Expected one of: display (int, int, string[]), action (string[]), location_action (float, float, string[]), "
+            f"display_simple (int, int), display_toggle (int, int, string, bool), or display_cycle (int, int, string, string[])"
         )
     
     if actual_type != expected_type:

@@ -59,7 +59,7 @@ except ImportError:
 try:
     import tile_ui
     from tile_ui import generate_init_tiles_cpp
-    from tile_ui.data_collection import load_tiles_yaml
+    from tile_ui.data_collection import load_tiles_yaml, collect_available_scripts, collect_available_globals
     from tile_ui.schema import screens_list_schema
 except ImportError as e:
     print(f"Error importing tile_ui: {e}")
@@ -73,7 +73,19 @@ def mock_constructor(loader, node):
 yaml.SafeLoader.add_constructor('!secret', mock_constructor)
 yaml.SafeLoader.add_constructor('!lambda', mock_constructor)
 
-def test_generation(file_path=None):
+def load_esphome_config(config_path):
+    """Load ESPhome config file to extract scripts and globals."""
+    if not os.path.exists(config_path):
+        print(f"Warning: ESPhome config file not found at {config_path}")
+        return {}
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"Warning: Failed to load ESPhome config: {e}")
+        return {}
+
+def test_generation(file_path=None, esphome_config_path=None):
     print("Testing Tile UI C++ Generation (using real component logic)...\n")
 
     screens = []
@@ -130,10 +142,21 @@ def test_generation(file_path=None):
         print(f"Schema Validation Failed: {e}")
         return
 
+    # Load available scripts and globals if config provided
+    available_scripts = None
+    available_globals = None
+    
+    if esphome_config_path:
+        print(f"Loading ESPhome config from: {esphome_config_path}")
+        esphome_config = load_esphome_config(esphome_config_path)
+        if esphome_config:
+            available_scripts = collect_available_scripts(esphome_config)
+            available_globals = collect_available_globals(esphome_config)
+            print(f"Loaded {len(available_scripts)} scripts and {len(available_globals)} globals.")
+
     # Generate the C++ code using the real function from __init__.py
-    # We pass None for available_scripts/globals because we mocked validation
     try:
-        cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts=None, available_globals=None)
+        cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts=available_scripts, available_globals=available_globals)
         
         combined_lambda = "\n".join(cpp_lambdas)
         
@@ -148,12 +171,23 @@ App.scheduler.set_timeout(nullptr, "tile_ui_init", 2000, [=]() {{
         
     except Exception as e:
         print(f"Error during generation: {e}")
-        import traceback
-        traceback.print_exc()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test Tile UI C++ Generation')
     parser.add_argument('file', nargs='?', help='Path to tiles.yaml file')
+    parser.add_argument('--config', help='Path to ESPhome config file (e.g. lib.yaml) for script validation')
     args = parser.parse_args()
     
-    test_generation(args.file)
+    # Default to lib.yaml if not specified but exists in common locations
+    if not args.config:
+        possible_paths = [
+            "esphome/lib/lib.yaml",
+            "lib/lib.yaml",
+            "../lib/lib.yaml"
+        ]
+        for p in possible_paths:
+            if os.path.exists(p):
+                args.config = p
+                break
+    
+    test_generation(args.file, args.config)

@@ -3,10 +3,8 @@
 
 class Tile {
 public:
-  Tile(int x, int y,
-      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
-        draw_funcs)
-      : x_(x), y_(y), draw_funcs_(draw_funcs) {
+  Tile(int x, int y)
+      : x_(x), y_(y) {
     // Initialize the binary sensor for touch detection.
     this->binary_sensor_ = new TouchscreenBinarySensor();
     this->binary_sensor_->set_parent(&id(touchscreen_id));
@@ -91,10 +89,7 @@ protected:
   virtual void customInit() = 0;
 
   // Performs custom drawing for the tile.
-  // Default implementation executes provided draw functions.
-  virtual void customDraw() {
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, {});
-  }
+  virtual void customDraw() = 0;
 
   virtual void onActivation() {}
 
@@ -108,9 +103,6 @@ protected:
   int x_;
   // Y-coordinate of the tile.
   int y_;
-  // Vector of functions to draw the tile.
-  std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
-      draw_funcs_;
   // Flag to indicate if the frame should be omitted.
   bool omit_frame_ = false;
   // Callback function for entity changes.
@@ -172,7 +164,8 @@ public:
       std::vector<esphome::script::Script<float, float, std::vector<std::string>>*>
           location_action_funcs,
       std::vector<std::string> entities)
-      : Tile(x, y, draw_funcs),
+      : Tile(x, y),
+        draw_funcs_(draw_funcs),
         action_funcs_ (action_funcs),
         location_action_funcs_(location_action_funcs),
         entities_(Pointer(entities)) {}
@@ -261,6 +254,8 @@ protected:
 private:
   // Function to determine if the tile requires fast refresh (default: false).
   std::function<bool()> requiresFastRefreshFunc_ = []() { return false; };
+  // Vector of functions to draw the tile.
+  std::vector<esphome::script::Script<int, int, std::vector<std::string>>*> draw_funcs_;
   // Vector of scripts to execute when the tile is pressed.
   std::vector<esphome::script::Script<std::vector<std::string>>*> action_funcs_;
   // Vector of scripts to execute when the tile is pressed.
@@ -276,10 +271,10 @@ class MovePageTile : public Tile {
 public:
   MovePageTile(
       int x, int y,
-      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+      std::vector<esphome::script::Script<int, int>*>
           draw_funcs,
       esphome::display::DisplayPage* target_display_page)
-      : Tile(x, y, draw_funcs), target_display_page_(target_display_page) {}
+      : Tile(x, y), draw_funcs_(draw_funcs), target_display_page_(target_display_page) {}
 
   // Adds dynamic entities to the tile and a callback to update the entities map.
   MovePageTile* setDynamicEntry(const std::string& key,
@@ -315,7 +310,13 @@ protected:
     });
   }
 
+  void customDraw() override {
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_);
+  }
+
 private:
+  // Vector of functions to draw the tile.
+  std::vector<esphome::script::Script<int, int>*> draw_funcs_;
   // Pointer to the target display page to navigate to.
   esphome::display::DisplayPage* target_display_page_;
   // Vector of dynamic entities associated with the tile.
@@ -327,11 +328,11 @@ class FunctionTile : public Tile {
 public:
   FunctionTile(
       int x, int y,
-      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+      std::vector<esphome::script::Script<int, int>*>
           draw_funcs,
       esphome::script::Script<>* on_press,
       esphome::script::Script<>* on_release = nullptr)
-      : Tile(x, y, draw_funcs), on_press_(on_press), on_release_(on_release) {}
+      : Tile(x, y), draw_funcs_(draw_funcs), on_press_(on_press), on_release_(on_release) {}
 
 protected:
   void customInit() override {
@@ -346,7 +347,13 @@ protected:
     });
   }
 
+  void customDraw() override {
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_);
+  }
+
 private:
+  // Vector of functions to draw the tile.
+  std::vector<esphome::script::Script<int, int>*> draw_funcs_;
   // Pointer to the script to execute when the tile is pressed.
   esphome::script::Script<>* on_press_;
   // Pointer to the script to execute when the tile is released.
@@ -376,11 +383,12 @@ class ToggleEntityTile : public Tile {
 public:
   ToggleEntityTile(
       int x, int y,
-      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+      std::vector<esphome::script::Script<int, int, std::string, bool>*>
           draw_funcs,
       const std::string& identifier, const std::vector<std::string>& entities,
       const std::string& presentation_name, bool initially_chosen = false)
-      : Tile(x, y, draw_funcs),
+      : Tile(x, y),
+        draw_funcs_(draw_funcs),
         identifier_(Pointer(identifier)),
         entities_(Pointer(entities)),
         presentation_name_(presentation_name),
@@ -415,9 +423,11 @@ protected:
     bool isOn = EMContains(this->identifier_, this->entities_);
     ExecuteScripts(
       this->draw_funcs_, this->x_, this->y_,
-      {isOn ? "ON" : "OFF", this->presentation_name_});
+      this->presentation_name_, isOn);
   }
 
+  // Vector of functions to draw the tile.
+  std::vector<esphome::script::Script<int, int, std::string, bool>*> draw_funcs_;
   // Identifier for the group of entities this tile belongs to.
   const std::string* identifier_;
   // The entities associated with this tile.
@@ -434,12 +444,13 @@ class CycleEntityTile : public Tile {
 public:
   CycleEntityTile(
       int x, int y,
-      std::vector<esphome::script::Script<int, int, std::vector<std::string>>*>
+      std::vector<esphome::script::Script<int, int, std::string, std::vector<std::string>>*>
           draw_funcs,
       const std::string& identifier,
       std::vector<std::pair<std::vector<std::string>, std::string>> entities_and_presntation_names,
       bool reset_on_leave = false)
-      : Tile(x, y, draw_funcs),
+      : Tile(x, y),
+        draw_funcs_(draw_funcs),
         identifier_(Pointer(identifier)),
         entities_and_presntation_names_(Pointer(entities_and_presntation_names)),
         reset_on_leave_(reset_on_leave) {}
@@ -485,8 +496,7 @@ protected:
         args.push_back(*entity);
       }
     }
-    args.push_back(*current_option.second);
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, args);
+    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, *current_option.second, args);
   }
 
   void onActivation() override {
@@ -518,6 +528,8 @@ private:
     this->change_entities_callback_();
   }
 
+  // Vector of functions to draw the tile.
+  std::vector<esphome::script::Script<int, int, std::string, std::vector<std::string>>*> draw_funcs_;
   // Identifier to change.
   const std::string* identifier_;
   // The entities to set into the identifier and their presentation names. The one
