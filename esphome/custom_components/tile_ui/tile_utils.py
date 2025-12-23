@@ -14,25 +14,88 @@ __all__ = [
 ]
 
 
-def format_display_list(display):
-    """Format display entities as C++ initializer list."""
+def _get_cpp_type(param_type):
+    if param_type == 'int': return 'int'
+    if param_type == 'float': return 'float'
+    if param_type == 'bool': return 'bool'
+    if param_type == 'string': return 'std::string'
+    if param_type == 'string[]': return 'std::vector<std::string>'
+    return 'auto'
+
+def _get_default_value(param_type):
+    if param_type == 'int': return '0'
+    if param_type == 'float': return '0.0f'
+    if param_type == 'bool': return 'false'
+    if param_type == 'string': return '""'
+    if param_type == 'string[]': return '{}'
+    return '{}'
+
+def _generate_lambda(script_id, available_scripts, expected_params):
+    # Generate lambda args
+    lambda_args = []
+    for i, p_type in enumerate(expected_params):
+        lambda_args.append(f"{_get_cpp_type(p_type)} arg{i}")
+    lambda_sig = ", ".join(lambda_args)
+    
+    # Determine script args
+    script_args = []
+    script_info = available_scripts.get(script_id) if available_scripts else None
+    
+    if script_info:
+        script_params = script_info.get('parameters', {})
+        script_param_types = [type_str for _, type_str in script_params.items()]
+        
+        for i, p_type in enumerate(script_param_types):
+            if i < len(expected_params):
+                # We have this argument available
+                script_args.append(f"arg{i}")
+            else:
+                # Script expects more args than we have
+                script_args.append(_get_default_value(p_type))
+    else:
+        # Fallback: pass all expected args
+        script_args = [f"arg{i}" for i in range(len(expected_params))]
+        
+        # Debug/Warning:
+        import sys
+        print(f"WARNING: Script '{script_id}' not found in available_scripts. Generating call with all {len(expected_params)} arguments: {script_args}", file=sys.stderr)
+
+    return f"[]({lambda_sig}) {{ id({script_id}).execute({', '.join(script_args)}); }}"
+
+
+def format_display_list(display, available_scripts=None, expected_params=None):
+    """Format display entities as C++ initializer list of lambdas."""
     if isinstance(display, str):
         display = [display]
     elif not isinstance(display, list):
         display = []
     
-    entities = ", ".join(f"&id({entity})" for entity in display if entity)
-    return f"{{ {entities} }}"
-
-
-def format_functions_list(functions):
-    """Format function list as C++ initializer list."""
-    if isinstance(functions, str):
-        functions = [functions]
-    elif not isinstance(functions, list):
-        functions = []
+    if not expected_params:
+        # Fallback for backward compatibility or missing info
+        return ", ".join(f"&id({entity})" for entity in display if entity)
     
-    return ", ".join(f"&id({func})" for func in functions if func)
+    lambdas = []
+    for entity in display:
+        if entity:
+            lambdas.append(_generate_lambda(entity, available_scripts, expected_params))
+            
+    return f"{{ {', '.join(lambdas)} }}"
+
+
+def format_functions_list(functions, available_scripts=None, expected_params=None):
+    """Format function list as C++ initializer list of lambdas."""
+    return format_display_list(functions, available_scripts, expected_params)
+
+
+def format_single_function(function_id, available_scripts=None, expected_params=None):
+    """Format a single function as a C++ lambda."""
+    if not function_id:
+        return "nullptr"
+    
+    if not expected_params:
+        expected_params = []
+        
+    return _generate_lambda(function_id, available_scripts, expected_params)
 
 
 def format_entity_value(entity_config):

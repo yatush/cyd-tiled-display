@@ -18,11 +18,11 @@ from tile_ui.tile_utils import (
 class TestTileUtils(unittest.TestCase):
     
     def test_format_display_list(self):
-        self.assertEqual(format_display_list("icon"), "{ &id(icon) }")
-        self.assertEqual(format_display_list(["icon"]), "{ &id(icon) }")
-        self.assertEqual(format_display_list(["icon", "label"]), "{ &id(icon), &id(label) }")
-        self.assertEqual(format_display_list([]), "{  }")
-        self.assertEqual(format_display_list(None), "{  }")
+        self.assertEqual(format_display_list("icon"), "&id(icon)")
+        self.assertEqual(format_display_list(["icon"]), "&id(icon)")
+        self.assertEqual(format_display_list(["icon", "label"]), "&id(icon), &id(label)")
+        self.assertEqual(format_display_list([]), "")
+        self.assertEqual(format_display_list(None), "")
 
     def test_format_functions_list(self):
         self.assertEqual(format_functions_list("func"), "&id(func)")

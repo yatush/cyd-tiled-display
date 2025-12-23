@@ -484,9 +484,9 @@ bool MissingDynamicEntity(std::vector<const std::string*>& source) {
 }
 
 template <typename... Args>
-void ExecuteScripts(const std::vector<esphome::script::Script<Args...>*>& scripts, Args... args) {
-  for (auto* script : scripts) {
-    script->execute(args...);
+void ExecuteScripts(const std::vector<std::function<void(Args...)>>& scripts, Args... args) {
+  for (const auto& script : scripts) {
+    script(args...);
   }
 }
 

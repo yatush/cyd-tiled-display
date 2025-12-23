@@ -62,12 +62,17 @@ def collect_available_scripts(esphome_config):
     
     # Get scripts from the 'script:' section
     scripts = esphome_config.get('script', [])
+    
     if scripts:
         for script in scripts:
             if isinstance(script, dict) and 'id' in script:
                 script_id = script['id']
+                # Handle ID being an object (sometimes happens in ESPHome config objects)
+                if hasattr(script_id, 'id'):
+                    script_id = script_id.id
+                
                 parameters = script.get('parameters', {})
-                available_scripts[script_id] = {
+                available_scripts[str(script_id)] = {
                     'parameters': parameters if isinstance(parameters, dict) else {}
                 }
     

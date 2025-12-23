@@ -15,6 +15,10 @@ except ImportError:
     cv.Invalid = ValueError
     cv.Schema = lambda x, **kwargs: lambda y: y  # Mock schema to return input
     Invalid = ValueError
+    
+    # Patch sys.modules so tile_ui.schema can import it
+    sys.modules["esphome"] = MagicMock()
+    sys.modules["esphome.config_validation"] = cv
 
 # Imports
 from tile_ui.schema import (

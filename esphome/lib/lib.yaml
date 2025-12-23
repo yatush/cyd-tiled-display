@@ -793,7 +793,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, id(light_purple), TextAlign::CENTER, "\U0000e286");
@@ -1169,7 +1168,6 @@ script:
       x: int
       y: int
       name: string
-      entities: string[]
     then:
       - lambda: |-
           std::string cur_name = DRAW_ONLY(name);
@@ -1248,7 +1246,6 @@ script:
     parameters:
       x: int
       y: int
-      entities: string[]
     then:
       - lambda: |-
           print(id(x_mid)[x], id(y_mid)[y], TileFonts::TEXT_BIG_BOLD, id(gray), TextAlign::CENTER, "Mode");

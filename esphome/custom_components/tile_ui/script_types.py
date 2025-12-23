@@ -80,6 +80,22 @@ def get_script_type(parameters):
     return 'unknown'
 
 
+def _are_types_compatible(actual, expected):
+    actual = str(actual).lower()
+    expected = str(expected).lower()
+    
+    if 'int' in actual and 'int' in expected: return True
+    if 'float' in actual and 'float' in expected: return True
+    if 'bool' in actual and 'bool' in expected: return True
+    
+    is_actual_vector = 'string[]' in actual or 'vector' in actual
+    is_expected_vector = 'string[]' in expected or 'vector' in expected
+    
+    if is_actual_vector and is_expected_vector: return True
+    if not is_actual_vector and not is_expected_vector and 'string' in actual and 'string' in expected: return True
+    
+    return False
+
 def validate_script_type(script_id, script_info, expected_type, context):
     """Validate that a script has the expected type.
     
@@ -96,18 +112,55 @@ def validate_script_type(script_id, script_info, expected_type, context):
         raise ValueError(f"{context}: Script '{script_id}' not found in available scripts")
     
     parameters = script_info.get('parameters', {})
-    actual_type = get_script_type(parameters)
+    param_types = [type_str for _, type_str in parameters.items()]
     
-    if actual_type == 'unknown':
-        raise ValueError(
-            f"{context}: Script '{script_id}' has unknown parameter signature. "
-            f"Parameters: {parameters}. "
-            f"Expected one of: display (int, int, string[]), action (string[]), location_action (float, float, string[]), "
-            f"display_simple (int, int), display_toggle (int, int, string, bool), or display_cycle (int, int, string, string[])"
-        )
+    # Map expected_type to expected parameter types
+    expected_params_map = {
+        'display': ['int', 'int', 'string[]'],
+        'action': ['string[]'],
+        'location_action': ['float', 'float', 'string[]'],
+        'display_simple': ['int', 'int'],
+        'display_toggle': ['int', 'int', 'string', 'bool'],
+        'display_cycle': ['int', 'int', 'string', 'string[]'],
+    }
     
-    if actual_type != expected_type:
-        raise ValueError(
-            f"{context}: Script '{script_id}' is a '{actual_type}' script but expected '{expected_type}'. "
-            f"Parameters: {parameters}"
-        )
+    expected_params = expected_params_map.get(expected_type)
+    
+    # If we don't know the expected type, fall back to old strict check (or just pass?)
+    if not expected_params:
+        actual_type = get_script_type(parameters)
+        if actual_type != expected_type:
+             raise ValueError(
+                f"{context}: Script '{script_id}' is a '{actual_type}' script but expected '{expected_type}'. "
+                f"Parameters: {parameters}"
+            )
+        return
+
+    # Enforce x and y are required if expected_params implies them
+    if expected_params and len(expected_params) >= 2:
+        first_two = expected_params[:2]
+        if (first_two == ['int', 'int'] or first_two == ['float', 'float']):
+            if len(param_types) < 2:
+                raise ValueError(
+                    f"{context}: Script '{script_id}' must have at least 2 parameters (x, y) for type '{expected_type}'. "
+                    f"Got {len(param_types)} parameters."
+                )
+
+    # Check compatibility
+    for i, actual_param_type in enumerate(param_types):
+        if i >= len(expected_params):
+            raise ValueError(
+                f"{context}: Script '{script_id}' has too many parameters. "
+                f"Expected at most {len(expected_params)} ({', '.join(expected_params)}), "
+                f"got {len(param_types)} ({', '.join(param_types)})."
+            )
+        
+        expected_param_type = expected_params[i]
+        if not _are_types_compatible(actual_param_type, expected_param_type):
+             raise ValueError(
+                 f"{context}: Script '{script_id}' parameter {i+1} type mismatch. "
+                 f"Expected {expected_param_type}, got {actual_param_type}."
+             )
+    
+    # If we get here, the script has <= parameters than expected, and types match.
+    # This is valid because we fill missing parameters with defaults.
