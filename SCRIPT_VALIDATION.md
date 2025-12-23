@@ -4,12 +4,20 @@
 
 The tile UI component now validates that all referenced scripts have the correct parameter signatures for their usage context. This prevents runtime errors and compilation issues caused by mismatched script types.
 
+## Parameter Flexibility
+
+Scripts are not required to declare all parameters provided by the context. The system will match the script's declared parameters against the available arguments.
+
+- **Partial Signatures**: A script can declare fewer parameters than available. For example, an action script can declare `()` (no parameters) even if `entities` are available.
+- **Required Parameters**: For display and location-based scripts, the `x` and `y` coordinates are **mandatory** and must be declared in the script parameters.
+- **Sequential Optional Parameters**: If a script type has multiple optional parameters (e.g., `name` and `state`), you cannot declare the second one without the first. For example, you cannot declare a script with `(x, y, state)` if the full signature is `(x, y, name, state)`. You must declare `(x, y, name, state)` or just `(x, y, name)` or `(x, y)`.
+
 ## Script Types
 
 ESPhome scripts are categorized into several types based on their parameter signatures:
 
 ### 1. Standard Display Scripts
-- **Parameters**: `x: int`, `y: int`, `entities: string[]`
+- **Parameters**: `x: int`, `y: int` (Required), `entities: string[]` (Optional)
 - **Purpose**: Render tile content on the display at specific coordinates using a list of entities
 - **Used in**: `display` field of `ha_action` and `title` tiles
 - **Example**:
@@ -22,7 +30,7 @@ ESPhome scripts are categorized into several types based on their parameter sign
   ```
 
 ### 2. Simple Display Scripts
-- **Parameters**: `x: int`, `y: int`
+- **Parameters**: `x: int`, `y: int` (Required)
 - **Purpose**: Render static tile content (icon/text) without entity data
 - **Used in**: `display` field of `move_page` and `function` tiles
 - **Example**:
@@ -35,7 +43,7 @@ ESPhome scripts are categorized into several types based on their parameter sign
   ```
 
 ### 3. Toggle Display Scripts
-- **Parameters**: `x: int`, `y: int`, `name: string`, `state: bool`
+- **Parameters**: `x: int`, `y: int` (Required), `name: string`, `state: bool` (Optional)
 - **Purpose**: Render a toggle button state
 - **Used in**: `display` field of `toggle_entity` tiles
 - **Example**:
@@ -51,7 +59,7 @@ ESPhome scripts are categorized into several types based on their parameter sign
   ```
 
 ### 4. Cycle Display Scripts
-- **Parameters**: `x: int`, `y: int`, `name: string`, `options: string[]`
+- **Parameters**: `x: int`, `y: int` (Required), `name: string`, `options: string[]` (Optional)
 - **Purpose**: Render a cycle button with multiple options
 - **Used in**: `display` field of `cycle_entity` tiles
 - **Example**:
@@ -65,7 +73,7 @@ ESPhome scripts are categorized into several types based on their parameter sign
   ```
 
 ### 5. Action Scripts
-- **Parameters**: `entities: string[]` or no parameters
+- **Parameters**: `entities: string[]` (Optional) or no parameters
 - **Purpose**: Execute actions when tiles are tapped (without location info)
 - **Used in**: 
   - `perform` field of `ha_action` tiles
@@ -82,7 +90,7 @@ ESPhome scripts are categorized into several types based on their parameter sign
   ```
 
 ### 6. Location Action Scripts
-- **Parameters**: `x: float`, `y: float`, `entities: string[]`
+- **Parameters**: `x: float`, `y: float` (Required), `entities: string[]` (Optional)
 - **Purpose**: Execute actions with tap location information (e.g., for sliding/dragging)
 - **Used in**: `location_perform` field of `ha_action` tiles
 - **Example**:

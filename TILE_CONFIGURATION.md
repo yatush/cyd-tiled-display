@@ -75,7 +75,7 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **entities**: *(Required)* List of entities to be passed to the display script (see Entity Formats below)
 - **display**: *(Required)* List of display scripts to render the tile
-  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+  - **Draw Function Arguments**: The display scripts can receive `{x, y, entities}` (x and y are required) where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
     - `entities`: String array - The resolved entity values (with dynamic entities replaced at runtime)
@@ -107,15 +107,15 @@ Displays entity state and performs an action (typically toggle) when pressed.
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **entities**: *(Required)* List of entities to be passed to the display script
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{x, y, entities}` where:
+  - **Draw Function Arguments**: The display scripts can receive `{x, y, entities}` (x and y are required) where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
     - `entities`: String array - The resolved entity values (with dynamic entities replaced at runtime)
 - **perform**: *(Required if location_perform not set)* Action function(s) to call when tile is pressed
-  - **Action Function Arguments**: The action scripts receive `{entities}` where:
+  - **Action Function Arguments**: The action scripts can receive `{entities}` where:
     - `entities`: String array - The resolved entity values
 - **location_perform**: *(Required if perform not set)* Location-based action functions for multiple locations
-  - **Location Action Function Arguments**: The action scripts receive `{x_percent, y_percent, entities}` where:
+  - **Location Action Function Arguments**: The action scripts can receive `{x_percent, y_percent, entities}` (x_percent and y_percent are required) where:
     - `x_percent`: Float - Touch position as percentage (0.0-1.0) of tile width
     - `y_percent`: Float - Touch position as percentage (0.0-1.0) of tile height
     - `entities`: String array - The resolved entity values
@@ -146,7 +146,7 @@ Navigates to another screen when pressed.
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{x, y}` where:
+  - **Draw Function Arguments**: The display scripts can receive `{x, y}` (x and y are required) where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
 - **destination**: *(Required)* Screen ID to navigate to (must be valid screen ID)
@@ -172,7 +172,7 @@ Calls a script/function when pressed.
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{x, y}` where:
+  - **Draw Function Arguments**: The display scripts can receive `{x, y}` (x and y are required) where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
 - **on_press**: (Optional*) Function to call when tile is pressed
@@ -203,7 +203,7 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{x, y, presentation_name, state}` where:
+  - **Draw Function Arguments**: The display scripts can receive `{x, y, presentation_name, state}` (x and y are required) where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
     - `presentation_name`: String - The label to display for this option
@@ -239,7 +239,7 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts receive `{x, y, presentation_name, options}` where:
+  - **Draw Function Arguments**: The display scripts can receive `{x, y, presentation_name, options}` (x and y are required) where:
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
     - `presentation_name`: String - The label for the currently selected option
