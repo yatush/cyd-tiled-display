@@ -32,7 +32,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 * Price: ~10 USD
 
 ### Option 2:
-<img src="/images/3248s035.jpg" width="300" />
+<img src="./images/3248s035.jpg" width="300" />
 
 * This is a variant of the original CYD with micro-USB port.
 * Model: ESP32-3248s035C - 3.5 inch, capacitive touch screen.
@@ -41,7 +41,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 ## Power supply - AC-DC to DC Step-Down Power Supply Module AC85-220V to DC 5V 2A
 
-<img src="/images/power-supply.png" width="200" />
+<img src="./images/power-supply.png" width="200" />
 
 * 110V/220V -> 5V2A converter that fits in the wall box.
 * [Aliexpress link](https://www.aliexpress.com/item/1005005142108650.html)
@@ -50,7 +50,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 ## Outlet box
 
-<img src="/images/wall-box.png" width="200" />
+<img src="./images/wall-box.png" width="200" />
 
 * The casing is designed for 83.5mm installation distance.
 * Any other outlet box with the same installation distance will fit.
@@ -60,7 +60,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 ## Motion sensor - LD2410b
 
-<img src="/images/ld2410b.png" width="200" />
+<img src="./images/ld2410b.png" width="200" />
 
 * Choose a model where there are welded pins.
 * [Aliexpress link](https://www.aliexpress.com/item/1005005242873516.html)
@@ -68,17 +68,20 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 ## Cables
 
+<img src="./images/JST125.png" width="200" />
+
 * JST 1.25mm, Single head, ~100mm, 4Pins
 * Three are needed
-* [Aliexpress link](https://www.aliexpress.com/item/1005007342411330.html)
+* Simple connectors [Aliexpress link](https://www.aliexpress.com/item/1005007342411330.html)
 * Price: ~4 USD for a pack of 10 (~1.2 USD for 3)
+* Another great option is [this](https://www.aliexpress.com/item/1005008299221682.html). Using this, connections can be made without external connectors.
 
 # On the wall wiring diagram
 
-<img src="/images/wiring-diagram.png" />
-<img src="/images/wall-0.png" />
-<img src="/images/wall-1.png" />
-<img src="/images/wall-2.png" />
+<img src="./images/wiring-diagram.png" />
+<img src="./images/wall-0.png" />
+<img src="./images/wall-1.png" />
+<img src="./images/wall-2.png" />
 
 ## Notes
 
