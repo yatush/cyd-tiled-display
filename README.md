@@ -12,10 +12,10 @@ The project is based on the awesome [ESPHome](https://esphome.io/) project.
 In order to customize the display, one has to change YAML configuration. To add new capabilities, some C++ knowledge is required.
 
 <p align="center">
-  <img src="/images/cyd-tiled-display.png" width="400" />
-  <img src="/images/cyd-vid.gif" width="300"/>
-  <img src="/images/cyd-move.png" width="400" />
-  <img src="/images/2displays.png" width="300" />
+  <img src="./images/cyd-tiled-display.png" width="400" />
+  <img src="./images/cyd-vid.gif" width="300"/>
+  <img src="./images/cyd-move.png" width="400" />
+  <img src="./images/2displays.png" width="300" />
   </br>  
 </p>
 
@@ -24,7 +24,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 ## Touch screen - [CYD](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
 
 ### Option 1:
-<img src="/images/display.png" width="200" />
+<img src="./images/display.png" width="200" />
 
 * This is a variant of the original CYD with USB-C port.
 * Model: ESP32-2432S028 - 2.8 inch, resistive touch screen.
