@@ -33,8 +33,17 @@ def _get_default_value(param_type):
 def _generate_lambda(script_id, available_scripts, expected_params, static_params=None):
     # Generate lambda args
     lambda_args = []
-    for i, p_type in enumerate(expected_params):
+    param_map = {}
+    
+    for i, (p_name, p_type) in enumerate(expected_params):
         lambda_args.append(f"{_get_cpp_type(p_type)} arg{i}")
+        
+        if isinstance(p_name, list):
+            for name in p_name:
+                param_map[name] = i
+        else:
+            param_map[p_name] = i
+            
     lambda_sig = ", ".join(lambda_args)
     
     # Determine script args
@@ -51,29 +60,9 @@ def _generate_lambda(script_id, available_scripts, expected_params, static_param
                 continue
 
             # 2. Map standard parameters by name to lambda arguments
-            arg_index = -1
-            if param_name == 'x': arg_index = 0
-            elif param_name == 'y': arg_index = 1
-            elif param_name == 'entities':
-                if len(expected_params) > 2 and expected_params[2] == 'string[]':
-                    arg_index = 2
-                elif len(expected_params) > 3 and expected_params[3] == 'string[]':
-                    arg_index = 3
-                else:
-                    arg_index = 2
-            elif param_name in ['name', 'presentation_name']:
-                if len(expected_params) > 2 and expected_params[2] == 'string':
-                    arg_index = 2
-            elif param_name == 'is_on':
-                if len(expected_params) > 3 and expected_params[3] == 'bool':
-                    arg_index = 3
-            elif param_name == 'options':
-                if len(expected_params) > 3 and expected_params[3] == 'string[]':
-                    arg_index = 3
-            elif param_name == 'state': arg_index = 3
-            
-            if arg_index >= 0 and arg_index < len(expected_params):
-                script_args.append(f"arg{arg_index}")
+            if param_name in param_map:
+                idx = param_map[param_name]
+                script_args.append(f"arg{idx}")
             else:
                 # Fallback: use default value
                 script_args.append(_get_default_value(param_type))
@@ -94,10 +83,6 @@ def format_display_list(display, available_scripts=None, expected_params=None):
         display = [display]
     elif not isinstance(display, list):
         display = []
-    
-    if not expected_params:
-        # Fallback for backward compatibility or missing info
-        return ", ".join(f"&id({entity})" for entity in display if entity)
     
     lambdas = []
     for item in display:
