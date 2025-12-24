@@ -30,7 +30,7 @@ def _get_default_value(param_type):
     if param_type == 'string[]': return '{}'
     return '{}'
 
-def _generate_lambda(script_id, available_scripts, expected_params):
+def _generate_lambda(script_id, available_scripts, expected_params, static_params=None):
     # Generate lambda args
     lambda_args = []
     for i, p_type in enumerate(expected_params):
@@ -43,17 +43,42 @@ def _generate_lambda(script_id, available_scripts, expected_params):
     
     if script_info:
         script_params = script_info.get('parameters', {})
-        script_param_types = [type_str for _, type_str in script_params.items()]
         
-        for i, p_type in enumerate(script_param_types):
-            if i < len(expected_params):
-                # We have this argument available
-                script_args.append(f"arg{i}")
+        for param_name, param_type in script_params.items():
+            # 1. Check static params (from YAML)
+            if static_params and param_name in static_params:
+                script_args.append(str(static_params[param_name]))
+                continue
+
+            # 2. Map standard parameters by name to lambda arguments
+            arg_index = -1
+            if param_name == 'x': arg_index = 0
+            elif param_name == 'y': arg_index = 1
+            elif param_name == 'entities':
+                if len(expected_params) > 2 and expected_params[2] == 'string[]':
+                    arg_index = 2
+                elif len(expected_params) > 3 and expected_params[3] == 'string[]':
+                    arg_index = 3
+                else:
+                    arg_index = 2
+            elif param_name in ['name', 'presentation_name']:
+                if len(expected_params) > 2 and expected_params[2] == 'string':
+                    arg_index = 2
+            elif param_name == 'is_on':
+                if len(expected_params) > 3 and expected_params[3] == 'bool':
+                    arg_index = 3
+            elif param_name == 'options':
+                if len(expected_params) > 3 and expected_params[3] == 'string[]':
+                    arg_index = 3
+            elif param_name == 'state': arg_index = 3
+            
+            if arg_index >= 0 and arg_index < len(expected_params):
+                script_args.append(f"arg{arg_index}")
             else:
-                # Script expects more args than we have
-                script_args.append(_get_default_value(p_type))
+                # Fallback: use default value
+                script_args.append(_get_default_value(param_type))
     else:
-        # Fallback: pass all expected args
+        # Fallback: pass all expected args (legacy behavior, or tests)
         script_args = [f"arg{i}" for i in range(len(expected_params))]
         
         # Debug/Warning:
@@ -75,9 +100,16 @@ def format_display_list(display, available_scripts=None, expected_params=None):
         return ", ".join(f"&id({entity})" for entity in display if entity)
     
     lambdas = []
-    for entity in display:
-        if entity:
-            lambdas.append(_generate_lambda(entity, available_scripts, expected_params))
+    for item in display:
+        if not item:
+            continue
+            
+        if isinstance(item, str):
+            lambdas.append(_generate_lambda(item, available_scripts, expected_params))
+        elif isinstance(item, dict):
+            # Handle dictionary format: { script_id: { param: val } }
+            for script_id, params in item.items():
+                lambdas.append(_generate_lambda(script_id, available_scripts, expected_params, params))
             
     return f"{{ {', '.join(lambdas)} }}"
 

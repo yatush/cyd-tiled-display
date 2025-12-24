@@ -96,7 +96,7 @@ def _are_types_compatible(actual, expected):
     
     return False
 
-def validate_script_type(script_id, script_info, expected_type, context):
+def validate_script_type(script_id, script_info, expected_type, context, provided_params=None):
     """Validate that a script has the expected type.
     
     Args:
@@ -104,6 +104,7 @@ def validate_script_type(script_id, script_info, expected_type, context):
         script_info: Dict with 'parameters' field
         expected_type: Expected script type ('display', 'action', or 'location_action')
         context: String describing where script is used (for error messages)
+        provided_params: Dict of parameters provided in the configuration (optional)
     
     Raises:
         ValueError: If script type doesn't match expected type
@@ -112,8 +113,14 @@ def validate_script_type(script_id, script_info, expected_type, context):
         raise ValueError(f"{context}: Script '{script_id}' not found in available scripts")
     
     parameters = script_info.get('parameters', {})
-    param_types = [type_str for _, type_str in parameters.items()]
+    provided_params = provided_params or {}
     
+    # Filter out provided parameters to check only the remaining ones against expected signature
+    remaining_param_types = []
+    for name, type_str in parameters.items():
+        if name not in provided_params:
+            remaining_param_types.append(type_str)
+            
     # Map expected_type to expected parameter types
     expected_params_map = {
         'display': ['int', 'int', 'string[]'],
@@ -140,25 +147,27 @@ def validate_script_type(script_id, script_info, expected_type, context):
     if expected_params and len(expected_params) >= 2:
         first_two = expected_params[:2]
         if (first_two == ['int', 'int'] or first_two == ['float', 'float']):
-            if len(param_types) < 2:
-                raise ValueError(
-                    f"{context}: Script '{script_id}' must have at least 2 parameters (x, y) for type '{expected_type}'. "
-                    f"Got {len(param_types)} parameters."
-                )
+            # Check original parameters for x and y, as they are usually implicit
+            if 'x' not in parameters or 'y' not in parameters:
+                 # Fallback to checking first two types if names are not x/y (unlikely but possible)
+                 if len(remaining_param_types) < 2:
+                    raise ValueError(
+                        f"{context}: Script '{script_id}' must have at least 2 parameters (x, y) for type '{expected_type}'. "
+                    )
 
-    # Check compatibility
-    for i, actual_param_type in enumerate(param_types):
+    # Check compatibility of remaining parameters
+    for i, actual_param_type in enumerate(remaining_param_types):
         if i >= len(expected_params):
             raise ValueError(
-                f"{context}: Script '{script_id}' has too many parameters. "
+                f"{context}: Script '{script_id}' has too many parameters remaining after applying provided arguments. "
                 f"Expected at most {len(expected_params)} ({', '.join(expected_params)}), "
-                f"got {len(param_types)} ({', '.join(param_types)})."
+                f"got {len(remaining_param_types)} ({', '.join(remaining_param_types)})."
             )
         
         expected_param_type = expected_params[i]
         if not _are_types_compatible(actual_param_type, expected_param_type):
              raise ValueError(
-                 f"{context}: Script '{script_id}' parameter {i+1} type mismatch. "
+                 f"{context}: Script '{script_id}' parameter {i+1} (of remaining) type mismatch. "
                  f"Expected {expected_param_type}, got {actual_param_type}."
              )
     

@@ -27,7 +27,10 @@ screens:
           x: 2
           y: 0
           display:
-            - tile_settings
+            - tile_icon:
+                icon: '"\U0000e8b8"' # Settings
+                color: id(gray)
+                size: TileFonts::MEDIUM
           destination: pref
 
       - ha_action:
@@ -66,7 +69,10 @@ screens:
           entities:
             - dynamic_entity: COVER
           display:
-            - tile_blinds_mid
+            - tile_icon:
+                icon: '"\U0000e286"' # Blinds
+                color: id(light_purple)
+                size: TileFonts::BIG
           perform:
             - action_blinds_mid
           display_page_if_no_entity: cover_settings
@@ -78,28 +84,40 @@ screens:
           x: 0
           y: 0
           display:
-            - tile_disp_settings
+            - tile_icon:
+                icon: '"\U0000eb97"' # Display Settings
+                color: Color::WHITE
+                size: TileFonts::BIG
           destination: disp_settings
 
       - move_page:
           x: 1
           y: 0
           display:
-            - tile_light_settings
+            - tile_icon:
+                icon: '"\U0000e28b"' # Light Settings
+                color: Color::WHITE
+                size: TileFonts::BIG
           destination: light_settings
 
       - move_page:
           x: 2
           y: 0
           display:
-            - tile_back_arrow
+            - tile_icon:
+                icon: '"\U0000e5c4"' # Back Arrow
+                color: id(gray)
+                size: TileFonts::MEDIUM
           destination: controllers
 
       - move_page:
           x: 0
           y: 1
           display:
-            - tile_ac_settings
+            - tile_icon:
+                icon: '"\U0000f55b"' # AC Settings
+                color: Color::WHITE
+                size: TileFonts::BIG
           destination: ac_settings
           dynamic_entry:
             dynamic_entity: AC
@@ -109,14 +127,20 @@ screens:
           x: 1
           y: 1
           display:
-            - tile_cover_settings
+            - tile_icon:
+                icon: '"\U0000e286"' # Blinds
+                color: Color::WHITE
+                size: TileFonts::BIG
           destination: cover_settings
 
       - move_page:
           x: 2
           y: 1
           display:
-            - tile_cover_settings
+            - tile_icon:
+                icon: '"\U0000e286"' # Blinds
+                color: Color::WHITE
+                size: TileFonts::BIG
           destination: cover_settings_2
 
   - id: ac_settings
@@ -129,7 +153,10 @@ screens:
             - dynamic_entity: AC
               sensor: temperature
           display:
-            - tile_temp_up
+            - tile_icon:
+                icon: '"\U0000f4b5"' # Arrow Warm Up
+                color: id(light_red)
+                size: TileFonts::BIG
           perform:
             - action_temp_up
 
@@ -140,7 +167,10 @@ screens:
             - dynamic_entity: AC
               sensor: temperature
           display:
-            - tile_temp_down
+            - tile_icon:
+                icon: '"\U0000f4b6"' # Arrow Cool Down
+                color: id(light_blue)
+                size: TileFonts::BIG
           perform:
             - action_temp_down
 
@@ -169,7 +199,10 @@ screens:
           x: 2
           y: 0
           display:
-            - tile_back_arrow
+            - tile_icon:
+                icon: '"\U0000e5c4"' # Back Arrow
+                color: id(gray)
+                size: TileFonts::MEDIUM
           destination: controllers
 
   - id: disp_settings
@@ -194,7 +227,10 @@ screens:
           x: 2
           y: 0
           display:
-            - tile_back_arrow
+            - tile_icon:
+                icon: '"\U0000e5c4"' # Back Arrow
+                color: id(gray)
+                size: TileFonts::MEDIUM
           destination: controllers
 
       - function:
@@ -208,7 +244,10 @@ screens:
           x: 1
           y: 1
           display:
-            - tile_power
+            - tile_icon:
+                icon: '"\U0000f418"' # Power
+                color: Color::WHITE
+                size: TileFonts::BIG
           on_press: action_power
 
   - id: light_settings
@@ -255,7 +294,10 @@ screens:
           x: 2
           y: 0
           display:
-            - tile_back_arrow
+            - tile_icon:
+                icon: '"\U0000e5c4"' # Back Arrow
+                color: id(gray)
+                size: TileFonts::MEDIUM
           destination: controllers
 
   - id: cover_settings
@@ -285,7 +327,10 @@ screens:
           x: 2
           y: 0
           display:
-            - tile_back_arrow
+            - tile_icon:
+                icon: '"\U0000e5c4"' # Back Arrow
+                color: id(gray)
+                size: TileFonts::MEDIUM
           destination: controllers
 
   - id: cover_settings_2
@@ -447,5 +492,8 @@ screens:
           x: 2
           y: 0
           display:
-            - tile_back_arrow
+            - tile_icon:
+                icon: '"\U0000e5c4"' # Back Arrow
+                color: id(gray)
+                size: TileFonts::MEDIUM
           destination: controllers

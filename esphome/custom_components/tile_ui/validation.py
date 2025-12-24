@@ -348,7 +348,41 @@ def _validate_script_references(screens, available_scripts):
                 f"Screen '{usage['screen']}', {usage['tile_type']} tile at ({usage['x']}, {usage['y']}), "
                 f"{usage.get('usage', 'display')}"
             )
-            validate_script_type(script_id, script_info, expected_type, context)
+            provided_params = usage.get('params', {})
+            
+            # Validate parameters if provided (check for missing/unknown params first)
+            if 'params' in usage:
+                _validate_script_parameters(script_id, script_info, usage['params'], context)
+            
+            validate_script_type(script_id, script_info, expected_type, context, provided_params)
+
+
+def _validate_script_parameters(script_id, script_info, provided_params, context):
+    """Validate that provided parameters match the script definition."""
+    script_params = script_info.get('parameters', {})
+    provided_params = provided_params or {}
+    
+    # Check for unknown parameters
+    for param in provided_params:
+        if param not in script_params:
+            raise ValueError(
+                f"{context}: Unknown parameter '{param}' provided for script '{script_id}'. "
+                f"Valid parameters are: {', '.join(sorted(script_params.keys()))}"
+            )
+    
+    # Check for missing required parameters
+    # Implicit parameters are those that are automatically provided by the system
+    implicit_params = {'x', 'y', 'entities', 'name', 'presentation_name', 'is_on', 'options', 'state'}
+    
+    for param, param_type in script_params.items():
+        if param not in implicit_params and param not in provided_params:
+            # If it's not implicit and not provided, it's missing
+            # Note: We assume all script parameters are required unless they have a default value
+            # But ESPHome script parameters don't support default values in the definition easily accessible here
+            # So we assume they are required.
+            raise ValueError(
+                f"{context}: Missing required parameter '{param}' for script '{script_id}'."
+            )
 
 
 def _validate_global_references(screens, available_globals):

@@ -156,9 +156,18 @@ def collect_referenced_scripts(screens):
             display = config.get("display", [])
             if display:
                 for func in (display if isinstance(display, list) else [display]):
+                    func_name = None
+                    params = None
+                    
                     if isinstance(func, str) and func:
-                        if func not in referenced_scripts:
-                            referenced_scripts[func] = []
+                        func_name = func
+                    elif isinstance(func, dict) and len(func) == 1:
+                        func_name = list(func.keys())[0]
+                        params = func[func_name]
+                    
+                    if func_name:
+                        if func_name not in referenced_scripts:
+                            referenced_scripts[func_name] = []
                         
                         # Determine expected type based on tile type
                         expected_type = 'display'
@@ -169,13 +178,14 @@ def collect_referenced_scripts(screens):
                         elif tile_type == 'cycle_entity':
                             expected_type = 'display_cycle'
 
-                        referenced_scripts[func].append({
+                        referenced_scripts[func_name].append({
                             'type': expected_type,
                             'screen': screen_id,
                             'tile_type': tile_type,
                             'x': x,
                             'y': y,
-                            'usage': 'display'
+                            'usage': 'display',
+                            'params': params
                         })
             
             # 2. Collect from tile-specific fields

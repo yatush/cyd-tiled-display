@@ -68,6 +68,25 @@ def string_list(value: Any) -> list[str]:
     return value
 
 
+def display_list(value: Any) -> list[Any]:
+    """Validate list of display items (strings or dicts)."""
+    if not isinstance(value, list):
+        raise cv.Invalid(f"Must be a list, got {type(value).__name__}")
+    for item in value:
+        if isinstance(item, str):
+            if not item.strip():
+                raise cv.Invalid("String items cannot be empty")
+        elif isinstance(item, dict):
+            if len(item) != 1:
+                raise cv.Invalid(f"Dict items must have exactly one key, got {len(item)}")
+            key = list(item.keys())[0]
+            if not isinstance(key, str) or not key.strip():
+                raise cv.Invalid("Dict key must be a non-empty string")
+        else:
+            raise cv.Invalid(f"List items must be strings or dicts, got {type(item).__name__}")
+    return value
+
+
 def entities_list(value: Any) -> list[dict]:
     """Validate entities list - can contain dicts with dynamic_entity or entity keys."""
     if not isinstance(value, list):
@@ -96,7 +115,7 @@ def ha_action_schema(value):
     schema = cv.Schema({
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
-        cv.Required("display"): string_list,
+        cv.Required("display"): display_list,
         cv.Required("entities"): entities_list,
         cv.Optional("perform"): string_list,
         cv.Optional("location_perform"): string_list,
@@ -122,7 +141,7 @@ def move_page_schema(value):
     schema = cv.Schema({
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
-        cv.Required("display"): string_list,
+        cv.Required("display"): display_list,
         cv.Required("destination"): non_empty_string,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
         cv.Optional("activation_var"): activation_var_schema,
@@ -137,7 +156,7 @@ def title_schema(value):
     schema = cv.Schema({
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
-        cv.Required("display"): string_list,
+        cv.Required("display"): display_list,
         cv.Required("entities"): entities_list,
         cv.Optional("omit_frame"): bool,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
@@ -151,7 +170,7 @@ def function_schema(value):
     schema = cv.Schema({
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
-        cv.Required("display"): string_list,
+        cv.Required("display"): display_list,
         cv.Optional("on_press"): non_empty_string,
         cv.Optional("on_release"): non_empty_string,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
@@ -166,7 +185,7 @@ def toggle_entity_schema(value):
     schema = cv.Schema({
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
-        cv.Required("display"): string_list,
+        cv.Required("display"): display_list,
         cv.Required("dynamic_entity"): non_empty_string,
         cv.Required("entity"): non_empty_string,
         cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
@@ -183,7 +202,7 @@ def cycle_entity_schema(value):
     schema = cv.Schema({
         cv.Required("x"): coord_schema,
         cv.Required("y"): coord_schema,
-        cv.Required("display"): string_list,
+        cv.Required("display"): display_list,
         cv.Required("dynamic_entity"): non_empty_string,
         cv.Required("options"): cv.All(
             list,

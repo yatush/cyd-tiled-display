@@ -79,6 +79,14 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
     - `x`: Integer - Column position of the tile
     - `y`: Integer - Row position of the tile
     - `entities`: String array - The resolved entity values (with dynamic entities replaced at runtime)
+  - **Parameterized Scripts**: You can pass static parameters to scripts by using a dictionary format:
+    ```yaml
+    display:
+      - tile_icon:
+          icon: '"\U0000e8b8"'
+          color: id(gray)
+          size: TileFonts::MEDIUM
+    ```
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
 
 ### 2. HA Action Tile (Entity Control)

@@ -146,131 +146,82 @@ switch:
         - display.page.show: calib
 
 font:
+  # Master glyph list - define ALL Material Icons glyphs once
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_24
     size: 24
-    glyphs: [
+    glyphs: &all_mdi_glyphs [
+        # WiFi icons
         "\U0000f063", # No wifi
         "\U0000f0b0", # Low wifi
         "\U0000ebe4", # Wifi 1
         "\U0000ebd6", # Wifi 2
         "\U0000ebe1", # Wifi 3
         "\U0000e1d8", # Wifi 4
+        # Navigation
+        "\U0000e5cc", # Chevron right
+        "\U0000e5cb", # Chevron left
+        "\U0000e5c4", # Back
+        # Arrows
+        "\U0000eacf", # Arrow up
+        "\U0000ead0", # Arrow down
+        "\U0000f4b5", # Arrow warm up
+        "\U0000f4b6", # Arrow cool down
+        "\U0000e8d5", # Arrow up/down
+        # Lights
+        "\U0000e9b8", # Light off
+        "\U0000e0f0", # Light on
+        "\U0000f02a", # Light from ceiling
+        "\U0000e28b", # Light settings
+        # Home & Settings
+        "\U0000e88a", # House
+        "\U0000e8b8", # Settings
+        "\U0000eb97", # Display settings
+        "\U0000f55b", # AC settings
+        # Other icons
         "\U0000e286", # Blinds
         "\U0000e536", # Walking man
         "\U0000e913", # Touch
-        "\U0000e5cc", # Chevron right
-        "\U0000e5cb", # Chevron left
+        "\U0000e518", # Brightness
+        "\U0000e425", # Timer
+        "\U0000f154", # Airwave
+        "\U0000f418", # Power
       ]
   
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_32
     size: 32
-    glyphs: [
-        "\U0000f063", # No wifi
-        "\U0000f0b0", # Low wifi
-        "\U0000ebe4", # Wifi 1
-        "\U0000ebd6", # Wifi 2
-        "\U0000ebe1", # Wifi 3
-        "\U0000e1d8", # Wifi 4
-        "\U0000e286", # Blinds
-        "\U0000e536", # Walking man
-        "\U0000e913", # Touch
-        "\U0000e5cc", # Chevron right
-        "\U0000e5cb", # Chevron left
-      ]
+    glyphs: *all_mdi_glyphs
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_40
     size: 40
-    glyphs: [
-        "\U0000eacf", # Arrow up
-        "\U0000ead0", # Arrow down
-      ]
+    glyphs: *all_mdi_glyphs
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_largish
     size: 70
-    glyphs: [
-        "\U0000e286", # Blinds
-      ]
+    glyphs: *all_mdi_glyphs
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_60
     size: 60
-    glyphs: [
-        "\U0000e536", # Walking man
-        "\U0000e913", # Touch
-        "\U0000e8b8", # Settings
-        "\U0000e425", # Timer
-        "\U0000e5c4", # Back
-        "\U0000e286", # Blinds
-        "\U0000e518", # Brightness
-        "\U0000f55b", # AC settings
-        "\U0000eb97", # Display settings
-        "\U0000f02a", # Light from ceiling
-        "\U0000e88a", # House
-        "\U0000eacf", # Arrow up
-        "\U0000ead0", # Arrow down
-      ]
+    glyphs: *all_mdi_glyphs
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_80
     size: 80
-    glyphs: [
-        "\U0000e9b8", # Light off
-        "\U0000e0f0", # Light on
-        "\U0000f154", # Airwave
-        "\U0000eacf", # Arrow up
-        "\U0000ead0", # Arrow down
-        "\U0000e286", # Blinds
-        "\U0000e536", # Walking man
-        "\U0000e913", # Touch
-        "\U0000e518", # Brightness
-        "\U0000f55b", # AC settings
-        "\U0000f4b5", # Arrow warm up
-        "\U0000f4b6", # Arrow cool down
-        "\U0000eb97", # Display settings
-        "\U0000e28b", # Light settings
-        "\U0000e8d5", # Arrow up/down
-        "\U0000f418", # Power
-        "\U0000e8b8", # Settings
-        "\U0000e5c4", # Back
-        "\U0000e425", # Timer
-        "\U0000f02a", # Light from ceiling
-        "\U0000e88a", # House
-      ]
+    glyphs: *all_mdi_glyphs
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_100
     size: 100
-    glyphs: [
-        "\U0000e9b8", # Light off
-        "\U0000e0f0", # Light on
-        "\U0000f154", # Airwave
-        "\U0000eacf", # Arrow up
-        "\U0000ead0", # Arrow down
-        "\U0000e286", # Blinds
-        "\U0000e536", # Walking man
-        "\U0000e913", # Touch
-        "\U0000e518", # Brightness
-        "\U0000f55b", # AC settings
-        "\U0000f4b5", # Arrow warm up
-        "\U0000f4b6", # Arrow cool down
-        "\U0000eb97", # Display settings
-        "\U0000e28b", # Light settings
-        "\U0000e8d5", # Arrow up/down
-        "\U0000f418", # Power
-        "\U0000e8b8", # Settings
-        "\U0000e5c4", # Back
-      ]
+    glyphs: *all_mdi_glyphs
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: mdi_small
     size: 12
-    glyphs: [
-        "\U0000e286", # Blinds
-      ]
+    glyphs: *all_mdi_glyphs
 
   - file: "gfonts://Roboto"
     id: roboto_20
@@ -287,6 +238,7 @@ font:
   - file: "gfonts://Roboto@900"
     id: roboto_30_bold
     size: 30
+    
   - file: "gfonts://Roboto@900"
     id: roboto_40_bold
     size: 40
@@ -294,48 +246,17 @@ font:
   - file: "gfonts://Roboto@900"
     id: roboto_12
     size: 12
-    glyphs:
-      [
-        "\U0000003c",
-        "\U0000003e",
-        "0",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "c",
-        "m",
-        "\U00000020",
-        "\U00000022",
+    glyphs: &roboto_glyphs [
+        "\U0000003c", "\U0000003e",
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        "c", "m",
+        "\U00000020", "\U00000022",
       ]
 
   - file: "gfonts://Roboto@900"
     id: roboto_18
     size: 18
-    glyphs:
-      [
-        "\U0000003c",
-        "\U0000003e",
-        "0",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "c",
-        "m",
-        "\U00000020",
-        "\U00000022",
-      ]
+    glyphs: *roboto_glyphs
 
 # This is BGR for some strange reason :/
 color:
@@ -789,14 +710,6 @@ script:
             PerformHaAction(blind, id(blinds_moving_down) ? STOP_COVER : CLOSE_COVER);
           }
 
-  - id: tile_blinds_mid
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, id(light_purple), TextAlign::CENTER, "\U0000e286");
-
   - id: action_blinds_mid
     parameters:
       entities: string[]
@@ -1014,66 +927,21 @@ script:
             }
           }
 
-  - id: tile_settings
+  - id: tile_icon
     parameters:
       x: int
       y: int
+      icon: string
+      color: Color
+      size: int
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::MEDIUM, id(gray), TextAlign::CENTER, "\U0000e8b8");
-
-  - id: tile_ac_settings
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000f55b");
-
-  - id: tile_power
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000f418");
+          print(id(x_mid)[x], id(y_mid)[y], (TileFonts::Size)size, color, TextAlign::CENTER, icon.c_str());
 
   - id: action_power
     then:
       - lambda: |-
           id(restart_button).press();
-
-  - id: tile_light_settings
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000e28b");
-
-  - id: tile_cover_settings
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000e286");
-
-  - id: tile_cover_up_down
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000e8d5");
-
-  - id: tile_disp_settings
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, Color::WHITE, TextAlign::CENTER, "\U0000eb97");
 
   - id: tile_choose_light
     parameters:
@@ -1186,23 +1054,6 @@ script:
           print(id(x_mid)[x], icon_y, TileFonts::MEDIUM, id(gray), TextAlign::CENTER, icon.c_str());
           print(id(x_mid)[x], text_y, TileFonts::TEXT_BOLD, Color::WHITE, TextAlign::CENTER, name.c_str());
 
-  - id: tile_back_arrow
-    parameters:
-      x: int
-      y: int
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::MEDIUM, id(gray), TextAlign::CENTER, "\U0000e5c4");
-
-  - id: tile_temp_up
-    parameters:
-      x: int
-      y: int
-      entities: string[]
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, id(light_red), TextAlign::CENTER, "\U0000f4b5");
-
   - id: action_temp_up
     parameters:
       entities: string[]
@@ -1217,15 +1068,6 @@ script:
               ESP_LOGE("ActionTempUp", "Failed getting temp for %s", ac.c_str());
             }
           }
-
-  - id: tile_temp_down
-    parameters:
-      x: int
-      y: int
-      entities: string[]
-    then:
-      - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], TileFonts::BIG, id(light_blue), TextAlign::CENTER, "\U0000f4b6");
 
   - id: action_temp_down
     parameters:
