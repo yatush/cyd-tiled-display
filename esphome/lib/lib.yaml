@@ -1137,6 +1137,7 @@ script:
 interval:
   - interval: 250ms
     then:
+      - script.execute: on_movement
       - if:
           condition:
             or:
@@ -1156,7 +1157,6 @@ interval:
 
   - interval: 1s
     then:
-      - script.execute: on_movement
       # Adapt brightness
       - if:
           condition:
