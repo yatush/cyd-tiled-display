@@ -101,12 +101,6 @@ globals:
   - id: border_r
     type: int
     initial_value: "8"
-  - id: rows
-    type: int
-    initial_value: "2"
-  - id: cols
-    type: int
-    initial_value: "3"
   - id: x_rect
     type: int
   - id: y_rect
