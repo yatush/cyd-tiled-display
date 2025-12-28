@@ -236,6 +236,15 @@ def screen_schema(value):
             if flag not in VALID_FLAGS:
                 raise cv.Invalid(f"Invalid flag: {flag}. Valid flags: {VALID_FLAGS}")
     
+    # Validate rows/cols if present
+    rows = value.get("rows")
+    if rows is not None:
+        rows = coord_schema(rows)
+        
+    cols = value.get("cols")
+    if cols is not None:
+        cols = coord_schema(cols)
+    
     # Validate tiles
     if "tiles" not in value:
         raise cv.Invalid("Screen must have 'tiles' key")
@@ -257,6 +266,8 @@ def screen_schema(value):
         "id": screen_id,
         "flags": flags,
         "tiles": validated_tiles,
+        "rows": rows,
+        "cols": cols,
     }
 
 

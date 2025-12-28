@@ -36,6 +36,8 @@ screens:
 ### Screen Properties
 
 - **id**: Unique identifier for the screen (used in `destination` fields for navigation)
+- **rows**: (Optional) Number of rows in the grid for this screen. Overrides the global default.
+- **cols**: (Optional) Number of columns in the grid for this screen. Overrides the global default.
 - **flags**: List of optional flags that control screen behavior
   - `BASE`: This is the base/home screen that loads first, also `TEMPORARY` screens fall back to this screen after timeout. There should be exactly 1 `BASE` screen.
   - `TEMPORARY`: Screen is temporary - i.e. after 60 seconds of inactivity, it will change back to the `BASE` screen

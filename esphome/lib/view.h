@@ -34,6 +34,13 @@ public:
     return this->base_screen_;
   }
 
+  Screen* getScreen(esphome::display::DisplayPage* page) {
+    if (this->repository_.count(page) != 0) {
+      return this->repository_[page];
+    }
+    return nullptr;
+  }
+
   // Returns the base screen of the view.
   Screen* getBaseScreen() { return this->base_screen_; }
 

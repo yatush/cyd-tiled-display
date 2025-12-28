@@ -10,8 +10,8 @@ enum ScreenAtt {
 class Screen {
 public:
   Screen(esphome::display::DisplayPage* display_page,
-         std::set<ScreenAtt> attributes)
-      : display_page_(display_page), attributes_(attributes) {}
+         std::set<ScreenAtt> attributes, int rows, int cols)
+      : display_page_(display_page), attributes_(attributes), rows_(rows), cols_(cols) {}
 
   // Virtual function to draw the Wi-Fi signal strength and current hour.
   virtual void drawWifiHour() {
@@ -45,6 +45,9 @@ public:
     return this->attributes_.find(att) != this->attributes_.end();
   }
 
+  int getRows() { return rows_; }
+  int getCols() { return cols_; }
+
   // Pure virtual function to draw the screen content (must be implemented by
   // derived classes).
   virtual void draw() = 0;
@@ -64,6 +67,8 @@ private:
   esphome::display::DisplayPage* display_page_;
   // Set of attributes for this screen.
   std::set<ScreenAtt> attributes_;
+  int rows_;
+  int cols_;
 };
 
 // A screen composed of multiple tiles.
@@ -72,8 +77,8 @@ public:
   // Constructor to initialize a TiledScreen with a DisplayPage, attributes, and
   // a vector of Tile pointers.
   TiledScreen(esphome::display::DisplayPage* display_page,
-              std::set<ScreenAtt> attributes, std::vector<Tile*> tiles)
-      : Screen(display_page, attributes), tiles_(tiles) {
+              std::set<ScreenAtt> attributes, int rows, int cols, std::vector<Tile*> tiles)
+      : Screen(display_page, attributes, rows, cols), tiles_(tiles) {
     for (Tile* tile : tiles) {
       tile->init(this->getDisplayPage(),
                 [&]() { this->onScreenLeave(); });

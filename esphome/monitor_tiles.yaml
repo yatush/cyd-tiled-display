@@ -79,6 +79,8 @@ screens:
 
   - id: pref
     flags: [TEMPORARY]
+    rows: 3
+    cols: 4
     tiles:
       - move_page:
           x: 0

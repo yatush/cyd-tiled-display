@@ -116,6 +116,11 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
         screen_id = screen.get("id", "")
         flags = screen.get("flags", [])
         tiles = screen.get("tiles", [])
+        rows = screen.get("rows")
+        cols = screen.get("cols")
+        
+        rows_cpp = str(rows) if rows is not None else "id(rows)"
+        cols_cpp = str(cols) if cols is not None else "id(cols)"
         
         flags_cpp = flags_to_cpp(flags)
         lines = [
@@ -130,7 +135,7 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
         lines.extend([
             "};",
             "view_ptr->addScreen(",
-            f"  new TiledScreen(&id({screen_id}), {flags_cpp}, tiles_{screen_id})",
+            f"  new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id})",
             ");",
         ])
         lambdas.append("\n".join(lines))
@@ -138,6 +143,11 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
     # Generate view finalization
     view_final = [
         "view_ptr->init();",
+        "if (view_ptr->getActiveScreen()) {",
+        "  id(rows) = view_ptr->getActiveScreen()->getRows();",
+        "  id(cols) = view_ptr->getActiveScreen()->getCols();",
+        "  id(init_coordinates).execute();",
+        "}",
         "ESP_LOGD(\"InitTiles\", \"Tiles initialized\");",
     ]
     lambdas.append("\n".join(view_final))
@@ -189,6 +199,14 @@ async def to_code(config):
         auto *automation = new esphome::Automation<esphome::display::DisplayPage *, esphome::display::DisplayPage *>(page_change_trigger);
         automation->add_action(new esphome::LambdaAction<esphome::display::DisplayPage *, esphome::display::DisplayPage *>([=](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{
             id(change_page_ms) = millis();
+            if (view_ptr != nullptr) {{
+                Screen* screen = view_ptr->getScreen(to);
+                if (screen != nullptr) {{
+                    id(rows) = screen->getRows();
+                    id(cols) = screen->getCols();
+                    id(init_coordinates).execute();
+                }}
+            }}
         }}));
         """
         cg.add(cg.RawStatement(stmt))
