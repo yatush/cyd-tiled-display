@@ -47,16 +47,7 @@
       "type": "title",
       "label": "Title",
       "fields": [
-        { 
-          "name": "entities", 
-          "type": "object_list", 
-          "label": "Entities",
-          "objectFields": [
-            { "key": "dynamic_entity", "label": "Dynamic Entity", "optional": true },
-            { "key": "entity", "label": "Entity ID", "optional": true },
-            { "key": "sensor", "label": "Sensor", "optional": true }
-          ]
-        }
+        { "name": "entities", "type": "entity_list", "label": "Entities" }
       ]
     },
     {

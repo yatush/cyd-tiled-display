@@ -205,6 +205,7 @@ async def to_code(config):
                     id(rows) = screen->getRows();
                     id(cols) = screen->getCols();
                     id(init_coordinates).execute();
+                    screen->onScreenEnter();
                 }}
             }}
         }}));

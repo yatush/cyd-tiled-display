@@ -82,6 +82,14 @@ public:
     return false;
   }
 
+  void updateTouchArea() {
+    if (this->binary_sensor_ != nullptr) {
+      this->binary_sensor_->set_area(
+          id(x_start)[this->x_], id(x_start)[this->x_] + id(x_rect),
+          id(y_start)[this->y_], id(y_start)[this->y_] + id(y_rect));
+    }
+  }
+
   friend class TiledScreen;
 
 protected:

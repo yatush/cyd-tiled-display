@@ -52,6 +52,8 @@ public:
   // derived classes).
   virtual void draw() = 0;
 
+  virtual void onScreenEnter() {};
+
   // Virtual function to decode entities (default: no-op).
   virtual void decodeEntities() {};
 
@@ -82,6 +84,12 @@ public:
     for (Tile* tile : tiles) {
       tile->init(this->getDisplayPage(),
                 [&]() { this->onScreenLeave(); });
+    }
+  }
+
+  void onScreenEnter() override {
+    for (Tile* tile : tiles_) {
+      tile->updateTouchArea();
     }
   }
 
