@@ -131,6 +131,8 @@ def get_validator(field_type: str, object_fields: list = None):
         return string_list
     if field_type == 'script':
         return non_empty_string
+    if field_type == 'page_select':
+        return non_empty_string
     if field_type == 'dynamic_entity_select':
         return non_empty_string
     if field_type == 'object':

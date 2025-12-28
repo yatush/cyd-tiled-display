@@ -20,7 +20,7 @@
       "type": "move_page",
       "label": "Move Page",
       "fields": [
-        { "name": "destination", "type": "string", "label": "Destination Page ID" },
+        { "name": "destination", "type": "page_select", "label": "Destination Page ID" },
         { 
           "name": "dynamic_entry", 
           "type": "object", 
