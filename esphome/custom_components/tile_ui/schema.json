@@ -13,7 +13,7 @@
         { "name": "entities", "type": "entity_list", "label": "Entities" },
         { "name": "perform", "type": "script_list", "label": "Perform (Scripts)", "scriptType": "action", "optional": true },
         { "name": "location_perform", "type": "script_list", "label": "Location Perform", "scriptType": "action", "optional": true },
-        { "name": "display_page_if_no_entity", "type": "string", "label": "Display Page If No Entity", "optional": true }
+        { "name": "display_page_if_no_entity", "type": "page_select", "label": "Display Page If No Entity", "optional": true }
       ]
     },
     {
