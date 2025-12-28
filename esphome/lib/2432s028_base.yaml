@@ -116,49 +116,7 @@ display:
       width: 320
       height: 240
     invert_colors: false
-    on_page_change:
-      then:
-        - lambda: |-
-            id(change_page_ms) = millis();
-    pages:
-      - id: calib
-        lambda: |-
-          if (id(touch_calibration).state) {
-            id(disp).fill(id(Color::WHITE));
-            id(disp).filled_circle(id(last_x), id(last_y), 10, id(red));
-            id(disp).printf(id(width) / 2, id(height) / 2 - 15, id(text_regular), Color::BLACK, TextAlign::CENTER,
-                          "x=%d, y=%d", id(last_x), id(last_y));
-            id(disp).printf(id(width) / 2, id(height) / 2 + 15, id(text_regular), Color::BLACK, TextAlign::CENTER,
-                          "x_raw=%d, y_raw=%0d", id(last_x_raw), id(last_y_raw));
-          }
 
-      - id: pref
-        lambda: |-
-          id(draw_page).execute();
-
-      - id: controllers
-        lambda: |-
-          id(draw_page).execute();
-
-      - id: ac_settings
-        lambda: |-
-          id(draw_page).execute();
-
-      - id: disp_settings
-        lambda: |-
-          id(draw_page).execute();
-
-      - id: light_settings
-        lambda: |-
-          id(draw_page).execute();
-
-      - id: cover_settings
-        lambda: |-
-          id(draw_page).execute();
-
-      - id: cover_settings_2
-        lambda: |-
-          id(draw_page).execute();
 
 touchscreen:
   id: touchscreen_id
@@ -171,19 +129,9 @@ touchscreen:
     swap_xy: true
   on_touch:
     then:
-      - light.turn_on: backlight
-      - lambda: |-
-          auto now = millis();
-          id(last_activity_ms) = now;
-          id(last_touch_ms) = now;
-          id(last_x) = touch.x;
-          id(last_y) = touch.y;
-          if (id(turn_on_ms) == 0) {
-            id(turn_on_ms) = now;
-          }
-          if (id(touch_calibration).state) {
-            id(last_x) = touch.x;
-            id(last_y) = touch.y;
-            id(last_x_raw) = touch.x_raw;
-            id(last_y_raw) = touch.y_raw;
-          }
+      - script.execute:
+          id: handle_touch
+          x: !lambda return touch.x;
+          y: !lambda return touch.y;
+          x_raw: !lambda return touch.x_raw;
+          y_raw: !lambda return touch.y_raw;

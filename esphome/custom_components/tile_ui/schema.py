@@ -253,7 +253,12 @@ def screen_schema(value):
     if "id" not in value:
         raise cv.Invalid("Screen must have 'id' key")
     
-    screen_id = non_empty_string(value["id"])
+    # Handle ID object (from cv.declare_id) or string
+    screen_id = value["id"]
+    if hasattr(screen_id, "id"):
+        screen_id = str(screen_id)
+    else:
+        screen_id = non_empty_string(screen_id)
     
     # Validate flags if present
     flags = value.get("flags", [])

@@ -262,5 +262,5 @@ For advanced configurations using dynamic entity lists, see [TILE_CONFIGURATION.
   * In case the screen is not calibrated (touch is not happening in the right place), a calibration might be needed.
   * In HomeAssistant, go to: *Settings -> Devices and Services -> ESPHome -> Your Device*
   * Toggle *Touch calibration*.
-  * This enters a calibration mode. the red dot should be in the place where you tap the screen, in case this is incorrect, change the values in ```lib.yaml``` ```touchscreen -> calibration``` to match the minimum and maximum *x_raw, y_raw* values.
+  * This enters a calibration mode. the red dot should be in the place where you tap the screen, in case this is incorrect, change the values in the device base file (e.g. ```esphome/lib/2432s028__base.yaml```) under ```touchscreen -> calibration``` to match the minimum and maximum *x_raw, y_raw* values.
   * Please note, the x/y axis are flipped, this is WAI.

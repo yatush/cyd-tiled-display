@@ -373,6 +373,31 @@ sensor:
       }
 
 script:
+  - id: handle_touch
+    mode: restart
+    parameters:
+      x: int
+      y: int
+      x_raw: int
+      y_raw: int
+    then:
+      - light.turn_on: backlight
+      - lambda: |-
+          auto now = millis();
+          id(last_activity_ms) = now;
+          id(last_touch_ms) = now;
+          id(last_x) = x;
+          id(last_y) = y;
+          if (id(turn_on_ms) == 0) {
+            id(turn_on_ms) = now;
+          }
+          if (id(touch_calibration).state) {
+            id(last_x) = x;
+            id(last_y) = y;
+            id(last_x_raw) = x_raw;
+            id(last_y_raw) = y_raw;
+          }
+
   - id: on_brightness_press
     then:
       - lambda: |-
