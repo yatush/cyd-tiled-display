@@ -27,7 +27,7 @@
           "label": "Dynamic Entry",
           "optional": true,
           "objectFields": [
-            { "key": "dynamic_entity", "label": "Dynamic Entity" },
+            { "key": "dynamic_entity", "label": "Dynamic Entity", "type": "dynamic_entity_select" },
             { "key": "value", "label": "Value" }
           ]
         }
