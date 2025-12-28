@@ -1,0 +1,87 @@
+{
+  "common": [
+    { "name": "x", "type": "number", "label": "X" },
+    { "name": "y", "type": "number", "label": "Y" },
+    { "name": "display", "type": "display_list", "label": "Display Scripts" },
+    { "name": "omit_frame", "type": "boolean", "label": "Omit Frame" }
+  ],
+  "types": [
+    {
+      "type": "ha_action",
+      "label": "HA Action",
+      "fields": [
+        { "name": "entities", "type": "entity_list", "label": "Entities" },
+        { "name": "perform", "type": "script_list", "label": "Perform (Scripts)", "scriptType": "action" },
+        { "name": "location_perform", "type": "script_list", "label": "Location Perform", "scriptType": "action" },
+        { "name": "display_page_if_no_entity", "type": "string", "label": "Display Page If No Entity" }
+      ]
+    },
+    {
+      "type": "move_page",
+      "label": "Move Page",
+      "fields": [
+        { "name": "destination", "type": "string", "label": "Destination Page ID" },
+        { 
+          "name": "dynamic_entry", 
+          "type": "object", 
+          "label": "Dynamic Entry",
+          "objectFields": [
+            { "key": "dynamic_entity", "label": "Dynamic Entity" },
+            { "key": "value", "label": "Value" }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "toggle_entity",
+      "label": "Toggle Entity",
+      "fields": [
+        { "name": "dynamic_entity", "type": "dynamic_entity_select", "label": "Dynamic Entity (Var Name)" },
+        { "name": "entity", "type": "string", "label": "Entity ID" },
+        { "name": "presentation_name", "type": "string", "label": "Presentation Name" },
+        { "name": "initially_chosen", "type": "boolean", "label": "Initially Chosen" }
+      ]
+    },
+    {
+      "type": "title",
+      "label": "Title",
+      "fields": [
+        { 
+          "name": "entities", 
+          "type": "object_list", 
+          "label": "Entities",
+          "objectFields": [
+            { "key": "dynamic_entity", "label": "Dynamic Entity", "optional": true },
+            { "key": "entity", "label": "Entity ID", "optional": true },
+            { "key": "sensor", "label": "Sensor", "optional": true }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "cycle_entity",
+      "label": "Cycle Entity",
+      "fields": [
+        { "name": "dynamic_entity", "type": "dynamic_entity_select", "label": "Dynamic Entity (Var Name)" },
+        { 
+          "name": "options", 
+          "type": "object_list", 
+          "label": "Options",
+          "objectFields": [
+            { "key": "entity", "label": "Entity ID" },
+            { "key": "label", "label": "Label" }
+          ]
+        },
+        { "name": "reset_on_leave", "type": "boolean", "label": "Reset On Leave" }
+      ]
+    },
+    {
+      "type": "function",
+      "label": "Function",
+      "fields": [
+        { "name": "on_press", "type": "script", "label": "On Press (Script)", "scriptType": "action" },
+        { "name": "on_release", "type": "script", "label": "On Release (Script)", "scriptType": "action" }
+      ]
+    }
+  ]
+}

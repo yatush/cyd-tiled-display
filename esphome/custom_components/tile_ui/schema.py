@@ -1,10 +1,22 @@
 """Schema validation for tile configuration."""
+import json
+import os
 from enum import Enum
 from typing import Any
 
 import esphome.config_validation as cv
-from voluptuous import PREVENT_EXTRA
+from voluptuous import PREVENT_EXTRA, Required, Optional, Schema, All
 
+# Load schema.json
+SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.json")
+try:
+    with open(SCHEMA_PATH, "r") as f:
+        SCHEMA_DEF = json.load(f)
+except FileNotFoundError:
+    # Fallback or error if schema.json is missing (e.g. in some build environments)
+    # For now, we assume it exists as per user request to link them.
+    # If this fails in CI/CD, we might need a different strategy.
+    raise FileNotFoundError(f"Could not find schema.json at {SCHEMA_PATH}")
 
 class TileType(Enum):
     """Enumeration of valid tile types."""
@@ -28,12 +40,6 @@ __all__ = [
     "string_list",
     "entities_list",
     "activation_var_schema",
-    "ha_action_schema",
-    "move_page_schema",
-    "title_schema",
-    "function_schema",
-    "toggle_entity_schema",
-    "cycle_entity_schema",
     "tile_schema",
     "screen_schema",
     "screens_list_schema",
@@ -103,120 +109,112 @@ def entities_list(value: Any) -> list[dict]:
 
 def activation_var_schema(value: Any) -> dict:
     """Validate activation_var configuration."""
-    schema = cv.Schema({
-        cv.Required("dynamic_entity"): non_empty_string,
-        cv.Required("value"): non_empty_string,
+    schema = Schema({
+        Required("dynamic_entity"): non_empty_string,
+        Required("value"): non_empty_string,
     }, extra=PREVENT_EXTRA)
     return schema(value)
 
-
-def ha_action_schema(value):
-    """Validate ha_action tile configuration."""
-    schema = cv.Schema({
-        cv.Required("x"): coord_schema,
-        cv.Required("y"): coord_schema,
-        cv.Required("display"): display_list,
-        cv.Required("entities"): entities_list,
-        cv.Optional("perform"): string_list,
-        cv.Optional("location_perform"): string_list,
-        cv.Optional("display_page_if_no_entity"): non_empty_string,
-        cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): activation_var_schema,
-        cv.Optional("omit_frame"): bool,
-    }, extra=PREVENT_EXTRA)
-    return schema(value)
-
-
-def dynamic_entry_schema(value):
-    """Validate dynamic_entry configuration."""
-    schema = cv.Schema({
-        cv.Required("dynamic_entity"): non_empty_string,
-        cv.Required("value"): non_empty_string,
-    }, extra=PREVENT_EXTRA)
-    return schema(value)
-
-
-def move_page_schema(value):
-    """Validate move_page tile configuration."""
-    schema = cv.Schema({
-        cv.Required("x"): coord_schema,
-        cv.Required("y"): coord_schema,
-        cv.Required("display"): display_list,
-        cv.Required("destination"): non_empty_string,
-        cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): activation_var_schema,
-        cv.Optional("dynamic_entry"): dynamic_entry_schema,
-        cv.Optional("omit_frame"): bool,
-    }, extra=PREVENT_EXTRA)
-    return schema(value)
-
-
-def title_schema(value):
-    """Validate title tile configuration."""
-    schema = cv.Schema({
-        cv.Required("x"): coord_schema,
-        cv.Required("y"): coord_schema,
-        cv.Required("display"): display_list,
-        cv.Required("entities"): entities_list,
-        cv.Optional("omit_frame"): bool,
-        cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): activation_var_schema,
-    }, extra=PREVENT_EXTRA)
-    return schema(value)
-
-
-def function_schema(value):
-    """Validate function tile configuration."""
-    schema = cv.Schema({
-        cv.Required("x"): coord_schema,
-        cv.Required("y"): coord_schema,
-        cv.Required("display"): display_list,
-        cv.Optional("on_press"): non_empty_string,
-        cv.Optional("on_release"): non_empty_string,
-        cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("activation_var"): activation_var_schema,
-        cv.Optional("omit_frame"): bool,
-    }, extra=PREVENT_EXTRA)
-    return schema(value)
-
-
-def toggle_entity_schema(value):
-    """Validate toggle_entity tile configuration."""
-    schema = cv.Schema({
-        cv.Required("x"): coord_schema,
-        cv.Required("y"): coord_schema,
-        cv.Required("display"): display_list,
-        cv.Required("dynamic_entity"): non_empty_string,
-        cv.Required("entity"): non_empty_string,
-        cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("presentation_name"): non_empty_string,
-        cv.Optional("initially_chosen"): bool,
-        cv.Optional("activation_var"): activation_var_schema,
-        cv.Optional("omit_frame"): bool,
-    }, extra=PREVENT_EXTRA)
-    return schema(value)
-
-
-def cycle_entity_schema(value):
-    """Validate cycle_entity tile configuration."""
-    schema = cv.Schema({
-        cv.Required("x"): coord_schema,
-        cv.Required("y"): coord_schema,
-        cv.Required("display"): display_list,
-        cv.Required("dynamic_entity"): non_empty_string,
-        cv.Required("options"): cv.All(
+# Helper to map JSON types to validators
+def get_validator(field_type: str, object_fields: list = None):
+    if field_type == 'number':
+        return coord_schema # Assuming all numbers are coords for now
+    if field_type == 'string':
+        return non_empty_string
+    if field_type == 'boolean':
+        return bool
+    if field_type == 'display_list':
+        return display_list
+    if field_type == 'entity_list':
+        return entities_list
+    if field_type == 'script_list':
+        return string_list
+    if field_type == 'script':
+        return non_empty_string
+    if field_type == 'dynamic_entity_select':
+        return non_empty_string
+    if field_type == 'object':
+        if not object_fields:
+            return dict
+        
+        # Build schema for object
+        item_schema = {}
+        for f in object_fields:
+            key = Optional(f['key']) if f.get('optional') else Required(f['key'])
+            item_schema[key] = non_empty_string
+            
+        return Schema(item_schema, extra=PREVENT_EXTRA)
+    if field_type == 'object_list':
+        if not object_fields:
+            return list
+        
+        # Build schema for object items
+        item_schema = {}
+        for f in object_fields:
+            # Assuming all object fields are strings for now based on current usage
+            key = Optional(f['key']) if f.get('optional') else Required(f['key'])
+            item_schema[key] = non_empty_string
+            
+        return All(
             list,
-            [cv.Schema({
-                cv.Required("entity"): non_empty_string,
-                cv.Required("label"): non_empty_string,
-            }, extra=PREVENT_EXTRA)]
-        ),
-        cv.Optional("requires_fast_refresh"): cv.Any(dict, non_empty_string),
-        cv.Optional("reset_on_leave"): bool,
-        cv.Optional("activation_var"): activation_var_schema,
-        cv.Optional("omit_frame"): bool,
-    }, extra=PREVENT_EXTRA)
-    return schema(value)
+            [Schema(item_schema, extra=PREVENT_EXTRA)]
+        )
+    return cv.string
+
+def build_tile_schema(tile_type_def):
+    """Builds a voluptuous schema from the JSON definition."""
+    schema_dict = {}
+    
+    # Add common fields
+    for field in SCHEMA_DEF['common']:
+        validator = get_validator(field['type'])
+        schema_dict[Required(field['name'])] = validator
+
+    # Add specific fields
+    for field in tile_type_def['fields']:
+        validator = get_validator(field['type'], field.get('objectFields'))
+        # In the JSON schema, we don't explicitly mark optional vs required yet.
+        # For now, let's assume specific fields are Required unless they are clearly optional in the old code.
+        # Actually, looking at old code:
+        # ha_action: perform is Optional, location_perform is Optional, display_page_if_no_entity is Optional
+        # move_page: destination is Required
+        # toggle_entity: presentation_name is Optional, initially_chosen is Optional
+        # cycle_entity: reset_on_leave is Optional
+        # function: on_press/on_release are Optional
+        
+        # Heuristic: if it's a list or boolean, or specific optional fields, make it optional.
+        # Ideally we should add "required": boolean to schema.json.
+        # For now, let's replicate the old behavior by name.
+        
+        is_optional = field['name'] in [
+            'perform', 'location_perform', 'display_page_if_no_entity', 
+            'presentation_name', 'initially_chosen', 'reset_on_leave',
+            'on_press', 'on_release', 'dynamic_entry'
+        ]
+        
+        if is_optional:
+            schema_dict[Optional(field['name'])] = validator
+        else:
+            schema_dict[Required(field['name'])] = validator
+
+    # Add standard optional fields that might not be in schema.json yet but are in Python
+    schema_dict[Optional("requires_fast_refresh")] = cv.Any(dict, non_empty_string)
+    schema_dict[Optional("activation_var")] = activation_var_schema
+    
+    # omit_frame is in common in schema.json, but let's ensure it's handled correctly (it's optional)
+    # In the loop above, 'omit_frame' from common would be added as Required because we didn't check.
+    # Let's fix the common loop logic or override it.
+    # Actually, omit_frame should be Optional.
+    if Required('omit_frame') in schema_dict:
+        val = schema_dict.pop(Required('omit_frame'))
+        schema_dict[Optional('omit_frame')] = val
+
+    return Schema(schema_dict, extra=PREVENT_EXTRA)
+
+# Generate schemas dynamically
+TILE_SCHEMAS = {}
+for t_def in SCHEMA_DEF['types']:
+    TILE_SCHEMAS[t_def['type']] = build_tile_schema(t_def)
 
 
 def tile_schema(value):
@@ -229,20 +227,10 @@ def tile_schema(value):
     
     tile_type, tile_config = list(value.items())[0]
     
-    if tile_type == TileType.HA_ACTION.value:
-        return {tile_type: ha_action_schema(tile_config)}
-    elif tile_type == TileType.MOVE_PAGE.value:
-        return {tile_type: move_page_schema(tile_config)}
-    elif tile_type == TileType.TITLE.value:
-        return {tile_type: title_schema(tile_config)}
-    elif tile_type == TileType.FUNCTION.value:
-        return {tile_type: function_schema(tile_config)}
-    elif tile_type == TileType.TOGGLE_ENTITY.value:
-        return {tile_type: toggle_entity_schema(tile_config)}
-    elif tile_type == TileType.CYCLE_ENTITY.value:
-        return {tile_type: cycle_entity_schema(tile_config)}
+    if tile_type in TILE_SCHEMAS:
+        return {tile_type: TILE_SCHEMAS[tile_type](tile_config)}
     else:
-        raise cv.Invalid(f"Unknown tile type: {tile_type}. Valid types: {VALID_TILE_TYPES}")
+        raise cv.Invalid(f"Unknown tile type: {tile_type}. Valid types: {list(TILE_SCHEMAS.keys())}")
 
 
 def screen_schema(value):
