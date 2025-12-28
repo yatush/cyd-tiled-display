@@ -20,6 +20,8 @@ def _get_cpp_type(param_type):
     if param_type == 'bool': return 'bool'
     if param_type == 'string': return 'std::string'
     if param_type == 'string[]': return 'std::vector<std::string>'
+    if param_type == 'font': return 'esphome::display::BaseFont*'
+    if param_type == 'esphome::display::BaseFont*': return 'esphome::display::BaseFont*'
     return 'auto'
 
 def _get_default_value(param_type):
@@ -28,6 +30,8 @@ def _get_default_value(param_type):
     if param_type == 'bool': return 'false'
     if param_type == 'string': return '""'
     if param_type == 'string[]': return '{}'
+    if param_type == 'font': return 'nullptr'
+    if param_type == 'esphome::display::BaseFont*': return 'nullptr'
     return '{}'
 
 def _generate_lambda(script_id, available_scripts, expected_params, static_params=None):
@@ -56,7 +60,16 @@ def _generate_lambda(script_id, available_scripts, expected_params, static_param
         for param_name, param_type in script_params.items():
             # 1. Check static params (from YAML)
             if static_params and param_name in static_params:
-                script_args.append(str(static_params[param_name]))
+                val = str(static_params[param_name])
+                is_font = param_type == 'font' or param_type == 'esphome::display::BaseFont*'
+                if is_font:
+                    if val == 'nullptr':
+                        pass
+                    elif val.startswith('id('):
+                        val = '&' + val
+                    else:
+                        val = f'&id({val})'
+                script_args.append(val)
                 continue
 
             # 2. Map standard parameters by name to lambda arguments

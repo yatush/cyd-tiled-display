@@ -63,18 +63,44 @@ globals:
     type: int
     initial_value: "1"
 
-script:
-  - id: init_tile_fonts
-    then:
-      - lambda: |-
-          TileFonts::fonts[TileFonts::Size::BIG] = id(mdi_80);
-          TileFonts::fonts[TileFonts::Size::MEDIUM] = id(mdi_60);
-          TileFonts::fonts[TileFonts::Size::SMALL] = id(mdi_40);
-          TileFonts::fonts[TileFonts::Size::TINY] = id(mdi_24);
-          TileFonts::fonts[TileFonts::Size::TEXT_BOLD] = id(roboto_20_bold);
-          TileFonts::fonts[TileFonts::Size::TEXT] = id(roboto_20);
-          TileFonts::fonts[TileFonts::Size::TEXT_SMALL] = id(roboto_12);
-          TileFonts::fonts[TileFonts::Size::TEXT_BIG_BOLD] = id(roboto_30_bold);
+font:
+  # Master glyph list - define ALL Material Icons glyphs once
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: tiny
+    size: 24
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: small
+    size: 40
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: medium
+    size: 60
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: big
+    size: 80
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Roboto"
+    id: text_regular
+    size: 20
+
+  - file: "gfonts://Roboto@900"
+    id: text_bold
+    size: 20
+
+  - file: "gfonts://Roboto@900"
+    id: text_big_bold
+    size: 30
+
+  - file: "gfonts://Roboto@900"
+    id: text_small
+    size: 12
+    glyphs: !include roboto_glyphs.yaml
 
 display:
   - platform: ili9xxx
@@ -100,9 +126,9 @@ display:
           if (id(touch_calibration).state) {
             id(disp).fill(id(Color::WHITE));
             id(disp).filled_circle(id(last_x), id(last_y), 10, id(red));
-            id(disp).printf(id(width) / 2, id(height) / 2 - 15, id(roboto_20), Color::BLACK, TextAlign::CENTER,
+            id(disp).printf(id(width) / 2, id(height) / 2 - 15, id(text_regular), Color::BLACK, TextAlign::CENTER,
                           "x=%d, y=%d", id(last_x), id(last_y));
-            id(disp).printf(id(width) / 2, id(height) / 2 + 15, id(roboto_20), Color::BLACK, TextAlign::CENTER,
+            id(disp).printf(id(width) / 2, id(height) / 2 + 15, id(text_regular), Color::BLACK, TextAlign::CENTER,
                           "x_raw=%d, y_raw=%0d", id(last_x_raw), id(last_y_raw));
           }
 

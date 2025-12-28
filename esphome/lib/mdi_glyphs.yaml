@@ -1,0 +1,37 @@
+[
+  # WiFi icons
+  "\U0000f063", # No wifi
+  "\U0000f0b0", # Low wifi
+  "\U0000ebe4", # Wifi 1
+  "\U0000ebd6", # Wifi 2
+  "\U0000ebe1", # Wifi 3
+  "\U0000e1d8", # Wifi 4
+  # Navigation
+  "\U0000e5cc", # Chevron right
+  "\U0000e5cb", # Chevron left
+  "\U0000e5c4", # Back
+  # Arrows
+  "\U0000eacf", # Arrow up
+  "\U0000ead0", # Arrow down
+  "\U0000f4b5", # Arrow warm up
+  "\U0000f4b6", # Arrow cool down
+  "\U0000e8d5", # Arrow up/down
+  # Lights
+  "\U0000e9b8", # Light off
+  "\U0000e0f0", # Light on
+  "\U0000f02a", # Light from ceiling
+  "\U0000e28b", # Light settings
+  # Home & Settings
+  "\U0000e88a", # House
+  "\U0000e8b8", # Settings
+  "\U0000eb97", # Display settings
+  "\U0000f55b", # AC settings
+  # Other icons
+  "\U0000e286", # Blinds
+  "\U0000e536", # Walking man
+  "\U0000e913", # Touch
+  "\U0000e518", # Brightness
+  "\U0000e425", # Timer
+  "\U0000f154", # Airwave
+  "\U0000f418", # Power
+]

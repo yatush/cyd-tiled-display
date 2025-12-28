@@ -31,6 +31,16 @@ def get_script_type(parameters):
     param_types = [type_str for _, type_str in parameters.items()] if parameters else []
     param_count = len(param_types)
     
+    # Check for 5-parameter scripts
+    if param_count == 5:
+        # Icon display script: int, int, string, Color, font
+        if (param_types[0] == 'int' and 
+            param_types[1] == 'int' and
+            ('string' in str(param_types[2]).lower()) and
+            ('Color' in str(param_types[3])) and
+            ('font' in str(param_types[4]).lower())):
+            return 'display_icon'
+
     # Check for 4-parameter scripts
     if param_count == 4:
         # Toggle display script: int, int, string, bool

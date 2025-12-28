@@ -23,14 +23,14 @@ public:
     int y = std::get<0>(sizes).second / 2;
 
     // Print the Wi-Fi icon.
-    print(id(width), y, TileFonts::TINY, id(wifi_color), TextAlign::CENTER_RIGHT, wifi_icon.c_str());
+    print(id(width), y, id(tiny), id(wifi_color), TextAlign::CENTER_RIGHT, wifi_icon.c_str());
     // Print the current time.
-    strftime(id(width) - std::get<0>(sizes).first - std::get<2>(sizes), y, TileFonts::TEXT, id(dark_gray), TextAlign::CENTER_RIGHT, "%H:%M", espt);
+    strftime(id(width) - std::get<0>(sizes).first - std::get<2>(sizes), y, id(text_regular), id(dark_gray), TextAlign::CENTER_RIGHT, "%H:%M", espt);
   }
 
   std::tuple<std::pair<int, int>, std::pair<int, int>, int> wifiHourWidth() {
-    auto icon_size = measure(TileFonts::TINY, "\U0000e1d8");
-    auto time_size = measure(TileFonts::TEXT, "88:88");
+    auto icon_size = measure(id(tiny), "\U0000e1d8");
+    auto time_size = measure(id(text_regular), "88:88");
     int gap = 4;
     return std::make_tuple(icon_size, time_size, gap);
   }

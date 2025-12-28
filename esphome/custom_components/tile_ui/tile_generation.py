@@ -122,6 +122,7 @@ def generate_title_tile(config, available_scripts):
 
 def generate_move_page_tile(config, available_scripts):
     """Generate C++ for a move page tile."""
+    # MovePageTile display: int, int, string, Color, font
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int')])
     
     destination = config.get("destination", "")

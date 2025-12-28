@@ -496,38 +496,20 @@ Color mbb(Color value) {
   return value;
 }
 
-class TileFonts {
-public:
-  enum Size {
-    BIG,
-    MEDIUM,
-    SMALL,
-    TINY,
-    TEXT_BOLD,
-    TEXT,
-    TEXT_SMALL,
-    TEXT_BIG_BOLD,
-  };
-  static std::map<TileFonts::Size, BaseFont*> fonts;
-};
-
-inline std::map<TileFonts::Size, BaseFont*> TileFonts::fonts = {};
-
-
 void print (int x, int y, BaseFont *font, Color color, TextAlign align, const char *text) {
   id(disp).print(x, y, font, mbb(color), align, text);
 }
 
-void print (int x, int y, TileFonts::Size font_size, Color color, TextAlign align, const char *text) {
-  id(disp).print(x, y, TileFonts::fonts[font_size], mbb(color), align, text);
+void print (int x, int y, BaseFont &font, Color color, TextAlign align, const char *text) {
+  print(x, y, &font, color, align, text);
 }
 
 void print (int x, int y, BaseFont *font, Color color, const char *text) {
   id(disp).print(x, y, font, mbb(color), text);
 }
 
-void print (int x, int y, TileFonts::Size font_size, Color color, const char *text) {
-  id(disp).print(x, y, TileFonts::fonts[font_size], mbb(color), text);
+void print (int x, int y, BaseFont &font, Color color, const char *text) {
+  print(x, y, &font, color, text);
 }
 
 void line (int x1, int y1, int x2, int y2, Color color) {
@@ -552,8 +534,8 @@ void printf(int x, int y, BaseFont *font, Color color, const char *format, Args&
 }
 
 template<typename... Args>
-void printf(int x, int y, TileFonts::Size font_size, Color color, const char *format, Args&&... args) {
-  id(disp).printf(x, y, TileFonts::fonts[font_size], mbb(color), format, std::forward<Args>(args)...);
+void printf(int x, int y, BaseFont &font, Color color, const char *format, Args&&... args) {
+  printf(x, y, &font, color, format, std::forward<Args>(args)...);
 }
 
 template<typename... Args>
@@ -562,16 +544,16 @@ void printf(int x, int y, BaseFont *font, Color color, TextAlign align, const ch
 }
 
 template<typename... Args>
-void printf(int x, int y, TileFonts::Size font_size, Color color, TextAlign align, const char *format, Args&&... args) {
-  id(disp).printf(x, y, TileFonts::fonts[font_size], mbb(color), align, format, std::forward<Args>(args)...);
+void printf(int x, int y, BaseFont &font, Color color, TextAlign align, const char *format, Args&&... args) {
+  printf(x, y, &font, color, align, format, std::forward<Args>(args)...);
 }
 
 void strftime (int x, int y, BaseFont *font, Color color, TextAlign align, const char *format, ESPTime time) {
   id(disp).strftime(x, y, font, mbb(color), align, format, time);
 }
 
-void strftime (int x, int y, TileFonts::Size font_size, Color color, TextAlign align, const char *format, ESPTime time) {
-  id(disp).strftime(x, y, TileFonts::fonts[font_size], mbb(color), align, format, time);
+void strftime (int x, int y, BaseFont &font, Color color, TextAlign align, const char *format, ESPTime time) {
+  strftime(x, y, &font, color, align, format, time);
 }
 
 std::pair<int, int> measure(BaseFont* font, const char* str) {
@@ -580,8 +562,8 @@ std::pair<int, int> measure(BaseFont* font, const char* str) {
   return std::pair{width, height};
 }
 
-std::pair<int, int> measure(TileFonts::Size font_size, const char* str) {
-  return measure(TileFonts::fonts[font_size], str);
+std::pair<int, int> measure(BaseFont& font, const char* str) {
+  return measure(&font, str);
 }
 
 #endif // UTILS_H_
