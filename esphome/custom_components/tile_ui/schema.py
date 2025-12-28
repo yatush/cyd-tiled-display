@@ -168,31 +168,16 @@ def build_tile_schema(tile_type_def):
     # Add common fields
     for field in SCHEMA_DEF['common']:
         validator = get_validator(field['type'])
-        schema_dict[Required(field['name'])] = validator
+        if field.get('optional'):
+            schema_dict[Optional(field['name'])] = validator
+        else:
+            schema_dict[Required(field['name'])] = validator
 
     # Add specific fields
     for field in tile_type_def['fields']:
         validator = get_validator(field['type'], field.get('objectFields'))
-        # In the JSON schema, we don't explicitly mark optional vs required yet.
-        # For now, let's assume specific fields are Required unless they are clearly optional in the old code.
-        # Actually, looking at old code:
-        # ha_action: perform is Optional, location_perform is Optional, display_page_if_no_entity is Optional
-        # move_page: destination is Required
-        # toggle_entity: presentation_name is Optional, initially_chosen is Optional
-        # cycle_entity: reset_on_leave is Optional
-        # function: on_press/on_release are Optional
         
-        # Heuristic: if it's a list or boolean, or specific optional fields, make it optional.
-        # Ideally we should add "required": boolean to schema.json.
-        # For now, let's replicate the old behavior by name.
-        
-        is_optional = field['name'] in [
-            'perform', 'location_perform', 'display_page_if_no_entity', 
-            'presentation_name', 'initially_chosen', 'reset_on_leave',
-            'on_press', 'on_release', 'dynamic_entry'
-        ]
-        
-        if is_optional:
+        if field.get('optional'):
             schema_dict[Optional(field['name'])] = validator
         else:
             schema_dict[Required(field['name'])] = validator
@@ -201,14 +186,6 @@ def build_tile_schema(tile_type_def):
     schema_dict[Optional("requires_fast_refresh")] = cv.Any(dict, non_empty_string)
     schema_dict[Optional("activation_var")] = activation_var_schema
     
-    # omit_frame is in common in schema.json, but let's ensure it's handled correctly (it's optional)
-    # In the loop above, 'omit_frame' from common would be added as Required because we didn't check.
-    # Let's fix the common loop logic or override it.
-    # Actually, omit_frame should be Optional.
-    if Required('omit_frame') in schema_dict:
-        val = schema_dict.pop(Required('omit_frame'))
-        schema_dict[Optional('omit_frame')] = val
-
     return Schema(schema_dict, extra=PREVENT_EXTRA)
 
 # Generate schemas dynamically
