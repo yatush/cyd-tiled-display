@@ -243,6 +243,11 @@ For advanced configurations using dynamic entity lists, see [TILE_CONFIGURATION.
 
 # Installation steps
 
+* **Configurator (Still in development)** - Use the built-in visual editor to design your tiles.
+  * Navigate to `configurator/` directory.
+  * Run `npm install` and `npm run dev`.
+  * Open the provided URL in your browser to design your screens visually.
+  * The configurator provides real-time validation and C++ code generation.
 * **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
 * **Copy library files** - Copy the files under `esphome/lib/` to your Home Assistant's ESPHome configuration directory.
 * **Configure tiles** - Edit `monitor_tiles.yaml` to define your screens and tiles. See [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md) for detailed documentation.
