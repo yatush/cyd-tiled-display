@@ -210,8 +210,14 @@ def validate_tiles_config(
 
 
 def _validate_tile_positions(screen_id, tiles):
-    """Validate no duplicate x,y positions in this screen (with exceptions for conditional tiles)."""
-    positions = {}
+    """Validate tile positions and stacking rules.
+    
+    Rules:
+    1. Multiple tiles can exist at the same (x, y) position.
+    2. If multiple tiles exist at the same position, they MUST all have an 'activation_var'.
+    3. All tiles at the same position MUST use the same 'dynamic_entity' in their 'activation_var'.
+    """
+    positions = {} # (x, y) -> list of (tile_type, config)
     for tile in tiles:
         tile_type = list(tile.keys())[0]
         config = tile[tile_type]
@@ -219,18 +225,52 @@ def _validate_tile_positions(screen_id, tiles):
         y = config.get("y", 0)
         pos_key = (x, y)
         
-        # Allow duplicate positions for cycle_entity tiles with activation_var (conditional display)
-        is_conditional_cycle = tile_type == TileType.CYCLE_ENTITY.value and config.get("activation_var") is not None
-        
-        if pos_key in positions and not is_conditional_cycle:
-            raise ValueError(
-                f"Screen '{screen_id}': Duplicate tile position ({x}, {y}). "
-                f"Already has {positions[pos_key]}, cannot add another tile at same position."
-            )
-        
-        # Only track position if not a conditional cycle_entity
-        if not is_conditional_cycle:
-            positions[pos_key] = tile_type
+        if pos_key not in positions:
+            positions[pos_key] = []
+        positions[pos_key].append((tile_type, config))
+
+    for pos_key, tile_list in positions.items():
+        if len(tile_list) > 1:
+            x, y = pos_key
+            
+            # Check if all have activation_var
+            for t_type, t_config in tile_list:
+                if not t_config.get("activation_var"):
+                    raise ValueError(
+                        f"Screen '{screen_id}': Multiple tiles at ({x}, {y}) but "
+                        f"{t_type} tile is missing 'activation_var'. "
+                        f"All stacked tiles must have an 'activation_var' to control visibility."
+                    )
+            
+            # Check if all have the same dynamic_entity and unique value sets
+            first_var = tile_list[0][1].get("activation_var", {}).get("dynamic_entity")
+            seen_value_sets = [] # List of sets of values
+            
+            for t_type, t_config in tile_list:
+                act_var = t_config.get("activation_var", {})
+                current_var = act_var.get("dynamic_entity")
+                
+                if current_var != first_var:
+                    raise ValueError(
+                        f"Screen '{screen_id}': Multiple tiles at ({x}, {y}) must use the same "
+                        f"activation variable (dynamic_entity). Found '{first_var}' and '{current_var}'."
+                    )
+                
+                # Check for duplicate value sets (ignore order)
+                val = act_var.get("value", "")
+                if isinstance(val, str):
+                    current_vals = set(v.strip() for v in val.split(","))
+                else:
+                    current_vals = {str(val)}
+                
+                if current_vals in seen_value_sets:
+                    val_str = ", ".join(sorted(list(current_vals)))
+                    raise ValueError(
+                        f"Screen '{screen_id}': Multiple tiles at ({x}, {y}) have the same "
+                        f"exact activation values: [{val_str}] for variable '{first_var}'. "
+                        f"Each tile in a stack must have a unique set of activation values."
+                    )
+                seen_value_sets.append(current_vals)
 
 
 def _validate_base_screen_reachability(screens, base_screen_id, valid_screen_ids):
