@@ -180,7 +180,7 @@ def build_expression(expression_config):
         return None
     
     if isinstance(expression_config, str):
-        return f"id({expression_config}).execute(entities)"
+        return f"RUN_SCRIPT(id({expression_config}), entities)"
     
     if not isinstance(expression_config, dict):
         return None
@@ -193,7 +193,7 @@ def build_expression(expression_config):
         
     if isinstance(conditions, str):
         # Handle single condition (e.g. for NOT or just a single function wrapper)
-        expr = f"id({conditions}).execute(entities)"
+        expr = f"RUN_SCRIPT(id({conditions}), entities)"
         return f"!{expr}" if op == "NOT" else expr
         
     if isinstance(conditions, list):
@@ -227,7 +227,7 @@ def build_fast_refresh_lambda(requires_fast_refresh):
     """Build C++ lambda for setRequiresFastRefreshFunc."""
     expression = build_expression(requires_fast_refresh)
     if expression:
-        return f"[](std::vector<std::string> entities) {{ return {expression}; }}"
+         return f"[](std::vector<std::string> entities) -> bool {{ return {expression}; }}"
     return None
 
 

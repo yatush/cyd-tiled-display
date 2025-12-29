@@ -95,6 +95,10 @@ globals:
   - id: border_r
     type: int
     initial_value: "8"
+  - id: script_output
+    type: bool
+    initial_value: "false"
+    # Internal variable used to return values from scripts. Do not modify manually.
   - id: x_rect
     type: int
   - id: y_rect
@@ -541,14 +545,14 @@ script:
       covers: string[]
     then:
       - lambda: |-
-          return std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "closing"; });
+          id(script_output) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "closing"; });
   
   - id: blinds_moving_up_fn
     parameters:
       covers: string[]
     then:
       - lambda: |-
-          return std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "opening"; });
+          id(script_output) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "opening"; });
 
   - id: draw_tile_frame
     parameters:
@@ -567,7 +571,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool up = DRAW_ONLY(id(blinds_moving_up_fn)->execute(entities));
+          bool up = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_up_fn), entities));
           uint32_t millis_val = DRAW_ONLY(millis());
           handle_caching(std::make_pair(x, y), millis_val, up);
           if (up) {
@@ -581,7 +585,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool up = id(blinds_moving_up_fn)->execute(entities);
+          bool up = RUN_SCRIPT(id(blinds_moving_up_fn), entities);
           static const char* STOP_COVER = "stop_cover";
           static const char* OPEN_COVER = "open_cover";
           for (const std::string& blind : entities) {
@@ -595,7 +599,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool down = DRAW_ONLY(id(blinds_moving_down_fn)->execute(entities));
+          bool down = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_down_fn), entities));
           uint32_t millis_val = DRAW_ONLY(millis());
           handle_caching(std::make_pair(x, y), millis_val, down);
           if (down) {
@@ -609,7 +613,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool down = id(blinds_moving_down_fn)->execute(entities);
+          bool down = RUN_SCRIPT(id(blinds_moving_down_fn), entities);
           static const char* STOP_COVER = "stop_cover";
           static const char* CLOSE_COVER = "close_cover";
           for (const std::string& blind : entities) {
@@ -639,8 +643,8 @@ script:
           static const char* STOP_COVER = "stop_cover";
           static const char* OPEN_COVER = "open_cover";
           static const char* CLOSE_COVER = "close_cover";
-          bool up = id(blinds_moving_up_fn)->execute(entities);
-          bool down = id(blinds_moving_down_fn)->execute(entities);
+          bool up = RUN_SCRIPT(id(blinds_moving_up_fn), entities);
+          bool down = RUN_SCRIPT(id(blinds_moving_down_fn), entities);
           for (const std::string& blind : entities) {
             if (up || down) {
               PerformHaAction(blind, STOP_COVER);
@@ -656,8 +660,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool up = DRAW_ONLY(id(blinds_moving_up_fn)->execute(entities));
-          bool down = DRAW_ONLY(id(blinds_moving_down_fn)->execute(entities));
+          bool up = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_up_fn), entities));
+          bool down = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_down_fn), entities));
           uint32_t millis_val = DRAW_ONLY(millis());
           handle_caching(std::make_pair(x, y), millis_val, up, down);
           bool one = up != down;

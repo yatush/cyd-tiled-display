@@ -71,21 +71,21 @@ class TestTileUtils(unittest.TestCase):
         config = "cond1"
         self.assertEqual(
             build_fast_refresh_lambda(config), 
-            "[](std::vector<std::string> entities) { return id(cond1).execute(entities); }"
+            "[](std::vector<std::string> entities) -> bool { return (id(cond1).execute(entities), id(script_output)); }"
         )
         
         # NOT operator
         config = {"operator": "NOT", "conditions": "cond1"}
         self.assertEqual(
             build_fast_refresh_lambda(config), 
-            "[](std::vector<std::string> entities) { return !id(cond1).execute(entities); }"
+            "[](std::vector<std::string> entities) -> bool { return !(id(cond1).execute(entities), id(script_output)); }"
         )
         
         # AND operator
         config = {"operator": "AND", "conditions": ["cond1", "cond2"]}
         self.assertEqual(
             build_fast_refresh_lambda(config), 
-            "[](std::vector<std::string> entities) { return id(cond1).execute(entities) && id(cond2).execute(entities); }"
+            "[](std::vector<std::string> entities) -> bool { return (id(cond1).execute(entities), id(script_output)) && (id(cond2).execute(entities), id(script_output)); }"
         )
 
     def test_get_tile_modifiers(self):

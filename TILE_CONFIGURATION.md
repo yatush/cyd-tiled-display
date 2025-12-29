@@ -370,6 +370,24 @@ dynamic_entry:
 
 Conditions are boolean expressions used throughout the tile configuration to define when certain behaviors occur. They are implemented as ESPHome scripts (functions) that receive the tile's `entities` as a parameter.
 
+**Important Implementation Note:**
+Due to ESPHome script limitations, condition scripts **cannot return a value directly**. As a workaround, they must set the global variable `script_output` to the boolean result.
+
+**Example Condition Script:**
+```yaml
+- id: is_any_cover_open
+  parameters:
+    entities: string[]
+  then:
+    - lambda: |-
+        bool result = false;
+        for (auto entity : entities) {
+           if (id(entity).state) result = true;
+        }
+        // Set the global variable instead of returning
+        id(script_output) = result;
+```
+
 ### Condition Structure
 
 Conditions can be specified in two forms:

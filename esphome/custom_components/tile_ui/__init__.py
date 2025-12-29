@@ -29,7 +29,8 @@ def load_tiles_config(config):
         try:
             tiles_config = load_tiles_yaml(tiles_path)
             config[CONF_SCREENS] = tiles_config.get("screens", [])
-        except Exception:
+        except Exception as e:
+            print(f"Error loading tiles config: {e}")
             # Ignore errors here, they will be caught in to_code
             config[CONF_SCREENS] = []
             

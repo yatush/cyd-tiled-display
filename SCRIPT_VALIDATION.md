@@ -130,3 +130,16 @@ When the tiles configuration is processed, the component validates:
    - Perform field → action scripts only
    - Location perform field → location action scripts only
    - On press/release → action scripts only
+
+## Return Values
+
+For scripts used as **Conditions** (e.g., in `requires_fast_refresh`), the script **cannot return a value directly** due to ESPHome limitations. As a workaround, it must set the `script_output` global variable to the boolean result.
+
+Example:
+```yaml
+- id: my_condition_script
+  parameters: { entities: string[] }
+  then:
+    - lambda: |-
+        id(script_output) = true; // Set result
+```

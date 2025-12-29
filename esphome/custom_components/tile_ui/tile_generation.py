@@ -113,9 +113,16 @@ def generate_title_tile(config, available_scripts):
     entities_config = config.get("entities", "")
     entity_values = format_entity_value(entities_config)
     entity_cpp = format_entity_cpp(entity_values)
+    requires_fast_refresh = config.get("requires_fast_refresh", None)
     
     tile_cpp = f'new TitleTile({x}, {y}, {display_cpp}, {entity_cpp})'
-    tile_cpp = _apply_modifiers(tile_cpp, config)
+    
+    modifiers = []
+    fast_refresh_lambda = build_fast_refresh_lambda(requires_fast_refresh)
+    if fast_refresh_lambda:
+        modifiers.append(f'setRequiresFastRefreshFunc({fast_refresh_lambda})')
+        
+    tile_cpp = _apply_modifiers(tile_cpp, config, modifiers)
     tile_cpp += ','
     return tile_cpp
 

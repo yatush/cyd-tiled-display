@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <sstream>
+#include <type_traits>
 
 // --- String repository ---
 
@@ -565,5 +566,14 @@ std::pair<int, int> measure(BaseFont* font, const char* str) {
 std::pair<int, int> measure(BaseFont& font, const char* str) {
   return measure(&font, str);
 }
+
+#define RUN_SCRIPT(script, ...) ([&](auto&& s){ \
+    if constexpr (std::is_pointer_v<std::remove_reference_t<decltype(s)>>) { \
+        s->execute(__VA_ARGS__); \
+    } else { \
+        s.execute(__VA_ARGS__); \
+    } \
+    return id(script_output); \
+}(script))
 
 #endif // UTILS_H_
