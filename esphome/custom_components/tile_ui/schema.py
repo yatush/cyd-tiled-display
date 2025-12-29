@@ -161,6 +161,8 @@ def get_validator(field_type: str, object_fields: list = None):
             list,
             [Schema(item_schema, extra=PREVENT_EXTRA)]
         )
+    if field_type == 'condition_logic':
+        return cv.Any(dict, non_empty_string)
     return cv.string
 
 def build_tile_schema(tile_type_def):
@@ -183,10 +185,6 @@ def build_tile_schema(tile_type_def):
             schema_dict[Optional(field['name'])] = validator
         else:
             schema_dict[Required(field['name'])] = validator
-
-    # Add standard optional fields that might not be in schema.json yet but are in Python
-    schema_dict[Optional("requires_fast_refresh")] = cv.Any(dict, non_empty_string)
-    schema_dict[Optional("activation_var")] = activation_var_schema
     
     return Schema(schema_dict, extra=PREVENT_EXTRA)
 

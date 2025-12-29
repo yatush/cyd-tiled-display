@@ -9,6 +9,16 @@
       "type": "condition_logic", 
       "label": "Fast Refresh", 
       "optional": true
+    },
+    {
+      "name": "activation_var",
+      "type": "object",
+      "label": "Activation Variable",
+      "optional": true,
+      "objectFields": [
+        { "key": "dynamic_entity", "label": "Dynamic Entity", "type": "dynamic_entity_select" },
+        { "key": "value", "label": "Value" }
+      ]
     }
   ],
   "types": [
