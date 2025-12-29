@@ -3,7 +3,13 @@
     { "name": "x", "type": "number", "label": "X" },
     { "name": "y", "type": "number", "label": "Y" },
     { "name": "display", "type": "display_list", "label": "Display Scripts" },
-    { "name": "omit_frame", "type": "boolean", "label": "Omit Frame", "optional": true }
+    { "name": "omit_frame", "type": "boolean", "label": "Omit Frame", "optional": true },
+    { 
+      "name": "requires_fast_refresh", 
+      "type": "condition_logic", 
+      "label": "Fast Refresh", 
+      "optional": true
+    }
   ],
   "types": [
     {

@@ -44,9 +44,10 @@ screens:
             - action_blinds_up
           display_page_if_no_entity: cover_settings
           requires_fast_refresh:
+            operator: OR
             conditions:
-              - blinds_moving_up
-              - blinds_moving_down
+              - blinds_moving_up_fn
+              - blinds_moving_down_fn
 
       - ha_action:
           x: 1
@@ -59,9 +60,10 @@ screens:
             - action_blinds_down
           display_page_if_no_entity: cover_settings
           requires_fast_refresh:
+            operator: OR
             conditions:
-              - blinds_moving_up
-              - blinds_moving_down
+              - blinds_moving_up_fn
+              - blinds_moving_down_fn
 
       - ha_action:
           x: 2
@@ -486,9 +488,15 @@ screens:
           location_perform:
             - action_blinds_up_down
           requires_fast_refresh:
+            operator: OR
             conditions:
-              - blinds_moving_up
-              - blinds_moving_down
+              - operator: AND
+                conditions:
+                  - operator: NOT
+                    conditions:
+                      - blinds_moving_up_fn
+                  - blinds_moving_down_fn
+              - blinds_moving_down_fn
 
       - move_page:
           x: 2

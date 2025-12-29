@@ -180,62 +180,46 @@ def build_expression(expression_config):
         return None
     
     if isinstance(expression_config, str):
-        return f"id({expression_config})"
-    
-    if isinstance(expression_config, list):
-        raise ValueError("List format is not allowed. Use dict format with 'operator' field.")
+        return f"id({expression_config}).execute(entities)"
     
     if not isinstance(expression_config, dict):
         return None
     
-    op = expression_config.get("operator", None)
-    items = expression_config.get("items", [])
+    op = expression_config.get("operator", "AND").upper()
+    conditions = expression_config.get("conditions")
     
-    if items:
-        if not op:
-            raise ValueError("'operator' field must be specified when using nested expressions")
+    if conditions is None:
+        return None
         
-        op = op.upper()
+    if isinstance(conditions, str):
+        # Handle single condition (e.g. for NOT or just a single function wrapper)
+        expr = f"id({conditions}).execute(entities)"
+        return f"!{expr}" if op == "NOT" else expr
         
+    if isinstance(conditions, list):
         if op == "NOT":
-            raise ValueError("NOT operator cannot be used with 'items' - it only works with single functions")
+            if len(conditions) != 1:
+                raise ValueError("NOT operator requires exactly one condition")
+            return f"!({build_expression(conditions[0])})"
+            
+        sub_exprs = []
+        for c in conditions:
+            sub = build_expression(c)
+            if sub:
+                # Wrap in parens if it contains operators to preserve precedence
+                if " || " in sub or " && " in sub:
+                    sub = f"({sub})"
+                sub_exprs.append(sub)
         
+        if not sub_exprs:
+            return None
+            
+        if len(sub_exprs) == 1 and op != "NOT":
+            return sub_exprs[0]
+            
         op_str = " || " if op == "OR" else " && "
-        sub_expressions = []
+        return op_str.join(sub_exprs)
         
-        for item in items:
-            sub_expr = build_expression(item)
-            if sub_expr:
-                if " || " in sub_expr or " && " in sub_expr:
-                    sub_expr = f"({sub_expr})"
-                sub_expressions.append(sub_expr)
-        
-        if sub_expressions:
-            return op_str.join(sub_expressions)
-    
-    funcs = expression_config.get("funcs", [])
-    if funcs:
-        if op and op.upper() == "NOT":
-            if len(funcs) != 1:
-                raise ValueError("NOT operator only accepts exactly one function")
-            return f"!id({funcs[0]})"
-        
-        if len(funcs) == 1:
-            return f"id({funcs[0]})"
-        
-        if not op:
-            raise ValueError("'operator' field is required when specifying multiple functions")
-        
-        op = op.upper()
-        op_str = " || " if op == "OR" else " && "
-        expressions = op_str.join(f"id({func})" for func in funcs if func)
-        return expressions if expressions else None
-    
-    conditions = expression_config.get("conditions", [])
-    if conditions:
-        # Treat 'conditions' as an implicit OR of boolean globals/functions
-        return " || ".join(f"id({cond})" for cond in conditions if cond)
-    
     return None
 
 
@@ -243,7 +227,7 @@ def build_fast_refresh_lambda(requires_fast_refresh):
     """Build C++ lambda for setRequiresFastRefreshFunc."""
     expression = build_expression(requires_fast_refresh)
     if expression:
-        return f"[]() {{ return {expression}; }}"
+        return f"[](std::vector<std::string> entities) {{ return {expression}; }}"
     return None
 
 

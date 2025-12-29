@@ -368,46 +368,47 @@ dynamic_entry:
 
 ## Conditions
 
-Conditions are boolean expressions used throughout the tile configuration to define when certain behaviors occur. They are built from boolean global variables and support both simple and complex nested logic.
+Conditions are boolean expressions used throughout the tile configuration to define when certain behaviors occur. They are implemented as ESPHome scripts (functions) that receive the tile's `entities` as a parameter.
 
 ### Condition Structure
 
 Conditions can be specified in two forms:
 
-#### Simple Form (OR Logic)
+#### Simple Form
 
-A list of boolean global variables. The condition evaluates to true if ANY of the globals are true.
+A single function name.
 
 ```yaml
-conditions:
-  - is_light_on
-  - is_ac_running
+conditions: is_light_on_fn
 ```
 
-#### Complex Form (AND/OR Logic)
+#### Complex Form (AND/OR/NOT Logic)
 
-Nested conditions with explicit operators:
+Nested conditions with explicit operators. If you have more than one condition, an `operator` is required.
 
 ```yaml
 operator: AND
-items:
-  - conditions: [light_on]
+conditions:
+  - light_on_fn
   - operator: OR
-    conditions: [ac_running, fan_running]
+    conditions:
+      - ac_running_fn
+      - fan_running_fn
 ```
 
-This evaluates to: `light_on AND (ac_running OR fan_running)`
+This evaluates to: `light_on_fn AND (ac_running_fn OR fan_running_fn)`
 
 ### Using Conditions
 
 Currently, conditions are used in:
 
-- **requires_fast_refresh**: Determines if a tile needs frequent updates
+- **requires_fast_refresh**: Determines if a tile needs frequent updates. These are implemented as ESPHome scripts (functions) that receive the tile's `entities` as a parameter.
   ```yaml
   requires_fast_refresh:
+    operator: OR
     conditions:
-      - is_moving
-      - is_updating
+      - blinds_moving_up_fn
+      - blinds_moving_down_fn
   ```
 
 More uses for conditions may be added in the future.
@@ -427,9 +428,10 @@ Some tiles need to update frequently. Use the condition structure to specify whe
     perform:
       - action_blinds
     requires_fast_refresh:
+      operator: OR
       conditions:
-        - blinds_moving_up
-        - blinds_moving_down
+        - blinds_moving_up_fn
+        - blinds_moving_down_fn
 ```
 
 Or with complex logic:
@@ -437,11 +439,33 @@ Or with complex logic:
 ```yaml
 requires_fast_refresh:
   operator: AND
-  items:
-    - conditions: [light_on]
+  conditions:
+    - light_on_fn
     - operator: OR
-      conditions: [ac_running, fan_running]
+      conditions:
+        - ac_running_fn
+        - fan_running_fn
 ```
+
+#### Deeply Nested Logic
+
+You can nest conditions to create complex boolean expressions. Each level must specify an `operator` if it contains multiple conditions.
+
+```yaml
+requires_fast_refresh:
+  operator: OR
+  conditions:
+    # Condition 1: (NOT moving_up) AND moving_down
+    - operator: AND
+      conditions:
+        - operator: NOT
+          conditions: blinds_moving_up_fn
+        - blinds_moving_down_fn
+    # Condition 2: Just moving_down (redundant here, but shows the structure)
+    - blinds_moving_down_fn
+```
+
+This evaluates to: `((!blinds_moving_up_fn) && blinds_moving_down_fn) || blinds_moving_down_fn`
 
 Tile refreshes fast if light is on AND (ac is running OR fan is running).
 

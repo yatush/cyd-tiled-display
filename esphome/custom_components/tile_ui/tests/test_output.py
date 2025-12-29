@@ -24,6 +24,8 @@ sys.modules['esphome'] = mock_esphome
 sys.modules['esphome.codegen'] = mock_esphome.codegen
 sys.modules['esphome.const'] = mock_esphome.const
 sys.modules['esphome.core'] = mock_esphome.core
+sys.modules['esphome.components'] = mock_esphome.components
+sys.modules['esphome.components.display'] = mock_esphome.components.display
 
 # Use real voluptuous for config_validation to enable schema checks
 try:

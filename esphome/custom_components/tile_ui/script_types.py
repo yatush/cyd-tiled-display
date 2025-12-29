@@ -81,6 +81,7 @@ def get_script_type(parameters):
     # Check for 1-parameter scripts: string[] only
     if param_count == 1:
         if 'string[]' in str(param_types[0]) or 'vector' in str(param_types[0]).lower():
+            # Could be an action or a condition
             return 'action'
     
     # Scripts with no parameters are treated as action scripts (most flexible)
@@ -139,6 +140,7 @@ def validate_script_type(script_id, script_info, expected_type, context, provide
         'display_simple': ['int', 'int'],
         'display_toggle': ['int', 'int', 'string', 'bool'],
         'display_cycle': ['int', 'int', 'string', 'string[]'],
+        'condition': ['string[]'],
     }
     
     expected_params = expected_params_map.get(expected_type)

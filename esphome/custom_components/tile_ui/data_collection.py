@@ -143,6 +143,31 @@ def collect_referenced_scripts(screens):
         }
     }
     
+    def _collect_from_expression(expression_config, screen_id, tile_type, x, y):
+        """Recursively collect script IDs from a condition expression."""
+        if not expression_config:
+            return
+        
+        if isinstance(expression_config, str):
+            func_name = expression_config
+            if func_name not in referenced_scripts:
+                referenced_scripts[func_name] = []
+            referenced_scripts[func_name].append({
+                'type': 'condition',
+                'screen': screen_id,
+                'tile_type': tile_type,
+                'x': x,
+                'y': y,
+                'usage': 'requires_fast_refresh'
+            })
+        elif isinstance(expression_config, dict):
+            conditions = expression_config.get("conditions")
+            if isinstance(conditions, str):
+                _collect_from_expression(conditions, screen_id, tile_type, x, y)
+            elif isinstance(conditions, list):
+                for condition in conditions:
+                    _collect_from_expression(condition, screen_id, tile_type, x, y)
+
     for screen in screens:
         screen_id = screen.get("id", "")
         tiles = screen.get("tiles", [])
@@ -212,14 +237,21 @@ def collect_referenced_scripts(screens):
                             'usage': usage
                         })
             
+            # 3. Collect from requires_fast_refresh (ha_action tiles)
+            if tile_type == "ha_action":
+                requires_fast_refresh = config.get("requires_fast_refresh")
+                if requires_fast_refresh:
+                    _collect_from_expression(requires_fast_refresh, screen_id, tile_type, x, y)
+            
     return referenced_scripts
 
 
 def collect_referenced_globals(screens):
     """Collect all boolean global variable IDs referenced in condition expressions.
     
-    Conditions are used in various places, currently:
-    - requires_fast_refresh: Determines if a tile needs frequent updates
+    Note: Currently all conditions have been migrated to use scripts (functions)
+    instead of globals. This function remains for future use if globals are
+    re-introduced in other contexts.
     
     Args:
         screens: List of screen configurations
@@ -227,41 +259,7 @@ def collect_referenced_globals(screens):
     Returns:
         Set of referenced boolean global variable IDs
     """
-    referenced_globals = set()
-    
-    def _collect_from_expression(expression_config):
-        """Recursively collect global IDs from a condition expression."""
-        if not expression_config:
-            return
-        
-        if isinstance(expression_config, str):
-            referenced_globals.add(expression_config)
-        elif isinstance(expression_config, dict):
-            # Check for direct conditions list
-            conditions = expression_config.get("conditions", [])
-            if conditions:
-                for condition in conditions:
-                    if isinstance(condition, str):
-                        referenced_globals.add(condition)
-            
-            # Check for nested items
-            items = expression_config.get("items", [])
-            if items:
-                for item in items:
-                    _collect_from_expression(item)
-    
-    for screen in screens:
-        tiles = screen.get("tiles", [])
-        for tile in tiles:
-            tile_type = list(tile.keys())[0]
-            config = tile[tile_type]
-            
-            # Collect from ha_action tiles' requires_fast_refresh
-            if tile_type == "ha_action":
-                requires_fast_refresh = config.get("requires_fast_refresh", None)
-                _collect_from_expression(requires_fast_refresh)
-    
-    return referenced_globals
+    return set()
 
 
 def collect_dynamic_entities(entities_config, entity_set):

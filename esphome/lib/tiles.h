@@ -197,13 +197,13 @@ public:
       : HAActionTile(x, y, draw_funcs, {}, location_action_funcs, entities) {}
 
   // Sets a function to determine if the tile requires fast refresh.
-  HAActionTile* setRequiresFastRefreshFunc(std::function<bool()> func) {
+  HAActionTile* setRequiresFastRefreshFunc(std::function<bool(std::vector<std::string>)> func) {
     this->requiresFastRefreshFunc_ = func;
     return this;
   }
 
   bool requiresFastRefresh() override {
-    return this->requiresFastRefreshFunc_();
+    return this->requiresFastRefreshFunc_(Deref(this->decoded_entities_));
   }
 
   void initSensors() override {
@@ -261,7 +261,7 @@ protected:
 
 private:
   // Function to determine if the tile requires fast refresh (default: false).
-  std::function<bool()> requiresFastRefreshFunc_ = []() { return false; };
+  std::function<bool(std::vector<std::string>)> requiresFastRefreshFunc_ = [](std::vector<std::string>) { return false; };
   // Vector of functions to draw the tile.
   std::vector<std::function<void(int, int, std::vector<std::string>)>> draw_funcs_;
   // Vector of scripts to execute when the tile is pressed.

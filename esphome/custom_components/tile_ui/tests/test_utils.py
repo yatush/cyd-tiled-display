@@ -18,16 +18,16 @@ from tile_ui.tile_utils import (
 class TestTileUtils(unittest.TestCase):
     
     def test_format_display_list(self):
-        self.assertEqual(format_display_list("icon"), "&id(icon)")
-        self.assertEqual(format_display_list(["icon"]), "&id(icon)")
-        self.assertEqual(format_display_list(["icon", "label"]), "&id(icon), &id(label)")
-        self.assertEqual(format_display_list([]), "")
-        self.assertEqual(format_display_list(None), "")
+        self.assertEqual(format_display_list("icon", {}, []), "{ []() { id(icon).execute(); } }")
+        self.assertEqual(format_display_list(["icon"], {}, []), "{ []() { id(icon).execute(); } }")
+        self.assertEqual(format_display_list(["icon", "label"], {}, []), "{ []() { id(icon).execute(); }, []() { id(label).execute(); } }")
+        self.assertEqual(format_display_list([], {}, []), "{  }")
+        self.assertEqual(format_display_list(None, {}, []), "{  }")
 
     def test_format_functions_list(self):
-        self.assertEqual(format_functions_list("func"), "&id(func)")
-        self.assertEqual(format_functions_list(["f1", "f2"]), "&id(f1), &id(f2)")
-        self.assertEqual(format_functions_list([]), "")
+        self.assertEqual(format_functions_list("func", {}, []), "{ []() { id(func).execute(); } }")
+        self.assertEqual(format_functions_list(["f1", "f2"], {}, []), "{ []() { id(f1).execute(); }, []() { id(f2).execute(); } }")
+        self.assertEqual(format_functions_list([], {}, []), "{  }")
 
     def test_format_entity_value(self):
         # String
@@ -67,32 +67,25 @@ class TestTileUtils(unittest.TestCase):
         self.assertEqual(format_entity_cpp(["v1", "v2"]), '{"v1", "v2"}')
 
     def test_build_fast_refresh_lambda(self):
-        # Single function
-        config = {"funcs": ["cond1"]}
+        # Single function (leaf)
+        config = "cond1"
         self.assertEqual(
             build_fast_refresh_lambda(config), 
-            "[]() { return id(cond1); }"
+            "[](std::vector<std::string> entities) { return id(cond1).execute(entities); }"
         )
         
         # NOT operator
-        config = {"operator": "NOT", "funcs": ["cond1"]}
+        config = {"operator": "NOT", "conditions": "cond1"}
         self.assertEqual(
             build_fast_refresh_lambda(config), 
-            "[]() { return !id(cond1); }"
+            "[](std::vector<std::string> entities) { return !id(cond1).execute(entities); }"
         )
         
-        # OR operator
-        config = {"operator": "OR", "funcs": ["c1", "c2"]}
+        # AND operator
+        config = {"operator": "AND", "conditions": ["cond1", "cond2"]}
         self.assertEqual(
             build_fast_refresh_lambda(config), 
-            "[]() { return id(c1) || id(c2); }"
-        )
-        
-        # Implicit OR (conditions list)
-        config = {"conditions": ["c1", "c2"]}
-        self.assertEqual(
-            build_fast_refresh_lambda(config), 
-            "[]() { return id(c1) || id(c2); }"
+            "[](std::vector<std::string> entities) { return id(cond1).execute(entities) && id(cond2).execute(entities); }"
         )
 
     def test_get_tile_modifiers(self):

@@ -63,12 +63,6 @@ globals:
     type: int
     restore_value: yes
     initial_value: "60"
-  - id: blinds_moving_up
-    type: bool
-    initial_value: "false"
-  - id: blinds_moving_down
-    type: bool
-    initial_value: "false"
   - id: adaptive_brightness
     type: bool
     restore_value: yes
@@ -541,14 +535,20 @@ script:
             id(wifi_iconstring) = "\U0000ebe1"; // wifi-3
           else
             id(wifi_iconstring) = "\U0000e1d8"; // wifi-4
-
-  - id: set_blinds_status
+  
+  - id: blinds_moving_down_fn
     parameters:
       covers: string[]
     then:
       - lambda: |-
-          id(blinds_moving_down) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "closing"; });
-          id(blinds_moving_up) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "opening"; });
+          return std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "closing"; });
+  
+  - id: blinds_moving_up_fn
+    parameters:
+      covers: string[]
+    then:
+      - lambda: |-
+          return std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "opening"; });
 
   - id: draw_tile_frame
     parameters:
@@ -567,9 +567,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          bool up = DRAW_ONLY(id(blinds_moving_up_fn)->execute(entities));
           uint32_t millis_val = DRAW_ONLY(millis());
-          bool up = DRAW_ONLY(id(blinds_moving_up));
           handle_caching(std::make_pair(x, y), millis_val, up);
           if (up) {
             print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis_val / 1000.0 * 12) % 41 + 20, id(big), id(blue), TextAlign::CENTER, "\U0000eacf");
@@ -582,11 +581,11 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          id(set_blinds_status)->execute(entities);
+          bool up = id(blinds_moving_up_fn)->execute(entities);
           static const char* STOP_COVER = "stop_cover";
           static const char* OPEN_COVER = "open_cover";
           for (const std::string& blind : entities) {
-            PerformHaAction(blind, id(blinds_moving_up) ? STOP_COVER : OPEN_COVER);
+            PerformHaAction(blind, up ? STOP_COVER : OPEN_COVER);
           }
  
   - id: tile_blinds_down
@@ -596,9 +595,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          bool down = DRAW_ONLY(id(blinds_moving_down_fn)->execute(entities));
           uint32_t millis_val = DRAW_ONLY(millis());
-          bool down = DRAW_ONLY(id(blinds_moving_down));
           handle_caching(std::make_pair(x, y), millis_val, down);
           if (down) {
             print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis_val / 1000.0 * 12) % 41 - 20, id(big), id(red), TextAlign::CENTER, "\U0000ead0");
@@ -611,11 +609,11 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          id(set_blinds_status)->execute(entities);
+          bool down = id(blinds_moving_down_fn)->execute(entities);
           static const char* STOP_COVER = "stop_cover";
           static const char* CLOSE_COVER = "close_cover";
           for (const std::string& blind : entities) {
-            PerformHaAction(blind, id(blinds_moving_down) ? STOP_COVER : CLOSE_COVER);
+            PerformHaAction(blind, down ? STOP_COVER : CLOSE_COVER);
           }
 
   - id: action_blinds_mid
@@ -641,9 +639,10 @@ script:
           static const char* STOP_COVER = "stop_cover";
           static const char* OPEN_COVER = "open_cover";
           static const char* CLOSE_COVER = "close_cover";
-          id(set_blinds_status)->execute(entities);
+          bool up = id(blinds_moving_up_fn)->execute(entities);
+          bool down = id(blinds_moving_down_fn)->execute(entities);
           for (const std::string& blind : entities) {
-            if (id(blinds_moving_up) || id(blinds_moving_down)) {
+            if (up || down) {
               PerformHaAction(blind, STOP_COVER);
             } else {
               PerformHaAction(blind, (x + y < 1) ? OPEN_COVER : CLOSE_COVER);
@@ -657,10 +656,9 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          DRAW_ONLY(id(set_blinds_status)->execute(entities));
+          bool up = DRAW_ONLY(id(blinds_moving_up_fn)->execute(entities));
+          bool down = DRAW_ONLY(id(blinds_moving_down_fn)->execute(entities));
           uint32_t millis_val = DRAW_ONLY(millis());
-          bool up = DRAW_ONLY(id(blinds_moving_up));
-          bool down = DRAW_ONLY(id(blinds_moving_down));
           handle_caching(std::make_pair(x, y), millis_val, up, down);
           bool one = up != down;
           bool any = up || down;

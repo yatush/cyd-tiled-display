@@ -220,7 +220,7 @@ async def to_code(config):
     try:
         screens = screens_list_schema(screens)
     except cv.Invalid as e:
-        _print_error("Configuration Error", str(e))
+        _print_error("Schema Validation Failed", str(e))
         sys.exit(1)
     
     available_scripts = collect_available_scripts(CORE.config)
@@ -232,8 +232,12 @@ async def to_code(config):
     # Validate the configuration
     try:
         validate_tiles_config(screens, available_scripts, available_globals)
+    except ValueError as e:
+        _print_error("Validation Failed", str(e))
+        sys.exit(1)
     except Exception as e:
-        raise cv.Invalid(f"[tile_ui] Configuration validation failed: {str(e)}")
+        _print_error("Unexpected Error", str(e))
+        sys.exit(1)
     
     # Generate C++ initialization code (returns list of lambda strings)
     debug_output = config.get(CONF_DEBUG_OUTPUT, False)

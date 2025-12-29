@@ -431,6 +431,10 @@ def _validate_tile_fields(
                 f"Screen '{screen_id}', ha_action tile at ({x}, {y}): "
                 f"At least one of 'perform' or 'location_perform' must be specified"
             )
+            
+        requires_fast_refresh = config.get("requires_fast_refresh")
+        if requires_fast_refresh:
+             _validate_condition_expression(requires_fast_refresh, f"Screen '{screen_id}', ha_action tile at ({x}, {y}), requires_fast_refresh")
     
     elif tile_type == TileType.FUNCTION.value:
         on_press = config.get("on_press", "")
@@ -463,4 +467,51 @@ def _validate_tile_fields(
                     f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
                     f"option {idx} missing 'label' field"
                 )
+
+
+def _validate_condition_expression(expression, context):
+    """Validate condition expression structure recursively."""
+    if not expression:
+        return
+
+    if isinstance(expression, str):
+        return  # Valid single global/function
+
+    if isinstance(expression, dict):
+        # Check for unknown keys
+        valid_keys = {'conditions', 'operator'}
+        unknown_keys = set(expression.keys()) - valid_keys
+        if unknown_keys:
+             raise ValueError(f"{context}: Unknown keys in condition expression: {', '.join(sorted(unknown_keys))}")
+
+        conditions = expression.get("conditions")
+        operator = expression.get("operator")
+        
+        if operator and operator.upper() not in ["AND", "OR", "NOT"]:
+             raise ValueError(f"{context}: Invalid operator '{operator}'. Must be AND, OR, or NOT")
+
+        if conditions is None:
+             raise ValueError(f"{context}: Condition expression must have 'conditions' field")
+
+        if isinstance(conditions, str):
+            # Single condition is fine
+            pass
+        elif isinstance(conditions, list):
+            if len(conditions) == 0:
+                raise ValueError(f"{context}: 'conditions' list cannot be empty")
+            
+            if len(conditions) > 1 and not operator:
+                 raise ValueError(f"{context}: 'operator' field is required when specifying multiple conditions")
+            
+            if operator and operator.upper() == "NOT" and len(conditions) != 1:
+                 raise ValueError(f"{context}: NOT operator only accepts exactly one condition")
+
+            for idx, item in enumerate(conditions):
+                _validate_condition_expression(item, f"{context} condition {idx}")
+        else:
+            raise ValueError(f"{context}: 'conditions' must be a string or a list")
+
+        return
+
+    raise ValueError(f"{context}: Invalid condition expression type {type(expression).__name__}. Use string or dict with 'conditions' field.")
 
