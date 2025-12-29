@@ -28,13 +28,13 @@ def _generate_base_tile_args(config, available_scripts, expected_display_params)
     return x, y, display_cpp
 
 
-def _apply_modifiers(tile_cpp, config, extra_modifiers=None):
+def _apply_modifiers(tile_cpp, config, extra_modifiers=None, screen_id=None):
     """Apply common modifiers to the tile C++ object."""
     method_chains = []
     if extra_modifiers:
         method_chains.extend(extra_modifiers)
         
-    method_chains.extend(get_tile_modifiers(config))
+    method_chains.extend(get_tile_modifiers(config, screen_id))
     
     if method_chains:
         tile_cpp = f'({tile_cpp})'
@@ -44,7 +44,7 @@ def _apply_modifiers(tile_cpp, config, extra_modifiers=None):
     return tile_cpp
 
 
-def generate_action_tile(config, available_scripts):
+def generate_action_tile(config, available_scripts, screen_id=None):
     """Generate C++ for an action tile."""
     # HAActionTile display: int, int, vector<string>
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), ('entities', 'string[]')])
@@ -68,7 +68,7 @@ def generate_action_tile(config, available_scripts):
         
         if not has_dynamic_entity:
             raise ValueError(
-                f"Tile at ({x}, {y}): display_page_if_no_entity requires at least one dynamic_entity"
+                f"Screen '{screen_id}', Tile at ({x}, {y}): display_page_if_no_entity requires at least one dynamic_entity"
             )
     
     # HAActionTile perform: vector<string>
@@ -97,16 +97,20 @@ def generate_action_tile(config, available_scripts):
     if display_page:
         modifiers.append(f'setDisplayPageIfNoEntity(&id({display_page}))')
     
-    fast_refresh_lambda = build_fast_refresh_lambda(requires_fast_refresh)
+    x = config.get("x", "?")
+    y = config.get("y", "?")
+    context = f"Screen '{screen_id}', Tile at ({x}, {y})" if screen_id else f"Tile at ({x}, {y})"
+    
+    fast_refresh_lambda = build_fast_refresh_lambda(requires_fast_refresh, context)
     if fast_refresh_lambda:
         modifiers.append(f'setRequiresFastRefreshFunc({fast_refresh_lambda})')
     
-    tile_cpp = _apply_modifiers(tile_cpp, config, modifiers)
+    tile_cpp = _apply_modifiers(tile_cpp, config, modifiers, screen_id)
     tile_cpp += ','
     return tile_cpp
 
 
-def generate_title_tile(config, available_scripts):
+def generate_title_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a title tile."""
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), ('entities', 'string[]')])
     
@@ -118,16 +122,17 @@ def generate_title_tile(config, available_scripts):
     tile_cpp = f'new TitleTile({x}, {y}, {display_cpp}, {entity_cpp})'
     
     modifiers = []
-    fast_refresh_lambda = build_fast_refresh_lambda(requires_fast_refresh)
+    context = f"Screen '{screen_id}', Tile at ({x}, {y})" if screen_id else f"Tile at ({x}, {y})"
+    fast_refresh_lambda = build_fast_refresh_lambda(requires_fast_refresh, context)
     if fast_refresh_lambda:
         modifiers.append(f'setRequiresFastRefreshFunc({fast_refresh_lambda})')
         
-    tile_cpp = _apply_modifiers(tile_cpp, config, modifiers)
+    tile_cpp = _apply_modifiers(tile_cpp, config, modifiers, screen_id)
     tile_cpp += ','
     return tile_cpp
 
 
-def generate_move_page_tile(config, available_scripts):
+def generate_move_page_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a move page tile."""
     # MovePageTile display: int, int, string, Color, font
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int')])
@@ -149,14 +154,14 @@ def generate_move_page_tile(config, available_scripts):
             else:
                 modifiers.append(f'setDynamicEntry("{dynamic_entity}", {{ "{value}" }})')
         else:
-            raise ValueError(f"dynamic_entry at ({x}, {y}) must have both 'dynamic_entity' and 'value'")
+            raise ValueError(f"Screen '{screen_id}', Tile at ({x}, {y}): dynamic_entry must have both 'dynamic_entity' and 'value'")
     
-    tile_cpp = _apply_modifiers(tile_cpp, config, modifiers)
+    tile_cpp = _apply_modifiers(tile_cpp, config, modifiers, screen_id)
     tile_cpp += ','
     return tile_cpp
 
 
-def generate_function_tile(config, available_scripts):
+def generate_function_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a function tile."""
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int')])
     
@@ -171,12 +176,12 @@ def generate_function_tile(config, available_scripts):
     else:
         tile_cpp = f'new FunctionTile({x}, {y}, {display_cpp}, {on_press_cpp})'
     
-    tile_cpp = _apply_modifiers(tile_cpp, config)
+    tile_cpp = _apply_modifiers(tile_cpp, config, screen_id=screen_id)
     tile_cpp += ','
     return tile_cpp
 
 
-def generate_toggle_entity_tile(config, available_scripts):
+def generate_toggle_entity_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a toggle entity tile."""
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), (['name', 'presentation_name'], 'string'), ('is_on', 'bool')])
     
@@ -186,9 +191,9 @@ def generate_toggle_entity_tile(config, available_scripts):
     initially_chosen = config.get("initially_chosen", False)
     
     if not dynamic_entity:
-        raise ValueError(f"toggle_entity tile at ({x}, {y}) must have 'dynamic_entity' field")
+        raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}) must have 'dynamic_entity' field")
     if not entity:
-        raise ValueError(f"toggle_entity tile at ({x}, {y}) must have 'entity' field")
+        raise ValueError(f"Screen '{screen_id}', toggle_entity tile at ({x}, {y}) must have 'entity' field")
     
     initially_chosen_cpp = "true" if initially_chosen else "false"
     
@@ -199,12 +204,12 @@ def generate_toggle_entity_tile(config, available_scripts):
         entities_cpp = f'{{ "{entity}" }}'
     
     tile_cpp = f'new ToggleEntityTile({x}, {y}, {display_cpp}, "{dynamic_entity}", {entities_cpp}, "{presentation_name}", {initially_chosen_cpp})'
-    tile_cpp = _apply_modifiers(tile_cpp, config)
+    tile_cpp = _apply_modifiers(tile_cpp, config, screen_id=screen_id)
     tile_cpp += ','
     return tile_cpp
 
 
-def generate_cycle_entity_tile(config, available_scripts):
+def generate_cycle_entity_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a cycle entity tile."""
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), ('name', 'string'), (['options', 'entities'], 'string[]')])
     
@@ -213,9 +218,9 @@ def generate_cycle_entity_tile(config, available_scripts):
     reset_on_leave = config.get("reset_on_leave", False)
     
     if not dynamic_entity:
-        raise ValueError(f"cycle_entity tile at ({x}, {y}) must have 'dynamic_entity' field")
+        raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}) must have 'dynamic_entity' field")
     if not options or len(options) == 0:
-        raise ValueError(f"cycle_entity tile at ({x}, {y}) must have 'options' list with at least one item")
+        raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}) must have 'options' list with at least one item")
     
     options_cpp_pairs = []
     
@@ -231,32 +236,32 @@ def generate_cycle_entity_tile(config, available_scripts):
                     entities_cpp = f'{{ "{entity}" }}'
                 options_cpp_pairs.append(f'{{ {entities_cpp}, "{label}" }}')
             else:
-                raise ValueError(f"Each option item must have both 'entity' and 'label' fields at ({x}, {y})")
+                raise ValueError(f"Screen '{screen_id}', each option item must have both 'entity' and 'label' fields at ({x}, {y})")
         else:
-            raise ValueError(f"Options must be dicts with 'entity' and 'label' fields at ({x}, {y})")
+            raise ValueError(f"Screen '{screen_id}', options must be dicts with 'entity' and 'label' fields at ({x}, {y})")
     
     options_cpp = "{ " + ", ".join(options_cpp_pairs) + " }"
     reset_on_leave_cpp = "true" if reset_on_leave else "false"
     
     tile_cpp = f'new CycleEntityTile({x}, {y}, {display_cpp}, "{dynamic_entity}", {options_cpp}, {reset_on_leave_cpp})'
-    tile_cpp = _apply_modifiers(tile_cpp, config)
+    tile_cpp = _apply_modifiers(tile_cpp, config, screen_id=screen_id)
     tile_cpp += ','
     return tile_cpp
 
 
-def generate_tile_cpp(tile: dict, available_scripts=None) -> str:
+def generate_tile_cpp(tile: dict, available_scripts=None, screen_id=None) -> str:
     """Generate C++ code for a single tile."""
     if TileType.HA_ACTION.value in tile:
-        return generate_action_tile(tile[TileType.HA_ACTION.value], available_scripts)
+        return generate_action_tile(tile[TileType.HA_ACTION.value], available_scripts, screen_id)
     elif TileType.MOVE_PAGE.value in tile:
-        return generate_move_page_tile(tile[TileType.MOVE_PAGE.value], available_scripts)
+        return generate_move_page_tile(tile[TileType.MOVE_PAGE.value], available_scripts, screen_id)
     elif TileType.TITLE.value in tile:
-        return generate_title_tile(tile[TileType.TITLE.value], available_scripts)
+        return generate_title_tile(tile[TileType.TITLE.value], available_scripts, screen_id)
     elif TileType.FUNCTION.value in tile:
-        return generate_function_tile(tile[TileType.FUNCTION.value], available_scripts)
+        return generate_function_tile(tile[TileType.FUNCTION.value], available_scripts, screen_id)
     elif TileType.TOGGLE_ENTITY.value in tile:
-        return generate_toggle_entity_tile(tile[TileType.TOGGLE_ENTITY.value], available_scripts)
+        return generate_toggle_entity_tile(tile[TileType.TOGGLE_ENTITY.value], available_scripts, screen_id)
     elif TileType.CYCLE_ENTITY.value in tile:
-        return generate_cycle_entity_tile(tile[TileType.CYCLE_ENTITY.value], available_scripts)
+        return generate_cycle_entity_tile(tile[TileType.CYCLE_ENTITY.value], available_scripts, screen_id)
     else:
         return f'// Unknown tile structure: {list(tile.keys())}'

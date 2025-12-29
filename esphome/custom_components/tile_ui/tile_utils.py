@@ -174,7 +174,7 @@ def format_entity_value(entity_config):
     return ""
 
 
-def build_expression(expression_config):
+def build_expression(expression_config, context=None):
     """Build C++ expression from expression config."""
     if not expression_config:
         return None
@@ -199,12 +199,15 @@ def build_expression(expression_config):
     if isinstance(conditions, list):
         if op == "NOT":
             if len(conditions) != 1:
-                raise ValueError("NOT operator requires exactly one condition")
-            return f"!({build_expression(conditions[0])})"
+                error_msg = "NOT operator requires exactly one condition"
+                if context:
+                    error_msg = f"{context}: {error_msg}"
+                raise ValueError(error_msg)
+            return f"!({build_expression(conditions[0], context)})"
             
         sub_exprs = []
         for c in conditions:
-            sub = build_expression(c)
+            sub = build_expression(c, context)
             if sub:
                 # Wrap in parens if it contains operators to preserve precedence
                 if " || " in sub or " && " in sub:
@@ -223,9 +226,9 @@ def build_expression(expression_config):
     return None
 
 
-def build_fast_refresh_lambda(requires_fast_refresh):
+def build_fast_refresh_lambda(requires_fast_refresh, context=None):
     """Build C++ lambda for setRequiresFastRefreshFunc."""
-    expression = build_expression(requires_fast_refresh)
+    expression = build_expression(requires_fast_refresh, context)
     if expression:
          return f"[](std::vector<std::string> entities) -> bool {{ return {expression}; }}"
     return None
@@ -239,9 +242,13 @@ def format_entity_cpp(entity_values):
         return "{" + f'"{entity_values}"' + "}"
 
 
-def get_tile_modifiers(config):
+def get_tile_modifiers(config, screen_id=None):
     """Get common tile modifier method chains."""
     method_chains = []
+    
+    x = config.get("x", "?")
+    y = config.get("y", "?")
+    context = f"Screen '{screen_id}', Tile at ({x}, {y})" if screen_id else f"Tile at ({x}, {y})"
     
     if config.get("omit_frame", False):
         method_chains.append('omitFrame()')
@@ -259,7 +266,7 @@ def get_tile_modifiers(config):
             else:
                 method_chains.append(f'setActivationVar("{var_name}", {{ "{var_value}" }})')
         else:
-            raise ValueError(f"activation_var must have both 'dynamic_entity' and 'value' fields")
+            raise ValueError(f"{context}: activation_var must have both 'dynamic_entity' and 'value' fields")
     
     return method_chains
 

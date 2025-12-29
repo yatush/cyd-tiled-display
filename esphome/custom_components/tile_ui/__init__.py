@@ -130,7 +130,7 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
         ]
         
         for tile in tiles:
-            tile_cpp = generate_tile_cpp(tile, available_scripts)
+            tile_cpp = generate_tile_cpp(tile, available_scripts, screen_id)
             lines.append(f"  {tile_cpp}")
         
         lines.extend([
