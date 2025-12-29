@@ -259,12 +259,8 @@ def get_tile_modifiers(config, screen_id=None):
         var_value = activation_var.get("value", None)
         
         if var_name and var_value:
-            if isinstance(var_value, str) and "," in var_value:
-                values = [v.strip() for v in var_value.split(",")]
-                values_cpp = "{" + ", ".join(f'"{v}"' for v in values) + "}"
-                method_chains.append(f'setActivationVar("{var_name}", {values_cpp})')
-            else:
-                method_chains.append(f'setActivationVar("{var_name}", {{ "{var_value}" }})')
+            values_cpp = format_entity_cpp(var_value)
+            method_chains.append(f'setActivationVar("{var_name}", {values_cpp})')
         else:
             raise ValueError(f"{context}: activation_var must have both 'dynamic_entity' and 'value' fields")
     

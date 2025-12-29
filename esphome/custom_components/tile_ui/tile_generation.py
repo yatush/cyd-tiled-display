@@ -147,12 +147,8 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
         dynamic_entity = dynamic_entry.get("dynamic_entity", "")
         value = dynamic_entry.get("value", "")
         if dynamic_entity and value:
-            if isinstance(value, str) and "," in value:
-                values = [v.strip() for v in value.split(",")]
-                values_cpp = "{" + ", ".join(f'"{v}"' for v in values) + "}"
-                modifiers.append(f'setDynamicEntry("{dynamic_entity}", {values_cpp})')
-            else:
-                modifiers.append(f'setDynamicEntry("{dynamic_entity}", {{ "{value}" }})')
+            values_cpp = format_entity_cpp(value)
+            modifiers.append(f'setDynamicEntry("{dynamic_entity}", {values_cpp})')
         else:
             raise ValueError(f"Screen '{screen_id}', Tile at ({x}, {y}): dynamic_entry must have both 'dynamic_entity' and 'value'")
     
@@ -197,11 +193,7 @@ def generate_toggle_entity_tile(config, available_scripts, screen_id=None):
     
     initially_chosen_cpp = "true" if initially_chosen else "false"
     
-    if isinstance(entity, str) and "," in entity:
-        entities = [e.strip() for e in entity.split(",")]
-        entities_cpp = "{" + ", ".join(f'"{e}"' for e in entities) + "}"
-    else:
-        entities_cpp = f'{{ "{entity}" }}'
+    entities_cpp = format_entity_cpp(entity)
     
     tile_cpp = f'new ToggleEntityTile({x}, {y}, {display_cpp}, "{dynamic_entity}", {entities_cpp}, "{presentation_name}", {initially_chosen_cpp})'
     tile_cpp = _apply_modifiers(tile_cpp, config, screen_id=screen_id)
@@ -229,11 +221,7 @@ def generate_cycle_entity_tile(config, available_scripts, screen_id=None):
             entity = option_item.get("entity", "")
             label = option_item.get("label", "")
             if entity and label:
-                if isinstance(entity, str) and "," in entity:
-                    entities = [e.strip() for e in entity.split(",")]
-                    entities_cpp = "{" + ", ".join(f'"{e}"' for e in entities) + "}"
-                else:
-                    entities_cpp = f'{{ "{entity}" }}'
+                entities_cpp = format_entity_cpp(entity)
                 options_cpp_pairs.append(f'{{ {entities_cpp}, "{label}" }}')
             else:
                 raise ValueError(f"Screen '{screen_id}', each option item must have both 'entity' and 'label' fields at ({x}, {y})")

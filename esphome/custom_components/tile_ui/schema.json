@@ -17,7 +17,7 @@
       "optional": true,
       "objectFields": [
         { "key": "dynamic_entity", "label": "Dynamic Entity", "type": "dynamic_entity_select" },
-        { "key": "value", "label": "Value" }
+        { "key": "value", "label": "Value", "type": "ha_entity_list" }
       ]
     }
   ],
@@ -44,7 +44,7 @@
           "optional": true,
           "objectFields": [
             { "key": "dynamic_entity", "label": "Dynamic Entity", "type": "dynamic_entity_select" },
-            { "key": "value", "label": "Value" }
+            { "key": "value", "label": "Value", "type": "ha_entity_list" }
           ]
         }
       ]
@@ -54,7 +54,7 @@
       "label": "Toggle Entity",
       "fields": [
         { "name": "dynamic_entity", "type": "dynamic_entity_select", "label": "Dynamic Entity (Var Name)" },
-        { "name": "entity", "type": "string", "label": "Entity ID" },
+        { "name": "entity", "type": "ha_entity_list", "label": "Entity ID(s)" },
         { "name": "presentation_name", "type": "string", "label": "Presentation Name", "optional": true },
         { "name": "initially_chosen", "type": "boolean", "label": "Initially Chosen", "optional": true }
       ]
@@ -76,7 +76,7 @@
           "type": "object_list", 
           "label": "Options",
           "objectFields": [
-            { "key": "entity", "label": "Entity ID" },
+            { "key": "entity", "label": "Entity ID(s)", "type": "ha_entity_list" },
             { "key": "label", "label": "Label" }
           ]
         },
