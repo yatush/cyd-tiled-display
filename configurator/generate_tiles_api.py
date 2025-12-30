@@ -24,6 +24,9 @@ sys.modules['esphome.core'] = MockEsphome()
 sys.modules['esphome.components'] = MockEsphome()
 sys.modules['esphome.components.display'] = MockEsphome()
 
+# Mock voluptuous since it's not installed but imported by schema.py
+sys.modules['voluptuous'] = MockEsphome()
+
 try:
     # Import only what we need, avoiding __init__.py if possible or relying on mocks
     # Since __init__.py imports esphome, the mocks above are crucial.

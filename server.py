@@ -46,10 +46,20 @@ def proxy_ha(path):
 @app.route('/api/generate', methods=['POST'])
 def generate():
     try:
+        script_path = '/app/configurator/generate_tiles_api.py'
+        print(f"Starting generation using script: {script_path}", flush=True)
+        
+        if not os.path.exists(script_path):
+            print(f"ERROR: Script not found at {script_path}", flush=True)
+            return jsonify({"error": f"Script not found at {script_path}"}), 500
+
         # Run the existing generation script
         # Ensure we are using the correct python executable and path
+        cmd = ['python3', script_path]
+        print(f"Executing command: {cmd}", flush=True)
+        
         process = subprocess.Popen(
-            ['python3', '/app/configurator/generate_tiles_api.py'],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -58,14 +68,18 @@ def generate():
         )
         stdout, stderr = process.communicate(input=request.get_data(as_text=True))
         
+        print(f"Process return code: {process.returncode}", flush=True)
+        
         if process.returncode != 0:
-            print(f"Generation Error: {stderr}") # Log to stdout for supervisor logs
-            print(f"Generation Stdout: {stdout}") # Log stdout too in case error is there
+            print(f"Generation Error (stderr): {stderr}", flush=True) # Log to stdout for supervisor logs
+            print(f"Generation Output (stdout): {stdout}", flush=True) # Log stdout too in case error is there
             return jsonify({"error": stderr or "Generation failed"}), 500
             
         return stdout, 200, {'Content-Type': 'application/json'}
     except Exception as e:
-        print(f"Server Error: {str(e)}")
+        print(f"Server Exception: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/schema')
