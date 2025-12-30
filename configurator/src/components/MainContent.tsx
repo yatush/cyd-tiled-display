@@ -91,7 +91,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               <>
                   {validationStatus && !validationStatus.success && (
                       <div 
-                          className="absolute top-10 left-0 right-0 z-50 bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 text-red-700 text-xs cursor-pointer hover:bg-red-100 transition-colors shadow-sm"
+                          className="absolute top-0 left-0 right-0 z-50 bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 text-red-700 text-xs cursor-pointer hover:bg-red-100 transition-colors shadow-sm"
                           onClick={() => setActiveTab('output')}
                       >
                           <AlertCircle size={14} className="flex-shrink-0" />

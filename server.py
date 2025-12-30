@@ -81,16 +81,14 @@ def list_files():
             return jsonify({"error": "Invalid path"}), 400
             
         base_dir = "/config/esphome"
+        if not os.path.exists(base_dir):
+            # Ensure base dir exists
+            os.makedirs(base_dir, exist_ok=True)
+            
         full_path = os.path.join(base_dir, path.lstrip('/'))
         
         if not os.path.exists(full_path):
-            # If esphome dir doesn't exist, try /config
-            if not os.path.exists(base_dir):
-                base_dir = "/config"
-                full_path = os.path.join(base_dir, path.lstrip('/'))
-            
-            if not os.path.exists(full_path):
-                return jsonify({"error": "Path not found"}), 404
+            return jsonify({"error": "Path not found"}), 404
             
         items = []
         for item in os.listdir(full_path):
@@ -115,6 +113,23 @@ def list_files():
         print(f"List Files Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/mkdir', methods=['POST'])
+def make_directory():
+    try:
+        data = request.get_json()
+        path = data.get('path', '')
+        if not path or '..' in path:
+            return jsonify({"error": "Invalid path"}), 400
+            
+        base_dir = "/config/esphome"
+        full_path = os.path.join(base_dir, path.lstrip('/'))
+        
+        os.makedirs(full_path, exist_ok=True)
+        return jsonify({"success": True, "path": path})
+    except Exception as e:
+        print(f"Mkdir Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/save', methods=['POST'])
 def save_config():
     try:
@@ -131,9 +146,6 @@ def save_config():
             return jsonify({"error": "Invalid path"}), 400
 
         base_dir = "/config/esphome"
-        if not os.path.exists(base_dir):
-            base_dir = "/config"
-            
         target_path = os.path.join(base_dir, rel_path.lstrip('/'))
         
         # Ensure directory exists
@@ -162,12 +174,6 @@ def load_config():
         
         if os.path.exists(target_path):
             with open(target_path, 'r') as f:
-                return jsonify(yaml.safe_load(f))
-        
-        # Fallback to /config
-        fallback_path = os.path.join("/config", rel_path.lstrip('/'))
-        if os.path.exists(fallback_path):
-            with open(fallback_path, 'r') as f:
                 return jsonify(yaml.safe_load(f))
         
         return jsonify({"error": f"Config file {rel_path} not found"}), 404

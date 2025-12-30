@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Config, Tile, Page } from '../types';
 
 const DEFAULT_CONFIG: Config = {
+  project_path: 'tiles.yaml',
   pages: [
     { id: 'main_page', tiles: [], rows: 2, cols: 3 }
   ]

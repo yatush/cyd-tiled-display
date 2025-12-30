@@ -70,12 +70,6 @@ function App() {
   const [isPagesOpen, setIsPagesOpen] = useState(false);
 
   useEffect(() => {
-    if (isAddon) {
-      handleLoadFromHa('monitor_config/tiles.yaml');
-    }
-  }, [handleLoadFromHa]);
-
-  useEffect(() => {
     apiFetch('/schema')
       .then(res => res.json())
       .then(data => setSchema(data))
