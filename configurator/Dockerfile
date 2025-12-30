@@ -18,8 +18,8 @@ RUN apk add --no-cache g++ gcc musl-dev python3-dev \
 COPY --from=build-frontend /app/dist /app/dist
 
 # Copy Python backend and scripts
-COPY generate_tiles_api.py /app/
-COPY server.py /app/
+COPY configurator/generate_tiles_api.py /app/
+COPY configurator/server.py /app/
 
 # Copy ESPHome files (needed for schema and scripts)
 COPY esphome /app/esphome
