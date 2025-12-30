@@ -236,6 +236,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="p-4 border-t bg-slate-50 space-y-4">
         {isAddon && (
           <div className="space-y-2">
+            <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider">HA File Management</label>
             <div className="grid grid-cols-2 gap-2">
               <button 
                 onClick={() => setIsSaveDeviceOpen(true)}
@@ -255,7 +256,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
             <div className="h-2 border-b border-slate-200 mb-2"></div>
 
-            <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider">HA File Management</label>
             <div className="flex gap-2">
               <input 
                 type="text" 

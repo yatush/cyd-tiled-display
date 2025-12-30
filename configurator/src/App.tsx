@@ -16,6 +16,16 @@ import { getTileLabel } from './utils/tileUtils';
 import { apiFetch } from './utils/api';
 
 function App() {
+  // Local UI State
+  const [schema, setSchema] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'visual' | 'yaml' | 'output'>('visual');
+  const [isPageDialogOpen, setIsPageDialogOpen] = useState(false);
+  const [isHaSettingsOpen, setIsHaSettingsOpen] = useState(false);
+  const [isDynamicEntitiesOpen, setIsDynamicEntitiesOpen] = useState(false);
+  const [isAddTileOpen, setIsAddTileOpen] = useState(false);
+  const [isPagesOpen, setIsPagesOpen] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
   // Hooks
   const {
     leftSidebarWidth,
@@ -51,6 +61,17 @@ function App() {
     handleGenerate
   } = useValidation(config);
 
+  const checkLibStatus = () => {
+    apiFetch('/check_lib_status')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.synced === 'boolean') {
+          setUpdateAvailable(!data.synced);
+        }
+      })
+      .catch(err => console.error("Failed to check lib status", err));
+  };
+
   const {
     fileInputRef,
     handleSaveYaml,
@@ -60,17 +81,7 @@ function App() {
     handleLoadFromHa,
     handleSaveDeviceConfig,
     handleLoadDeviceConfig
-  } = useFileOperations(config, setConfig, setActivePageId);
-
-  // Local UI State
-  const [schema, setSchema] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'visual' | 'yaml' | 'output'>('visual');
-  const [isPageDialogOpen, setIsPageDialogOpen] = useState(false);
-  const [isHaSettingsOpen, setIsHaSettingsOpen] = useState(false);
-  const [isDynamicEntitiesOpen, setIsDynamicEntitiesOpen] = useState(false);
-  const [isAddTileOpen, setIsAddTileOpen] = useState(false);
-  const [isPagesOpen, setIsPagesOpen] = useState(false);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
+  } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus);
 
   useEffect(() => {
     apiFetch('/schema')
@@ -79,14 +90,7 @@ function App() {
       .catch(err => console.error("Failed to fetch schema", err));
       
     // Check for updates
-    apiFetch('/check_lib_status')
-      .then(res => res.json())
-      .then(data => {
-        if (data && typeof data.synced === 'boolean') {
-          setUpdateAvailable(!data.synced);
-        }
-      })
-      .catch(err => console.error("Failed to check lib status", err));
+    checkLibStatus();
   }, []);
 
   useEffect(() => {

@@ -4,7 +4,7 @@ import { generateYaml } from '../utils/yamlGenerator';
 import { parseYamlToConfig } from '../utils/yamlParser';
 import { apiFetch, isAddon } from '../utils/api';
 
-export function useFileOperations(config: Config, setConfig: (config: Config) => void, setActivePageId: (id: string) => void) {
+export function useFileOperations(config: Config, setConfig: (config: Config) => void, setActivePageId: (id: string) => void, onSaveSuccess?: () => void) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveToHa = useCallback(async () => {
@@ -22,6 +22,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
       if (res.ok) {
         const data = await res.json();
         alert(`Successfully saved to /config/esphome/${data.path}`);
+        if (onSaveSuccess) onSaveSuccess();
       } else {
         const err = await res.json();
         alert(`Failed to save: ${err.error}`);
@@ -179,6 +180,7 @@ ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
       
       if (res.ok) {
         alert(`Successfully saved device configuration to /config/esphome/${fileName}`);
+        if (onSaveSuccess) onSaveSuccess();
       } else {
         const err = await res.json();
         alert(`Failed to save: ${err.error}`);
