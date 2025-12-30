@@ -41,7 +41,7 @@ def generate():
     try:
         # Run the existing generation script
         process = subprocess.Popen(
-            ['python3', 'generate_tiles_api.py'],
+            ['python3', 'configurator/generate_tiles_api.py'],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

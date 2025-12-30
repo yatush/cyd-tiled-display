@@ -17,7 +17,7 @@ RUN pip install flask flask-cors requests pyyaml
 COPY --from=build-frontend /app/configurator/dist /app/dist
 
 # Copy Python backend and scripts
-COPY configurator/generate_tiles_api.py /app/
+COPY configurator/generate_tiles_api.py /app/configurator/
 COPY ha-addon/server.py /app/
 
 # Copy ESPHome files (needed for schema and scripts)
