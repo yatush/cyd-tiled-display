@@ -9,7 +9,24 @@ repo_root = Path(__file__).parent.parent
 tile_ui_path = repo_root / "esphome" / "custom_components"
 sys.path.append(str(tile_ui_path))
 
+# Mock esphome module to prevent import errors
+class MockEsphome:
+    def __getattr__(self, name):
+        return MockEsphome()
+    def __call__(self, *args, **kwargs):
+        return MockEsphome()
+
+sys.modules['esphome'] = MockEsphome()
+sys.modules['esphome.codegen'] = MockEsphome()
+sys.modules['esphome.config_validation'] = MockEsphome()
+sys.modules['esphome.const'] = MockEsphome()
+sys.modules['esphome.core'] = MockEsphome()
+sys.modules['esphome.components'] = MockEsphome()
+sys.modules['esphome.components.display'] = MockEsphome()
+
 try:
+    # Import only what we need, avoiding __init__.py if possible or relying on mocks
+    # Since __init__.py imports esphome, the mocks above are crucial.
     from tile_ui import generate_init_tiles_cpp
     from tile_ui.validation import validate_tiles_config
     from tile_ui.data_collection import collect_available_scripts, collect_available_globals
