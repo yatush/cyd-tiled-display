@@ -13,7 +13,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
-import { apiFetch, isAddon } from './utils/api';
+import { apiFetch } from './utils/api';
 
 function App() {
   // Hooks
