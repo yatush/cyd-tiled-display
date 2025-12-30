@@ -2,28 +2,38 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch, isAddon } from '../utils/api';
 
 export type HaStatus = 'connected' | 'error' | 'mock' | 'idle';
+export type ConnectionType = 'local' | 'remote' | 'mock';
 
 export function useHaConnection() {
   const [haUrl, setHaUrl] = useState(() => localStorage.getItem('ha_url') || 'http://homeassistant.local:8123');
   const [haToken, setHaToken] = useState(() => localStorage.getItem('ha_token') || '');
   const [useMockData, setUseMockData] = useState(() => localStorage.getItem('ha_use_mock') === 'true');
+  const [connectionType, setConnectionType] = useState<ConnectionType>(() => {
+    if (localStorage.getItem('ha_use_mock') === 'true') return 'mock';
+    if (isAddon && !localStorage.getItem('ha_url')) return 'local';
+    return 'remote';
+  });
   const [haEntities, setHaEntities] = useState<string[]>([]);
   const [haStatus, setHaStatus] = useState<HaStatus>('idle');
 
   useEffect(() => {
-    localStorage.setItem('ha_url', haUrl);
-    localStorage.setItem('ha_token', haToken);
-    localStorage.setItem('ha_use_mock', useMockData.toString());
-  }, [haUrl, haToken, useMockData]);
+    localStorage.setItem('ha_url', connectionType === 'local' ? '' : haUrl);
+    localStorage.setItem('ha_token', connectionType === 'local' ? '' : haToken);
+    localStorage.setItem('ha_use_mock', (connectionType === 'mock').toString());
+  }, [haUrl, haToken, connectionType]);
 
   const fetchHaEntities = useCallback(async () => {
     setHaStatus('idle');
     try {
-      const headers: Record<string, string> = isAddon ? {} : {
-        'x-ha-url': haUrl,
-        'x-ha-token': haToken,
-        'x-ha-mock': useMockData.toString()
-      };
+      const headers: Record<string, string> = {};
+      
+      if (connectionType === 'mock') {
+        headers['x-ha-mock'] = 'true';
+      } else if (connectionType === 'remote') {
+        headers['x-ha-url'] = haUrl;
+        headers['x-ha-token'] = haToken;
+      }
+      // If 'local', we send no headers and server.py uses SUPERVISOR_TOKEN
 
       const res = await apiFetch('/ha/states', { headers });
       if (res.ok) {
@@ -31,7 +41,7 @@ export function useHaConnection() {
         if (Array.isArray(data)) {
           const entities = data.map((s: any) => s.entity_id).sort();
           setHaEntities(entities);
-          setHaStatus(isAddon ? 'connected' : (useMockData ? 'mock' : 'connected'));
+          setHaStatus(connectionType === 'mock' ? 'mock' : 'connected');
         } else {
           setHaStatus('error');
         }
@@ -42,26 +52,19 @@ export function useHaConnection() {
       console.error("Failed to fetch HA entities", err);
       setHaStatus('error');
     }
-  }, [haUrl, haToken, useMockData]);
+  }, [haUrl, haToken, connectionType]);
 
   useEffect(() => {
     fetchHaEntities();
   }, [fetchHaEntities]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-        fetchHaEntities();
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [haUrl, haToken, useMockData, fetchHaEntities]);
 
   return {
     haUrl,
     setHaUrl,
     haToken,
     setHaToken,
-    useMockData,
-    setUseMockData,
+    connectionType,
+    setConnectionType,
     haEntities,
     haStatus,
     fetchHaEntities

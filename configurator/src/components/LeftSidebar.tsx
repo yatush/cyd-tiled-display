@@ -83,67 +83,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       style={{ width }}
       onClick={onSidebarClick}
     >
-      <div className="p-4 border-b">
-        <h1 className="font-bold text-xl text-blue-600">CYD Config</h1>
+      <div className="p-4 border-b bg-slate-50">
+        <h1 className="font-bold text-xl text-blue-600 flex items-center gap-2">
+          <LayoutGrid size={24} />
+          CYD Config
+        </h1>
       </div>
       
       <div className="p-4 flex-1 overflow-y-auto">
-        {/* HA Connection */}
-        {!isAddon && (
-          <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
-            <div 
-                className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
-                onClick={() => setIsHaSettingsOpen(!isHaSettingsOpen)}
-            >
-                <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
-                    {isHaSettingsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <Server size={14} /> HA Connection
-                </h3>
-                <div className="flex items-center gap-1">
-                    {haStatus === 'connected' && <ShieldCheck size={14} className="text-green-500" />}
-                    {haStatus === 'mock' && <div className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1 rounded">MOCK</div>}
-                    {haStatus === 'error' && <ShieldAlert size={14} className="text-red-500" />}
-                    {haStatus === 'idle' && <Loader2 size={14} className="text-slate-400 animate-spin" />}
-                </div>
-            </div>
-            
-            {isHaSettingsOpen && (
-                <div className="p-3 pt-0 space-y-2 border-t border-slate-100 mt-2">
-                    <div className="pt-2">
-                        <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">HA URL</label>
-                        <input 
-                            type="text" 
-                            value={haUrl} 
-                            onChange={e => setHaUrl(e.target.value)}
-                            placeholder="http://homeassistant.local:8123"
-                            className="w-full border rounded p-1 text-xs"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">Long-Lived Token</label>
-                        <input 
-                            type="password" 
-                            value={haToken} 
-                            onChange={e => setHaToken(e.target.value)}
-                            placeholder="Paste token here..."
-                            className="w-full border rounded p-1 text-xs"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                        <input 
-                            type="checkbox" 
-                            id="use-mock"
-                            checked={useMockData} 
-                            onChange={e => setUseMockData(e.target.checked)}
-                            className="rounded border-slate-300"
-                        />
-                        <label htmlFor="use-mock" className="text-[10px] font-medium text-slate-600 uppercase cursor-pointer">Use Mock Data</label>
-                    </div>
-                </div>
-            )}
-          </div>
-        )}
-
         {/* Dynamic Entities */}
         <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
           <div 
@@ -190,7 +137,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           <button
                               key={t.type}
                               onClick={() => handleAddTile(t.type)}
-                              className="p-2 text-[10px] font-medium bg-white hover:bg-blue-50 border rounded text-left truncate transition-colors"
+                              className="p-2 h-10 flex items-center justify-center text-xs font-bold bg-white hover:bg-blue-50 border rounded text-center transition-colors shadow-sm"
                           >
                               {t.label}
                           </button>
@@ -285,15 +232,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <button 
               onClick={handleSaveYaml}
-              className="flex items-center justify-center gap-2 bg-white border text-slate-700 p-2 rounded hover:bg-slate-50 text-xs"
-              title="Save Project YAML"
+              className={`flex items-center justify-center gap-2 border p-2 rounded text-xs transition-colors ${
+                isAddon 
+                  ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700' 
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+              title={isAddon ? "Save configuration to Home Assistant" : "Save Project YAML to computer"}
           >
-              <Save size={14} /> Save YAML
+              <Save size={14} /> {isAddon ? 'Save to HA' : 'Save YAML'}
           </button>
           <button 
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center justify-center gap-2 bg-white border text-slate-700 p-2 rounded hover:bg-slate-50 text-xs"
-              title="Load Project YAML"
+              title="Load Project YAML from computer"
           >
               <Upload size={14} /> Load YAML
           </button>

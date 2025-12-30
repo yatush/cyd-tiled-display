@@ -11,7 +11,6 @@ interface MainContentProps {
   isValidating: boolean;
   validationStatus: { success: boolean; error?: string } | null;
   isGenerating: boolean;
-  handleGenerate: () => void;
   activePage: Page;
   config: Config;
   setConfig: (config: Config) => void;
@@ -21,10 +20,6 @@ interface MainContentProps {
   handleDeleteTile: (id: string) => void;
   activePageId: string;
   generationOutput: { success?: boolean; cpp?: string[]; error?: string; type?: string } | null;
-  undo: () => void;
-  redo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({
@@ -33,7 +28,6 @@ export const MainContent: React.FC<MainContentProps> = ({
   isValidating,
   validationStatus,
   isGenerating,
-  handleGenerate,
   activePage,
   config,
   setConfig,
@@ -42,11 +36,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   handleDragEnd,
   handleDeleteTile,
   activePageId,
-  generationOutput,
-  undo,
-  redo,
-  canUndo,
-  canRedo
+  generationOutput
 }) => {
   return (
     <div className="flex-1 bg-slate-100 flex flex-col relative min-w-0">
@@ -72,24 +62,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               </button>
           </div>
 
-          <div className="flex items-center gap-4">                <div className="flex items-center border-r pr-4 mr-2 gap-1">
-                    <button
-                        onClick={undo}
-                        disabled={!canUndo}
-                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-30 transition-colors"
-                        title="Undo (Ctrl+Z)"
-                    >
-                        <Undo2 size={18} />
-                    </button>
-                    <button
-                        onClick={redo}
-                        disabled={!canRedo}
-                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-30 transition-colors"
-                        title="Redo (Ctrl+Y)"
-                    >
-                        <Redo2 size={18} />
-                    </button>
-                </div>
+          <div className="flex items-center gap-4">
               {isValidating && (
                   <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
                       <Loader2 size={12} className="animate-spin" />
@@ -113,56 +86,12 @@ export const MainContent: React.FC<MainContentProps> = ({
                       )}
                   </div>
               )}
-              <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                  {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                  Generate
-              </button>
           </div>
       </div>
 
       <div className="flex-1 overflow-hidden relative flex flex-col">
           {activeTab === 'visual' ? (
               <>
-                  <div className="bg-slate-50 border-b px-4 h-10 flex items-center gap-4 flex-shrink-0">
-                      <span className="text-xs font-semibold text-slate-500 uppercase">Page Grid:</span>
-                      <div className="flex items-center gap-2">
-                          <label className="text-xs text-slate-600">Rows</label>
-                          <input 
-                              type="number" 
-                              value={activePage.rows} 
-                              onChange={e => {
-                                  const newRows = Math.max(1, parseInt(e.target.value) || 1);
-                                  const updatedPage = { ...activePage, rows: newRows };
-                                  setConfig({
-                                      ...config,
-                                      pages: config.pages.map(p => p.id === activePage.id ? updatedPage : p)
-                                  });
-                              }}
-                              className="w-16 border rounded p-1 text-sm"
-                          />
-                      </div>
-                      <div className="flex items-center gap-2">
-                          <label className="text-xs text-slate-600">Cols</label>
-                          <input 
-                              type="number" 
-                              value={activePage.cols} 
-                              onChange={e => {
-                                  const newCols = Math.max(1, parseInt(e.target.value) || 1);
-                                  const updatedPage = { ...activePage, cols: newCols };
-                                  setConfig({
-                                      ...config,
-                                      pages: config.pages.map(p => p.id === activePage.id ? updatedPage : p)
-                                  });
-                              }}
-                              className="w-16 border rounded p-1 text-sm"
-                          />
-                      </div>
-                  </div>
-
                   {validationStatus && !validationStatus.success && (
                       <div 
                           className="absolute top-10 left-0 right-0 z-50 bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 text-red-700 text-xs cursor-pointer hover:bg-red-100 transition-colors shadow-sm"

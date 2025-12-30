@@ -1,12 +1,59 @@
-import React, { useRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { Config } from '../types';
 import { generateYaml } from '../utils/yamlGenerator';
 import { parseYamlToConfig } from '../utils/yamlParser';
+import { apiFetch, isAddon } from '../utils/api';
 
 export function useFileOperations(config: Config, setConfig: (config: Config) => void, setActivePageId: (id: string) => void) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleSaveToHa = useCallback(async () => {
+    try {
+      const path = config.project_path || 'monitor_config/tiles.yaml';
+      const res = await apiFetch('/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: config,
+          path: path
+        })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Successfully saved to /config/esphome/${data.path}`);
+      } else {
+        const err = await res.json();
+        alert(`Failed to save: ${err.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to save to HA:', err);
+      alert('Failed to save to Home Assistant. Check console for details.');
+    }
+  }, [config]);
+
+  const handleLoadFromHa = useCallback(async (path?: string) => {
+    try {
+      const targetPath = path || config.project_path || 'monitor_config/tiles.yaml';
+      const res = await apiFetch(`/load?path=${encodeURIComponent(targetPath)}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Ensure we preserve the path in the loaded config
+        setConfig({ ...data, project_path: targetPath });
+        if (data.pages && data.pages.length > 0) {
+          setActivePageId(data.pages[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load from HA:', err);
+    }
+  }, [config.project_path, setConfig, setActivePageId]);
+
   const handleSaveYaml = async () => {
+    if (isAddon) {
+      return handleSaveToHa();
+    }
+
     const yamlString = generateYaml(config);
     
     try {
@@ -87,6 +134,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     fileInputRef,
     handleSaveYaml,
     handleLoadProject,
-    handleExport
+    handleExport,
+    handleLoadFromHa
   };
 }

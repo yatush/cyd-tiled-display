@@ -1,4 +1,5 @@
-import { Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Trash2, Layout, Settings2 } from 'lucide-react';
 import { Tile, Config, Page } from '../types';
 import { 
   TextInput, 
@@ -12,8 +13,9 @@ import {
   ConditionBuilder
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
+import { FileExplorer } from './FileExplorer';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, haEntities }: { 
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, haEntities, onUpdateConfig, onLoadFromHa }: { 
   selectedTile: Tile | null, 
   onUpdate: (t: Tile) => void, 
   onDelete: () => void,
@@ -21,64 +23,173 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   schema: any,
   activePage: Page,
   onUpdatePage: (p: Page) => void,
-  haEntities: string[]
+  haEntities: string[],
+  onUpdateConfig: (c: Config) => void,
+  onLoadFromHa?: (path?: string) => void
 }) => {
-  if (!selectedTile) {
-    return (
-      <div className="p-4 space-y-4">
-        <div className="border-b pb-2">
-          <h2 className="font-bold text-lg">Page Properties</h2>
-          <div className="text-xs text-slate-500">{activePage.id}</div>
-        </div>
-        
-        <div>
-          <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Flags</label>
-          <ArrayInput 
-            label="Page Flags" 
-            values={activePage.flags || []} 
-            onChange={v => onUpdatePage({...activePage, flags: v})} 
-            allowedValues={['BASE', 'TEMPORARY', 'FAST_REFRESH']}
-          />
-        </div>
-      </div>
-    );
-  }
+  const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
+  const [showExplorer, setShowExplorer] = useState(false);
 
   const dynamicEntities = config.dynamic_entities || [];
-  const tileSchema = schema?.types?.find((t: any) => t.type === selectedTile.type);
-  
-  return (
-    <div className="p-4 space-y-4 pb-20">
-      <div className="flex justify-between items-center border-b pb-2">
-        <h2 className="font-bold text-lg">Edit Tile</h2>
-        <button onClick={() => onDelete()} className="text-red-500 hover:bg-red-50 p-1 rounded" title="Delete Tile">
-          <Trash2 size={16} />
-        </button>
+  const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
+
+  // Switch to tile tab when a tile is selected
+  useEffect(() => {
+    if (selectedTile) {
+      setActiveTab('tile');
+    }
+  }, [selectedTile?.id]);
+
+  const renderPageProperties = () => (
+    <div className="space-y-6">
+      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Project Settings</label>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-slate-600 mb-1 font-medium">Project Path (in HA /config/esphome/)</label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                value={config.project_path || 'monitor_config/tiles.yaml'} 
+                onChange={e => onUpdateConfig({...config, project_path: e.target.value})}
+                placeholder="monitor_config/tiles.yaml"
+                className="flex-1 border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+              />
+              <button 
+                onClick={() => setShowExplorer(!showExplorer)}
+                className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                  showExplorer ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                }`}
+                title="Browse files"
+              >
+                Browse
+              </button>
+            </div>
+            
+            {showExplorer && (
+              <div className="mt-3 h-64">
+                <FileExplorer 
+                  currentPath={config.project_path?.split('/').slice(0, -1).join('/')}
+                  onSelect={(path) => {
+                    onUpdateConfig({...config, project_path: path});
+                    if (onLoadFromHa) onLoadFromHa(path);
+                    setShowExplorer(false);
+                  }} 
+                  onSelectDir={(dirPath) => {
+                    const currentFile = config.project_path?.split('/').pop() || 'tiles.yaml';
+                    const newPath = dirPath ? `${dirPath}/${currentFile}` : currentFile;
+                    onUpdateConfig({...config, project_path: newPath});
+                    setShowExplorer(false);
+                  }}
+                />
+              </div>
+            )}
+            
+            <p className="text-[10px] text-slate-400 mt-1 italic">Path relative to Home Assistant /config/esphome/ folder</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Grid Dimensions</label>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-slate-600 mb-1 font-medium">Rows</label>
+            <input 
+              type="number" 
+              value={activePage.rows} 
+              onChange={e => onUpdatePage({...activePage, rows: Math.max(1, parseInt(e.target.value) || 1)})}
+              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-600 mb-1 font-medium">Columns</label>
+            <input 
+              type="number" 
+              value={activePage.cols} 
+              onChange={e => onUpdatePage({...activePage, cols: Math.max(1, parseInt(e.target.value) || 1)})}
+              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+            />
+          </div>
+        </div>
       </div>
       
       <div>
-        <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Common</label>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <div>
-            <label className="block text-xs text-slate-600">Type</label>
-            <div className="p-1 bg-slate-100 rounded text-sm font-mono">{selectedTile.type}</div>
-          </div>
-          <div className="flex gap-2">
-            {schema?.common?.filter((f: any) => f.name === 'x' || f.name === 'y').map((field: any) => (
-              <div key={field.name} className="flex-1">
-                <label className="block text-xs text-slate-600">{field.label}</label>
-                <input 
-                  type="number" 
-                  value={selectedTile[field.name]} 
-                  onChange={e => onUpdate({...selectedTile, [field.name]: parseInt(e.target.value)})}
-                  className="w-full border rounded p-1 text-sm"
-                />
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Page Flags</label>
+        <ArrayInput 
+          label="Flags" 
+          values={activePage.flags || []} 
+          onChange={v => onUpdatePage({...activePage, flags: v})} 
+          allowedValues={['BASE', 'TEMPORARY', 'FAST_REFRESH']}
+        />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex border-b bg-slate-50">
+        <button
+          onClick={() => setActiveTab('page')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-wider transition-all ${
+            activeTab === 'page' 
+              ? 'bg-white text-blue-600 border-b-2 border-blue-600' 
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Layout size={16} />
+          Page
+        </button>
+        <button
+          onClick={() => setActiveTab('tile')}
+          disabled={!selectedTile}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-wider transition-all ${
+            activeTab === 'tile' 
+              ? 'bg-white text-blue-600 border-b-2 border-blue-600' 
+              : 'text-slate-400 hover:text-slate-600 disabled:opacity-30'
+          }`}
+        >
+          <Settings2 size={16} />
+          Tile
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {activeTab === 'page' ? (
+          renderPageProperties()
+        ) : selectedTile ? (
+          <div className="space-y-4 pb-20">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h2 className="font-bold text-lg text-slate-800">Edit Tile</h2>
+              <button onClick={() => onDelete()} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors" title="Delete Tile">
+                <Trash2 size={18} />
+              </button>
+            </div>
+            
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Common</label>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-600 mb-1 font-medium">Type</label>
+                  <div className="p-2 bg-slate-100 rounded-lg text-xs font-mono text-slate-600 border border-slate-200">{selectedTile.type}</div>
+                </div>
+                <div className="flex gap-3 col-span-2">
+                  {schema?.common?.filter((f: any) => f.name === 'x' || f.name === 'y').map((field: any) => (
+                    <div key={field.name} className="flex-1">
+                      <label className="block text-xs text-slate-600 mb-1 font-medium">{field.label}</label>
+                      <input 
+                        type="number" 
+                        value={selectedTile[field.name]} 
+                        onChange={e => onUpdate({...selectedTile, [field.name]: parseInt(e.target.value)})}
+                        className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-        
-        {schema?.common?.filter((f: any) => f.name !== 'x' && f.name !== 'y').map((field: any) => {
+              
+              <div className="space-y-4">
+                {schema?.common?.filter((f: any) => f.name !== 'x' && f.name !== 'y').map((field: any) => {
            if (field.type === 'display_list') {
              return (
                 <DisplayListInput 
@@ -422,7 +533,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
             }
             return null;
         })}
+          </div>
+        </div>
       </div>
-    </div>
+    ) : null}
+  </div>
+</div>
   );
 };

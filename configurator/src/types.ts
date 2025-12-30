@@ -17,4 +17,6 @@ export interface Page {
 export interface Config {
   pages: Page[];
   dynamic_entities?: string[];
+  project_name?: string;
+  project_path?: string;
 }

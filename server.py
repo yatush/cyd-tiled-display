@@ -72,6 +72,109 @@ def generate():
         print(f"Server Error: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/files', methods=['GET'])
+def list_files():
+    try:
+        path = request.args.get('path', '')
+        # Security: prevent directory traversal
+        if '..' in path:
+            return jsonify({"error": "Invalid path"}), 400
+            
+        base_dir = "/config/esphome"
+        full_path = os.path.join(base_dir, path.lstrip('/'))
+        
+        if not os.path.exists(full_path):
+            # If esphome dir doesn't exist, try /config
+            if not os.path.exists(base_dir):
+                base_dir = "/config"
+                full_path = os.path.join(base_dir, path.lstrip('/'))
+            
+            if not os.path.exists(full_path):
+                return jsonify({"error": "Path not found"}), 404
+            
+        items = []
+        for item in os.listdir(full_path):
+            item_path = os.path.join(full_path, item)
+            is_dir = os.path.isdir(item_path)
+            # Only show .yaml files or directories
+            if is_dir or item.endswith('.yaml') or item.endswith('.yml'):
+                items.append({
+                    "name": item,
+                    "is_dir": is_dir,
+                    "path": os.path.relpath(item_path, base_dir).replace('\\', '/')
+                })
+        
+        # Sort: directories first, then files
+        items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
+        
+        return jsonify({
+            "current_path": path,
+            "items": items
+        })
+    except Exception as e:
+        print(f"List Files Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/save', methods=['POST'])
+def save_config():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        config_data = data.get('config')
+        # path is relative to /config/esphome
+        rel_path = data.get('path', 'monitor_config/tiles.yaml')
+        
+        # Security: prevent directory traversal
+        if '..' in rel_path:
+            return jsonify({"error": "Invalid path"}), 400
+
+        base_dir = "/config/esphome"
+        if not os.path.exists(base_dir):
+            base_dir = "/config"
+            
+        target_path = os.path.join(base_dir, rel_path.lstrip('/'))
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        
+        with open(target_path, 'w') as f:
+            yaml.dump(config_data, f, sort_keys=False)
+            
+        return jsonify({"success": True, "path": rel_path})
+    except Exception as e:
+        print(f"Save Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/load', methods=['GET'])
+def load_config():
+    try:
+        # path is relative to /config/esphome
+        rel_path = request.args.get('path', 'monitor_config/tiles.yaml')
+        
+        # Security: prevent directory traversal
+        if '..' in rel_path:
+            return jsonify({"error": "Invalid path"}), 400
+
+        base_dir = "/config/esphome"
+        target_path = os.path.join(base_dir, rel_path.lstrip('/'))
+        
+        if os.path.exists(target_path):
+            with open(target_path, 'r') as f:
+                return jsonify(yaml.safe_load(f))
+        
+        # Fallback to /config
+        fallback_path = os.path.join("/config", rel_path.lstrip('/'))
+        if os.path.exists(fallback_path):
+            with open(fallback_path, 'r') as f:
+                return jsonify(yaml.safe_load(f))
+        
+        return jsonify({"error": f"Config file {rel_path} not found"}), 404
+    except Exception as e:
+        print(f"Load Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/schema')
 def get_schema():
     schema_path = '/app/esphome/custom_components/tile_ui/schema.json'
