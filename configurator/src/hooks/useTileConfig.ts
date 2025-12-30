@@ -64,6 +64,16 @@ export function useTileConfig() {
     localStorage.setItem('tile_config', JSON.stringify(config));
   }, [config]);
 
+  // Ensure activePageId is valid
+  useEffect(() => {
+    if (config.pages && config.pages.length > 0) {
+        const exists = config.pages.find(p => p.id === activePageId);
+        if (!exists) {
+            setActivePageId(config.pages[0].id);
+        }
+    }
+  }, [config.pages, activePageId]);
+
   const activePage = useMemo(() => {
     if (!config.pages || config.pages.length === 0) {
         return { id: 'default', tiles: [], rows: 2, cols: 3 };
