@@ -228,6 +228,7 @@ function App() {
         haToken={haToken}
         setHaToken={setHaToken}
         onRefresh={fetchHaEntities}
+        onCheckLibStatus={checkLibStatus}
       />
     </div>
   );

@@ -13,6 +13,7 @@ interface HASettingsDialogProps {
   haToken: string;
   setHaToken: (token: string) => void;
   onRefresh: () => void;
+  onCheckLibStatus: () => void;
 }
 
 export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
@@ -24,7 +25,8 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   setHaUrl,
   haToken,
   setHaToken,
-  onRefresh
+  onRefresh,
+  onCheckLibStatus
 }) => {
   const [localType, setLocalType] = useState<ConnectionType>(connectionType);
   const [localUrl, setLocalUrl] = useState(haUrl);
@@ -64,6 +66,13 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
         const res = await apiFetch('/update_lib', { method: 'POST' });
         if (res.ok) {
             alert("Library files and tile_ui component updated successfully!");
+            // Refresh local status
+            apiFetch('/check_lib_status')
+              .then(res => res.json())
+              .then(data => setLibStatus(data))
+              .catch(err => console.error(err));
+            // Refresh global status (App.tsx)
+            onCheckLibStatus();
         } else {
             const err = await res.json();
             alert("Failed to update: " + err.error);
