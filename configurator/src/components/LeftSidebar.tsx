@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, Monitor } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
-import { isAddon, apiFetch } from '../utils/api';
+import { isAddon } from '../utils/api';
 import { FileExplorer } from './FileExplorer';
+import { SaveDeviceDialog } from './SaveDeviceDialog';
 
 interface LeftSidebarProps {
   width: number;
@@ -32,6 +33,7 @@ interface LeftSidebarProps {
   handleLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleExport: () => void;
   handleClearConfig: () => void;
+  handleSaveDeviceConfig: (deviceName: string, friendlyName: string, screenType: string) => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -60,25 +62,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   fileInputRef,
   handleLoadProject,
   handleExport,
-  handleClearConfig
+  handleClearConfig,
+  handleSaveDeviceConfig
 }) => {
   const [showExplorer, setShowExplorer] = useState(false);
-
-  const handleUpdateLib = async () => {
-    if (!confirm("This will overwrite your /config/esphome/lib folder with the latest version. The old version will be backed up to /config/esphome/lib_old. Continue?")) return;
-    
-    try {
-        const res = await apiFetch('/update_lib', { method: 'POST' });
-        if (res.ok) {
-            alert("Library files updated successfully!");
-        } else {
-            const err = await res.json();
-            alert("Failed to update library: " + err.error);
-        }
-    } catch (e) {
-        alert("Error updating library: " + e);
-    }
-  };
+  const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
 
   return (
     <div 
@@ -86,6 +74,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       style={{ width }}
       onClick={onSidebarClick}
     >
+      <SaveDeviceDialog 
+        isOpen={isSaveDeviceOpen}
+        onClose={() => setIsSaveDeviceOpen(false)}
+        onSave={handleSaveDeviceConfig}
+      />
       <div className="p-4 border-b bg-slate-50">
         <h1 className="font-bold text-xl text-blue-600 flex items-center gap-2">
           <LayoutGrid size={24} />
@@ -287,6 +280,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <Upload size={14} /> Load Screens from HA
               </button>
             </div>
+            
+            <button 
+              onClick={() => setIsSaveDeviceOpen(true)}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white border border-indigo-700 p-2 rounded text-xs font-bold hover:bg-indigo-700 transition-colors shadow-sm"
+              title="Save full device configuration to Home Assistant"
+            >
+              <Monitor size={14} /> Save Device Config
+            </button>
           </div>
         )}
 
@@ -312,15 +313,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <Trash2 size={14} /> Clear All
           </button>
         </div>
-
-        {isAddon && (
-            <button 
-                onClick={handleUpdateLib}
-                className="w-full flex items-center justify-center gap-2 bg-amber-100 text-amber-800 border border-amber-200 p-2 rounded text-[10px] font-bold hover:bg-amber-200 transition-colors"
-            >
-                <RefreshCw size={14} /> Update HA Esphome files
-            </button>
-        )}
       </div>
     </div>
   );

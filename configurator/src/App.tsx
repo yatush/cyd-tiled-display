@@ -57,7 +57,8 @@ function App() {
     handleDownloadYaml,
     handleLoadProject,
     handleExport,
-    handleLoadFromHa
+    handleLoadFromHa,
+    handleSaveDeviceConfig
   } = useFileOperations(config, setConfig, setActivePageId);
 
   // Local UI State
@@ -145,6 +146,7 @@ function App() {
           handleLoadProject={handleLoadProject}
           handleExport={handleExport}
           handleClearConfig={handleClearConfig}
+          handleSaveDeviceConfig={handleSaveDeviceConfig}
         />
 
       {/* Left Resizer */}

@@ -185,8 +185,12 @@ def save_config():
         # Ensure directory exists
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         
-        with open(target_path, 'w') as f:
-            yaml.dump(config_data, f, sort_keys=False)
+        if isinstance(config_data, str):
+            with open(target_path, 'w') as f:
+                f.write(config_data)
+        else:
+            with open(target_path, 'w') as f:
+                yaml.dump(config_data, f, sort_keys=False)
             
         return jsonify({"success": True, "path": rel_path})
     except Exception as e:

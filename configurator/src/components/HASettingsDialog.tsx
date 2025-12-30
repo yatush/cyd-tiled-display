@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Server, Globe, Database, ShieldCheck } from 'lucide-react';
+import { X, Server, Globe, Database, ShieldCheck, RefreshCw } from 'lucide-react';
 import { ConnectionType } from '../hooks/useHaConnection';
-import { isAddon } from '../utils/api';
+import { isAddon, apiFetch } from '../utils/api';
 
 interface HASettingsDialogProps {
   isOpen: boolean;
@@ -47,6 +47,22 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
     setHaToken(localToken);
     onRefresh();
     onClose();
+  };
+
+  const handleUpdateLib = async () => {
+    if (!confirm("This will overwrite your /config/esphome/lib folder with the latest version. The old version will be backed up to /config/esphome/lib_old. Continue?")) return;
+    
+    try {
+        const res = await apiFetch('/update_lib', { method: 'POST' });
+        if (res.ok) {
+            alert("Library files updated successfully!");
+        } else {
+            const err = await res.json();
+            alert("Failed to update library: " + err.error);
+        }
+    } catch (e) {
+        alert("Error updating library: " + e);
+    }
   };
 
   return (
@@ -137,6 +153,21 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
                   className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
                 />
               </div>
+            </div>
+          )}
+
+          {isAddon && (
+            <div className="pt-4 border-t border-slate-100">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Maintenance</label>
+                <button 
+                    onClick={handleUpdateLib}
+                    className="w-full flex items-center justify-center gap-2 bg-amber-50 text-amber-800 border border-amber-200 p-3 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors"
+                >
+                    <RefreshCw size={16} /> Update HA Esphome files
+                </button>
+                <p className="text-[10px] text-slate-400 mt-1 text-center">
+                    Updates the shared library files in /config/esphome/lib
+                </p>
             </div>
           )}
         </div>

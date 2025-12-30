@@ -144,6 +144,52 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string) => {
+    try {
+      const screensYaml = generateYaml(config);
+      
+      const fullYaml = `substitutions:
+  device_name: "${deviceName}"
+  friendly_name: ${friendlyName}
+
+packages:
+  device_base: !include lib/${screenType}_base.yaml
+  lib: !include lib/lib.yaml
+
+esphome:
+  name: $device_name
+  friendly_name: $friendly_name
+
+api:
+  encryption:
+    key: "AJ9ioMY1QzbUlAKim6G9IAYEVDv5a6iJCToD7lppTLU="
+
+tile_ui:
+${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
+`;
+
+      const filename = `${deviceName}.yaml`;
+      const res = await apiFetch('/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: fullYaml,
+          path: filename
+        })
+      });
+      
+      if (res.ok) {
+        alert(`Successfully saved device configuration to /config/esphome/${filename}`);
+      } else {
+        const err = await res.json();
+        alert(`Failed to save: ${err.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to save device config:', err);
+      alert('Failed to save device configuration. Check console for details.');
+    }
+  }, [config]);
+
   return {
     fileInputRef,
     handleSaveYaml,
@@ -151,6 +197,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     handleSaveToHa,
     handleLoadProject,
     handleExport,
-    handleLoadFromHa
+    handleLoadFromHa,
+    handleSaveDeviceConfig
   };
 }
