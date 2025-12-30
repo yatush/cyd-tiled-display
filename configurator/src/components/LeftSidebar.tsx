@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight, Server, ShieldCheck, ShieldAlert, Loader2, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download } from 'lucide-react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
 import { isAddon } from '../utils/api';
@@ -7,15 +7,6 @@ import { isAddon } from '../utils/api';
 interface LeftSidebarProps {
   width: number;
   onSidebarClick: () => void;
-  haStatus: string;
-  haUrl: string;
-  setHaUrl: (url: string) => void;
-  haToken: string;
-  setHaToken: (token: string) => void;
-  useMockData: boolean;
-  setUseMockData: (use: boolean) => void;
-  isHaSettingsOpen: boolean;
-  setIsHaSettingsOpen: (open: boolean) => void;
   isDynamicEntitiesOpen: boolean;
   setIsDynamicEntitiesOpen: (open: boolean) => void;
   config: Config;
@@ -44,15 +35,6 @@ interface LeftSidebarProps {
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   width,
   onSidebarClick,
-  haStatus,
-  haUrl,
-  setHaUrl,
-  haToken,
-  setHaToken,
-  useMockData,
-  setUseMockData,
-  isHaSettingsOpen,
-  setIsHaSettingsOpen,
   isDynamicEntitiesOpen,
   setIsDynamicEntitiesOpen,
   config,

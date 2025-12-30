@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, FileText, Terminal, Loader2, CheckCircle2, AlertCircle, Play, Undo2, Redo2 } from 'lucide-react';
+import { LayoutGrid, FileText, Terminal, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { GridCanvas } from './GridCanvas';
 import { YamlPreview } from './YamlPreview';
 import { Config, Page } from '../types';
@@ -13,7 +13,6 @@ interface MainContentProps {
   isGenerating: boolean;
   activePage: Page;
   config: Config;
-  setConfig: (config: Config) => void;
   selectedTileId: string | null;
   setSelectedTileId: (id: string | null) => void;
   handleDragEnd: (event: DragEndEvent) => void;
@@ -30,7 +29,6 @@ export const MainContent: React.FC<MainContentProps> = ({
   isGenerating,
   activePage,
   config,
-  setConfig,
   selectedTileId,
   setSelectedTileId,
   handleDragEnd,

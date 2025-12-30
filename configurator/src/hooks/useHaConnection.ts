@@ -7,7 +7,6 @@ export type ConnectionType = 'local' | 'remote' | 'mock';
 export function useHaConnection() {
   const [haUrl, setHaUrl] = useState(() => localStorage.getItem('ha_url') || 'http://homeassistant.local:8123');
   const [haToken, setHaToken] = useState(() => localStorage.getItem('ha_token') || '');
-  const [useMockData, setUseMockData] = useState(() => localStorage.getItem('ha_use_mock') === 'true');
   const [connectionType, setConnectionType] = useState<ConnectionType>(() => {
     if (localStorage.getItem('ha_use_mock') === 'true') return 'mock';
     if (isAddon && !localStorage.getItem('ha_url')) return 'local';

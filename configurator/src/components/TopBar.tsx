@@ -1,6 +1,5 @@
 import React from 'react';
 import { 
-  Server, 
   ShieldCheck, 
   ShieldAlert, 
   Loader2, 
@@ -11,7 +10,6 @@ import {
   Play,
   Activity
 } from 'lucide-react';
-import { isAddon } from '../utils/api';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
 
 interface TopBarProps {

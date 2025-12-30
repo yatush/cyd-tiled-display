@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Folder, File, ChevronRight, ChevronLeft, Home, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Folder, File, ChevronRight, ChevronLeft, Home } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
 interface FileItem {

@@ -20,8 +20,7 @@ function App() {
   const {
     leftSidebarWidth,
     rightSidebarWidth,
-    setIsDraggingLeft,
-    setIsDraggingRight
+    setIsDraggingLeft
   } = useSidebarResizing();
 
   const {
@@ -124,15 +123,6 @@ function App() {
         <LeftSidebar 
           width={leftSidebarWidth}
           onSidebarClick={handleSidebarClick}
-          haStatus={haStatus}
-          haUrl={haUrl}
-          setHaUrl={setHaUrl}
-          haToken={haToken}
-          setHaToken={setHaToken}
-          useMockData={connectionType === 'mock'}
-          setUseMockData={(use) => setConnectionType(use ? 'mock' : 'remote')}
-          isHaSettingsOpen={isHaSettingsOpen}
-          setIsHaSettingsOpen={setIsHaSettingsOpen}
           isDynamicEntitiesOpen={isDynamicEntitiesOpen}
           setIsDynamicEntitiesOpen={setIsDynamicEntitiesOpen}
           config={config}
@@ -172,7 +162,6 @@ function App() {
         isGenerating={isGenerating}
           activePage={activePage}
           config={config}
-          setConfig={setConfig}
           selectedTileId={selectedTileId}
           setSelectedTileId={setSelectedTileId}
           handleDragEnd={handleDragEnd}
