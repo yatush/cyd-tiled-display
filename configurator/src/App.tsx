@@ -55,7 +55,6 @@ function App() {
     fileInputRef,
     handleSaveYaml,
     handleDownloadYaml,
-    handleSaveToHa,
     handleLoadProject,
     handleExport,
     handleLoadFromHa
@@ -190,7 +189,6 @@ function App() {
           activePage={activePage}
           haEntities={haEntities}
           onUpdatePage={handleUpdatePage}
-          onUpdateConfig={setConfig}
         />
       </div>
       </div>

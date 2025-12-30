@@ -14,7 +14,7 @@ import {
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, haEntities, onUpdateConfig }: { 
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, haEntities }: { 
   selectedTile: Tile | null, 
   onUpdate: (t: Tile) => void, 
   onDelete: () => void,
@@ -22,8 +22,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   schema: any,
   activePage: Page,
   onUpdatePage: (p: Page) => void,
-  haEntities: string[],
-  onUpdateConfig: (c: Config) => void
+  haEntities: string[]
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
 

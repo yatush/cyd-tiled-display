@@ -8,12 +8,10 @@ import {
   Redo2, 
   Play,
   Activity,
-  Save,
   Download,
   Upload
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
-import { isAddon } from '../utils/api';
 
 interface TopBarProps {
   haStatus: HaStatus;
