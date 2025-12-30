@@ -1,8 +1,2 @@
-build_from:
-  aarch64: "python:3.11-alpine"
-  amd64: "python:3.11-alpine"
-  armhf: "python:3.11-alpine"
-  armv7: "python:3.11-alpine"
-  i386: "python:3.11-alpine"
 context: ..
 dockerfile: ha-addon/Dockerfile
