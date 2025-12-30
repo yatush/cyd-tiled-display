@@ -1,7 +1,9 @@
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
 import { isAddon } from '../utils/api';
+import { FileExplorer } from './FileExplorer';
 
 interface LeftSidebarProps {
   width: number;
@@ -25,6 +27,7 @@ interface LeftSidebarProps {
   getTileLabel: (tile: Tile) => string;
   setIsPageDialogOpen: (open: boolean) => void;
   handleSaveYaml: () => void;
+  handleLoadFromHa: (path?: string) => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
   handleLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleExport: () => void;
@@ -53,11 +56,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   getTileLabel,
   setIsPageDialogOpen,
   handleSaveYaml,
+  handleLoadFromHa,
   fileInputRef,
   handleLoadProject,
   handleExport,
   handleClearConfig
 }) => {
+  const [showExplorer, setShowExplorer] = useState(false);
   return (
     <div 
       className="bg-white border-r flex flex-col flex-shrink-0"
@@ -209,34 +214,75 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         </div>
       </div>
 
-      <div className="p-4 border-t bg-slate-50 space-y-2">
-        <div className="grid grid-cols-2 gap-2">
-          <button 
-              onClick={handleSaveYaml}
-              className={`flex items-center justify-center gap-2 border p-2 rounded text-xs transition-colors ${
-                isAddon 
-                  ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700' 
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-              title={isAddon ? "Save configuration to Home Assistant" : "Save Project YAML to computer"}
-          >
-              <Save size={14} /> {isAddon ? 'Save to HA' : 'Save YAML'}
-          </button>
-          <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center justify-center gap-2 bg-white border text-slate-700 p-2 rounded hover:bg-slate-50 text-xs"
-              title="Load Project YAML from computer"
-          >
-              <Upload size={14} /> Load YAML
-          </button>
-          <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleLoadProject} 
-              className="hidden" 
-              accept=".yaml,.yml"
-          />
-        </div>
+      <div className="p-4 border-t bg-slate-50 space-y-4">
+        {isAddon && (
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider">HA File Management</label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                value={config.project_path || 'monitor_config/tiles.yaml'} 
+                onChange={e => setConfig({...config, project_path: e.target.value})}
+                placeholder="monitor_config/tiles.yaml"
+                className="flex-1 border border-slate-200 rounded p-1.5 text-[10px] font-mono focus:border-blue-500 outline-none transition-colors bg-white"
+              />
+              <button 
+                onClick={() => setShowExplorer(!showExplorer)}
+                className={`p-1.5 rounded border transition-colors ${
+                  showExplorer ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+                title="Browse files"
+              >
+                <FolderOpen size={14} />
+              </button>
+            </div>
+
+            {showExplorer && (
+              <div className="h-48 border rounded overflow-hidden bg-white">
+                <FileExplorer 
+                  currentPath={config.project_path?.split('/').slice(0, -1).join('/')}
+                  onSelect={(path) => {
+                    setConfig({...config, project_path: path});
+                    handleLoadFromHa(path);
+                    setShowExplorer(false);
+                  }} 
+                  onSelectDir={(dirPath) => {
+                    const currentFile = config.project_path?.split('/').pop() || 'tiles.yaml';
+                    const newPath = dirPath ? `${dirPath}/${currentFile}` : currentFile;
+                    setConfig({...config, project_path: newPath});
+                    setShowExplorer(false);
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                onClick={handleSaveYaml}
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white border border-blue-700 p-2 rounded text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                title="Save configuration to Home Assistant"
+              >
+                <Save size={14} /> Save to HA
+              </button>
+              <button 
+                onClick={() => handleLoadFromHa()}
+                className="flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 p-2 rounded text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
+                title="Load configuration from Home Assistant"
+              >
+                <Upload size={14} /> Load from HA
+              </button>
+            </div>
+          </div>
+        )}
+
+        <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleLoadProject} 
+            className="hidden" 
+            accept=".yaml,.yml"
+        />
+        
         <button 
           onClick={handleExport}
           className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white p-2 rounded hover:bg-slate-800"

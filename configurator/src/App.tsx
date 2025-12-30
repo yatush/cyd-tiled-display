@@ -54,6 +54,8 @@ function App() {
   const {
     fileInputRef,
     handleSaveYaml,
+    handleDownloadYaml,
+    handleSaveToHa,
     handleLoadProject,
     handleExport,
     handleLoadFromHa
@@ -116,6 +118,8 @@ function App() {
         onUndo={undo}
         onRedo={redo}
         onGenerate={() => handleGenerate(() => setActiveTab('output'))}
+        onDownloadYaml={handleDownloadYaml}
+        onLoadYaml={() => fileInputRef.current?.click()}
         isGenerating={isGenerating}
       />
 
@@ -142,6 +146,7 @@ function App() {
           getTileLabel={getTileLabel}
           setIsPageDialogOpen={setIsPageDialogOpen}
           handleSaveYaml={handleSaveYaml}
+          handleLoadFromHa={handleLoadFromHa}
           fileInputRef={fileInputRef}
           handleLoadProject={handleLoadProject}
           handleExport={handleExport}
@@ -186,7 +191,6 @@ function App() {
           haEntities={haEntities}
           onUpdatePage={handleUpdatePage}
           onUpdateConfig={setConfig}
-          onLoadFromHa={handleLoadFromHa}
         />
       </div>
       </div>

@@ -13,9 +13,8 @@ import {
   ConditionBuilder
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
-import { FileExplorer } from './FileExplorer';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, haEntities, onUpdateConfig, onLoadFromHa }: { 
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, haEntities, onUpdateConfig }: { 
   selectedTile: Tile | null, 
   onUpdate: (t: Tile) => void, 
   onDelete: () => void,
@@ -24,11 +23,9 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   activePage: Page,
   onUpdatePage: (p: Page) => void,
   haEntities: string[],
-  onUpdateConfig: (c: Config) => void,
-  onLoadFromHa?: (path?: string) => void
+  onUpdateConfig: (c: Config) => void
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
-  const [showExplorer, setShowExplorer] = useState(false);
 
   const dynamicEntities = config.dynamic_entities || [];
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
@@ -42,54 +39,6 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
 
   const renderPageProperties = () => (
     <div className="space-y-6">
-      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Project Settings</label>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs text-slate-600 mb-1 font-medium">Project Path (in HA /config/esphome/)</label>
-            <div className="flex gap-2">
-              <input 
-                type="text" 
-                value={config.project_path || 'monitor_config/tiles.yaml'} 
-                onChange={e => onUpdateConfig({...config, project_path: e.target.value})}
-                placeholder="monitor_config/tiles.yaml"
-                className="flex-1 border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
-              />
-              <button 
-                onClick={() => setShowExplorer(!showExplorer)}
-                className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
-                  showExplorer ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                }`}
-                title="Browse files"
-              >
-                Browse
-              </button>
-            </div>
-            
-            {showExplorer && (
-              <div className="mt-3 h-64">
-                <FileExplorer 
-                  currentPath={config.project_path?.split('/').slice(0, -1).join('/')}
-                  onSelect={(path) => {
-                    onUpdateConfig({...config, project_path: path});
-                    if (onLoadFromHa) onLoadFromHa(path);
-                    setShowExplorer(false);
-                  }} 
-                  onSelectDir={(dirPath) => {
-                    const currentFile = config.project_path?.split('/').pop() || 'tiles.yaml';
-                    const newPath = dirPath ? `${dirPath}/${currentFile}` : currentFile;
-                    onUpdateConfig({...config, project_path: newPath});
-                    setShowExplorer(false);
-                  }}
-                />
-              </div>
-            )}
-            
-            <p className="text-[10px] text-slate-400 mt-1 italic">Path relative to Home Assistant /config/esphome/ folder</p>
-          </div>
-        </div>
-      </div>
-
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Grid Dimensions</label>
         <div className="grid grid-cols-2 gap-4">

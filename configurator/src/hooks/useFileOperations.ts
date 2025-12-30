@@ -49,11 +49,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     }
   }, [config.project_path, setConfig, setActivePageId]);
 
-  const handleSaveYaml = async () => {
-    if (isAddon) {
-      return handleSaveToHa();
-    }
-
+  const handleDownloadYaml = async () => {
     const yamlString = generateYaml(config);
     
     try {
@@ -82,6 +78,13 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     } catch (err) {
       console.error('Failed to save file:', err);
     }
+  };
+
+  const handleSaveYaml = async () => {
+    if (isAddon) {
+      return handleSaveToHa();
+    }
+    return handleDownloadYaml();
   };
 
   const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,6 +136,8 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
   return {
     fileInputRef,
     handleSaveYaml,
+    handleDownloadYaml,
+    handleSaveToHa,
     handleLoadProject,
     handleExport,
     handleLoadFromHa

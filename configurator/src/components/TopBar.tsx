@@ -7,9 +7,13 @@ import {
   Undo2, 
   Redo2, 
   Play,
-  Activity
+  Activity,
+  Save,
+  Download,
+  Upload
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
+import { isAddon } from '../utils/api';
 
 interface TopBarProps {
   haStatus: HaStatus;
@@ -21,6 +25,8 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onGenerate: () => void;
+  onDownloadYaml: () => void;
+  onLoadYaml: () => void;
   isGenerating: boolean;
 }
 
@@ -34,6 +40,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onUndo,
   onRedo,
   onGenerate,
+  onDownloadYaml,
+  onLoadYaml,
   isGenerating
 }) => {
   const getStatusIcon = () => {
@@ -97,20 +105,38 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         <button
-          onClick={onOpenSettings}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+          onClick={onLoadYaml}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-all shadow-sm"
+          title="Load YAML configuration from your computer"
         >
-          <Settings size={18} />
-          <span className="text-sm font-medium hidden md:inline">Settings</span>
+          <Upload size={18} />
+          <span className="text-sm font-bold">Load YAML</span>
+        </button>
+
+        <button
+          onClick={onDownloadYaml}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-all shadow-sm"
+          title="Download YAML configuration to your computer"
+        >
+          <Download size={18} />
+          <span className="text-sm font-bold">Download YAML</span>
         </button>
 
         <button
           onClick={onGenerate}
           disabled={isGenerating}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg disabled:opacity-50 transition-all shadow-sm"
         >
           {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
           <span className="font-bold text-sm">Generate</span>
+        </button>
+
+        <button
+          onClick={onOpenSettings}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+        >
+          <Settings size={18} />
+          <span className="text-sm font-medium hidden md:inline">Settings</span>
         </button>
       </div>
     </div>
