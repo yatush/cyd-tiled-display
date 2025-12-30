@@ -1,4 +1,3 @@
-import React from 'react';
 import { LayoutGrid, FileText, Terminal, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { GridCanvas } from './GridCanvas';
 import { YamlPreview } from './YamlPreview';

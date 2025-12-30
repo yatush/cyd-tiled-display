@@ -1,4 +1,3 @@
-import React from 'react';
 import { X, Server, Globe, Database, ShieldCheck } from 'lucide-react';
 import { ConnectionType } from '../hooks/useHaConnection';
 import { isAddon } from '../utils/api';

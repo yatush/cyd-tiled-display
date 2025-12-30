@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2, Layout, Settings2 } from 'lucide-react';
 import { Tile, Config, Page } from '../types';
 import { 
