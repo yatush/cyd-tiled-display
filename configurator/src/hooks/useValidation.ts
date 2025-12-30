@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Config } from '../types';
 import { generateYaml } from '../utils/yamlGenerator';
+import { apiFetch } from '../utils/api';
 
 export function useValidation(config: Config) {
   const [isValidating, setIsValidating] = useState(false);
@@ -13,7 +14,7 @@ export function useValidation(config: Config) {
       setIsValidating(true);
       try {
         const yamlContent = generateYaml(config);
-        const response = await fetch('/api/generate', {
+        const response = await apiFetch('/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/yaml' },
           body: yamlContent
@@ -40,7 +41,7 @@ export function useValidation(config: Config) {
     if (onSuccess) onSuccess();
     try {
       const yamlContent = generateYaml(config);
-      const response = await fetch('/api/generate', {
+      const response = await apiFetch('/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/yaml' },
         body: yamlContent

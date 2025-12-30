@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronDown, ChevronRight, Server, ShieldCheck, ShieldAlert, Loader2, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
+import { isAddon } from '../utils/api';
 
 interface LeftSidebarProps {
   width: number;
@@ -88,58 +89,60 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       
       <div className="p-4 flex-1 overflow-y-auto">
         {/* HA Connection */}
-        <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
-          <div 
-              className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
-              onClick={() => setIsHaSettingsOpen(!isHaSettingsOpen)}
-          >
-              <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
-                  {isHaSettingsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <Server size={14} /> HA Connection
-              </h3>
-              <div className="flex items-center gap-1">
-                  {haStatus === 'connected' && <ShieldCheck size={14} className="text-green-500" />}
-                  {haStatus === 'mock' && <div className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1 rounded">MOCK</div>}
-                  {haStatus === 'error' && <ShieldAlert size={14} className="text-red-500" />}
-                  {haStatus === 'idle' && <Loader2 size={14} className="text-slate-400 animate-spin" />}
-              </div>
+        {!isAddon && (
+          <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
+            <div 
+                className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
+                onClick={() => setIsHaSettingsOpen(!isHaSettingsOpen)}
+            >
+                <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                    {isHaSettingsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <Server size={14} /> HA Connection
+                </h3>
+                <div className="flex items-center gap-1">
+                    {haStatus === 'connected' && <ShieldCheck size={14} className="text-green-500" />}
+                    {haStatus === 'mock' && <div className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1 rounded">MOCK</div>}
+                    {haStatus === 'error' && <ShieldAlert size={14} className="text-red-500" />}
+                    {haStatus === 'idle' && <Loader2 size={14} className="text-slate-400 animate-spin" />}
+                </div>
+            </div>
+            
+            {isHaSettingsOpen && (
+                <div className="p-3 pt-0 space-y-2 border-t border-slate-100 mt-2">
+                    <div className="pt-2">
+                        <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">HA URL</label>
+                        <input 
+                            type="text" 
+                            value={haUrl} 
+                            onChange={e => setHaUrl(e.target.value)}
+                            placeholder="http://homeassistant.local:8123"
+                            className="w-full border rounded p-1 text-xs"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">Long-Lived Token</label>
+                        <input 
+                            type="password" 
+                            value={haToken} 
+                            onChange={e => setHaToken(e.target.value)}
+                            placeholder="Paste token here..."
+                            className="w-full border rounded p-1 text-xs"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                        <input 
+                            type="checkbox" 
+                            id="use-mock"
+                            checked={useMockData} 
+                            onChange={e => setUseMockData(e.target.checked)}
+                            className="rounded border-slate-300"
+                        />
+                        <label htmlFor="use-mock" className="text-[10px] font-medium text-slate-600 uppercase cursor-pointer">Use Mock Data</label>
+                    </div>
+                </div>
+            )}
           </div>
-          
-          {isHaSettingsOpen && (
-              <div className="p-3 pt-0 space-y-2 border-t border-slate-100 mt-2">
-                  <div className="pt-2">
-                      <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">HA URL</label>
-                      <input 
-                          type="text" 
-                          value={haUrl} 
-                          onChange={e => setHaUrl(e.target.value)}
-                          placeholder="http://homeassistant.local:8123"
-                          className="w-full border rounded p-1 text-xs"
-                      />
-                  </div>
-                  <div>
-                      <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">Long-Lived Token</label>
-                      <input 
-                          type="password" 
-                          value={haToken} 
-                          onChange={e => setHaToken(e.target.value)}
-                          placeholder="Paste token here..."
-                          className="w-full border rounded p-1 text-xs"
-                      />
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                      <input 
-                          type="checkbox" 
-                          id="use-mock"
-                          checked={useMockData} 
-                          onChange={e => setUseMockData(e.target.checked)}
-                          className="rounded border-slate-300"
-                      />
-                      <label htmlFor="use-mock" className="text-[10px] font-medium text-slate-600 uppercase cursor-pointer">Use Mock Data</label>
-                  </div>
-              </div>
-          )}
-        </div>
+        )}
 
         {/* Dynamic Entities */}
         <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">

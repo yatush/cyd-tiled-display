@@ -1,0 +1,30 @@
+# Stage 1: Build React Frontend
+FROM node:20-alpine AS build-frontend
+WORKDIR /app/configurator
+COPY configurator/package*.json ./
+RUN npm install
+COPY configurator/ ./
+RUN npm run build
+
+# Stage 2: Final Image
+FROM python:3.11-slim
+WORKDIR /app
+
+# Install dependencies
+RUN pip install flask flask-cors requests pyyaml
+
+# Copy built frontend
+COPY --from=build-frontend /app/configurator/dist /app/dist
+
+# Copy Python backend and scripts
+COPY configurator/generate_tiles_api.py /app/
+COPY ha-addon/server.py /app/
+
+# Copy ESPHome files (needed for schema and scripts)
+COPY esphome /app/esphome
+
+# Expose port for Ingress
+EXPOSE 8099
+
+# Start the server
+CMD ["python", "server.py"]

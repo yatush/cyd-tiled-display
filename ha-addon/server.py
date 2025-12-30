@@ -1,0 +1,175 @@
+import os
+import json
+import subprocess
+import yaml
+from flask import Flask, request, send_from_directory, jsonify
+import requests
+
+app = Flask(__name__, static_folder='dist')
+
+# Configuration from environment (provided by HA Supervisor)
+SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
+HA_URL = "http://supervisor/core"
+
+@app.route('/')
+def serve_index():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    if os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/api/ha/<path:path>', methods=['GET', 'POST'])
+def proxy_ha(path):
+    url = f"{HA_URL}/api/{path}"
+    headers = {
+        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    
+    if request.method == 'GET':
+        response = requests.get(url, headers=headers, params=request.args)
+    else:
+        response = requests.post(url, headers=headers, json=request.json)
+        
+    return (response.content, response.status_code, response.headers.items())
+
+@app.route('/api/generate', methods=['POST'])
+def generate():
+    try:
+        # Run the existing generation script
+        process = subprocess.Popen(
+            ['python3', 'generate_tiles_api.py'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        stdout, stderr = process.communicate(input=request.get_data(as_text=True))
+        
+        if process.returncode != 0:
+            return jsonify({"error": stderr or "Generation failed"}), 500
+            
+        return stdout, 200, {'Content-Type': 'application/json'}
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/schema')
+def get_schema():
+    schema_path = '/app/esphome/custom_components/tile_ui/schema.json'
+    if os.path.exists(schema_path):
+        with open(schema_path, 'r') as f:
+            return jsonify(json.load(f))
+    return jsonify({"error": "Schema not found"}), 404
+
+@app.route('/api/scripts')
+def get_scripts():
+    # This replicates the logic from vite.config.ts
+    try:
+        lib_path = '/app/esphome/lib/lib.yaml'
+        if not os.path.exists(lib_path):
+            return jsonify({"error": "lib.yaml not found"}), 404
+
+        # Custom YAML loader to handle !secret, !lambda, !include
+        class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+            pass
+        def ignore_unknown(loader, node):
+            return None
+        SafeLoaderIgnoreUnknown.add_constructor('!secret', ignore_unknown)
+        SafeLoaderIgnoreUnknown.add_constructor('!lambda', ignore_unknown)
+        SafeLoaderIgnoreUnknown.add_constructor('!include', ignore_unknown)
+
+        with open(lib_path, 'r') as f:
+            doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+
+        scripts = doc.get('script', [])
+        
+        # Standard colors
+        colors = [
+            {'id': 'Color::BLACK', 'value': '#000000'},
+            {'id': 'Color::WHITE', 'value': '#FFFFFF'},
+            {'id': 'Color::RED', 'value': '#FF0000'},
+            {'id': 'Color::GREEN', 'value': '#00FF00'},
+            {'id': 'Color::BLUE', 'value': '#0000FF'},
+            {'id': 'Color::YELLOW', 'value': '#FFFF00'},
+            {'id': 'Color::ORANGE', 'value': '#FFA500'},
+            {'id': 'Color::PURPLE', 'value': '#800080'},
+        ]
+
+        # Add custom colors from lib.yaml
+        for c in doc.get('color', []):
+            value = '#000000'
+            if 'hex' in c:
+                hex_val = c['hex'].replace('#', '')
+                if len(hex_val) == 6:
+                    # BGR to RGB conversion as in vite.config.ts
+                    r, g, b = hex_val[4:6], hex_val[2:4], hex_val[0:2]
+                    value = f"#{r}{g}{b}"
+                else:
+                    value = f"#{hex_val}"
+            elif all(k in c for k in ('red', 'green', 'blue')):
+                # Simplified RGB handling
+                value = f"rgb({c['red']}, {c['green']}, {c['blue']})"
+            colors.append({'id': c['id'], 'value': value})
+
+        # Fonts from base file
+        fonts = []
+        base_path = '/app/esphome/lib/3248s035_base.yaml'
+        if os.path.exists(base_path):
+            with open(base_path, 'r') as f:
+                base_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+                fonts = [f['id'] for f in base_doc.get('font', [])]
+
+        # Icons from mdi_glyphs.yaml
+        icons = []
+        glyphs_path = '/app/esphome/lib/mdi_glyphs.yaml'
+        if os.path.exists(glyphs_path):
+            with open(glyphs_path, 'r') as f:
+                for line in f:
+                    import re
+                    match = re.search(r'"\\U([0-9a-fA-F]+)",\s*#\s*(.*)', line)
+                    if match:
+                        hex_code = match.group(1)
+                        label = match.group(2).strip()
+                        icons.append({
+                            'value': f"\\U{hex_code}",
+                            'label': label
+                        })
+
+        display_scripts = []
+        action_scripts = []
+
+        for s in scripts:
+            if 'id' in s:
+                if s['id'].startswith('tile_'):
+                    params = s.get('parameters', {})
+                    param_list = [
+                        {'name': k, 'type': v}
+                        for k, v in params.items()
+                        if k not in ('x', 'y', 'entities')
+                    ]
+                    display_scripts.append({'id': s['id'], 'params': param_list})
+                else:
+                    action_scripts.append(s['id'])
+
+        globals_list = [
+            g['id'] for g in doc.get('globals', [])
+            if g.get('type') == 'bool'
+        ]
+
+        return jsonify({
+            "display": display_scripts,
+            "action": action_scripts,
+            "colors": colors,
+            "fonts": fonts,
+            "icons": icons,
+            "globals": globals_list
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8099)

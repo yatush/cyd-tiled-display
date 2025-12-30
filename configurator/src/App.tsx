@@ -11,6 +11,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
+import { apiFetch } from './utils/api';
 
 function App() {
   // Hooks
@@ -65,7 +66,7 @@ function App() {
   const [isPagesOpen, setIsPagesOpen] = useState(false);
 
   useEffect(() => {
-    fetch('/api/schema')
+    apiFetch('/schema')
       .then(res => res.json())
       .then(data => setSchema(data))
       .catch(err => console.error("Failed to fetch schema", err));

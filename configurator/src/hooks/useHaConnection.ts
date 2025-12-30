@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiFetch, isAddon } from '../utils/api';
 
 export type HaStatus = 'connected' | 'error' | 'mock' | 'idle';
 
@@ -18,19 +19,19 @@ export function useHaConnection() {
   const fetchHaEntities = useCallback(async () => {
     setHaStatus('idle');
     try {
-      const headers: Record<string, string> = {
+      const headers: Record<string, string> = isAddon ? {} : {
         'x-ha-url': haUrl,
         'x-ha-token': haToken,
         'x-ha-mock': useMockData.toString()
       };
 
-      const res = await fetch('/api/ha/states', { headers });
+      const res = await apiFetch('/ha/states', { headers });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
           const entities = data.map((s: any) => s.entity_id).sort();
           setHaEntities(entities);
-          setHaStatus(useMockData ? 'mock' : 'connected');
+          setHaStatus(isAddon ? 'connected' : (useMockData ? 'mock' : 'connected'));
         } else {
           setHaStatus('error');
         }

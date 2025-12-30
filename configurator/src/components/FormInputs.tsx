@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Plus } from 'lucide-react';
+import { apiFetch } from '../utils/api';
 
 export const TextInput = ({ label, value, onChange, haEntities }: { label: string, value: string, onChange: (v: string) => void, haEntities?: string[] }) => (
   <div className="mb-2">
@@ -24,7 +25,7 @@ export const ScriptInput = ({ label, value, onChange, type }: { label: string, v
   
   const fetchOptions = async () => {
     try {
-      const res = await fetch('/api/scripts');
+      const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
         setOptions(type === 'display' ? data.display.map((d:any) => d.id) : data.action);
@@ -82,7 +83,7 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
     }
     if (!suggestionType) return;
     try {
-      const res = await fetch('/api/scripts');
+      const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
         setOptions(suggestionType === 'display' ? data.display.map((d:any) => d.id) : data.action);
