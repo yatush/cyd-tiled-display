@@ -4,3 +4,4 @@ configurator/dist
 .venv
 __pycache__
 *.pyc
+esphome/.esphome
