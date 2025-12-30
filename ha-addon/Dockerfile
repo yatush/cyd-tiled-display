@@ -18,11 +18,11 @@ RUN apk add --no-cache g++ gcc musl-dev python3-dev \
 COPY --from=build-frontend /app/configurator/dist /app/dist
 
 # Copy Python backend and scripts
-COPY configurator/generate_tiles_api.py /app/configurator/
-COPY ha-addon/server.py /app/
+COPY ../configurator/generate_tiles_api.py /app/configurator/
+COPY server.py /app/
 
 # Copy ESPHome files (needed for schema and scripts)
-COPY esphome /app/esphome
+COPY ../esphome /app/esphome
 
 # Expose port for Ingress
 EXPOSE 8099
