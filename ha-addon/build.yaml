@@ -1,2 +1,2 @@
 context: ..
-dockerfile: Dockerfile
+dockerfile: ha-addon/Dockerfile
