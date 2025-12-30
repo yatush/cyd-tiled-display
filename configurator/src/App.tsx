@@ -58,7 +58,8 @@ function App() {
     handleLoadProject,
     handleExport,
     handleLoadFromHa,
-    handleSaveDeviceConfig
+    handleSaveDeviceConfig,
+    handleLoadDeviceConfig
   } = useFileOperations(config, setConfig, setActivePageId);
 
   // Local UI State
@@ -69,12 +70,23 @@ function App() {
   const [isDynamicEntitiesOpen, setIsDynamicEntitiesOpen] = useState(false);
   const [isAddTileOpen, setIsAddTileOpen] = useState(false);
   const [isPagesOpen, setIsPagesOpen] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
 
   useEffect(() => {
     apiFetch('/schema')
       .then(res => res.json())
       .then(data => setSchema(data))
       .catch(err => console.error("Failed to fetch schema", err));
+      
+    // Check for updates
+    apiFetch('/check_lib_status')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.synced === 'boolean') {
+          setUpdateAvailable(!data.synced);
+        }
+      })
+      .catch(err => console.error("Failed to check lib status", err));
   }, []);
 
   useEffect(() => {
@@ -116,6 +128,7 @@ function App() {
         onDownloadYaml={handleDownloadYaml}
         onLoadYaml={() => fileInputRef.current?.click()}
         isGenerating={isGenerating}
+        updateAvailable={updateAvailable}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -147,6 +160,7 @@ function App() {
           handleExport={handleExport}
           handleClearConfig={handleClearConfig}
           handleSaveDeviceConfig={handleSaveDeviceConfig}
+          handleLoadDeviceConfig={handleLoadDeviceConfig}
         />
 
       {/* Left Resizer */}

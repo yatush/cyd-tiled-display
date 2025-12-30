@@ -28,6 +28,7 @@ interface TopBarProps {
   onDownloadYaml: () => void;
   onLoadYaml: () => void;
   isGenerating: boolean;
+  updateAvailable?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -43,7 +44,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onGenerate,
   onDownloadYaml,
   onLoadYaml,
-  isGenerating
+  isGenerating,
+  updateAvailable
 }) => {
   const getStatusIcon = () => {
     if (haStatus === 'idle') return <Loader2 size={18} className="animate-spin text-slate-400" />;
@@ -141,10 +143,13 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         <button
           onClick={onOpenSettings}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors relative"
         >
           <Settings size={18} />
           <span className="text-sm font-medium hidden md:inline">Settings</span>
+          {updateAvailable && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
+          )}
         </button>
       </div>
     </div>

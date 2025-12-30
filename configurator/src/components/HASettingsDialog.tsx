@@ -29,6 +29,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   const [localType, setLocalType] = useState<ConnectionType>(connectionType);
   const [localUrl, setLocalUrl] = useState(haUrl);
   const [localToken, setLocalToken] = useState(haToken);
+  const [libStatus, setLibStatus] = useState<{lib_synced: boolean, ui_synced: boolean, synced: boolean} | null>(null);
 
   // Reset local state when dialog opens
   useEffect(() => {
@@ -36,6 +37,13 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
       setLocalType(connectionType);
       setLocalUrl(haUrl);
       setLocalToken(haToken);
+      
+      if (isAddon) {
+          apiFetch('/check_lib_status')
+            .then(res => res.json())
+            .then(data => setLibStatus(data))
+            .catch(err => console.error(err));
+      }
     }
   }, [isOpen, connectionType, haUrl, haToken]);
 
@@ -66,7 +74,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="flex items-center justify-between p-4 border-b bg-slate-50">
           <div className="flex items-center gap-2">
@@ -158,12 +166,22 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
 
           {isAddon && (
             <div className="pt-4 border-t border-slate-100">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Maintenance</label>
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Maintenance</label>
+                    {libStatus && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${libStatus.synced ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {libStatus.synced ? 'Up to date' : 'Update Available'}
+                        </span>
+                    )}
+                </div>
                 <button 
                     onClick={handleUpdateLib}
-                    className="w-full flex items-center justify-center gap-2 bg-amber-50 text-amber-800 border border-amber-200 p-3 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors"
+                    className="w-full flex items-center justify-center gap-2 bg-amber-50 text-amber-800 border border-amber-200 p-3 rounded-lg text-sm font-bold hover:bg-amber-100 transition-colors relative"
                 >
                     <RefreshCw size={16} /> Update HA Esphome files
+                    {libStatus && !libStatus.synced && (
+                        <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                    )}
                 </button>
                 <p className="text-[10px] text-slate-400 mt-1 text-center">
                     Updates shared library files and tile_ui component

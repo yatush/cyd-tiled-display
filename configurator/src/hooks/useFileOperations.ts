@@ -144,7 +144,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
-  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string) => {
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string) => {
     try {
       const screensYaml = generateYaml(config);
       
@@ -168,18 +168,17 @@ tile_ui:
 ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
 `;
 
-      const filename = `${deviceName}.yaml`;
       const res = await apiFetch('/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           config: fullYaml,
-          path: filename
+          path: fileName
         })
       });
       
       if (res.ok) {
-        alert(`Successfully saved device configuration to /config/esphome/${filename}`);
+        alert(`Successfully saved device configuration to /config/esphome/${fileName}`);
       } else {
         const err = await res.json();
         alert(`Failed to save: ${err.error}`);
@@ -190,6 +189,88 @@ ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
     }
   }, [config]);
 
+  const handleLoadDeviceConfig = useCallback(async (path: string) => {
+    try {
+      const res = await apiFetch(`/load?path=${encodeURIComponent(path)}`);
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Check if it's a full device config (has tile_ui key)
+        if (data.tile_ui) {
+            // Handle both 'pages' (internal) and 'screens' (YAML) keys
+            const pagesData = data.tile_ui.pages || data.tile_ui.screens;
+            
+            if (!pagesData || !Array.isArray(pagesData)) {
+                 alert('Failed to load: The device configuration is missing valid tile_ui screens/pages.');
+                 return;
+            }
+            
+            // If the data is in 'screens' format (from YAML), we might need to parse it
+            // But setConfig expects the internal format. 
+            // If the loaded JSON already matches the internal structure, we can use it directly.
+            // However, 'screens' usually implies the YAML structure where tiles are wrapped in their type key.
+            
+            let configToSet = data.tile_ui;
+            
+            // If we have 'screens', we likely need to normalize it to 'pages' and flatten tiles
+            if (data.tile_ui.screens) {
+                // We can use the existing parser logic if we convert the tile_ui object to a YAML string and back,
+                // OR we can just map it manually here.
+                // Let's try to use the parser if possible, or replicate its logic.
+                // Actually, since we have the object, let's just map it.
+                
+                const pages = data.tile_ui.screens.map((screen: any) => {
+                    const tiles = (screen.tiles || []).map((tileItem: any) => {
+                        // Check if tile is already in internal format (has type property)
+                        if (tileItem.type) return tileItem;
+                        
+                        // Otherwise assume YAML format: { type: { ...props } }
+                        const type = Object.keys(tileItem)[0];
+                        const props = tileItem[type];
+                        return {
+                            id: Math.random().toString(36).substr(2, 9),
+                            type,
+                            ...props
+                        };
+                    });
+                    
+                    return {
+                        ...screen,
+                        tiles
+                    };
+                });
+                
+                configToSet = { ...data.tile_ui, pages };
+                delete configToSet.screens;
+            }
+
+            setConfig(configToSet);
+            if (configToSet.pages.length > 0) {
+                setActivePageId(configToSet.pages[0].id);
+            }
+            alert(`Successfully loaded device configuration from ${path}`);
+        } else {
+            // Fallback: try to load as a screens config
+             if (!data || typeof data !== 'object' || !Array.isArray(data.pages)) {
+                alert('Failed to load: The file does not appear to be a valid device or tile configuration.');
+                return;
+            }
+            setConfig(data);
+            if (data.pages && data.pages.length > 0) {
+                setActivePageId(data.pages[0].id);
+            }
+            alert(`Successfully loaded configuration from ${path}`);
+        }
+      } else {
+        const err = await res.json();
+        alert(`Failed to load: ${err.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Failed to load device config:', err);
+      alert('Failed to load device configuration. Check console for details.');
+    }
+  }, [setConfig, setActivePageId]);
+
   return {
     fileInputRef,
     handleSaveYaml,
@@ -198,6 +279,7 @@ ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
     handleLoadProject,
     handleExport,
     handleLoadFromHa,
-    handleSaveDeviceConfig
+    handleSaveDeviceConfig,
+    handleLoadDeviceConfig
   };
 }

@@ -4,7 +4,7 @@ import { X, Save, Monitor } from 'lucide-react';
 interface SaveDeviceDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (deviceName: string, friendlyName: string, screenType: string) => void;
+  onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string) => void;
 }
 
 export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
@@ -15,20 +15,29 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   const [deviceName, setDeviceName] = useState('');
   const [friendlyName, setFriendlyName] = useState('');
   const [screenType, setScreenType] = useState('2432s028');
+  const [fileName, setFileName] = useState('');
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    if (!deviceName || !friendlyName) {
+    if (!deviceName || !friendlyName || !fileName) {
       alert('Please fill in all fields');
       return;
     }
-    onSave(deviceName, friendlyName, screenType);
+    onSave(deviceName, friendlyName, screenType, fileName);
     onClose();
   };
 
+  const handleDeviceNameChange = (val: string) => {
+      const clean = val.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      setDeviceName(clean);
+      if (!fileName || fileName === `${deviceName}.yaml`) {
+          setFileName(`${clean}.yaml`);
+      }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="flex items-center justify-between p-4 border-b bg-slate-50">
           <div className="flex items-center gap-2">
@@ -46,11 +55,23 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
             <input 
               type="text" 
               value={deviceName} 
-              onChange={e => setDeviceName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+              onChange={e => handleDeviceNameChange(e.target.value)}
               placeholder="e.g. living_room_display"
               className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono"
             />
-            <p className="text-[10px] text-slate-400 mt-1">Used for filename and esphome ID. Lowercase, no spaces.</p>
+            <p className="text-[10px] text-slate-400 mt-1">Used for esphome ID. Lowercase, no spaces.</p>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">File Name</label>
+            <input 
+              type="text" 
+              value={fileName} 
+              onChange={e => setFileName(e.target.value)}
+              placeholder="e.g. living_room.yaml"
+              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">The filename to save in /config/esphome</p>
           </div>
 
           <div>

@@ -64,10 +64,12 @@ export function useTileConfig() {
     localStorage.setItem('tile_config', JSON.stringify(config));
   }, [config]);
 
-  const activePage = useMemo(() => 
-    config.pages.find(p => p.id === activePageId) || config.pages[0],
-    [config.pages, activePageId]
-  );
+  const activePage = useMemo(() => {
+    if (!config.pages || config.pages.length === 0) {
+        return { id: 'default', tiles: [], rows: 2, cols: 3 };
+    }
+    return config.pages.find(p => p.id === activePageId) || config.pages[0];
+  }, [config.pages, activePageId]);
 
   const selectedTile = useMemo(() => 
     activePage.tiles.find(t => t.id === selectedTileId) || null,

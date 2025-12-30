@@ -8,11 +8,20 @@ interface FileItem {
   path: string;
 }
 
-export const FileExplorer = ({ onSelect, onSelectDir, currentPath = '', selectedPath = '' }: { 
+export const FileExplorer = ({ 
+  onSelect, 
+  onSelectDir, 
+  currentPath = '', 
+  selectedPath = '',
+  allowCreateFolder = true,
+  filter
+}: { 
   onSelect: (path: string) => void,
   onSelectDir?: (path: string) => void,
   currentPath?: string,
-  selectedPath?: string
+  selectedPath?: string,
+  allowCreateFolder?: boolean,
+  filter?: (file: FileItem) => boolean
 }) => {
   const [path, setPath] = useState(currentPath || '');
   const [items, setItems] = useState<FileItem[]>([]);
@@ -28,7 +37,11 @@ export const FileExplorer = ({ onSelect, onSelectDir, currentPath = '', selected
       const res = await apiFetch(`/files?path=${encodeURIComponent(targetPath)}`);
       if (res.ok) {
         const data = await res.json();
-        setItems(data.items);
+        let fetchedItems = data.items;
+        if (filter) {
+            fetchedItems = fetchedItems.filter(filter);
+        }
+        setItems(fetchedItems);
         setPath(data.current_path);
       } else {
         setError('Failed to load files');
@@ -92,13 +105,15 @@ export const FileExplorer = ({ onSelect, onSelectDir, currentPath = '', selected
           /config/esphome/{path}
         </div>
         <div className="flex gap-1">
-          <button 
-            onClick={() => setIsCreatingDir(!isCreatingDir)}
-            className="p-1 bg-slate-200 text-slate-600 rounded hover:bg-slate-300 transition-colors"
-            title="New Folder"
-          >
-            <FolderPlus size={14} />
-          </button>
+          {allowCreateFolder && (
+            <button 
+                onClick={() => setIsCreatingDir(!isCreatingDir)}
+                className="p-1 bg-slate-200 text-slate-600 rounded hover:bg-slate-300 transition-colors"
+                title="New Folder"
+            >
+                <FolderPlus size={14} />
+            </button>
+          )}
           {onSelectDir && (
             <button 
               onClick={() => onSelectDir(path)}

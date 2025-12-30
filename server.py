@@ -3,6 +3,7 @@ import json
 import subprocess
 import shutil
 import yaml
+import hashlib
 from flask import Flask, request, send_from_directory, jsonify
 import requests
 
@@ -211,8 +212,19 @@ def load_config():
         target_path = os.path.join(base_dir, rel_path.lstrip('/'))
         
         if os.path.exists(target_path):
+            # Custom YAML loader to handle all tags safely
+            class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+                pass
+            
+            def ignore_any_tag(loader, tag_suffix, node):
+                # Return None for any tag to avoid parsing errors
+                # We only care about the structure of tile_ui which shouldn't have tags
+                return None
+                
+            SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
+
             with open(target_path, 'r') as f:
-                return jsonify(yaml.safe_load(f))
+                return jsonify(yaml.load(f, Loader=SafeLoaderIgnoreUnknown))
         
         return jsonify({"error": f"Config file {rel_path} not found"}), 404
     except Exception as e:
@@ -256,6 +268,49 @@ def update_lib():
         return jsonify({"success": True})
     except Exception as e:
         print(f"Update Lib Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+def get_directory_checksum(directory):
+    if not os.path.exists(directory):
+        return None
+    
+    file_hashes = []
+    for root, dirs, files in os.walk(directory):
+        dirs.sort() # Ensure deterministic traversal
+        for file in sorted(files):
+            path = os.path.join(root, file)
+            try:
+                with open(path, 'rb') as f:
+                    file_hash = hashlib.md5(f.read()).hexdigest()
+                    # Include relative path in hash to detect moves/renames
+                    rel_path = os.path.relpath(path, directory)
+                    file_hashes.append(f"{rel_path}:{file_hash}")
+            except:
+                pass
+    
+    if not file_hashes:
+        return None
+        
+    return hashlib.md5("".join(file_hashes).encode()).hexdigest()
+
+@app.route('/api/check_lib_status')
+def check_lib_status():
+    try:
+        source_lib = '/app/esphome/lib'
+        target_lib = '/config/esphome/lib'
+        
+        source_ui = '/app/esphome/custom_components/tile_ui'
+        target_ui = '/config/esphome/custom_components/tile_ui'
+        
+        lib_sync = get_directory_checksum(source_lib) == get_directory_checksum(target_lib)
+        ui_sync = get_directory_checksum(source_ui) == get_directory_checksum(target_ui)
+        
+        return jsonify({
+            "lib_synced": lib_sync,
+            "ui_synced": ui_sync,
+            "synced": lib_sync and ui_sync
+        })
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/scripts')

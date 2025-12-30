@@ -5,6 +5,7 @@ import { DynamicEntitiesEditor } from './FormInputs';
 import { isAddon } from '../utils/api';
 import { FileExplorer } from './FileExplorer';
 import { SaveDeviceDialog } from './SaveDeviceDialog';
+import { LoadDeviceDialog } from './LoadDeviceDialog';
 
 interface LeftSidebarProps {
   width: number;
@@ -33,7 +34,8 @@ interface LeftSidebarProps {
   handleLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleExport: () => void;
   handleClearConfig: () => void;
-  handleSaveDeviceConfig: (deviceName: string, friendlyName: string, screenType: string) => void;
+  handleSaveDeviceConfig: (deviceName: string, friendlyName: string, screenType: string, fileName: string) => void;
+  handleLoadDeviceConfig: (path: string) => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -63,10 +65,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   handleLoadProject,
   handleExport,
   handleClearConfig,
-  handleSaveDeviceConfig
+  handleSaveDeviceConfig,
+  handleLoadDeviceConfig
 }) => {
   const [showExplorer, setShowExplorer] = useState(false);
   const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
+  const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
 
   return (
     <div 
@@ -78,6 +82,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         isOpen={isSaveDeviceOpen}
         onClose={() => setIsSaveDeviceOpen(false)}
         onSave={handleSaveDeviceConfig}
+      />
+      <LoadDeviceDialog 
+        isOpen={isLoadDeviceOpen}
+        onClose={() => setIsLoadDeviceOpen(false)}
+        onLoad={handleLoadDeviceConfig}
       />
       <div className="p-4 border-b bg-slate-50">
         <h1 className="font-bold text-xl text-blue-600 flex items-center gap-2">
@@ -227,6 +236,25 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="p-4 border-t bg-slate-50 space-y-4">
         {isAddon && (
           <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                onClick={() => setIsSaveDeviceOpen(true)}
+                className="flex items-center justify-center gap-2 bg-indigo-600 text-white border border-indigo-700 p-2 rounded text-xs font-bold hover:bg-indigo-700 transition-colors shadow-sm"
+                title="Save full device configuration to Home Assistant"
+              >
+                <Monitor size={14} /> Save Device
+              </button>
+              <button 
+                onClick={() => setIsLoadDeviceOpen(true)}
+                className="flex items-center justify-center gap-2 bg-white text-indigo-700 border border-indigo-200 p-2 rounded text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
+                title="Load device configuration from Home Assistant"
+              >
+                <Upload size={14} /> Load Device
+              </button>
+            </div>
+
+            <div className="h-2 border-b border-slate-200 mb-2"></div>
+
             <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider">HA File Management</label>
             <div className="flex gap-2">
               <input 
@@ -280,14 +308,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <Upload size={14} /> Load Screens from HA
               </button>
             </div>
-            
-            <button 
-              onClick={() => setIsSaveDeviceOpen(true)}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white border border-indigo-700 p-2 rounded text-xs font-bold hover:bg-indigo-700 transition-colors shadow-sm"
-              title="Save full device configuration to Home Assistant"
-            >
-              <Monitor size={14} /> Save Device Config
-            </button>
           </div>
         )}
 
@@ -299,6 +319,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             accept=".yaml,.yml"
         />
         
+        <div className="border-b border-slate-200 my-4"></div>
+
         <div className="grid grid-cols-2 gap-2">
           <button 
             onClick={handleExport}

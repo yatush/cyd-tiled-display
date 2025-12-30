@@ -9,6 +9,7 @@
 #include <map>
 #include <sstream>
 #include <type_traits>
+#include <mutex>
 
 // --- String repository ---
 
@@ -294,11 +295,11 @@ void InitSensor(const std::string& key, const std::string& sensor,
     }
     auto* bin_sensor = new esphome::homeassistant::HomeassistantBinarySensor();
     bin_sensor->set_internal(true);
-    bin_sensor->set_entity_id(*&sensor);
+    bin_sensor->set_entity_id(Repository::instance().ptr(sensor)->c_str());
     // Lambda function to update the display when the sensor state changes.
     bin_sensor->add_on_state_callback([](bool x) { id(disp).update(); });
     if (attribute != "") {
-      bin_sensor->set_attribute(attribute);
+      bin_sensor->set_attribute(Repository::instance().ptr(attribute)->c_str());
     }
     ESP_LOGI("Init bin sensor", "Entity: %s, Attribute: %s", sensor.c_str(),
              attribute.c_str());
@@ -310,12 +311,12 @@ void InitSensor(const std::string& key, const std::string& sensor,
     }
     auto* text_sensor = new esphome::homeassistant::HomeassistantTextSensor();
     text_sensor->set_internal(true);
-    text_sensor->set_entity_id(*&sensor);
+    text_sensor->set_entity_id(Repository::instance().ptr(sensor)->c_str());
     // Lambda function to update the display when the sensor state changes.
     text_sensor->add_on_state_callback(
         [](std::string x) { id(disp).update(); });
     if (attribute != "") {
-      text_sensor->set_attribute(attribute);
+      text_sensor->set_attribute(Repository::instance().ptr(attribute)->c_str());
     }
     ESP_LOGI("Init text sensor", "Entity: %s, Attribute: %s", sensor.c_str(),
              attribute.c_str());
