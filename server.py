@@ -9,6 +9,9 @@ app = Flask(__name__, static_folder='dist')
 
 # Configuration from environment (provided by HA Supervisor)
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
+if not SUPERVISOR_TOKEN:
+    print("WARNING: SUPERVISOR_TOKEN is not set. API calls will fail.")
+
 HA_URL = "http://supervisor/core"
 
 @app.route('/')
