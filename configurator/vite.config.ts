@@ -119,17 +119,9 @@ const scriptsPlugin = () => ({
       });
     });
 
-    let esphomePlace = '/esphome';
-    for (let i = 0; i < 10; ++i) {
-      const schemaPath = path.resolve(__dirname, esphomePlace + '/custom_components/tile_ui/schema.json');
-      if (fs.existsSync(schemaPath)) {
-        break;
-      }
-      esphomePlace = '../' + esphomePlace;
-    }
     server.middlewares.use('/api/schema', (req, res, next) => {
       try {
-        const schemaPath = path.resolve(__dirname, esphomePlace + '/custom_components/tile_ui/schema.json');
+        const schemaPath = path.resolve(__dirname, '../esphome/custom_components/tile_ui/schema.json');
         if (fs.existsSync(schemaPath)) {
             const schemaContent = fs.readFileSync(schemaPath, 'utf8');
             res.setHeader('Content-Type', 'application/json');
@@ -147,7 +139,7 @@ const scriptsPlugin = () => ({
 
     server.middlewares.use('/api/scripts', (req, res, next) => {
       try {
-        const libPath = path.resolve(__dirname, esphomePlace + '/lib/lib.yaml');
+        const libPath = path.resolve(__dirname, '../esphome/lib/lib.yaml');
         if (!fs.existsSync(libPath)) {
            res.statusCode = 404;
            res.end(JSON.stringify({ error: 'lib.yaml not found' }));
@@ -219,7 +211,7 @@ const scriptsPlugin = () => ({
         // Read fonts from base file (assuming 3248s035_base.yaml for now, or we could scan all)
         let fonts: string[] = [];
         try {
-            const baseYamlPath = path.resolve(__dirname, esphomePlace + '/lib/3248s035_base.yaml');
+            const baseYamlPath = path.resolve(__dirname, '../esphome/lib/3248s035_base.yaml');
             if (fs.existsSync(baseYamlPath)) {
                 const baseContent = fs.readFileSync(baseYamlPath, 'utf8');
                 const baseDoc = yaml.load(baseContent, { schema: SCHEMA }) as any;
@@ -232,7 +224,7 @@ const scriptsPlugin = () => ({
         // Read icons from mdi_glyphs.yaml
         let icons: { value: string, label: string, char?: string }[] = [];
         try {
-            const glyphsPath = path.resolve(__dirname, esphomePlace + '/lib/mdi_glyphs.yaml');
+            const glyphsPath = path.resolve(__dirname, '../esphome/lib/mdi_glyphs.yaml');
             if (fs.existsSync(glyphsPath)) {
                 const glyphsContent = fs.readFileSync(glyphsPath, 'utf8');
                 
