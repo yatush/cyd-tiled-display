@@ -50,18 +50,18 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   };
 
   const handleUpdateLib = async () => {
-    if (!confirm("This will overwrite your /config/esphome/lib folder with the latest version. The old version will be backed up to /config/esphome/lib_old. Continue?")) return;
+    if (!confirm("This will update your /config/esphome/lib (with backup) and /config/esphome/custom_components/tile_ui (no backup). Continue?")) return;
     
     try {
         const res = await apiFetch('/update_lib', { method: 'POST' });
         if (res.ok) {
-            alert("Library files updated successfully!");
+            alert("Library files and tile_ui component updated successfully!");
         } else {
             const err = await res.json();
-            alert("Failed to update library: " + err.error);
+            alert("Failed to update: " + err.error);
         }
     } catch (e) {
-        alert("Error updating library: " + e);
+        alert("Error updating: " + e);
     }
   };
 
@@ -166,7 +166,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
                     <RefreshCw size={16} /> Update HA Esphome files
                 </button>
                 <p className="text-[10px] text-slate-400 mt-1 text-center">
-                    Updates the shared library files in /config/esphome/lib
+                    Updates shared library files and tile_ui component
                 </p>
             </div>
           )}

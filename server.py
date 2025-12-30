@@ -230,21 +230,28 @@ def get_schema():
 @app.route('/api/update_lib', methods=['POST'])
 def update_lib():
     try:
-        source_dir = '/app/esphome/lib'
-        target_dir = '/config/esphome/lib'
-        backup_dir = '/config/esphome/lib_old'
+        # Update lib with backup
+        source_lib = '/app/esphome/lib'
+        target_lib = '/config/esphome/lib'
+        backup_lib = '/config/esphome/lib_old'
         
-        if not os.path.exists(source_dir):
-             return jsonify({"error": "Source lib directory not found"}), 404
+        if os.path.exists(source_lib):
+            if os.path.exists(target_lib):
+                if os.path.exists(backup_lib):
+                    shutil.rmtree(backup_lib)
+                shutil.move(target_lib, backup_lib)
+            shutil.copytree(source_lib, target_lib)
 
-        # Backup existing lib
-        if os.path.exists(target_dir):
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
-            shutil.move(target_dir, backup_dir)
-            
-        # Copy new lib
-        shutil.copytree(source_dir, target_dir)
+        # Update tile_ui without backup
+        source_ui = '/app/esphome/custom_components/tile_ui'
+        target_ui = '/config/esphome/custom_components/tile_ui'
+        
+        if os.path.exists(source_ui):
+            if os.path.exists(target_ui):
+                shutil.rmtree(target_ui)
+            # Ensure parent directory exists
+            os.makedirs(os.path.dirname(target_ui), exist_ok=True)
+            shutil.copytree(source_ui, target_ui)
         
         return jsonify({"success": True})
     except Exception as e:
