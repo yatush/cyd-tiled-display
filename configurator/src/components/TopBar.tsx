@@ -9,7 +9,8 @@ import {
   Play,
   Activity,
   Download,
-  Upload
+  Upload,
+  RefreshCw
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
 
@@ -18,6 +19,7 @@ interface TopBarProps {
   connectionType: ConnectionType;
   entityCount: number;
   onOpenSettings: () => void;
+  onRefreshHa: () => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -33,6 +35,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   connectionType,
   entityCount,
   onOpenSettings,
+  onRefreshHa,
   canUndo,
   canRedo,
   onUndo,
@@ -73,6 +76,13 @@ export const TopBar: React.FC<TopBarProps> = ({
           <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
             {getStatusIcon()}
             <span className="text-sm font-medium text-slate-600">{getStatusText()}</span>
+            <button 
+              onClick={onRefreshHa}
+              className="ml-1 p-1 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-600"
+              title="Refresh Entities"
+            >
+              <RefreshCw size={14} className={haStatus === 'idle' ? 'animate-spin' : ''} />
+            </button>
           </div>
 
           <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full border border-blue-100 text-blue-700">

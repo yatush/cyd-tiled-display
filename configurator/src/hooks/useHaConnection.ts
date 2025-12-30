@@ -23,6 +23,7 @@ export function useHaConnection() {
   });
   const [haEntities, setHaEntities] = useState<string[]>([]);
   const [haStatus, setHaStatus] = useState<HaStatus>('idle');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     localStorage.setItem('ha_url', haUrl);
@@ -33,7 +34,6 @@ export function useHaConnection() {
 
   const fetchHaEntities = useCallback(async () => {
     setHaStatus('idle');
-    // Clear entities when starting a new connection attempt
     setHaEntities([]);
     
     try {
@@ -45,7 +45,6 @@ export function useHaConnection() {
         headers['x-ha-url'] = haUrl;
         headers['x-ha-token'] = haToken;
       }
-      // If 'local', we send no headers and server.py uses SUPERVISOR_TOKEN
 
       const res = await apiFetch('/ha/states', { headers });
       if (res.ok) {
@@ -68,7 +67,7 @@ export function useHaConnection() {
 
   useEffect(() => {
     fetchHaEntities();
-  }, [fetchHaEntities]);
+  }, [fetchHaEntities, refreshTrigger]);
 
   return {
     haUrl,
@@ -79,6 +78,6 @@ export function useHaConnection() {
     setConnectionType,
     haEntities,
     haStatus,
-    fetchHaEntities
+    fetchHaEntities: () => setRefreshTrigger(prev => prev + 1)
   };
 }

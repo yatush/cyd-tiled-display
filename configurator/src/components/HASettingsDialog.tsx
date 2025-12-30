@@ -45,11 +45,8 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
     setConnectionType(localType);
     setHaUrl(localUrl);
     setHaToken(localToken);
-    // Small delay to ensure state updates before refresh
-    setTimeout(() => {
-      onRefresh();
-      onClose();
-    }, 10);
+    onRefresh();
+    onClose();
   };
 
   return (

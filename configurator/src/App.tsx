@@ -106,6 +106,7 @@ function App() {
         connectionType={connectionType}
         entityCount={haEntities.length}
         onOpenSettings={() => setIsHaSettingsOpen(true)}
+        onRefreshHa={fetchHaEntities}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
