@@ -50,7 +50,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 ## Outlet box
 
-<img src="./images/wall-box.png" width="200" />
+<img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/wall-box.png" width="200" />
 
 * The casing is designed for 83.5mm installation distance.
 * Any other outlet box with the same installation distance will fit.
@@ -60,7 +60,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 ## Motion sensor - LD2410b
 
-<img src="./images/ld2410b.png" width="200" />
+<img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/ld2410b.png" width="200" />
 
 * Choose a model where there are welded pins.
 * [Aliexpress link](https://www.aliexpress.com/item/1005005242873516.html)
@@ -68,7 +68,7 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 ## Cables
 
-<img src="./images/JST125.png" width="200" />
+<img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/JST125.png" width="200" />
 
 * JST 1.25mm, Single head, ~100mm, 4Pins
 * Three are needed
@@ -78,10 +78,10 @@ In order to customize the display, one has to change YAML configuration. To add 
 
 # On the wall wiring diagram
 
-<img src="./images/wiring-diagram.png" />
-<img src="./images/wall-0.png" />
-<img src="./images/wall-1.png" />
-<img src="./images/wall-2.png" />
+<img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/wiring-diagram.png" />
+<img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/wall-0.png" />
+<img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/wall-1.png" />
+<img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/wall-2.png" />
 
 ## Notes
 
@@ -116,11 +116,11 @@ The system performs two-tier validation at build time:
 
 All validation errors **stop compilation immediately** with detailed error messages including screen ID and tile position for easy debugging.
 
-See [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md) for complete validation rules and [SCRIPT_VALIDATION.md](SCRIPT_VALIDATION.md) for script type validation.
+See [TILE_CONFIGURATION.md](https://github.com/yatush/cyd-tiled-display/blob/main/TILE_CONFIGURATION.md) for complete validation rules and [SCRIPT_VALIDATION.md](https://github.com/yatush/cyd-tiled-display/blob/main/SCRIPT_VALIDATION.md) for script type validation.
 
 ## Configuration File
 
-Edit `monitor_tiles.yaml` to configure your screens and tiles. See [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md) for detailed documentation on all available tile types and configuration options.
+Edit `monitor_tiles.yaml` to configure your screens and tiles. See [TILE_CONFIGURATION.md](https://github.com/yatush/cyd-tiled-display/blob/main/TILE_CONFIGURATION.md) for detailed documentation on all available tile types and configuration options.
 
 ### Quick Example
 

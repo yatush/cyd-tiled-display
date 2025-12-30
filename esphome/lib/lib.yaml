@@ -35,6 +35,12 @@ ld2410:
   id: ld2410_radar
 
 globals:
+  - id: rows
+    type: int
+    initial_value: "2"
+  - id: cols
+    type: int
+    initial_value: "3"
   - id: wifi_iconstring
     type: std::string
     restore_value: no

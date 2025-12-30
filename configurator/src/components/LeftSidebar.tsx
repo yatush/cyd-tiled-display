@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen } from 'lucide-react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, RefreshCw } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
-import { isAddon } from '../utils/api';
+import { isAddon, apiFetch } from '../utils/api';
 import { FileExplorer } from './FileExplorer';
 
 interface LeftSidebarProps {
@@ -63,6 +63,23 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   handleClearConfig
 }) => {
   const [showExplorer, setShowExplorer] = useState(false);
+
+  const handleUpdateLib = async () => {
+    if (!confirm("This will overwrite your /config/esphome/lib folder with the latest version. The old version will be backed up to /config/esphome/lib_old. Continue?")) return;
+    
+    try {
+        const res = await apiFetch('/update_lib', { method: 'POST' });
+        if (res.ok) {
+            alert("Library files updated successfully!");
+        } else {
+            const err = await res.json();
+            alert("Failed to update library: " + err.error);
+        }
+    } catch (e) {
+        alert("Error updating library: " + e);
+    }
+  };
+
   return (
     <div 
       className="bg-white border-r flex flex-col flex-shrink-0"
@@ -258,16 +275,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <button 
                 onClick={handleSaveYaml}
                 className="flex items-center justify-center gap-2 bg-blue-600 text-white border border-blue-700 p-2 rounded text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
-                title="Save configuration to Home Assistant"
+                title="Save screens configuration to Home Assistant"
               >
-                <Save size={14} /> Save to HA
+                <Save size={14} /> Save Screens to HA
               </button>
               <button 
                 onClick={() => handleLoadFromHa()}
                 className="flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 p-2 rounded text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
-                title="Load configuration from Home Assistant"
+                title="Load screens configuration from Home Assistant"
               >
-                <Upload size={14} /> Load from HA
+                <Upload size={14} /> Load Screens from HA
               </button>
             </div>
           </div>
@@ -281,18 +298,29 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             accept=".yaml,.yml"
         />
         
-        <button 
-          onClick={handleExport}
-          className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white p-2 rounded hover:bg-slate-800"
-        >
-          <Download size={16} /> Copy YAML
-        </button>
-        <button 
-          onClick={handleClearConfig}
-          className="w-full flex items-center justify-center gap-2 text-red-500 p-2 rounded hover:bg-red-50 border border-red-200"
-        >
-          <Trash2 size={16} /> Clear All
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button 
+            onClick={handleExport}
+            className="flex items-center justify-center gap-2 bg-slate-900 text-white p-2 rounded hover:bg-slate-800 text-[10px]"
+          >
+            <Download size={14} /> Copy YAML
+          </button>
+          <button 
+            onClick={handleClearConfig}
+            className="flex items-center justify-center gap-2 text-red-500 p-2 rounded hover:bg-red-50 border border-red-200 text-[10px]"
+          >
+            <Trash2 size={14} /> Clear All
+          </button>
+        </div>
+
+        {isAddon && (
+            <button 
+                onClick={handleUpdateLib}
+                className="w-full flex items-center justify-center gap-2 bg-amber-100 text-amber-800 border border-amber-200 p-2 rounded text-[10px] font-bold hover:bg-amber-200 transition-colors"
+            >
+                <RefreshCw size={14} /> Update HA Esphome files
+            </button>
+        )}
       </div>
     </div>
   );

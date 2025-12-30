@@ -14,13 +14,5 @@ api:
   encryption: 
     key: "AJ9ioMY1QzbUlAKim6G9IAYEVDv5a6iJCToD7lppTLU="
 
-globals:
-  - id: rows
-    type: int
-    initial_value: "2"
-  - id: cols
-    type: int
-    initial_value: "3"
-
 tile_ui:
   tiles_file: monitor_tiles.yaml

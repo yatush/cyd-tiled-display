@@ -1,6 +1,7 @@
 import os
 import json
 import subprocess
+import shutil
 import yaml
 from flask import Flask, request, send_from_directory, jsonify
 import requests
@@ -221,6 +222,30 @@ def get_schema():
         with open(schema_path, 'r') as f:
             return jsonify(json.load(f))
     return jsonify({"error": "Schema not found"}), 404
+
+@app.route('/api/update_lib', methods=['POST'])
+def update_lib():
+    try:
+        source_dir = '/app/esphome/lib'
+        target_dir = '/config/esphome/lib'
+        backup_dir = '/config/esphome/lib_old'
+        
+        if not os.path.exists(source_dir):
+             return jsonify({"error": "Source lib directory not found"}), 404
+
+        # Backup existing lib
+        if os.path.exists(target_dir):
+            if os.path.exists(backup_dir):
+                shutil.rmtree(backup_dir)
+            shutil.move(target_dir, backup_dir)
+            
+        # Copy new lib
+        shutil.copytree(source_dir, target_dir)
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Update Lib Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/scripts')
 def get_scripts():
