@@ -19,7 +19,7 @@ COPY --from=build-frontend /app/configurator/dist /app/dist
 
 # Copy Python backend and scripts
 COPY configurator/generate_tiles_api.py /app/configurator/
-COPY ha-addon/server.py /app/
+COPY addon/server.py /app/server.py
 
 # Copy ESPHome files (needed for schema and scripts)
 COPY esphome /app/esphome

@@ -1,0 +1,6 @@
+configurator/node_modules
+configurator/dist
+.git
+.venv
+__pycache__
+*.pyc
