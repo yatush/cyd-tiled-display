@@ -6,7 +6,8 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "target": "ESNext",
-    "lib": ["ESNext"]
+    "lib": ["ESNext", "DOM"],
+    "types": ["node", "vite/client"]
   },
   "include": ["vite.config.ts"]
 }
