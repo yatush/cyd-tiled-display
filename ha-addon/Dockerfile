@@ -22,7 +22,7 @@ COPY ../configurator/generate_tiles_api.py /app/configurator/
 COPY server.py /app/
 
 # Copy ESPHome files (needed for schema and scripts)
-COPY ../esphome /app/esphome
+COPY ../esphome/* /app/esphome
 
 # Expose port for Ingress
 EXPOSE 8099
