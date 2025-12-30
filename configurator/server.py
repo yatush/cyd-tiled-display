@@ -216,7 +216,7 @@ def load_config():
 
 @app.route('/api/schema')
 def get_schema():
-    schema_path = os.path.join(find_esphome_dir(), 'custom_components/tile_ui/schema.json') # '/app/esphome/custom_components/tile_ui/schema.json'
+    schema_path = find_esphome_dir() + '/custom_components/tile_ui/schema.json' # '/app/esphome/custom_components/tile_ui/schema.json'
     if os.path.exists(schema_path):
         with open(schema_path, 'r') as f:
             return jsonify(json.load(f))
@@ -226,7 +226,7 @@ def get_schema():
 def get_scripts():
     # This replicates the logic from vite.config.ts
     try:
-        lib_path = os.path.join(find_esphome_dir(), 'lib/lib.yaml') # '/app/esphome/lib/lib.yaml'
+        lib_path = find_esphome_dir() + '/lib/lib.yaml' # '/app/esphome/lib/lib.yaml'
         if not os.path.exists(lib_path):
             return jsonify({"error": "lib.yaml not found"}), 404
 
@@ -274,7 +274,7 @@ def get_scripts():
 
         # Fonts from base file
         fonts = []
-        base_path = os.path.join(find_esphome_dir(), 'lib/3248s035_base.yaml') # '/app/esphome/lib/3248s035_base.yaml'
+        base_path = find_esphome_dir() + '/lib/3248s035_base.yaml' # '/app/esphome/lib/3248s035_base.yaml'
         if os.path.exists(base_path):
             with open(base_path, 'r') as f:
                 base_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
@@ -282,7 +282,7 @@ def get_scripts():
 
         # Icons from mdi_glyphs.yaml
         icons = []
-        glyphs_path = os.path.join(find_esphome_dir(), 'lib/mdi_glyphs.yaml') # '/app/esphome/lib/mdi_glyphs.yaml'
+        glyphs_path = find_esphome_dir() + '/lib/mdi_glyphs.yaml' # '/app/esphome/lib/mdi_glyphs.yaml'
         if os.path.exists(glyphs_path):
             with open(glyphs_path, 'r') as f:
                 for line in f:
