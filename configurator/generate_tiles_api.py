@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 # Add the custom_components directory to sys.path so we can import tile_ui
-repo_root = Path(__file__).parent.parent
+repo_root = Path(__file__).parent
 tile_ui_path = repo_root / "esphome" / "custom_components"
 sys.path.append(str(tile_ui_path))
 

@@ -79,7 +79,7 @@ def proxy_ha(path):
 @app.route('/api/generate', methods=['POST'])
 def generate():
     try:
-        script_path = '/app/configurator/generate_tiles_api.py'
+        script_path = '/app/generate_tiles_api.py'
         
         if not os.path.exists(script_path):
             print(f"ERROR: Script not found at {script_path}", flush=True)
