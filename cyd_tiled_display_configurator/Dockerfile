@@ -1,9 +1,9 @@
 # Stage 1: Build React Frontend
 FROM node:20-alpine AS build-frontend
 WORKDIR /app/configurator
-COPY ../configurator/package*.json ./
+COPY configurator/package*.json ./
 RUN npm install
-COPY ../configurator/ ./
+COPY configurator/ ./
 RUN npm run build
 
 # Stage 2: Final Image
@@ -18,11 +18,11 @@ RUN apk add --no-cache g++ gcc musl-dev python3-dev \
 COPY --from=build-frontend /app/configurator/dist /app/dist
 
 # Copy Python backend and scripts
-COPY ../configurator/generate_tiles_api.py /app/configurator/
-COPY server.py /app/
+COPY configurator/generate_tiles_api.py /app/configurator/
+COPY cyd_tiled_display_configurator/server.py /app/
 
 # Copy ESPHome files (needed for schema and scripts)
-COPY ../esphome /app/esphome
+COPY esphome /app/esphome
 
 # Expose port for Ingress
 EXPOSE 8099
