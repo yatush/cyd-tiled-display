@@ -112,8 +112,8 @@ def list_files():
         # Security: prevent directory traversal
         if '..' in path:
             return jsonify({"error": "Invalid path"}), 400
-            
-        base_dir = "/config/esphome"
+        
+        base_dir = find_esphome_dir() # "/config/esphome"
         if not os.path.exists(base_dir):
             # Ensure base dir exists
             os.makedirs(base_dir, exist_ok=True)
@@ -154,7 +154,7 @@ def make_directory():
         if not path or '..' in path:
             return jsonify({"error": "Invalid path"}), 400
             
-        base_dir = "/config/esphome"
+        base_dir = find_esphome_dir() # "/config/esphome"
         full_path = os.path.join(base_dir, path.lstrip('/'))
         
         os.makedirs(full_path, exist_ok=True)
@@ -178,7 +178,7 @@ def save_config():
         if '..' in rel_path:
             return jsonify({"error": "Invalid path"}), 400
 
-        base_dir = "/config/esphome"
+        base_dir = find_esphome_dir() # "/config/esphome"
         target_path = os.path.join(base_dir, rel_path.lstrip('/'))
         
         # Ensure directory exists
@@ -202,7 +202,7 @@ def load_config():
         if '..' in rel_path:
             return jsonify({"error": "Invalid path"}), 400
 
-        base_dir = "/config/esphome"
+        base_dir = find_esphome_dir() # "/config/esphome"
         target_path = os.path.join(base_dir, rel_path.lstrip('/'))
         
         if os.path.exists(target_path):
@@ -216,7 +216,7 @@ def load_config():
 
 @app.route('/api/schema')
 def get_schema():
-    schema_path = '/app/esphome/custom_components/tile_ui/schema.json'
+    schema_path = os.path.join(find_esphome_dir(), 'custom_components/tile_ui/schema.json') # '/app/esphome/custom_components/tile_ui/schema.json'
     if os.path.exists(schema_path):
         with open(schema_path, 'r') as f:
             return jsonify(json.load(f))
@@ -226,7 +226,7 @@ def get_schema():
 def get_scripts():
     # This replicates the logic from vite.config.ts
     try:
-        lib_path = '/app/esphome/lib/lib.yaml'
+        lib_path = os.path.join(find_esphome_dir(), 'lib/lib.yaml') # '/app/esphome/lib/lib.yaml'
         if not os.path.exists(lib_path):
             return jsonify({"error": "lib.yaml not found"}), 404
 
@@ -274,7 +274,7 @@ def get_scripts():
 
         # Fonts from base file
         fonts = []
-        base_path = '/app/esphome/lib/3248s035_base.yaml'
+        base_path = os.path.join(find_esphome_dir(), 'lib/3248s035_base.yaml') # '/app/esphome/lib/3248s035_base.yaml'
         if os.path.exists(base_path):
             with open(base_path, 'r') as f:
                 base_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
@@ -282,7 +282,7 @@ def get_scripts():
 
         # Icons from mdi_glyphs.yaml
         icons = []
-        glyphs_path = '/app/esphome/lib/mdi_glyphs.yaml'
+        glyphs_path = os.path.join(find_esphome_dir(), 'lib/mdi_glyphs.yaml') # '/app/esphome/lib/mdi_glyphs.yaml'
         if os.path.exists(glyphs_path):
             with open(glyphs_path, 'r') as f:
                 for line in f:
@@ -328,6 +328,28 @@ def get_scripts():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def find_esphome_dir(start_path=None):
+    """
+    Searches upwards from start_path (or current file) for a child directory named 'esphome'.
+    Returns the absolute path to 'esphome' if found, else None.
+    """
+    if start_path is None:
+        start_path = os.path.dirname(os.path.abspath(__file__))
+    current = start_path
+    while True:
+        esphome_path = os.path.join(current, 'esphome')
+        if os.path.isdir(esphome_path):
+            return esphome_path
+        parent = os.path.dirname(current)
+        if parent == current:
+            break  # Reached root
+        current = parent
+    return None
+
+# Example usage:
+# esphome_dir = find_esphome_dir()
+# print('Found esphome at:', esphome_dir)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8099)
