@@ -29,31 +29,39 @@ def proxy_ha(path):
         "Content-Type": "application/json",
     }
     
-    if request.method == 'GET':
-        response = requests.get(url, headers=headers, params=request.args)
-    else:
-        response = requests.post(url, headers=headers, json=request.json)
-        
-    return (response.content, response.status_code, response.headers.items())
+    try:
+        if request.method == 'GET':
+            response = requests.get(url, headers=headers, params=request.args)
+        else:
+            response = requests.post(url, headers=headers, json=request.json)
+            
+        return (response.content, response.status_code, response.headers.items())
+    except Exception as e:
+        print(f"HA Proxy Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/generate', methods=['POST'])
 def generate():
     try:
         # Run the existing generation script
+        # Ensure we are using the correct python executable and path
         process = subprocess.Popen(
-            ['python3', 'configurator/generate_tiles_api.py'],
+            ['python3', '/app/configurator/generate_tiles_api.py'],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            cwd='/app' # Ensure CWD is correct for relative imports
         )
         stdout, stderr = process.communicate(input=request.get_data(as_text=True))
         
         if process.returncode != 0:
+            print(f"Generation Error: {stderr}") # Log to stdout for supervisor logs
             return jsonify({"error": stderr or "Generation failed"}), 500
             
         return stdout, 200, {'Content-Type': 'application/json'}
     except Exception as e:
+        print(f"Server Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/schema')
