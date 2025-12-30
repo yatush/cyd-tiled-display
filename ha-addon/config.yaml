@@ -2,7 +2,7 @@ name: "CYD Tiled Display Configurator"
 version: "1.0.1"
 slug: "cyd_tiled_display_configurator"
 description: "Visual configurator for CYD Tiled Displays"
-url: "https://github.com/your-repo/cyd-tiled-display"
+url: "https://github.com/yatush/yatush-repository"
 arch:
   - aarch64
   - amd64

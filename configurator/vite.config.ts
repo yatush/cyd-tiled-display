@@ -222,7 +222,7 @@ const scriptsPlugin = () => ({
         } catch (e) { console.error("Error reading fonts", e); }
 
         // Read icons from mdi_glyphs.yaml
-        let icons: { value: string, label: string }[] = [];
+        let icons: { value: string, label: string, char?: string }[] = [];
         try {
             const glyphsPath = path.resolve(__dirname, '../esphome/lib/mdi_glyphs.yaml');
             if (fs.existsSync(glyphsPath)) {

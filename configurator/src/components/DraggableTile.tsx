@@ -22,7 +22,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete }: { tile: T
         ${isSelected ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-400' : 'bg-blue-50 border-blue-500'}
         cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow
       `}
-      onClick={(e) => {
+      onClick={() => {
         // Prevent drag click from triggering selection immediately if we want to separate them, 
         // but usually onClick fires after drag end if no drag happened.
         onClick();

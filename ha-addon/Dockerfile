@@ -7,11 +7,12 @@ COPY configurator/ ./
 RUN npm run build
 
 # Stage 2: Final Image
-FROM python:3.11-slim
+FROM python:3.11-alpine
 WORKDIR /app
 
 # Install dependencies
-RUN pip install flask flask-cors requests pyyaml
+RUN apk add --no-cache g++ gcc musl-dev python3-dev \
+    && pip3 install --no-cache-dir flask flask-cors requests pyyaml
 
 # Copy built frontend
 COPY --from=build-frontend /app/configurator/dist /app/dist
@@ -27,4 +28,4 @@ COPY esphome /app/esphome
 EXPOSE 8099
 
 # Start the server
-CMD ["python", "server.py"]
+CMD ["python3", "server.py"]
