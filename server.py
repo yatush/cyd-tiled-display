@@ -15,13 +15,13 @@ if not SUPERVISOR_TOKEN:
 HA_URL = "http://supervisor/core"
 
 MOCK_ENTITIES = [
-    {"entity_id": "light.living_room", "state": "on", "attributes": {"friendly_name": "Living Room Light"}},
-    {"entity_id": "switch.coffee_maker", "state": "off", "attributes": {"friendly_name": "Coffee Maker"}},
-    {"entity_id": "sensor.temperature", "state": "22.5", "attributes": {"friendly_name": "Temperature", "unit_of_measurement": "°C"}},
-    {"entity_id": "binary_sensor.front_door", "state": "off", "attributes": {"friendly_name": "Front Door"}},
-    {"entity_id": "media_player.tv", "state": "playing", "attributes": {"friendly_name": "TV"}},
-    {"entity_id": "climate.living_room", "state": "heat", "attributes": {"friendly_name": "Climate"}},
-    {"entity_id": "cover.garage_door", "state": "closed", "attributes": {"friendly_name": "Garage Door"}},
+    {"entity_id": "mock.light_living_room", "state": "on", "attributes": {"friendly_name": "Living Room Light"}},
+    {"entity_id": "mock.switch_coffee_maker", "state": "off", "attributes": {"friendly_name": "Coffee Maker"}},
+    {"entity_id": "mock.sensor_temperature", "state": "22.5", "attributes": {"friendly_name": "Temperature", "unit_of_measurement": "°C"}},
+    {"entity_id": "mock.binary_sensor_front_door", "state": "off", "attributes": {"friendly_name": "Front Door"}},
+    {"entity_id": "mock.media_player_tv", "state": "playing", "attributes": {"friendly_name": "TV"}},
+    {"entity_id": "mock.climate_living_room", "state": "heat", "attributes": {"friendly_name": "Climate"}},
+    {"entity_id": "mock.cover_garage_door", "state": "closed", "attributes": {"friendly_name": "Garage Door"}},
 ]
 
 @app.route('/')

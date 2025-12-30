@@ -38,14 +38,25 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
       const res = await apiFetch(`/load?path=${encodeURIComponent(targetPath)}`);
       if (res.ok) {
         const data = await res.json();
+        
+        // Basic validation to ensure it's a valid config object
+        if (!data || typeof data !== 'object' || !Array.isArray(data.pages)) {
+          alert('Failed to load: The file does not appear to be a valid tile configuration.');
+          return;
+        }
+
         // Ensure we preserve the path in the loaded config
         setConfig({ ...data, project_path: targetPath });
         if (data.pages && data.pages.length > 0) {
           setActivePageId(data.pages[0].id);
         }
+      } else {
+        const err = await res.json();
+        alert(`Failed to load: ${err.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error('Failed to load from HA:', err);
+      alert('Failed to load from Home Assistant. Check console for details.');
     }
   }, [config.project_path, setConfig, setActivePageId]);
 

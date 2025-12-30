@@ -33,6 +33,9 @@ export function useHaConnection() {
 
   const fetchHaEntities = useCallback(async () => {
     setHaStatus('idle');
+    // Clear entities when starting a new connection attempt
+    setHaEntities([]);
+    
     try {
       const headers: Record<string, string> = {};
       
