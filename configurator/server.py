@@ -4,6 +4,7 @@ import subprocess
 import yaml
 from flask import Flask, request, send_from_directory, jsonify
 import requests
+from typing import Optional
 
 app = Flask(__name__, static_folder='dist')
 
@@ -329,7 +330,7 @@ def get_scripts():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def find_esphome_dir(start_path=None):
+def find_esphome_dir(start_path=None) -> str:
     """
     Searches upwards from start_path (or current file) for a child directory named 'esphome'.
     Returns the absolute path to 'esphome' if found, else None.
@@ -345,7 +346,7 @@ def find_esphome_dir(start_path=None):
         if parent == current:
             break  # Reached root
         current = parent
-    return None
+    return ""
 
 # Example usage:
 # esphome_dir = find_esphome_dir()
