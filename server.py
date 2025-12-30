@@ -60,6 +60,7 @@ def generate():
         
         if process.returncode != 0:
             print(f"Generation Error: {stderr}") # Log to stdout for supervisor logs
+            print(f"Generation Stdout: {stdout}") # Log stdout too in case error is there
             return jsonify({"error": stderr or "Generation failed"}), 500
             
         return stdout, 200, {'Content-Type': 'application/json'}
