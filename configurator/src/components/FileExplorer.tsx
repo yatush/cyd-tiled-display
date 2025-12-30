@@ -8,10 +8,11 @@ interface FileItem {
   path: string;
 }
 
-export const FileExplorer = ({ onSelect, onSelectDir, currentPath = '' }: { 
+export const FileExplorer = ({ onSelect, onSelectDir, currentPath = '', selectedPath = '' }: { 
   onSelect: (path: string) => void,
   onSelectDir?: (path: string) => void,
-  currentPath?: string 
+  currentPath?: string,
+  selectedPath?: string
 }) => {
   const [path, setPath] = useState(currentPath || '');
   const [items, setItems] = useState<FileItem[]>([]);
@@ -151,7 +152,11 @@ export const FileExplorer = ({ onSelect, onSelectDir, currentPath = '' }: {
                 key={item.path}
                 onClick={() => item.is_dir ? handleDirClick(item.path) : handleFileClick(item.path)}
                 className={`w-full flex items-center gap-2 p-2 rounded text-left transition-colors ${
-                  item.is_dir ? 'hover:bg-blue-50 text-slate-700' : 'hover:bg-slate-100 text-slate-600'
+                  item.is_dir 
+                    ? 'hover:bg-blue-50 text-slate-700' 
+                    : item.path === selectedPath
+                      ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                      : 'hover:bg-slate-100 text-slate-600'
                 }`}
               >
                 {item.is_dir ? (

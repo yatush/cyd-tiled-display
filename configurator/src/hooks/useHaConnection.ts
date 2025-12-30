@@ -8,16 +8,26 @@ export function useHaConnection() {
   const [haUrl, setHaUrl] = useState(() => localStorage.getItem('ha_url') || 'http://homeassistant.local:8123');
   const [haToken, setHaToken] = useState(() => localStorage.getItem('ha_token') || '');
   const [connectionType, setConnectionType] = useState<ConnectionType>(() => {
+    const savedType = localStorage.getItem('ha_connection_type') as ConnectionType;
+    
+    // If we are in an addon, default to local unless explicitly set to something else
+    if (isAddon) {
+      if (savedType === 'remote' || savedType === 'mock') return savedType;
+      return 'local';
+    }
+    
+    // If not an addon, default to remote or mock
+    if (savedType) return savedType;
     if (localStorage.getItem('ha_use_mock') === 'true') return 'mock';
-    if (isAddon && !localStorage.getItem('ha_url')) return 'local';
     return 'remote';
   });
   const [haEntities, setHaEntities] = useState<string[]>([]);
   const [haStatus, setHaStatus] = useState<HaStatus>('idle');
 
   useEffect(() => {
-    localStorage.setItem('ha_url', connectionType === 'local' ? '' : haUrl);
-    localStorage.setItem('ha_token', connectionType === 'local' ? '' : haToken);
+    localStorage.setItem('ha_url', haUrl);
+    localStorage.setItem('ha_token', haToken);
+    localStorage.setItem('ha_connection_type', connectionType);
     localStorage.setItem('ha_use_mock', (connectionType === 'mock').toString());
   }, [haUrl, haToken, connectionType]);
 

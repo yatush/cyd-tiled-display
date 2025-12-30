@@ -14,6 +14,16 @@ if not SUPERVISOR_TOKEN:
 
 HA_URL = "http://supervisor/core"
 
+MOCK_ENTITIES = [
+    {"entity_id": "light.living_room", "state": "on", "attributes": {"friendly_name": "Living Room Light"}},
+    {"entity_id": "switch.coffee_maker", "state": "off", "attributes": {"friendly_name": "Coffee Maker"}},
+    {"entity_id": "sensor.temperature", "state": "22.5", "attributes": {"friendly_name": "Temperature", "unit_of_measurement": "°C"}},
+    {"entity_id": "binary_sensor.front_door", "state": "off", "attributes": {"friendly_name": "Front Door"}},
+    {"entity_id": "media_player.tv", "state": "playing", "attributes": {"friendly_name": "TV"}},
+    {"entity_id": "climate.living_room", "state": "heat", "attributes": {"friendly_name": "Climate"}},
+    {"entity_id": "cover.garage_door", "state": "closed", "attributes": {"friendly_name": "Garage Door"}},
+]
+
 @app.route('/')
 def serve_index():
     return send_from_directory(app.static_folder, 'index.html')
@@ -26,19 +36,42 @@ def serve_static(path):
 
 @app.route('/api/ha/<path:path>', methods=['GET', 'POST'])
 def proxy_ha(path):
-    url = f"{HA_URL}/api/{path}"
-    headers = {
-        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    # Check for mock mode
+    if request.headers.get('x-ha-mock') == 'true':
+        if path == 'states':
+            return jsonify(MOCK_ENTITIES)
+        return jsonify({"success": True})
+
+    # Determine target URL and Token
+    target_url = request.headers.get('x-ha-url')
+    target_token = request.headers.get('x-ha-token')
+    
+    if target_url and target_url.strip():
+        # Remote HA mode
+        url = f"{target_url.rstrip('/')}/api/{path}"
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if target_token:
+            headers["Authorization"] = f"Bearer {target_token}"
+    else:
+        # Local HA mode (Supervisor)
+        url = f"{HA_URL}/api/{path}"
+        headers = {
+            "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+            "Content-Type": "application/json",
+        }
     
     try:
         if request.method == 'GET':
-            response = requests.get(url, headers=headers, params=request.args)
+            response = requests.get(url, headers=headers, params=request.args, timeout=10)
         else:
-            response = requests.post(url, headers=headers, json=request.json)
+            response = requests.post(url, headers=headers, json=request.json, timeout=10)
             
         return (response.content, response.status_code, response.headers.items())
+    except requests.exceptions.RequestException as e:
+        print(f"HA Proxy Connection Error: {str(e)}")
+        return jsonify({"error": f"Could not connect to Home Assistant: {str(e)}"}), 502
     except Exception as e:
         print(f"HA Proxy Error: {str(e)}")
         return jsonify({"error": str(e)}), 500

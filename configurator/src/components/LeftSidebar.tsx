@@ -241,16 +241,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <div className="h-48 border rounded overflow-hidden bg-white">
                 <FileExplorer 
                   currentPath={config.project_path?.split('/').slice(0, -1).join('/')}
+                  selectedPath={config.project_path}
                   onSelect={(path) => {
                     setConfig({...config, project_path: path});
-                    handleLoadFromHa(path);
-                    setShowExplorer(false);
                   }} 
                   onSelectDir={(dirPath) => {
                     const currentFile = config.project_path?.split('/').pop() || 'tiles.yaml';
                     const newPath = dirPath ? `${dirPath}/${currentFile}` : currentFile;
                     setConfig({...config, project_path: newPath});
-                    setShowExplorer(false);
                   }}
                 />
               </div>
