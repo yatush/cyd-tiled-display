@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { X, Server, Globe, Database, ShieldCheck } from 'lucide-react';
 import { ConnectionType } from '../hooks/useHaConnection';
 import { isAddon } from '../utils/api';
@@ -25,7 +26,31 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   setHaToken,
   onRefresh
 }) => {
+  const [localType, setLocalType] = useState<ConnectionType>(connectionType);
+  const [localUrl, setLocalUrl] = useState(haUrl);
+  const [localToken, setLocalToken] = useState(haToken);
+
+  // Reset local state when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalType(connectionType);
+      setLocalUrl(haUrl);
+      setLocalToken(haToken);
+    }
+  }, [isOpen, connectionType, haUrl, haToken]);
+
   if (!isOpen) return null;
+
+  const handleApply = () => {
+    setConnectionType(localType);
+    setHaUrl(localUrl);
+    setHaToken(localToken);
+    // Small delay to ensure state updates before refresh
+    setTimeout(() => {
+      onRefresh();
+      onClose();
+    }, 10);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
@@ -46,9 +71,9 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
             <div className="grid grid-cols-1 gap-2">
               {isAddon && (
                 <button
-                  onClick={() => setConnectionType('local')}
+                  onClick={() => setLocalType('local')}
                   className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
-                    connectionType === 'local' 
+                    localType === 'local' 
                       ? 'border-blue-600 bg-blue-50 text-blue-700' 
                       : 'border-slate-100 hover:border-slate-200 text-slate-600'
                   }`}
@@ -62,9 +87,9 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
               )}
 
               <button
-                onClick={() => setConnectionType('remote')}
+                onClick={() => setLocalType('remote')}
                 className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
-                  connectionType === 'remote' 
+                  localType === 'remote' 
                     ? 'border-blue-600 bg-blue-50 text-blue-700' 
                     : 'border-slate-100 hover:border-slate-200 text-slate-600'
                 }`}
@@ -77,9 +102,9 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
               </button>
 
               <button
-                onClick={() => setConnectionType('mock')}
+                onClick={() => setLocalType('mock')}
                 className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
-                  connectionType === 'mock' 
+                  localType === 'mock' 
                     ? 'border-blue-600 bg-blue-50 text-blue-700' 
                     : 'border-slate-100 hover:border-slate-200 text-slate-600'
                 }`}
@@ -93,14 +118,14 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
             </div>
           </div>
 
-          {connectionType === 'remote' && (
+          {localType === 'remote' && (
             <div className="space-y-4 p-4 bg-slate-50 rounded-lg border border-slate-100 animate-in slide-in-from-top-2 duration-200">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">HA URL</label>
                 <input 
                   type="text" 
-                  value={haUrl} 
-                  onChange={e => setHaUrl(e.target.value)}
+                  value={localUrl} 
+                  onChange={e => setLocalUrl(e.target.value)}
                   placeholder="http://homeassistant.local:8123"
                   className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
                 />
@@ -109,8 +134,8 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Long-Lived Token</label>
                 <input 
                   type="password" 
-                  value={haToken} 
-                  onChange={e => setHaToken(e.target.value)}
+                  value={localToken} 
+                  onChange={e => setLocalToken(e.target.value)}
                   placeholder="Paste your token here..."
                   className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
                 />
@@ -127,10 +152,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
             Close
           </button>
           <button
-            onClick={() => {
-              onRefresh();
-              onClose();
-            }}
+            onClick={handleApply}
             className="px-4 py-2 text-sm font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-all"
           >
             Apply & Refresh
