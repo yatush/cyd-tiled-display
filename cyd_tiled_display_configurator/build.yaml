@@ -1,2 +1,2 @@
 context: ..
-dockerfile: Dockerfile
+dockerfile: cyd_tiled_display_configurator/Dockerfile
