@@ -1,0 +1,25 @@
+name: "CYD Tiled Display Configurator"
+version: "1.3.4"
+slug: "cyd_tiled_display_configurator"
+description: "Visual configurator for CYD Tiled Displays"
+url: "https://github.com/yatush/cyd-tiled-display"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+startup: services
+boot: auto
+hassio_api: true
+hassio_role: default
+homeassistant_api: true
+ingress: true
+panel_icon: mdi:grid
+panel_title: "CYD Configurator"
+map:
+  - config:rw
+options:
+  ha_url: "http://supervisor/core"
+schema:
+  ha_url: str
