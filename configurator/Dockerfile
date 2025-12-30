@@ -1,9 +1,8 @@
 # Stage 1: Build React Frontend
 FROM node:20-alpine AS build-frontend
 WORKDIR /app/configurator
-COPY package*.json ./
+COPY *.* ./
 RUN npm install
-# COPY configurator/ ./
 RUN npm run build
 
 # Stage 2: Final Image
