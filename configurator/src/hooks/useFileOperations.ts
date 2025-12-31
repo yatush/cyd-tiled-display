@@ -145,7 +145,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
-  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string) => {
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string) => {
     try {
       const screensYaml = generateYaml(config);
       
@@ -163,7 +163,7 @@ esphome:
 
 api:
   encryption:
-    key: "AJ9ioMY1QzbUlAKim6G9IAYEVDv5a6iJCToD7lppTLU="
+    key: "${encryptionKey}"
 
 tile_ui:
 ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { X, Save, Monitor, ArrowLeft } from 'lucide-react';
+import { X, Save, Monitor, ArrowLeft, RefreshCw } from 'lucide-react';
 
 interface SaveDeviceDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onBack?: () => void;
-  onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string) => void;
+  onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string) => void;
 }
 
 export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
@@ -15,18 +15,35 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   onSave
 }) => {
   const [deviceName, setDeviceName] = useState('');
-  const [friendlyName, setFriendlyName] = useState('');
   const [screenType, setScreenType] = useState('2432s028');
   const [fileName, setFileName] = useState('');
+  const [encryptionKey, setEncryptionKey] = useState('');
+
+  const generateKey = () => {
+    const randomValues = new Uint8Array(32);
+    window.crypto.getRandomValues(randomValues);
+    let binaryString = "";
+    for (let i = 0; i < randomValues.length; i++) {
+        binaryString += String.fromCharCode(randomValues[i]);
+    }
+    setEncryptionKey(btoa(binaryString));
+  };
+
+  React.useEffect(() => {
+    if (isOpen && !encryptionKey) {
+        generateKey();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
-    if (!deviceName || !friendlyName || !fileName) {
+    if (!deviceName || !fileName || !encryptionKey) {
       alert('Please fill in all fields');
       return;
     }
-    onSave(deviceName, friendlyName, screenType, fileName);
+    // Use deviceName as friendlyName
+    onSave(deviceName, deviceName, screenType, fileName, encryptionKey);
     onClose();
   };
 
@@ -82,14 +99,19 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Friendly Name</label>
+            <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase">Encryption Key</label>
+                <button onClick={generateKey} className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                    <RefreshCw size={10} /> Regenerate
+                </button>
+            </div>
             <input 
               type="text" 
-              value={friendlyName} 
-              onChange={e => setFriendlyName(e.target.value)}
-              placeholder="e.g. Living Room Display"
-              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+              value={encryptionKey} 
+              onChange={e => setEncryptionKey(e.target.value)}
+              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono text-xs"
             />
+            <p className="text-[10px] text-slate-400 mt-1">32-byte base64-encoded key for API encryption</p>
           </div>
 
           <div>
