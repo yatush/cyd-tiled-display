@@ -19,6 +19,7 @@ from .schema import (
     VALID_TILE_TYPES,
     VALID_FLAGS,
     TileType,
+    SCHEMA_DEF,
 )
 
 __all__ = [
@@ -109,6 +110,10 @@ def validate_tiles_config(
                 )
             
             config = tile[tile_type]
+            
+            # Validate against schema
+            validate_tile_schema(tile_type, config, screen_id)
+
             x = config.get("x", 0)
             y = config.get("y", 0)
             
@@ -555,3 +560,105 @@ def _validate_condition_expression(expression, context):
 
     raise ValueError(f"{context}: Invalid condition expression type {type(expression).__name__}. Use string or dict with 'conditions' field.")
 
+
+
+def validate_tile_schema(tile_type: str, tile_config: dict, screen_id: str) -> None:
+    """Validate tile configuration against schema.json definition."""
+    # Find type definition
+    type_def = next((t for t in SCHEMA_DEF['types'] if t['type'] == tile_type), None)
+    if not type_def:
+        # Should be caught by VALID_TILE_TYPES check, but just in case
+        raise ValueError(f"Screen '{screen_id}': Unknown tile type '{tile_type}'")
+    
+    x = tile_config.get('x', '?')
+    y = tile_config.get('y', '?')
+    context = f"Screen '{screen_id}', {tile_type} tile at ({x},{y})"
+
+    # Validate common fields
+    for field in SCHEMA_DEF['common']:
+        name = field['name']
+        if name in tile_config:
+            validate_field_value(tile_config[name], field, context)
+        elif not field.get('optional', False):
+            raise ValueError(f"{context} missing required field: '{name}'")
+            
+    # Validate specific fields
+    for field in type_def['fields']:
+        name = field['name']
+        if name in tile_config:
+            validate_field_value(tile_config[name], field, context)
+        elif not field.get('optional', False):
+            raise ValueError(f"{context} missing required field: '{name}'")
+
+
+def validate_field_value(value: Any, field_def: dict, context: str) -> None:
+    """Validate a single field value against its definition."""
+    field_type = field_def['type']
+    field_name = field_def['name']
+    
+    if field_type == 'number':
+        if not isinstance(value, int) or value < 0:
+            raise ValueError(f"{context}: Field '{field_name}' must be a non-negative integer, got {value}")
+            
+    elif field_type in ['string', 'page_select', 'dynamic_entity_select', 'ha_entity_list']:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{context}: Field '{field_name}' must be a non-empty string")
+            
+    elif field_type == 'boolean':
+        if not isinstance(value, bool):
+            raise ValueError(f"{context}: Field '{field_name}' must be a boolean, got {value}")
+            
+    elif field_type == 'display_list':
+        if not isinstance(value, list):
+            raise ValueError(f"{context}: Field '{field_name}' must be a list")
+        if not value:
+             raise ValueError(f"{context}: Field '{field_name}' cannot be empty")
+        for idx, item in enumerate(value):
+            if isinstance(item, str):
+                if not item.strip():
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} cannot be empty string")
+            elif isinstance(item, dict):
+                if len(item) != 1:
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} must have exactly one key")
+                key = list(item.keys())[0]
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} key must be non-empty string")
+            else:
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be string or dict")
+                
+    elif field_type == 'entity_list':
+        if not isinstance(value, list):
+            raise ValueError(f"{context}: Field '{field_name}' must be a list")
+        if not value:
+             raise ValueError(f"{context}: Field '{field_name}' cannot be empty")
+        for idx, item in enumerate(value):
+            if not isinstance(item, dict):
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a dict")
+            if not any(k in item for k in ['entity', 'dynamic_entity']):
+                 raise ValueError(f"{context}: Field '{field_name}' item {idx} must have 'entity' or 'dynamic_entity'")
+                 
+    elif field_type == 'script_list':
+        if not isinstance(value, list):
+            raise ValueError(f"{context}: Field '{field_name}' must be a list")
+        for idx, item in enumerate(value):
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a non-empty string")
+                
+    elif field_type == 'object':
+        if not isinstance(value, dict):
+            raise ValueError(f"{context}: Field '{field_name}' must be an object (dict)")
+        
+        object_fields = field_def.get('objectFields', [])
+        for f in object_fields:
+            key = f['key']
+            if key in value:
+                # Construct a temporary field def for recursive validation
+                temp_def = {'name': f"{field_name}.{key}", 'type': f['type']}
+                if 'objectFields' in f:
+                    temp_def['objectFields'] = f['objectFields']
+                validate_field_value(value[key], temp_def, context)
+            elif not f.get('optional', False):
+                raise ValueError(f"{context}: Field '{field_name}' missing required key '{key}'")
+
+    elif field_type == 'condition_logic':
+        _validate_condition_expression(value, f"{context} field '{field_name}'")

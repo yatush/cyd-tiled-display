@@ -258,7 +258,20 @@ def screen_schema(value):
         try:
             validated_tiles.append(tile_schema(tile))
         except cv.Invalid as e:
-            raise cv.Invalid(f"Tile {idx}: {str(e)}")
+            location = f"Tile {idx}"
+            # Try to extract x,y for better error context
+            if isinstance(tile, dict) and len(tile) > 0:
+                try:
+                    # Get the first value (the config dict)
+                    tile_cfg = list(tile.values())[0]
+                    if isinstance(tile_cfg, dict):
+                        x = tile_cfg.get('x')
+                        y = tile_cfg.get('y')
+                        if x is not None and y is not None:
+                            location = f"Tile [{x},{y}]"
+                except Exception:
+                    pass
+            raise cv.Invalid(f"{location}: {str(e)}")
     
     return {
         "id": screen_id,
