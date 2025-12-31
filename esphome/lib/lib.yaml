@@ -28,8 +28,6 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-captive_portal:
-
 time:
   - platform: homeassistant
     id: esptime
