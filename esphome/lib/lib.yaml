@@ -13,6 +13,9 @@ esphome:
     build_flags:
       - -DUSE_API_HOMEASSISTANT_SERVICES
 
+packages:
+  custom_lib: !include lib_custom.yaml
+
 logger:
 
 api:

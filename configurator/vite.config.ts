@@ -169,6 +169,28 @@ const scriptsPlugin = () => ({
         const SCHEMA = yaml.DEFAULT_SCHEMA.extend([SecretType, LambdaType, IncludeType]);
 
         const doc = yaml.load(fileContents, { schema: SCHEMA }) as any;
+
+        // Load custom lib if it exists
+        const customLibPath = path.resolve(__dirname, '../esphome/lib/lib_custom.yaml');
+        if (fs.existsSync(customLibPath)) {
+            try {
+                const customContents = fs.readFileSync(customLibPath, 'utf8');
+                const customDoc = yaml.load(customContents, { schema: SCHEMA }) as any;
+                if (customDoc) {
+                    if (customDoc.script) {
+                        doc.script = (doc.script || []).concat(customDoc.script);
+                    }
+                    if (customDoc.color) {
+                        doc.color = (doc.color || []).concat(customDoc.color);
+                    }
+                    if (customDoc.globals) {
+                        doc.globals = (doc.globals || []).concat(customDoc.globals);
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading lib_custom.yaml:', e);
+            }
+        }
         
         const scripts = doc.script || [];
         

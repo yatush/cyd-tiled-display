@@ -1,4 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
+import { Download } from 'lucide-react';
 import { Config } from '../types';
 import { generateYaml } from '../utils/yamlGenerator';
 
@@ -6,9 +7,10 @@ interface YamlPreviewProps {
   config: Config;
   activePageId: string;
   selectedTileId: string | null;
+  onCopyYaml: () => void;
 }
 
-export const YamlPreview: React.FC<YamlPreviewProps> = ({ config, activePageId, selectedTileId }) => {
+export const YamlPreview: React.FC<YamlPreviewProps> = ({ config, activePageId, selectedTileId, onCopyYaml }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeSectionRef = useRef<HTMLDivElement>(null);
   const selectedTileRef = useRef<HTMLDivElement>(null);
@@ -100,27 +102,37 @@ export const YamlPreview: React.FC<YamlPreviewProps> = ({ config, activePageId, 
   }, [activePageId, selectedTileId, activeRange.start, selectedTileRange.start]);
 
   return (
-    <div className="absolute inset-0 p-4 overflow-auto bg-slate-50" ref={containerRef}>
-      <div className="font-mono text-sm">
-        {lines.map((line, i) => {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('__id:') || trimmed.startsWith('- __id:')) return null; // Hide internal ID
+    <div className="absolute inset-0 overflow-hidden bg-slate-50">
+      <div className="absolute top-4 right-6 z-10">
+        <button 
+          onClick={onCopyYaml}
+          className="flex items-center gap-2 bg-slate-900/90 text-white px-3 py-1.5 rounded hover:bg-slate-800 text-xs font-medium transition-colors shadow-lg backdrop-blur-sm"
+        >
+          <Download size={14} /> Copy YAML
+        </button>
+      </div>
+      <div className="h-full p-4 overflow-auto" ref={containerRef}>
+        <div className="font-mono text-sm">
+          {lines.map((line, i) => {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('__id:') || trimmed.startsWith('- __id:')) return null; // Hide internal ID
 
-          const isActive = i >= activeRange.start && i < activeRange.end;
-          const isSelected = i >= selectedTileRange.start && i < selectedTileRange.end;
-          const isStart = i === activeRange.start;
-          const isTileStart = i === selectedTileRange.start;
-          
-          return (
-            <div 
-              key={i} 
-              ref={isTileStart ? selectedTileRef : (isStart ? activeSectionRef : null)}
-              className={`${isSelected ? 'bg-blue-200 border-l-4 border-blue-600 -ml-1' : (isActive ? 'bg-blue-50' : '')} px-2 whitespace-pre-wrap transition-colors duration-200`}
-            >
-              {line || '\n'}
-            </div>
-          );
-        })}
+            const isActive = i >= activeRange.start && i < activeRange.end;
+            const isSelected = i >= selectedTileRange.start && i < selectedTileRange.end;
+            const isStart = i === activeRange.start;
+            const isTileStart = i === selectedTileRange.start;
+            
+            return (
+              <div 
+                key={i} 
+                ref={isTileStart ? selectedTileRef : (isStart ? activeSectionRef : null)}
+                className={`${isSelected ? 'bg-blue-200 border-l-4 border-blue-600 -ml-1' : (isActive ? 'bg-blue-50' : '')} px-2 whitespace-pre-wrap transition-colors duration-200`}
+              >
+                {line || '\n'}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

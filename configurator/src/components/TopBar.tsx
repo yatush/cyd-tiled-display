@@ -10,7 +10,8 @@ import {
   Activity,
   Download,
   Upload,
-  RefreshCw
+  RefreshCw,
+  FolderOpen
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
 
@@ -25,8 +26,7 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onGenerate: () => void;
-  onDownloadYaml: () => void;
-  onLoadYaml: () => void;
+  onOpenFileManagement: () => void;
   isGenerating: boolean;
   updateAvailable?: boolean;
 }
@@ -42,8 +42,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onUndo,
   onRedo,
   onGenerate,
-  onDownloadYaml,
-  onLoadYaml,
+  onOpenFileManagement,
   isGenerating,
   updateAvailable
 }) => {
@@ -66,7 +65,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     <div className="h-14 border-b bg-white flex items-center justify-between px-4 flex-shrink-0 z-10 shadow-sm">
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold">
+          <div className="w-8 h-8 bg-yellow-500 rounded flex items-center justify-center text-slate-900 font-bold">
             CYD
           </div>
           <span className="font-bold text-slate-700 hidden sm:inline">Tiled Display</span>
@@ -115,30 +114,12 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         <button
-          onClick={onLoadYaml}
+          onClick={onOpenFileManagement}
           className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-all shadow-sm"
-          title="Load YAML configuration from your computer"
+          title="Manage Files (Local & HA)"
         >
-          <Upload size={18} />
-          <span className="text-sm font-bold">Load YAML</span>
-        </button>
-
-        <button
-          onClick={onDownloadYaml}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-all shadow-sm"
-          title="Download YAML configuration to your computer"
-        >
-          <Download size={18} />
-          <span className="text-sm font-bold">Download YAML</span>
-        </button>
-
-        <button
-          onClick={onGenerate}
-          disabled={isGenerating}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg disabled:opacity-50 transition-all shadow-sm"
-        >
-          {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
-          <span className="font-bold text-sm">Generate</span>
+          <FolderOpen size={18} />
+          <span className="text-sm font-bold">File Management</span>
         </button>
 
         <button

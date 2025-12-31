@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { Monitor, X, Upload } from 'lucide-react';
+import { Monitor, X, Upload, ArrowLeft } from 'lucide-react';
 import { FileExplorer } from './FileExplorer';
 
 interface LoadDeviceDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onBack?: () => void;
   onLoad: (path: string) => void;
 }
 
 export const LoadDeviceDialog: React.FC<LoadDeviceDialogProps> = ({
   isOpen,
   onClose,
+  onBack,
   onLoad
 }) => {
   const [selectedFile, setSelectedFile] = useState('');
@@ -28,6 +30,11 @@ export const LoadDeviceDialog: React.FC<LoadDeviceDialogProps> = ({
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="flex items-center justify-between p-4 border-b bg-slate-50">
           <div className="flex items-center gap-2">
+            {onBack && (
+              <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-full transition-colors mr-1">
+                <ArrowLeft size={20} className="text-slate-500" />
+              </button>
+            )}
             <Monitor className="text-blue-600" size={20} />
             <h2 className="font-bold text-slate-800">Load Device Configuration</h2>
           </div>

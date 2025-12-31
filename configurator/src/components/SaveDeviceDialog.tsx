@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { X, Save, Monitor } from 'lucide-react';
+import { X, Save, Monitor, ArrowLeft } from 'lucide-react';
 
 interface SaveDeviceDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onBack?: () => void;
   onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string) => void;
 }
 
 export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   isOpen,
   onClose,
+  onBack,
   onSave
 }) => {
   const [deviceName, setDeviceName] = useState('');
@@ -41,6 +43,11 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="flex items-center justify-between p-4 border-b bg-slate-50">
           <div className="flex items-center gap-2">
+            {onBack && (
+              <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-full transition-colors mr-1">
+                <ArrowLeft size={20} className="text-slate-500" />
+              </button>
+            )}
             <Monitor className="text-blue-600" size={20} />
             <h2 className="font-bold text-slate-800">Save Device Configuration</h2>
           </div>

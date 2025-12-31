@@ -6,6 +6,10 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { MainContent } from './components/MainContent';
 import { TopBar } from './components/TopBar';
 import { HASettingsDialog } from './components/HASettingsDialog';
+import { FileManagementDialog } from './components/FileManagementDialog';
+import { SaveDeviceDialog } from './components/SaveDeviceDialog';
+import { LoadDeviceDialog } from './components/LoadDeviceDialog';
+import { ScreensFileDialog } from './components/ScreensFileDialog';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -25,12 +29,19 @@ function App() {
   const [isAddTileOpen, setIsAddTileOpen] = useState(false);
   const [isPagesOpen, setIsPagesOpen] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  
+  // File Management State
+  const [isFileManagementOpen, setIsFileManagementOpen] = useState(false);
+  const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
+  const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
+  const [isScreensFileOpen, setIsScreensFileOpen] = useState(false);
 
   // Hooks
   const {
     leftSidebarWidth,
     rightSidebarWidth,
-    setIsDraggingLeft
+    setIsDraggingLeft,
+    setIsDraggingRight
   } = useSidebarResizing();
 
   const {
@@ -61,7 +72,11 @@ function App() {
     handleGenerate
   } = useValidation(config);
 
-  const checkLibStatus = () => {
+  const checkLibStatus = (data?: any) => {
+    if (data && typeof data.synced === 'boolean') {
+      setUpdateAvailable(!data.synced);
+      return;
+    }
     apiFetch('/check_lib_status')
       .then(res => res.json())
       .then(data => {
@@ -129,8 +144,7 @@ function App() {
         onUndo={undo}
         onRedo={redo}
         onGenerate={() => handleGenerate(() => setActiveTab('output'))}
-        onDownloadYaml={handleDownloadYaml}
-        onLoadYaml={() => fileInputRef.current?.click()}
+        onOpenFileManagement={() => setIsFileManagementOpen(true)}
         isGenerating={isGenerating}
         updateAvailable={updateAvailable}
       />
@@ -157,14 +171,9 @@ function App() {
           handleDeleteTile={handleDeleteTile}
           getTileLabel={getTileLabel}
           setIsPageDialogOpen={setIsPageDialogOpen}
-          handleSaveYaml={handleSaveYaml}
-          handleLoadFromHa={handleLoadFromHa}
           fileInputRef={fileInputRef}
           handleLoadProject={handleLoadProject}
-          handleExport={handleExport}
           handleClearConfig={handleClearConfig}
-          handleSaveDeviceConfig={handleSaveDeviceConfig}
-          handleLoadDeviceConfig={handleLoadDeviceConfig}
         />
 
       {/* Left Resizer */}
@@ -187,6 +196,14 @@ function App() {
           handleDeleteTile={handleDeleteTile}
           activePageId={activePageId}
           generationOutput={generationOutput}
+          onGenerate={() => handleGenerate(() => setActiveTab('output'))}
+          onCopyYaml={handleExport}
+      />
+
+      {/* Right Resizer */}
+      <div
+        className="w-1 bg-slate-200 hover:bg-blue-400 cursor-col-resize flex-shrink-0 transition-colors"
+        onMouseDown={() => setIsDraggingRight(true)}
       />
 
       {/* Right Sidebar - Properties */}
@@ -229,6 +246,59 @@ function App() {
         setHaToken={setHaToken}
         onRefresh={fetchHaEntities}
         onCheckLibStatus={checkLibStatus}
+      />
+
+      <FileManagementDialog 
+        isOpen={isFileManagementOpen}
+        onClose={() => setIsFileManagementOpen(false)}
+        onLoadLocal={() => fileInputRef.current?.click()}
+        onDownloadLocal={handleDownloadYaml}
+        onOpenScreensFile={() => {
+          setIsFileManagementOpen(false);
+          setIsScreensFileOpen(true);
+        }}
+        onSaveDevice={() => {
+          setIsFileManagementOpen(false);
+          setIsSaveDeviceOpen(true);
+        }}
+        onLoadDevice={() => {
+          setIsFileManagementOpen(false);
+          setIsLoadDeviceOpen(true);
+        }}
+        connectionType={connectionType}
+      />
+
+      <SaveDeviceDialog 
+        isOpen={isSaveDeviceOpen}
+        onClose={() => setIsSaveDeviceOpen(false)}
+        onBack={() => {
+          setIsSaveDeviceOpen(false);
+          setIsFileManagementOpen(true);
+        }}
+        onSave={handleSaveDeviceConfig}
+      />
+      
+      <LoadDeviceDialog 
+        isOpen={isLoadDeviceOpen}
+        onClose={() => setIsLoadDeviceOpen(false)}
+        onBack={() => {
+          setIsLoadDeviceOpen(false);
+          setIsFileManagementOpen(true);
+        }}
+        onLoad={handleLoadDeviceConfig}
+      />
+      
+      <ScreensFileDialog 
+        isOpen={isScreensFileOpen}
+        onClose={() => setIsScreensFileOpen(false)}
+        onBack={() => {
+          setIsScreensFileOpen(false);
+          setIsFileManagementOpen(true);
+        }}
+        config={config}
+        setConfig={setConfig}
+        onSave={handleSaveYaml}
+        onLoad={() => handleLoadFromHa()}
       />
     </div>
   );

@@ -278,6 +278,8 @@ def get_directory_checksum(directory):
     for root, dirs, files in os.walk(directory):
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
+            if '_custom.' in file:
+                continue
             path = os.path.join(root, file)
             try:
                 with open(path, 'rb') as f:
@@ -332,6 +334,22 @@ def get_scripts():
 
         with open(lib_path, 'r') as f:
             doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+
+        # Load custom lib if it exists
+        custom_lib_path = '/config/esphome/lib/lib_custom.yaml'
+        if os.path.exists(custom_lib_path):
+            try:
+                with open(custom_lib_path, 'r') as f:
+                    custom_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+                    
+                    # Merge lists from custom lib into main doc
+                    for key in ['script', 'color', 'globals']:
+                        if key in custom_doc and isinstance(custom_doc[key], list):
+                            if key not in doc:
+                                doc[key] = []
+                            doc[key].extend(custom_doc[key])
+            except Exception as e:
+                print(f"Error loading custom lib: {e}")
 
         scripts = doc.get('script', [])
         

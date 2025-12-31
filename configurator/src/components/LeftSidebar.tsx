@@ -4,8 +4,6 @@ import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
 import { isAddon } from '../utils/api';
 import { FileExplorer } from './FileExplorer';
-import { SaveDeviceDialog } from './SaveDeviceDialog';
-import { LoadDeviceDialog } from './LoadDeviceDialog';
 
 interface LeftSidebarProps {
   width: number;
@@ -28,14 +26,9 @@ interface LeftSidebarProps {
   handleDeleteTile: (id: string) => void;
   getTileLabel: (tile: Tile) => string;
   setIsPageDialogOpen: (open: boolean) => void;
-  handleSaveYaml: () => void;
-  handleLoadFromHa: (path?: string) => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
   handleLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  handleExport: () => void;
   handleClearConfig: () => void;
-  handleSaveDeviceConfig: (deviceName: string, friendlyName: string, screenType: string, fileName: string) => void;
-  handleLoadDeviceConfig: (path: string) => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -59,18 +52,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   handleDeleteTile,
   getTileLabel,
   setIsPageDialogOpen,
-  handleSaveYaml,
-  handleLoadFromHa,
   fileInputRef,
   handleLoadProject,
-  handleExport,
   handleClearConfig,
-  handleSaveDeviceConfig,
-  handleLoadDeviceConfig
 }) => {
   const [showExplorer, setShowExplorer] = useState(false);
-  const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
-  const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
 
   return (
     <div 
@@ -78,16 +64,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       style={{ width }}
       onClick={onSidebarClick}
     >
-      <SaveDeviceDialog 
-        isOpen={isSaveDeviceOpen}
-        onClose={() => setIsSaveDeviceOpen(false)}
-        onSave={handleSaveDeviceConfig}
-      />
-      <LoadDeviceDialog 
-        isOpen={isLoadDeviceOpen}
-        onClose={() => setIsLoadDeviceOpen(false)}
-        onLoad={handleLoadDeviceConfig}
-      />
       <div className="p-4 border-b bg-slate-50">
         <h1 className="font-bold text-xl text-blue-600 flex items-center gap-2">
           <LayoutGrid size={24} />
@@ -233,84 +209,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         </div>
       </div>
 
-      <div className="p-4 border-t bg-slate-50 space-y-4">
-        {isAddon && (
-          <div className="space-y-2">
-            <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider">HA File Management</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={() => setIsSaveDeviceOpen(true)}
-                className="flex items-center justify-center gap-2 bg-indigo-600 text-white border border-indigo-700 p-2 rounded text-xs font-bold hover:bg-indigo-700 transition-colors shadow-sm"
-                title="Save full device configuration to Home Assistant"
-              >
-                <Monitor size={14} /> Save Device
-              </button>
-              <button 
-                onClick={() => setIsLoadDeviceOpen(true)}
-                className="flex items-center justify-center gap-2 bg-white text-indigo-700 border border-indigo-200 p-2 rounded text-xs font-bold hover:bg-indigo-50 transition-colors shadow-sm"
-                title="Load device configuration from Home Assistant"
-              >
-                <Upload size={14} /> Load Device
-              </button>
-            </div>
-
-            <div className="h-2 border-b border-slate-200 mb-2"></div>
-
-            <div className="flex gap-2">
-              <input 
-                type="text" 
-                value={config.project_path || 'monitor_config/tiles.yaml'} 
-                onChange={e => setConfig({...config, project_path: e.target.value})}
-                placeholder="monitor_config/tiles.yaml"
-                className="flex-1 border border-slate-200 rounded p-1.5 text-[10px] font-mono focus:border-blue-500 outline-none transition-colors bg-white"
-              />
-              <button 
-                onClick={() => setShowExplorer(!showExplorer)}
-                className={`p-1.5 rounded border transition-colors ${
-                  showExplorer ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
-                title="Browse files"
-              >
-                <FolderOpen size={14} />
-              </button>
-            </div>
-
-            {showExplorer && (
-              <div className="h-48 border rounded overflow-hidden bg-white">
-                <FileExplorer 
-                  currentPath={config.project_path?.split('/').slice(0, -1).join('/')}
-                  selectedPath={config.project_path}
-                  onSelect={(path) => {
-                    setConfig({...config, project_path: path});
-                  }} 
-                  onSelectDir={(dirPath) => {
-                    const currentFile = config.project_path?.split('/').pop() || 'tiles.yaml';
-                    const newPath = dirPath ? `${dirPath}/${currentFile}` : currentFile;
-                    setConfig({...config, project_path: newPath});
-                  }}
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={handleSaveYaml}
-                className="flex items-center justify-center gap-2 bg-blue-600 text-white border border-blue-700 p-2 rounded text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
-                title="Save screens configuration to Home Assistant"
-              >
-                <Save size={14} /> Save Screens to HA
-              </button>
-              <button 
-                onClick={() => handleLoadFromHa()}
-                className="flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 p-2 rounded text-xs font-bold hover:bg-slate-50 transition-colors shadow-sm"
-                title="Load screens configuration from Home Assistant"
-              >
-                <Upload size={14} /> Load Screens from HA
-              </button>
-            </div>
-          </div>
-        )}
-
+      <div className="p-4 border-t bg-slate-50">
         <input 
             type="file" 
             ref={fileInputRef} 
@@ -319,18 +218,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             accept=".yaml,.yml"
         />
         
-        <div className="border-b border-slate-200 my-4"></div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button 
-            onClick={handleExport}
-            className="flex items-center justify-center gap-2 bg-slate-900 text-white p-2 rounded hover:bg-slate-800 text-[10px]"
-          >
-            <Download size={14} /> Copy YAML
-          </button>
+        <div className="grid grid-cols-1 gap-2">
           <button 
             onClick={handleClearConfig}
-            className="flex items-center justify-center gap-2 text-red-500 p-2 rounded hover:bg-red-50 border border-red-200 text-[10px]"
+            className="flex items-center justify-center gap-2 text-red-500 p-2 rounded hover:bg-red-50 border border-red-200 text-[10px] font-bold"
           >
             <Trash2 size={14} /> Clear All
           </button>

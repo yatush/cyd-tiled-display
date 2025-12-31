@@ -1,4 +1,4 @@
-import { LayoutGrid, FileText, Terminal, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { LayoutGrid, FileText, Terminal, Loader2, CheckCircle2, AlertCircle, Play } from 'lucide-react';
 import { GridCanvas } from './GridCanvas';
 import { YamlPreview } from './YamlPreview';
 import { Config, Page } from '../types';
@@ -18,6 +18,8 @@ interface MainContentProps {
   handleDeleteTile: (id: string) => void;
   activePageId: string;
   generationOutput: { success?: boolean; cpp?: string[]; error?: string; type?: string } | null;
+  onGenerate: () => void;
+  onCopyYaml: () => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({
@@ -33,7 +35,9 @@ export const MainContent: React.FC<MainContentProps> = ({
   handleDragEnd,
   handleDeleteTile,
   activePageId,
-  generationOutput
+  generationOutput,
+  onGenerate,
+  onCopyYaml
 }) => {
   return (
     <div className="flex-1 bg-slate-100 flex flex-col relative min-w-0">
@@ -55,7 +59,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                   className={`px-2 text-sm font-medium border-b-2 flex items-center gap-2 h-full ${activeTab === 'output' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                   onClick={() => setActiveTab('output')}
               >
-                  <Terminal size={16} /> Output
+                  <Terminal size={16} /> C++ Output
               </button>
           </div>
 
@@ -114,13 +118,25 @@ export const MainContent: React.FC<MainContentProps> = ({
                   </div>
               </>
           ) : activeTab === 'yaml' ? (
-              <YamlPreview config={config} activePageId={activePageId} selectedTileId={selectedTileId} />
+              <YamlPreview config={config} activePageId={activePageId} selectedTileId={selectedTileId} onCopyYaml={onCopyYaml} />
           ) : (
               <div className="flex-1 p-6 overflow-auto bg-slate-900 text-slate-100 font-mono text-sm">
+                  <div className="mb-6 flex items-center justify-between">
+                      <h2 className="text-lg font-bold text-slate-300">C++ Code Generation</h2>
+                      <button
+                          onClick={onGenerate}
+                          disabled={isGenerating}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-50 transition-all shadow-sm"
+                      >
+                          {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
+                          <span className="font-bold text-sm">Generate Code</span>
+                      </button>
+                  </div>
+
                   {!generationOutput && !isGenerating && (
                       <div className="h-full flex flex-col items-center justify-center text-slate-500">
                           <Terminal size={48} className="mb-4 opacity-20" />
-                          <p>Click "Generate" to validate and generate C++ code.</p>
+                          <p>Click "Generate Code" to validate and generate C++ code.</p>
                       </div>
                   )}
                   

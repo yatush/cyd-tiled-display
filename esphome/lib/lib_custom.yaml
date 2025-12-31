@@ -1,0 +1,10 @@
+# Custom library file for user-defined configurations
+# This file is included by lib.yaml and can be used to override or add new components
+
+script:
+  - id: always_true
+    parameters:
+      dummy: string[]
+    then:
+      - lambda: |-
+          id(script_output) = true;

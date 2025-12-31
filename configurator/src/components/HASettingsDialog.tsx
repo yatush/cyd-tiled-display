@@ -13,7 +13,7 @@ interface HASettingsDialogProps {
   haToken: string;
   setHaToken: (token: string) => void;
   onRefresh: () => void;
-  onCheckLibStatus: () => void;
+  onCheckLibStatus: (data?: any) => void;
 }
 
 export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
@@ -43,7 +43,10 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
       if (isAddon) {
           apiFetch('/check_lib_status')
             .then(res => res.json())
-            .then(data => setLibStatus(data))
+            .then(data => {
+              setLibStatus(data);
+              onCheckLibStatus(data);
+            })
             .catch(err => console.error(err));
       }
     }
@@ -69,10 +72,11 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
             // Refresh local status
             apiFetch('/check_lib_status')
               .then(res => res.json())
-              .then(data => setLibStatus(data))
+              .then(data => {
+                setLibStatus(data);
+                onCheckLibStatus(data);
+              })
               .catch(err => console.error(err));
-            // Refresh global status (App.tsx)
-            onCheckLibStatus();
         } else {
             const err = await res.json();
             alert("Failed to update: " + err.error);
