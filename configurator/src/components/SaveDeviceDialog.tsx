@@ -40,17 +40,20 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
 
   if (!isOpen) return null;
 
-  const checkFileAndGetKey = async (path: string): Promise<string | null> => {
+  const checkFileAndGetInfo = async (path: string): Promise<{ key: string | null, deviceName: string | null }> => {
       try {
           const res = await apiFetch(`/load?path=${encodeURIComponent(path)}`);
           if (res.ok) {
               const data = await res.json();
-              return data?.api?.encryption?.key || null;
+              return {
+                  key: data?.api?.encryption?.key || null,
+                  deviceName: data?.substitutions?.device_name || null
+              };
           }
       } catch (e) {
           console.error("Error checking file", e);
       }
-      return null;
+      return { key: null, deviceName: null };
   };
 
   const handleSave = async () => {
@@ -60,9 +63,9 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
     }
 
     // Check for existing file and key mismatch
-    const existingKey = await checkFileAndGetKey(fileName);
-    if (existingKey && existingKey !== encryptionKey) {
-        alert(`Cannot overwrite file "${fileName}" because the Encryption Key does not match.\n\nExisting key: ${existingKey}\nCurrent key: ${encryptionKey}\n\nPlease restore the original key (by re-selecting the file) or choose a different filename.`);
+    const info = await checkFileAndGetInfo(fileName);
+    if (info.key && info.key !== encryptionKey) {
+        alert(`Cannot overwrite file "${fileName}" because the Encryption Key does not match.\n\nExisting key: ${info.key}\nCurrent key: ${encryptionKey}\n\nPlease restore the original key (by re-selecting the file) or choose a different filename.`);
         return;
     }
 
@@ -139,9 +142,12 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
                   onSelect={async (path) => {
                     setFileName(path);
                     setShowExplorer(false);
-                    const key = await checkFileAndGetKey(path);
-                    if (key) {
-                        setEncryptionKey(key);
+                    const info = await checkFileAndGetInfo(path);
+                    if (info.key) {
+                        setEncryptionKey(info.key);
+                    }
+                    if (info.deviceName) {
+                        setDeviceName(info.deviceName);
                     }
                   }} 
                 />
