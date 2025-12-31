@@ -61,7 +61,18 @@ def collect_available_scripts(esphome_config):
     available_scripts = {}
     
     # Get scripts from the 'script:' section
-    scripts = esphome_config.get('script', [])
+    scripts = []
+    if 'script' in esphome_config and isinstance(esphome_config['script'], list):
+        scripts.extend(esphome_config['script'])
+        
+    # Also check packages
+    packages = esphome_config.get('packages', {})
+    if isinstance(packages, dict):
+        for _, package_content in packages.items():
+            if isinstance(package_content, dict):
+                package_scripts = package_content.get('script', [])
+                if isinstance(package_scripts, list):
+                    scripts.extend(package_scripts)
     
     if scripts:
         for script in scripts:
@@ -94,7 +105,19 @@ def collect_available_globals(esphome_config):
     available_globals = set()
     
     # Get globals from the 'globals:' section
-    globals_list = esphome_config.get('globals', [])
+    globals_list = []
+    if 'globals' in esphome_config and isinstance(esphome_config['globals'], list):
+        globals_list.extend(esphome_config['globals'])
+
+    # Also check packages
+    packages = esphome_config.get('packages', {})
+    if isinstance(packages, dict):
+        for _, package_content in packages.items():
+            if isinstance(package_content, dict):
+                package_globals = package_content.get('globals', [])
+                if isinstance(package_globals, list):
+                    globals_list.extend(package_globals)
+
     if globals_list:
         for global_var in globals_list:
             if isinstance(global_var, dict) and 'id' in global_var:

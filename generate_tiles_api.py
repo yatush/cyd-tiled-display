@@ -60,9 +60,18 @@ def main():
                     pass
                 def ignore_unknown(loader, node):
                     return None
+                
+                def include_constructor(loader, node):
+                    filename = loader.construct_scalar(node)
+                    include_path = lib_path.parent / filename
+                    if include_path.exists():
+                        with open(include_path, 'r') as f_inc:
+                            return yaml.load(f_inc, Loader=SafeLoaderIgnoreUnknown)
+                    return None
+
                 SafeLoaderIgnoreUnknown.add_constructor('!secret', ignore_unknown)
                 SafeLoaderIgnoreUnknown.add_constructor('!lambda', ignore_unknown)
-                SafeLoaderIgnoreUnknown.add_constructor('!include', ignore_unknown)
+                SafeLoaderIgnoreUnknown.add_constructor('!include', include_constructor)
                 
                 lib_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
                 if lib_doc:

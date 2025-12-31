@@ -81,8 +81,26 @@ def load_esphome_config(config_path):
         print(f"Warning: ESPhome config file not found at {config_path}")
         return {}
     try:
+        # Custom loader to handle !include
+        class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+            pass
+        def ignore_unknown(loader, node):
+            return None
+        
+        def include_constructor(loader, node):
+            filename = loader.construct_scalar(node)
+            include_path = os.path.join(os.path.dirname(config_path), filename)
+            if os.path.exists(include_path):
+                with open(include_path, 'r', encoding='utf-8') as f_inc:
+                    return yaml.load(f_inc, Loader=SafeLoaderIgnoreUnknown)
+            return None
+
+        SafeLoaderIgnoreUnknown.add_constructor('!secret', ignore_unknown)
+        SafeLoaderIgnoreUnknown.add_constructor('!lambda', ignore_unknown)
+        SafeLoaderIgnoreUnknown.add_constructor('!include', include_constructor)
+
         with open(config_path, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
+            return yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
     except Exception as e:
         print(f"Warning: Failed to load ESPhome config: {e}")
         return {}
