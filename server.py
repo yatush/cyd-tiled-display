@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import subprocess
 import shutil
@@ -9,12 +10,28 @@ import requests
 
 app = Flask(__name__, static_folder='dist')
 
-# Configuration from environment (provided by HA Supervisor)
+# Configuration from environment
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
-if not SUPERVISOR_TOKEN:
-    print("WARNING: SUPERVISOR_TOKEN is not set. API calls will fail.")
-
 HA_URL = "http://supervisor/core"
+
+# Determine environment paths
+# BASE_DIR: Where the user's configuration lives (e.g. /config/esphome)
+if os.path.exists('/config/esphome'):
+    BASE_DIR = '/config/esphome'
+else:
+    # Local fallback: use the esphome folder in the current directory
+    BASE_DIR = os.path.abspath('esphome')
+
+# APP_DIR: Where the application code lives (e.g. /app)
+if os.path.exists('/app'):
+    APP_DIR = '/app'
+else:
+    # Local fallback: use the current directory
+    APP_DIR = os.path.abspath('.')
+
+print(f"Server starting with:")
+print(f"  BASE_DIR: {BASE_DIR}")
+print(f"  APP_DIR:  {APP_DIR}")
 
 MOCK_ENTITIES = [
     {"entity_id": "mock.light_living_room", "state": "on", "attributes": {"friendly_name": "Living Room Light"}},
@@ -58,6 +75,9 @@ def proxy_ha(path):
             headers["Authorization"] = f"Bearer {target_token}"
     else:
         # Local HA mode (Supervisor)
+        if not SUPERVISOR_TOKEN:
+             return jsonify({"error": "Supervisor token not set and no remote credentials provided"}), 401
+             
         url = f"{HA_URL}/api/{path}"
         headers = {
             "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
@@ -81,7 +101,7 @@ def proxy_ha(path):
 @app.route('/api/generate', methods=['POST'])
 def generate():
     try:
-        script_path = '/app/generate_tiles_api.py'
+        script_path = os.path.join(APP_DIR, 'generate_tiles_api.py')
         
         if not os.path.exists(script_path):
             print(f"ERROR: Script not found at {script_path}", flush=True)
@@ -89,12 +109,12 @@ def generate():
 
         # Run the existing generation script
         process = subprocess.Popen(
-            ['python3', script_path],
+            [sys.executable, script_path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd='/app' # Ensure CWD is correct for relative imports
+            cwd=APP_DIR # Ensure CWD is correct for relative imports
         )
         stdout, stderr = process.communicate(input=request.get_data(as_text=True))
         
@@ -115,12 +135,11 @@ def list_files():
         if '..' in path:
             return jsonify({"error": "Invalid path"}), 400
         
-        base_dir = "/config/esphome"
-        if not os.path.exists(base_dir):
+        if not os.path.exists(BASE_DIR):
             # Ensure base dir exists
-            os.makedirs(base_dir, exist_ok=True)
+            os.makedirs(BASE_DIR, exist_ok=True)
             
-        full_path = os.path.join(base_dir, path.lstrip('/'))
+        full_path = os.path.join(BASE_DIR, path.lstrip('/'))
         
         if not os.path.exists(full_path):
             return jsonify({"error": "Path not found"}), 404
@@ -134,7 +153,7 @@ def list_files():
                 items.append({
                     "name": item,
                     "is_dir": is_dir,
-                    "path": os.path.relpath(item_path, base_dir).replace('\\', '/')
+                    "path": os.path.relpath(item_path, BASE_DIR).replace('\\', '/')
                 })
         
         # Sort: directories first, then files
@@ -156,8 +175,7 @@ def make_directory():
         if not path or '..' in path:
             return jsonify({"error": "Invalid path"}), 400
             
-        base_dir = "/config/esphome"
-        full_path = os.path.join(base_dir, path.lstrip('/'))
+        full_path = os.path.join(BASE_DIR, path.lstrip('/'))
         
         os.makedirs(full_path, exist_ok=True)
         return jsonify({"success": True, "path": path})
@@ -173,15 +191,14 @@ def save_config():
             return jsonify({"error": "No data provided"}), 400
         
         config_data = data.get('config')
-        # path is relative to /config/esphome
+        # path is relative to BASE_DIR
         rel_path = data.get('path', 'monitor_config/tiles.yaml')
         
         # Security: prevent directory traversal
         if '..' in rel_path:
             return jsonify({"error": "Invalid path"}), 400
 
-        base_dir = "/config/esphome"
-        target_path = os.path.join(base_dir, rel_path.lstrip('/'))
+        target_path = os.path.join(BASE_DIR, rel_path.lstrip('/'))
         
         # Ensure directory exists
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -201,15 +218,14 @@ def save_config():
 @app.route('/api/load', methods=['GET'])
 def load_config():
     try:
-        # path is relative to /config/esphome
+        # path is relative to BASE_DIR
         rel_path = request.args.get('path', 'monitor_config/tiles.yaml')
         
         # Security: prevent directory traversal
         if '..' in rel_path:
             return jsonify({"error": "Invalid path"}), 400
 
-        base_dir = "/config/esphome"
-        target_path = os.path.join(base_dir, rel_path.lstrip('/'))
+        target_path = os.path.join(BASE_DIR, rel_path.lstrip('/'))
         
         if os.path.exists(target_path):
             # Custom YAML loader to handle all tags safely
@@ -217,8 +233,6 @@ def load_config():
                 pass
             
             def ignore_any_tag(loader, tag_suffix, node):
-                # Return None for any tag to avoid parsing errors
-                # We only care about the structure of tile_ui which shouldn't have tags
                 return None
                 
             SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
@@ -233,7 +247,7 @@ def load_config():
 
 @app.route('/api/schema')
 def get_schema():
-    schema_path = '/app/esphome/custom_components/tile_ui/schema.json'
+    schema_path = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui/schema.json')
     if os.path.exists(schema_path):
         with open(schema_path, 'r') as f:
             return jsonify(json.load(f))
@@ -243,10 +257,14 @@ def get_schema():
 def update_lib():
     try:
         # Update lib with backup
-        source_lib = '/app/esphome/lib'
-        target_lib = '/config/esphome/lib'
-        backup_lib = '/config/esphome/lib_old'
+        source_lib = os.path.join(APP_DIR, 'esphome/lib')
+        target_lib = os.path.join(BASE_DIR, 'lib')
+        backup_lib = os.path.join(BASE_DIR, 'lib_old')
         
+        # If source and target are the same (local dev), skip
+        if os.path.abspath(source_lib) == os.path.abspath(target_lib):
+             return jsonify({"success": True, "message": "Source and target are the same (local dev)"})
+
         if os.path.exists(source_lib):
             if os.path.exists(target_lib):
                 if os.path.exists(backup_lib):
@@ -255,8 +273,8 @@ def update_lib():
             shutil.copytree(source_lib, target_lib)
 
         # Update tile_ui without backup
-        source_ui = '/app/esphome/custom_components/tile_ui'
-        target_ui = '/config/esphome/custom_components/tile_ui'
+        source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
+        target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
         
         if os.path.exists(source_ui):
             if os.path.exists(target_ui):
@@ -298,12 +316,20 @@ def get_directory_checksum(directory):
 @app.route('/api/check_lib_status')
 def check_lib_status():
     try:
-        source_lib = '/app/esphome/lib'
-        target_lib = '/config/esphome/lib'
+        source_lib = os.path.join(APP_DIR, 'esphome/lib')
+        target_lib = os.path.join(BASE_DIR, 'lib')
         
-        source_ui = '/app/esphome/custom_components/tile_ui'
-        target_ui = '/config/esphome/custom_components/tile_ui'
+        source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
+        target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
         
+        # If source and target are the same (local dev), they are synced
+        if os.path.abspath(source_lib) == os.path.abspath(target_lib):
+            return jsonify({
+                "lib_synced": True,
+                "ui_synced": True,
+                "synced": True
+            })
+
         lib_sync = get_directory_checksum(source_lib) == get_directory_checksum(target_lib)
         ui_sync = get_directory_checksum(source_ui) == get_directory_checksum(target_ui)
         
@@ -317,26 +343,36 @@ def check_lib_status():
 
 @app.route('/api/scripts')
 def get_scripts():
-    # This replicates the logic from vite.config.ts
     try:
-        lib_path = '/app/esphome/lib/lib.yaml'
+        # Determine source directory once
+        # Check BASE_DIR first (User config)
+        source_dir = os.path.join(BASE_DIR, 'lib')
+        if not os.path.exists(source_dir):
+            # Fallback to APP_DIR (Default lib)
+            source_dir = os.path.join(APP_DIR, 'esphome/lib')
+            
+        lib_path = os.path.join(source_dir, 'lib.yaml')
         if not os.path.exists(lib_path):
-            return jsonify({"error": "lib.yaml not found"}), 404
+            return jsonify({"error": f"lib.yaml not found in {source_dir}"}), 404
 
         # Custom YAML loader to handle !secret, !lambda, !include
         class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
             pass
         def ignore_unknown(loader, node):
             return None
+        def ignore_any_tag(loader, tag_suffix, node):
+            return None
+            
         SafeLoaderIgnoreUnknown.add_constructor('!secret', ignore_unknown)
         SafeLoaderIgnoreUnknown.add_constructor('!lambda', ignore_unknown)
         SafeLoaderIgnoreUnknown.add_constructor('!include', ignore_unknown)
+        SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
 
         with open(lib_path, 'r') as f:
             doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
 
-        # Load custom lib if it exists
-        custom_lib_path = '/config/esphome/lib/lib_custom.yaml'
+        # Load custom lib from SAME directory if it exists
+        custom_lib_path = os.path.join(source_dir, 'lib_custom.yaml')
         if os.path.exists(custom_lib_path):
             try:
                 with open(custom_lib_path, 'r') as f:
@@ -381,17 +417,17 @@ def get_scripts():
                 value = f"rgb({c['red']}, {c['green']}, {c['blue']})"
             colors.append({'id': c['id'], 'value': value})
 
-        # Fonts from base file
+        # Fonts from base file in SAME directory
         fonts = []
-        base_path = '/app/esphome/lib/3248s035_base.yaml'
+        base_path = os.path.join(source_dir, '3248s035_base.yaml')
         if os.path.exists(base_path):
             with open(base_path, 'r') as f:
                 base_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
                 fonts = [f['id'] for f in base_doc.get('font', [])]
 
-        # Icons from mdi_glyphs.yaml
+        # Icons from mdi_glyphs.yaml in SAME directory
         icons = []
-        glyphs_path = '/app/esphome/lib/mdi_glyphs.yaml'
+        glyphs_path = os.path.join(source_dir, 'mdi_glyphs.yaml')
         if os.path.exists(glyphs_path):
             with open(glyphs_path, 'r') as f:
                 for line in f:
