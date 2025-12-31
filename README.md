@@ -82,6 +82,8 @@ If you want to run the Configurator on your local machine (e.g., for development
 
 # Using the Configurator
 
+ <img align="center" src="https://github.com/yatush/cyd-tiled-display/raw/main/images/configurator.jpg" width="500" />
+
 The Configurator is designed to be intuitive:
 
 1.  **Grid Editor**:
