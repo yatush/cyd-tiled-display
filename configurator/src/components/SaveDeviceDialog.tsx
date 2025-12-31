@@ -40,20 +40,28 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
 
   if (!isOpen) return null;
 
-  const checkFileAndGetInfo = async (path: string): Promise<{ key: string | null, deviceName: string | null }> => {
+  const checkFileAndGetInfo = async (path: string): Promise<{ key: string | null, deviceName: string | null, screenType: string | null }> => {
       try {
           const res = await apiFetch(`/load?path=${encodeURIComponent(path)}`);
           if (res.ok) {
               const data = await res.json();
+              let detectedScreenType = null;
+              const deviceBase = data?.packages?.device_base;
+              if (typeof deviceBase === 'string') {
+                  if (deviceBase.includes('2432s028')) detectedScreenType = '2432s028';
+                  else if (deviceBase.includes('3248s035')) detectedScreenType = '3248s035';
+              }
+              
               return {
                   key: data?.api?.encryption?.key || null,
-                  deviceName: data?.substitutions?.device_name || null
+                  deviceName: data?.substitutions?.device_name || null,
+                  screenType: detectedScreenType
               };
           }
       } catch (e) {
           console.error("Error checking file", e);
       }
-      return { key: null, deviceName: null };
+      return { key: null, deviceName: null, screenType: null };
   };
 
   const handleSave = async () => {
@@ -148,6 +156,9 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
                     }
                     if (info.deviceName) {
                         setDeviceName(info.deviceName);
+                    }
+                    if (info.screenType) {
+                        setScreenType(info.screenType);
                     }
                   }} 
                 />

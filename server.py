@@ -234,7 +234,11 @@ def load_config():
             
             def ignore_any_tag(loader, tag_suffix, node):
                 return None
+
+            def construct_include(loader, node):
+                return loader.construct_scalar(node)
                 
+            SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
             SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
 
             with open(target_path, 'r') as f:
