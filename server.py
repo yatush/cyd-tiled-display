@@ -446,7 +446,8 @@ def get_scripts():
 
         for s in scripts:
             if 'id' in s:
-                if s['id'].startswith('tile_'):
+                # Include scripts starting with 'tile_' OR 'condition_'
+                if s['id'].startswith('tile_') or s['id'].startswith('condition_'):
                     params = s.get('parameters', {})
                     param_list = [
                         {'name': k, 'type': v}

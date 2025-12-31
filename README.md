@@ -9,8 +9,6 @@ The Hardware is bought from AliExpress (I'll provide sample links, no attributio
 
 The project is based on the awesome [ESPHome](https://esphome.io/) project.
 
-In order to customize the display, one has to change YAML configuration. To add new capabilities, some C++ knowledge is required.
-
 <p align="center">
   <img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/cyd-tiled-display.png" width="400" />
   <img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/cyd-vid.gif" width="300"/>
@@ -18,6 +16,100 @@ In order to customize the display, one has to change YAML configuration. To add 
   <img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/2displays.png" width="300" />
   </br>  
 </p>
+
+# How it Works
+
+The project transforms a visual design into a working device through three stages:
+
+1.  **Visual Design (The Configurator)**:
+    You use the web-based Configurator to design your screen layout. You can create multiple pages, drag-and-drop tiles, and link them to Home Assistant entities (lights, switches, sensors, etc.).
+    
+2.  **YAML Configuration**:
+    The Configurator saves your design as a structured YAML file (e.g., `tiles.yaml`). It then "Generates" the specific ESPHome YAML code required to render this design. This includes all the scripts, global variables, and display logic.
+
+3.  **C++ Implementation**:
+    Under the hood, the ESPHome YAML utilizes a custom C++ component (`tile_ui`) included in this repository. This C++ code handles the actual drawing on the screen, touch events, and page navigation, ensuring high performance on the ESP32.
+
+# Installation
+
+## Option 1: Home Assistant Add-on (Recommended)
+
+This is the easiest way to get started. The Add-on runs the Configurator directly within Home Assistant and has access to your ESPHome configuration folder.
+
+1.  **Add Repository**: Add this GitHub repository URL to your Home Assistant Add-on Store repositories.
+2.  **Install**: Find "CYD Tiled Display Configurator" in the store and click Install.
+3.  **Start**: Start the Add-on and click "Open Web UI".
+4.  **Usage**: The Configurator will automatically detect your `/config/esphome` directory. You can save your designs and library files directly there.
+
+## Option 2: Local Development
+
+If you want to run the Configurator on your local machine (e.g., for development or if you don't use HA OS):
+
+### Prerequisites
+*   Python 3.x
+*   Node.js & npm
+
+### Steps
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/yatush/cyd-tiled-display.git
+    cd cyd-tiled-display
+    ```
+
+2.  **Start the Backend Server**:
+    This Python server handles file operations and the ESPHome generation logic.
+    ```bash
+    # Install dependencies
+    pip install flask pyyaml requests
+
+    # Run the server
+    python server.py
+    ```
+    The server will start on `http://localhost:8099`.
+
+3.  **Start the Frontend**:
+    Open a new terminal window.
+    ```bash
+    cd configurator
+    
+    # Install dependencies
+    npm install
+
+    # Run the development server
+    npm run dev
+    ```
+    The UI will open at `http://localhost:5173`.
+
+# Using the Configurator
+
+The Configurator is designed to be intuitive:
+
+1.  **Grid Editor**:
+    *   The main view shows your screen grid (e.g., 4x3).
+    *   **Drag and Drop** tiles from the sidebar onto the grid.
+    *   **Resize** tiles by dragging their corners.
+
+
+2.  **Tile Configuration**:
+    *   Click on any tile in the grid to open the **Properties Sidebar**.
+    *   **Entity**: Select the Home Assistant entity to control or monitor.
+    *   **Label**: Set a custom label (or leave blank to use the entity's friendly name).
+    *   **Icon**: Choose an icon from the Material Design Icons library.
+    *   **Color**: Customize the tile color based on state.
+
+3.  **File Management**:
+    *   **Manage Screens File**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`). This allows you to reload your work later.
+    *   **Save/Load Device**: Save the *generated* ESPHome configuration directly to a file on the server. This is useful if you want to automate the update process.
+
+4.  **Generating the Firmware**:
+    *   **Option A (Recommended): Save Device**:
+        1.  Open **File Management** and click **Save Device**.
+        2.  Enter a device name (e.g., `monitor`) and a filename (e.g., `monitor.yaml`).
+        3.  This will create a full ESPHome configuration file in your `/config/esphome/` directory.
+        4.  Open the ESPHome dashboard, find the new device, and click **Install**.
+    *   **Option B: Manual Generation**:
+        1.  Click the **Generate** button to preview the YAML code.
+        2.  Copy the code and paste it into your existing ESPHome configuration.
 
 # Hardware
 
@@ -88,184 +180,12 @@ In order to customize the display, one has to change YAML configuration. To add 
 * Connection between the ends of the jst cables can be done in any method, as long as it's compact (it has to go in the outlet box).
 * The JST connector on the ld2410b sensor is connected to 4 pins only (although there are 5 pins available).
 
-# Library
+# Library Structure
 
-Here is a short descrtiption of the files that appear under ```/esphome/lib/``` directory.
+The project relies on a set of library files that should be placed in your `/esphome/lib/` directory. The Configurator can help manage these files.
 
-## Device base files
-Model specific definitions Each display will need to define a yaml file that will "include" the device basse file. This file also points to the header files that contain parts of the implementation.
-### 2432s028_base.yaml
-This is the file for the 2.8 inch display.
-### 3248s035_base.yaml
-Same as above, for the 3.5 inch display.
-## lib.yaml
-The yaml file that contains all the common definitions to all displays. Each display will need to define a yaml file that will "include" the lib.yaml file.
-### Important
-> In the 2432s028 model, we're not using the clear screen before each frame is rendered, because it takes quite a few milliseconds. We actually overrite the last actions we had in black. This is done in a bit of a hacky way, please pay attention that any drawing function you add should have this capability. Look at other functions for reference, and pay attention that the actual color change happens in the display overriding functions in the utils file.
-
-# Tiles Configuration
-
-The tile UI is now configured using YAML with comprehensive validation. Instead of defining tiles in C++, you define them in the `monitor_tiles.yaml` file. The tile_ui ESPhome component automatically generates the C++ code from your YAML configuration.
-
-## Validation
-
-The system performs two-tier validation at build time:
-
-1. **Schema Validation**: Ensures YAML structure, required fields, and data types are correct
-2. **Runtime Validation**: Validates business logic, cross-references, and semantic correctness
-
-All validation errors **stop compilation immediately** with detailed error messages including screen ID and tile position for easy debugging.
-
-See [TILE_CONFIGURATION.md](https://github.com/yatush/cyd-tiled-display/blob/main/TILE_CONFIGURATION.md) for complete validation rules and [SCRIPT_VALIDATION.md](https://github.com/yatush/cyd-tiled-display/blob/main/SCRIPT_VALIDATION.md) for script type validation.
-
-## Configuration File
-
-Edit `monitor_tiles.yaml` to configure your screens and tiles. See [TILE_CONFIGURATION.md](https://github.com/yatush/cyd-tiled-display/blob/main/TILE_CONFIGURATION.md) for detailed documentation on all available tile types and configuration options.
-
-### Quick Example
-
-```yaml
-screens:
-  - id: main_screen
-    flags: [BASE]
-    tiles:
-      - ha_action:
-          x: 0
-          y: 0
-          entities:
-            - entity: light.living_room
-          display:
-            - tile_lights
-          perform:
-            - action_lights
-        
-      - move_page:
-          x: 1
-          y: 0
-          display:
-            - tile_settings
-          destination: settings_screen
-```
-
-## Tile Types
-
-The following tile types are available in YAML configuration:
-
-### HAActionTile
-Performs actions in Home Assistant (toggle light, toggle AC, open blinds, etc.)
-
-```yaml
-- ha_action:
-    x: 0
-    y: 0
-    entities:
-      - entity: light.my_light
-    display:
-      - tile_lights
-    perform:
-      - action_lights
-```
-
-### MovePageTile
-Navigation tile that moves to another screen.
-
-```yaml
-- move_page:
-    x: 1
-    y: 0
-    display:
-      - tile_settings
-    destination: settings_screen
-```
-
-### FunctionTile
-Performs functions defined in `lib.yaml` (e.g., brightness adjustment).
-
-```yaml
-- function:
-    x: 0
-    y: 1
-    display:
-      - tile_brightness
-    on_press: on_brightness_press
-    on_release: on_brightness_release
-```
-
-### TitleTile
-Display-only tile that shows information.
-
-```yaml
-- title:
-    x: 2
-    y: 0
-    entities:
-      - entity: climate.ac
-    display:
-      - tile_ac_status
-```
-
-### ToggleEntityTile
-Toggle entity on/off in a dynamic list.
-
-```yaml
-- toggle_entity:
-    x: 0
-    y: 0
-    display:
-      - tile_choose_light
-    dynamic_entity: LIGHT
-    entity: light.closet
-    presentation_name: Closet
-```
-
-### CycleEntityTile
-Cycle through predefined options.
-
-```yaml
-- cycle_entity:
-    x: 1
-    y: 0
-    display:
-      - tile_mode
-    dynamic_entity: AC_MODE
-    options:
-      - entity: "off"
-        label: "Off"
-      - entity: "cool"
-        label: "Cool"
-      - entity: "heat"
-        label: "Heat"
-```
-
-## Dynamic Entities
-
-For advanced configurations using dynamic entity lists, see [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md).
-
-# Installation steps
-
-* **Configurator (Still in development)** - Use the built-in visual editor to design your tiles.
-  * Navigate to `configurator/` directory.
-  * Run `npm install` and `npm run dev`.
-  * Open the provided URL in your browser to design your screens visually.
-  * The configurator provides real-time validation and C++ code generation.
-* **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
-* **Copy library files** - Copy the files under `esphome/lib/` to your Home Assistant's ESPHome configuration directory.
-* **Configure tiles** - Edit `monitor_tiles.yaml` to define your screens and tiles. See [TILE_CONFIGURATION.md](TILE_CONFIGURATION.md) for detailed documentation.
-* **Edit device files** - Once the CYD is connected to HA, edit the configuration file of the specific display through the [ESPHome interface](https://esphome.io/guides/getting_started_hassio.html#esphome-interface). Reference the example files:
-  * `2432s028_monitor.yaml` - For 2.8" display (ESP32-2432S028)
-  * `3248s035_monitor.yaml` - For 3.5" display (ESP32-3248s035C)
-  * Make sure to update `api->encryption->key`.
-* **Enable CYD to execute HA commands** - In your HA, go to *Settings -> Devices and Services -> ESPHome -> <device> -> Configure -> Enable "Allow the device to perform Home Assistant actions"*
-* On ESPHome interface, go to the device, and click `Update`
-* That's it, you're all set!
-
-# Built-in capabilities
-* The implementation of movement identifier allows changing the distance at which the display will wake up.
-* The code reads the brightness from the CYD light sensor and can adjust the screen brightness automatically. For this to happen, long press the brightness adjustment tile for more than 2 seconds.
-* Sleep time can be manually set, this is the time without movement that the screen will go to sleep after.
-* Screen calibration:
-  * In case the screen is not calibrated (touch is not happening in the right place), a calibration might be needed.
-  * In HomeAssistant, go to: *Settings -> Devices and Services -> ESPHome -> Your Device*
-  * Toggle *Touch calibration*.
-  * This enters a calibration mode. the red dot should be in the place where you tap the screen, in case this is incorrect, change the values in the device base file (e.g. ```esphome/lib/2432s028__base.yaml```) under ```touchscreen -> calibration``` to match the minimum and maximum *x_raw, y_raw* values.
-  * Please note, the x/y axis are flipped, this is WAI.
+*   **`lib.yaml`**: Contains the core script definitions and global variables.
+*   **`lib_custom.yaml`**: (Optional) For your own custom scripts and overrides.
+*   **`*_base.yaml`**: Device-specific base configurations (e.g., `2432s028_base.yaml`).
+*   **`mdi_glyphs.yaml`**: Definitions for Material Design Icons.
+*   **`custom_components/tile_ui`**: The C++ component source code.

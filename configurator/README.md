@@ -16,7 +16,8 @@ This Home Assistant Add-on provides a visual configurator for the **CYD Tiled Di
 2. **Configure Connection**: By default, it uses the local Home Assistant Supervisor API. You can also connect to a remote HA instance or use Mock Data in the settings.
 3. **Design your Layout**: Add pages and tiles to match your needs.
 4. **Save to HA**: Save your configuration to your ESPHome folder.
-5. **Generate & Flash**: Use the "Generate" button to create the final YAML, then use the ESPHome dashboard to flash your device.
+5. **Save Device**: Use the "Save Device" option in the File Management menu to generate and save the full ESPHome configuration directly to your ESPHome folder.
+6. **Flash**: Open the ESPHome dashboard, find your new device, and click "Install".
 
 ## Documentation & Support
 
