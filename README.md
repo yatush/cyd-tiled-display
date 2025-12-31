@@ -82,7 +82,9 @@ If you want to run the Configurator on your local machine (e.g., for development
 
 # Using the Configurator
 
- <img align="center" src="https://github.com/yatush/cyd-tiled-display/raw/main/images/configurator.jpg" width="500" />
+<p align="center">
+  <img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/configurator.jpg" width="700" />
+</p>
 
 The Configurator is designed to be intuitive:
 
@@ -100,7 +102,7 @@ The Configurator is designed to be intuitive:
     *   **Color**: Customize the tile color based on state.
 
 3.  **File Management**:
-    *   **Manage Screens File**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`). This allows you to reload your work later.
+    *   **Manage Screens File**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`), or locally. This allows you to reload your work later, and reuse configurations.
 
 4.  **Generating the ESPHome device configuration**:
     *   **Option A (Recommended): Save Device**:
@@ -109,8 +111,7 @@ The Configurator is designed to be intuitive:
         3.  This will create a full ESPHome configuration file in your `/config/esphome/` directory.
         4.  Open the ESPHome dashboard, find the new device, and click **Install**.
     *   **Option B: Manual Generation**:
-        1.  Click the **Generate** button to preview the YAML code.
-        2.  Copy the code and paste it into your existing ESPHome configuration.
+        1.  Use the created YAML file to manually creaete files.
 
 # Hardware
 
@@ -190,3 +191,18 @@ The project relies on a set of library files that should be placed in your `/esp
 *   **`*_base.yaml`**: Device-specific base configurations (e.g., `2432s028_base.yaml`).
 *   **`mdi_glyphs.yaml`**: Definitions for Material Design Icons.
 *   **`custom_components/tile_ui`**: The C++ component source code.
+
+## Library Synchronization & Customization
+
+When using the Home Assistant Add-on, the core library files (like `lib.yaml` and the `tile_ui` component) are managed by the Add-on. The Configurator provides a way to update these files in your `/config/esphome` directory to match the version in the Add-on.
+
+*   **Updates**: When you update the Add-on, you may see a notification in the Configurator that your library files are out of sync. You can click the update button to overwrite the core files with the new versions.
+*   **Customization**: If you want to add your own scripts, global variables, or override existing behavior, **do not edit `lib.yaml` directly**, as it will be overwritten during updates. Instead, use **`lib_custom.yaml`**.
+    *   This file is included by `lib.yaml` but is **never overwritten** by the update process.
+    *   You can safely put your custom logic here and update the core library without losing your changes.
+    * For more crucial changes that require to change lib.yaml, commit changes to the git repository.
+
+# Documentation
+
+*   [**Tile Configuration Guide**](TILE_CONFIGURATION.md): Detailed reference for all available tile types, properties, and configuration options.
+*   [**Script Validation Guide**](SCRIPT_VALIDATION.md): Information about how the system validates your configuration and scripts.
