@@ -28,7 +28,7 @@ export const ScriptInput = ({ label, value, onChange, type }: { label: string, v
       const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
-        setOptions(type === 'display' ? data.display.map((d:any) => d.id) : data.action);
+        setOptions((data.scripts || []).map((s: any) => s.id));
       }
     } catch (e) {
       console.error("Failed to fetch scripts", e);
@@ -86,7 +86,7 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
       const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
-        setOptions(suggestionType === 'display' ? data.display.map((d:any) => d.id) : data.action);
+        setOptions((data.scripts || []).map((s: any) => s.id));
       }
     } catch (e) {
       console.error("Failed to fetch scripts", e);
@@ -208,8 +208,8 @@ export const ConditionBuilder = ({ value, onChange, scriptOptions: propScriptOpt
         return;
     }
 
-    fetch('/api/scripts').then(res => res.json()).then(data => {
-        const all = [...(data.display || []).map((d:any) => d.id), ...(data.action || [])];
+    apiFetch('/scripts').then(res => res.json()).then(data => {
+        const all = (data.scripts || []).map((s: any) => s.id);
         if (!propScriptOptions) setOptions(all);
     }).catch(e => console.error(e));
   }, [propScriptOptions]);

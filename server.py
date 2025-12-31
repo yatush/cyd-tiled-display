@@ -441,22 +441,17 @@ def get_scripts():
                             'label': label
                         })
 
-        display_scripts = []
-        action_scripts = []
+        scripts_list = []
 
         for s in scripts:
             if 'id' in s:
-                # Include scripts starting with 'tile_' OR 'condition_'
-                if s['id'].startswith('tile_') or s['id'].startswith('condition_'):
-                    params = s.get('parameters', {})
-                    param_list = [
-                        {'name': k, 'type': v}
-                        for k, v in params.items()
-                        if k not in ('x', 'y', 'entities')
-                    ]
-                    display_scripts.append({'id': s['id'], 'params': param_list})
-                else:
-                    action_scripts.append(s['id'])
+                params = s.get('parameters', {})
+                param_list = [
+                    {'name': k, 'type': v}
+                    for k, v in params.items()
+                    if k not in ('x', 'y', 'entities')
+                ]
+                scripts_list.append({'id': s['id'], 'params': param_list})
 
         globals_list = [
             g['id'] for g in doc.get('globals', [])
@@ -464,8 +459,7 @@ def get_scripts():
         ]
 
         return jsonify({
-            "display": display_scripts,
-            "action": action_scripts,
+            "scripts": scripts_list,
             "colors": colors,
             "fonts": fonts,
             "icons": icons,
