@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Server, Globe, Database, ShieldCheck, RefreshCw } from 'lucide-react';
+import { X, Server, Globe, Database, ShieldCheck, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { ConnectionType } from '../hooks/useHaConnection';
 import { isAddon, apiFetch } from '../utils/api';
 
@@ -31,7 +31,8 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   const [localType, setLocalType] = useState<ConnectionType>(connectionType);
   const [localUrl, setLocalUrl] = useState(haUrl);
   const [localToken, setLocalToken] = useState(haToken);
-  const [libStatus, setLibStatus] = useState<{lib_synced: boolean, ui_synced: boolean, synced: boolean} | null>(null);
+  const [libStatus, setLibStatus] = useState<{lib_synced: boolean, ui_synced: boolean, synced: boolean, details?: string[]} | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   // Reset local state when dialog opens
   useEffect(() => {
@@ -39,6 +40,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
       setLocalType(connectionType);
       setLocalUrl(haUrl);
       setLocalToken(haToken);
+      setShowDetails(false);
       
       if (isAddon) {
           apiFetch('/check_lib_status')
@@ -75,6 +77,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
               .then(data => {
                 setLibStatus(data);
                 onCheckLibStatus(data);
+                setShowDetails(false);
               })
               .catch(err => console.error(err));
         } else {
@@ -88,8 +91,8 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="flex items-center justify-between p-4 border-b bg-slate-50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b bg-slate-50 shrink-0">
           <div className="flex items-center gap-2">
             <Server className="text-blue-600" size={20} />
             <h2 className="font-bold text-slate-800">HA Connection Settings</h2>
@@ -99,7 +102,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto">
           <div className="space-y-3">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Connection Mode</label>
             <div className="grid grid-cols-1 gap-2">
@@ -196,6 +199,29 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
                         <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white" />
                     )}
                 </button>
+                
+                {libStatus && !libStatus.synced && libStatus.details && libStatus.details.length > 0 && (
+                  <div className="mt-2">
+                    <button 
+                      onClick={() => setShowDetails(!showDetails)}
+                      className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-slate-700 mx-auto"
+                    >
+                      {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      {showDetails ? 'Hide Details' : 'Show Mismatched Files'}
+                    </button>
+                    
+                    {showDetails && (
+                      <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] font-mono text-slate-600 overflow-x-auto max-h-32 overflow-y-auto border border-slate-200">
+                        {libStatus.details.map((line, i) => (
+                          <div key={i} className={line.startsWith('  -') ? 'pl-2 text-red-600' : 'font-bold text-slate-700 mt-1 first:mt-0'}>
+                            {line}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <p className="text-[10px] text-slate-400 mt-1 text-center">
                     Updates shared library files and tile_ui component
                 </p>
@@ -203,7 +229,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
           )}
         </div>
 
-        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
+        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"

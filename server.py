@@ -288,30 +288,48 @@ def update_lib():
         print(f"Update Lib Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-def get_directory_checksum(directory):
+def get_directory_hashes(directory):
     if not os.path.exists(directory):
-        return None
+        return {}
     
-    file_hashes = []
+    file_hashes = {}
     for root, dirs, files in os.walk(directory):
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
-            if '_custom.' in file:
+            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc'):
                 continue
             path = os.path.join(root, file)
             try:
                 with open(path, 'rb') as f:
                     file_hash = hashlib.md5(f.read()).hexdigest()
-                    # Include relative path in hash to detect moves/renames
-                    rel_path = os.path.relpath(path, directory)
-                    file_hashes.append(f"{rel_path}:{file_hash}")
+                    # Include relative path
+                    rel_path = os.path.relpath(path, directory).replace('\\', '/')
+                    file_hashes[rel_path] = file_hash
             except:
                 pass
-    
-    if not file_hashes:
+    return file_hashes
+
+def get_directory_checksum(directory):
+    hashes = get_directory_hashes(directory)
+    if not hashes:
         return None
-        
-    return hashlib.md5("".join(file_hashes).encode()).hexdigest()
+    # Create a deterministic string from sorted keys and values
+    hash_list = [f"{k}:{v}" for k, v in sorted(hashes.items())]
+    return hashlib.md5("".join(hash_list).encode()).hexdigest()
+
+def get_diff(source_hashes, target_hashes):
+    diff = []
+    all_files = set(source_hashes.keys()) | set(target_hashes.keys())
+    
+    for f in sorted(all_files):
+        if f not in source_hashes:
+            diff.append(f"{f} (Extra in target)")
+        elif f not in target_hashes:
+            diff.append(f"{f} (Missing in target)")
+        elif source_hashes[f] != target_hashes[f]:
+            diff.append(f"{f} (Modified)")
+            
+    return diff
 
 @app.route('/api/check_lib_status')
 def check_lib_status():
@@ -327,16 +345,34 @@ def check_lib_status():
             return jsonify({
                 "lib_synced": True,
                 "ui_synced": True,
-                "synced": True
+                "synced": True,
+                "details": []
             })
 
-        lib_sync = get_directory_checksum(source_lib) == get_directory_checksum(target_lib)
-        ui_sync = get_directory_checksum(source_ui) == get_directory_checksum(target_ui)
+        source_lib_hashes = get_directory_hashes(source_lib)
+        target_lib_hashes = get_directory_hashes(target_lib)
+        lib_diff = get_diff(source_lib_hashes, target_lib_hashes)
         
+        source_ui_hashes = get_directory_hashes(source_ui)
+        target_ui_hashes = get_directory_hashes(target_ui)
+        ui_diff = get_diff(source_ui_hashes, target_ui_hashes)
+        
+        lib_synced = len(lib_diff) == 0
+        ui_synced = len(ui_diff) == 0
+        
+        details = []
+        if not lib_synced:
+            details.append("Library files:")
+            details.extend([f"  - {d}" for d in lib_diff])
+        if not ui_synced:
+            details.append("UI Component files:")
+            details.extend([f"  - {d}" for d in ui_diff])
+
         return jsonify({
-            "lib_synced": lib_sync,
-            "ui_synced": ui_sync,
-            "synced": lib_sync and ui_sync
+            "lib_synced": lib_synced,
+            "ui_synced": ui_synced,
+            "synced": lib_synced and ui_synced,
+            "details": details
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
