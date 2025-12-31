@@ -104,7 +104,7 @@ class TestTileUtils(unittest.TestCase):
         }
         self.assertEqual(
             get_tile_modifiers(config), 
-            ['setActivationVar("screen_state", { "on" })']
+            ['setActivationVar("screen_state", {"on"})']
         )
         
         # activation_var with multiple values

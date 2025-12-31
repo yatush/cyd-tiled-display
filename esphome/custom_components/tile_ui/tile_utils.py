@@ -180,7 +180,7 @@ def build_expression(expression_config, context=None):
         return None
     
     if isinstance(expression_config, str):
-        return f"RUN_SCRIPT(id({expression_config}), entities)"
+        return f"(id({expression_config}).execute(entities), id(script_output))"
     
     if not isinstance(expression_config, dict):
         return None
@@ -193,7 +193,7 @@ def build_expression(expression_config, context=None):
         
     if isinstance(conditions, str):
         # Handle single condition (e.g. for NOT or just a single function wrapper)
-        expr = f"RUN_SCRIPT(id({conditions}), entities)"
+        expr = f"(id({conditions}).execute(entities), id(script_output))"
         return f"!{expr}" if op == "NOT" else expr
         
     if isinstance(conditions, list):
@@ -239,6 +239,10 @@ def format_entity_cpp(entity_values):
     if isinstance(entity_values, list):
         return "{" + ", ".join(f'"{e}"' for e in entity_values) + "}"
     else:
+        # If it's a string, check if it's comma-separated
+        if isinstance(entity_values, str) and ',' in entity_values:
+            values = [v.strip() for v in entity_values.split(',')]
+            return "{" + ", ".join(f'"{v}"' for v in values) + "}"
         return "{" + f'"{entity_values}"' + "}"
 
 

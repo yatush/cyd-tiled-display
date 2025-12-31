@@ -416,24 +416,9 @@ conditions:
 
 This evaluates to: `light_on_fn AND (ac_running_fn OR fan_running_fn)`
 
-### Using Conditions
+### Using Conditions - Requires Fast Refresh
 
-Currently, conditions are used in:
-
-- **requires_fast_refresh**: Determines if a tile needs frequent updates. These are implemented as ESPHome scripts (functions) that receive the tile's `entities` as a parameter.
-  ```yaml
-  requires_fast_refresh:
-    operator: OR
-    conditions:
-      - blinds_moving_up_fn
-      - blinds_moving_down_fn
-  ```
-
-More uses for conditions may be added in the future.
-
-### Requires Fast Refresh
-
-Some tiles need to update frequently. Use the condition structure to specify when fast refresh is needed:
+Some tiles need to update frequently. Use the condition structure to specify when fast refresh is needed. In case the condition evaluates to true, the whole screen will refresh a few times per second.
 
 ```yaml
 - ha_action:
@@ -485,92 +470,11 @@ requires_fast_refresh:
 
 This evaluates to: `((!blinds_moving_up_fn) && blinds_moving_down_fn) || blinds_moving_down_fn`
 
-Tile refreshes fast if light is on AND (ac is running OR fan is running).
-
-## Example Configuration
-
-Here's a complete example showing multiple tile types:
-
-```yaml
-screens:
-  - id: home
-    flags: [BASE]
-    tiles:
-      - title:
-          x: 0
-          y: 0
-          entities:
-            - entity: temperature_sensor
-              sensor: temp
-          display:
-            - tile_temperature
-          omit_frame: true
-      
-      - ha_action:
-          x: 1
-          y: 0
-          entities:
-            - dynamic_entity: LIGHT
-          display:
-            - tile_lights
-          perform:
-            - toggle_light
-      
-      - move_page:
-          x: 2
-          y: 0
-          display:
-            - tile_settings
-          destination: settings
-
-  - id: settings
-    flags: [TEMPORARY]
-    tiles:
-      - toggle_entity:
-          x: 0
-          y: 0
-          display:
-            - tile_choose_light
-          dynamic_entity: LIGHT
-          entity: kitchen_light
-          presentation_name: Kitchen
-          initially_chosen: true
-      
-      - toggle_entity:
-          x: 1
-          y: 0
-          display:
-            - tile_choose_light
-          dynamic_entity: LIGHT
-          entity: bedroom_light
-          presentation_name: Bedroom
-      
-      - cycle_entity:
-          x: 2
-          y: 0
-          display:
-            - tile_cycle_light
-          dynamic_entity: LIGHT
-          options:
-            - entity: kitchen_light
-              label: Kitchen
-            - entity: bedroom_light
-              label: Bedroom
-          reset_on_leave: true
-      
-      - move_page:
-          x: 0
-          y: 1
-          display:
-            - tile_back_arrow
-          destination: home
-```
-
 ## How It Works
 
 1. **Build Time**: When you run `esphome compile` or `esphome run`:
    - ESPhome loads your configuration
-   - The `tile_ui` custom component reads `monitor_tiles.yaml`
+   - The `tile_ui` custom component reads the configuration from inline, or from tile_file.
    - Python code validates the YAML structure
    - C++ code is generated from the YAML
 
@@ -626,8 +530,9 @@ To run the tests, execute the following command from the project root:
 
 ```powershell
 # Run all tests
-python -m unittest discover -v esphome/custom_components/tile_ui/tests
+cd esphome/custom_components
+python -m unittest discover -v tile_ui/tests
 
 # Run a specific test file
-python esphome/custom_components/tile_ui/tests/test_generation.py
+python tile_ui/tests/test_generation.py
 ```

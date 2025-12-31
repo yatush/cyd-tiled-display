@@ -119,7 +119,7 @@ class TestTileGeneration(unittest.TestCase):
             }
         }
         cpp = generate_tile_cpp(config)
-        expected = 'new ToggleEntityTile(0, 0, { [](int arg0, int arg1, std::string arg2, bool arg3) { id(icon).execute(arg0, arg1, arg2, arg3); } }, "state_var", { "light.living_room" }, "Living Room", false)'
+        expected = 'new ToggleEntityTile(0, 0, { [](int arg0, int arg1, std::string arg2, bool arg3) { id(icon).execute(arg0, arg1, arg2, arg3); } }, "state_var", {"light.living_room"}, "Living Room", false)'
         self.assertIn(expected, cpp)
 
     def test_cycle_entity_tile(self):
@@ -135,7 +135,7 @@ class TestTileGeneration(unittest.TestCase):
             }
         }
         cpp = generate_tile_cpp(config)
-        options_cpp = '{ { { "mode1" }, "Mode 1" }, { { "mode2" }, "Mode 2" } }'
+        options_cpp = '{ { {"mode1"}, "Mode 1" }, { {"mode2"}, "Mode 2" } }'
         self.assertIn(f'new CycleEntityTile(0, 0, {{ [](int arg0, int arg1, std::string arg2, std::vector<std::string> arg3) {{ id(icon).execute(arg0, arg1, arg2, arg3); }} }}, "mode_var", {options_cpp}, false)', cpp)
 
     def test_modifiers(self):
@@ -164,7 +164,7 @@ class TestTileGeneration(unittest.TestCase):
             }
         }
         cpp = generate_tile_cpp(config)
-        self.assertIn('->setActivationVar("state", { "on" })', cpp)
+        self.assertIn('->setActivationVar("state", {"on"})', cpp)
 
         # Multiple values
         config["title"]["activation_var"]["value"] = "on, off"
