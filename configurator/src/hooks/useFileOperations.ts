@@ -1,4 +1,5 @@
 import React, { useRef, useCallback } from 'react';
+import { dump } from 'js-yaml';
 import { Config } from '../types';
 import { generateYaml } from '../utils/yamlGenerator';
 import { parseYamlToConfig } from '../utils/yamlParser';
@@ -147,6 +148,19 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
 
   const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string) => {
     try {
+      let wifiSection = '';
+      try {
+          const loadRes = await apiFetch(`/load?path=${encodeURIComponent(fileName)}`);
+          if (loadRes.ok) {
+              const data = await loadRes.json();
+              if (data.wifi) {
+                  wifiSection = dump({ wifi: data.wifi });
+              }
+          }
+      } catch (e) {
+          // ignore
+      }
+
       const screensYaml = generateYaml(config);
       
       const fullYaml = `substitutions:
@@ -165,6 +179,7 @@ api:
   encryption:
     key: "${encryptionKey}"
 
+${wifiSection}
 tile_ui:
 ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
 `;
