@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { IconPicker, ColorPicker } from './Pickers';
+import { apiFetch } from '../utils/api';
 
 export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], onChange: (v: any[]) => void, tileType?: string }) => {
   const [availableScripts, setAvailableScripts] = useState<{id: string, params: {name: string, type: string}[]}[]>([]);
@@ -12,7 +13,7 @@ export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], 
 
   const fetchScripts = async () => {
     try {
-      const res = await fetch('/api/scripts');
+      const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
         setAvailableScripts(data.display);

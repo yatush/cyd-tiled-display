@@ -99,9 +99,8 @@ The Configurator is designed to be intuitive:
 
 3.  **File Management**:
     *   **Manage Screens File**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`). This allows you to reload your work later.
-    *   **Save/Load Device**: Save the *generated* ESPHome configuration directly to a file on the server. This is useful if you want to automate the update process.
 
-4.  **Generating the Firmware**:
+4.  **Generating the ESPHome device configuration**:
     *   **Option A (Recommended): Save Device**:
         1.  Open **File Management** and click **Save Device**.
         2.  Enter a device name (e.g., `monitor`) and a filename (e.g., `monitor.yaml`).
