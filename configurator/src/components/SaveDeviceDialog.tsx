@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { X, Save, Monitor, ArrowLeft, RefreshCw } from 'lucide-react';
+import { X, Save, Monitor, ArrowLeft, RefreshCw, FolderOpen } from 'lucide-react';
+import { FileExplorer } from './FileExplorer';
+import { apiFetch } from '../utils/api';
 
 interface SaveDeviceDialogProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   const [screenType, setScreenType] = useState('2432s028');
   const [fileName, setFileName] = useState('');
   const [encryptionKey, setEncryptionKey] = useState('');
+  const [showExplorer, setShowExplorer] = useState(false);
 
   const generateKey = () => {
     const randomValues = new Uint8Array(32);
@@ -37,11 +40,32 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSave = () => {
+  const checkFileAndGetKey = async (path: string): Promise<string | null> => {
+      try {
+          const res = await apiFetch(`/load?path=${encodeURIComponent(path)}`);
+          if (res.ok) {
+              const data = await res.json();
+              return data?.api?.encryption?.key || null;
+          }
+      } catch (e) {
+          console.error("Error checking file", e);
+      }
+      return null;
+  };
+
+  const handleSave = async () => {
     if (!deviceName || !fileName || !encryptionKey) {
       alert('Please fill in all fields');
       return;
     }
+
+    // Check for existing file and key mismatch
+    const existingKey = await checkFileAndGetKey(fileName);
+    if (existingKey && existingKey !== encryptionKey) {
+        alert(`Cannot overwrite file "${fileName}" because the Encryption Key does not match.\n\nExisting key: ${existingKey}\nCurrent key: ${encryptionKey}\n\nPlease restore the original key (by re-selecting the file) or choose a different filename.`);
+        return;
+    }
+
     // Use deviceName as friendlyName
     onSave(deviceName, deviceName, screenType, fileName, encryptionKey);
     onClose();
@@ -88,13 +112,41 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
 
           <div>
             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">File Name</label>
-            <input 
-              type="text" 
-              value={fileName} 
-              onChange={e => setFileName(e.target.value)}
-              placeholder="e.g. living_room.yaml"
-              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono"
-            />
+            <div className="flex gap-2">
+                <input 
+                type="text" 
+                value={fileName} 
+                onChange={e => setFileName(e.target.value)}
+                placeholder="e.g. living_room.yaml"
+                className="flex-1 border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono"
+                />
+                <button 
+                    onClick={() => setShowExplorer(!showExplorer)}
+                    className={`p-2 rounded-lg border-2 transition-colors ${
+                    showExplorer ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                    title="Browse files"
+                >
+                    <FolderOpen size={20} />
+                </button>
+            </div>
+            
+            {showExplorer && (
+              <div className="mt-2 h-48 border rounded-lg overflow-hidden bg-white">
+                <FileExplorer 
+                  currentPath={fileName.includes('/') ? fileName.split('/').slice(0, -1).join('/') : ''}
+                  selectedPath={fileName}
+                  onSelect={async (path) => {
+                    setFileName(path);
+                    setShowExplorer(false);
+                    const key = await checkFileAndGetKey(path);
+                    if (key) {
+                        setEncryptionKey(key);
+                    }
+                  }} 
+                />
+              </div>
+            )}
             <p className="text-[10px] text-slate-400 mt-1">The filename to save in /config/esphome</p>
           </div>
 
