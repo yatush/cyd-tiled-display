@@ -22,6 +22,7 @@ def _get_cpp_type(param_type):
     if param_type == 'string[]': return 'std::vector<std::string>'
     if param_type == 'font': return 'esphome::display::BaseFont*'
     if param_type == 'esphome::display::BaseFont*': return 'esphome::display::BaseFont*'
+    if param_type == 'Color': return 'Color'
     return 'auto'
 
 def _get_default_value(param_type):
@@ -32,6 +33,7 @@ def _get_default_value(param_type):
     if param_type == 'string[]': return '{}'
     if param_type == 'font': return 'nullptr'
     if param_type == 'esphome::display::BaseFont*': return 'nullptr'
+    if param_type == 'Color': return 'Color::BLACK'
     return '{}'
 
 def _generate_lambda(script_id, available_scripts, expected_params, static_params=None):

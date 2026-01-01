@@ -19,7 +19,7 @@ export const TextInput = ({ label, value, onChange, haEntities }: { label: strin
         <datalist id={listId}>
             {haEntities.map(e => (
                 <option key={e.entity_id} value={e.entity_id}>
-                    {e.friendly_name || e.entity_id}
+                    {e.friendly_name && e.friendly_name !== e.entity_id ? e.friendly_name : null}
                 </option>
             ))}
         </datalist>
@@ -195,7 +195,7 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
         <datalist id={listId}>
           {haEntities?.map(e => (
             <option key={e.entity_id} value={e.entity_id}>
-              {e.friendly_name || e.entity_id}
+              {e.friendly_name && e.friendly_name !== e.entity_id ? e.friendly_name : null}
             </option>
           ))}
         </datalist>
@@ -382,7 +382,7 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
                     <datalist id={listId}>
                         {haEntities.map(e => (
                             <option key={e.entity_id} value={e.entity_id}>
-                                {e.friendly_name || e.entity_id}
+                                {e.friendly_name && e.friendly_name !== e.entity_id ? e.friendly_name : null}
                             </option>
                         ))}
                     </datalist>

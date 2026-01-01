@@ -99,7 +99,7 @@ export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], 
                         );
                     }
 
-                    if (p.name === 'color') {
+                    if (p.name === 'color' || p.type.includes('Color')) {
                         return (
                             <div key={p.name}>
                                 <label className="block text-[10px] text-slate-500 uppercase">{p.name} <span className="text-slate-300">({p.type})</span></label>

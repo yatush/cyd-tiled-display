@@ -84,7 +84,7 @@ export const IconPicker = ({ value, onChange, icons, onFocus }: { value: string,
                         }}
                         title={icon.label}
                     >
-                        <span className="text-xl" style={{ fontFamily: '"Material Symbols Outlined"' }}>{icon.char || icon.value}</span>
+                        <span className="text-xl" style={{ fontFamily: '"Material Symbols Outlined"' }}>{getDisplayChar(icon.value)}</span>
                     </button>
                 ))}
             </div>
@@ -111,7 +111,55 @@ export const ColorPicker = ({ value, onChange, colors, onFocus }: { value: strin
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const selectedColor = colors.find(c => c.id === value);
+    const getPreviewColor = (val: string) => {
+        const found = colors.find(c => c.id === val);
+        if (found) return found.value;
+        
+        const match = val.match(/Color\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (match) {
+            const r = parseInt(match[1]);
+            const g = parseInt(match[2]);
+            const b = parseInt(match[3]);
+            return `rgb(${r},${g},${b})`;
+        }
+        return '#fff';
+    };
+
+    const getHexForPicker = (val: string) => {
+        const found = colors.find(c => c.id === val);
+        if (found) {
+             // Try to convert found value (which might be hex or rgb) to hex
+             if (found.value.startsWith('#')) return found.value;
+             // If it's rgb(), parse it
+             const rgbMatch = found.value.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+             if (rgbMatch) {
+                 const r = parseInt(rgbMatch[1]);
+                 const g = parseInt(rgbMatch[2]);
+                 const b = parseInt(rgbMatch[3]);
+                 return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+             }
+             return '#000000';
+        }
+
+        const match = val.match(/Color\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (match) {
+            const r = parseInt(match[1]);
+            const g = parseInt(match[2]);
+            const b = parseInt(match[3]);
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+        return '#000000';
+    };
+
+    const hexToColorFunc = (hex: string) => {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `Color(${r},${g},${b})`;
+    };
+
+    const previewColor = getPreviewColor(value);
+    const pickerValue = getHexForPicker(value);
 
     return (
         <div className="relative" ref={wrapperRef}>
@@ -124,29 +172,55 @@ export const ColorPicker = ({ value, onChange, colors, onFocus }: { value: strin
             >
                 <div 
                     className="w-4 h-4 rounded border border-slate-200 shadow-sm" 
-                    style={{ backgroundColor: selectedColor ? selectedColor.value : '#fff' }}
+                    style={{ backgroundColor: previewColor }}
                 />
-                <span className="text-xs flex-1">{value || 'Select color...'}</span>
+                <span className="text-xs flex-1 truncate">{value || 'Select color...'}</span>
             </div>
             
             {isOpen && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border rounded shadow-lg">
-                    {colors.map(c => (
-                        <div 
-                            key={c.id}
-                            className="flex items-center gap-2 p-1 hover:bg-blue-50 cursor-pointer"
-                            onClick={() => {
-                                onChange(c.id);
-                                setIsOpen(false);
-                            }}
-                        >
-                            <div 
-                                className="w-4 h-4 rounded border border-slate-200" 
-                                style={{ backgroundColor: c.value }}
+                <div className="absolute z-50 top-full left-0 w-64 mt-1 max-h-64 overflow-y-auto bg-white border rounded shadow-lg p-2">
+                    <div className="mb-2 pb-2 border-b">
+                        <label className="block text-[10px] text-slate-500 uppercase mb-1">Custom Color</label>
+                        <div className="flex gap-2 items-center">
+                            <input 
+                                type="color" 
+                                className="w-8 h-8 p-0 border-0 rounded cursor-pointer"
+                                value={pickerValue}
+                                onChange={(e) => {
+                                    onChange(hexToColorFunc(e.target.value));
+                                }}
                             />
-                            <span className="text-xs">{c.id}</span>
+                            <span className="text-xs text-slate-600 font-mono flex-1 truncate">
+                                {value.startsWith('Color(') ? value : 'Pick custom...'}
+                            </span>
+                            <button 
+                                className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                Pick
+                            </button>
                         </div>
-                    ))}
+                    </div>
+
+                    <label className="block text-[10px] text-slate-500 uppercase mb-1">Presets</label>
+                    <div className="space-y-1">
+                        {colors.map(c => (
+                            <div 
+                                key={c.id}
+                                className="flex items-center gap-2 p-1 hover:bg-blue-50 cursor-pointer rounded"
+                                onClick={() => {
+                                    onChange(c.id);
+                                    setIsOpen(false);
+                                }}
+                            >
+                                <div 
+                                    className="w-4 h-4 rounded border border-slate-200" 
+                                    style={{ backgroundColor: c.value }}
+                                />
+                                <span className="text-xs">{c.id}</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
