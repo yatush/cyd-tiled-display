@@ -69,3 +69,16 @@ To connect to your Home Assistant:
 The default deployment command (`--allow-unauthenticated`) makes your configurator accessible to **anyone** with the URL.
 
 *   **Secure it**: It is highly recommended to remove `--allow-unauthenticated` and configure authentication (e.g., using Cloud Run's built-in IAM authentication or putting it behind a load balancer with IAP).
+
+## Troubleshooting
+
+### "Error: Forbidden" (403)
+If you see "Your client does not have permission to get URL / from this server", it means the service is private. This can happen if the `--allow-unauthenticated` flag was ignored due to organization policies.
+
+**Fix:** Run this command to manually make it public:
+```bash
+gcloud run services add-iam-policy-binding cyd-tiled-display \
+  --member="allUsers" \
+  --role="roles/run.invoker" \
+  --region=us-central1
+```
