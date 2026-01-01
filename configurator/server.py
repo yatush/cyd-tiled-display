@@ -7,6 +7,7 @@ import yaml
 import hashlib
 from flask import Flask, request, send_from_directory, jsonify
 import requests
+import generate_tiles_api
 
 app = Flask(__name__, static_folder='dist')
 
@@ -19,15 +20,15 @@ HA_URL = "http://supervisor/core"
 if os.path.exists('/config/esphome'):
     BASE_DIR = '/config/esphome'
 else:
-    # Local fallback: use the esphome folder in the current directory
-    BASE_DIR = os.path.abspath('esphome')
+    # Local fallback: use the esphome folder in the parent directory
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../esphome'))
 
 # APP_DIR: Where the application code lives (e.g. /app)
 if os.path.exists('/app'):
     APP_DIR = '/app'
 else:
-    # Local fallback: use the current directory
-    APP_DIR = os.path.abspath('.')
+    # Local fallback: use the parent directory (repo root)
+    APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 print(f"Server starting with:")
 print(f"  BASE_DIR: {BASE_DIR}")
@@ -101,28 +102,14 @@ def proxy_ha(path):
 @app.route('/api/generate', methods=['POST'])
 def generate():
     try:
-        script_path = os.path.join(APP_DIR, 'generate_tiles_api.py')
+        input_data = request.get_data(as_text=True)
+        result = generate_tiles_api.generate_cpp_from_yaml(input_data)
         
-        if not os.path.exists(script_path):
-            print(f"ERROR: Script not found at {script_path}", flush=True)
-            return jsonify({"error": f"Script not found at {script_path}"}), 500
-
-        # Run the existing generation script
-        process = subprocess.Popen(
-            [sys.executable, script_path],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=APP_DIR # Ensure CWD is correct for relative imports
-        )
-        stdout, stderr = process.communicate(input=request.get_data(as_text=True))
-        
-        if process.returncode != 0:
-            print(f"Generation Error: {stderr}", flush=True)
-            return jsonify({"error": stderr or "Generation failed"}), 500
+        if "error" in result:
+            print(f"Generation Error: {result['error']}", flush=True)
+            return jsonify(result), 500
             
-        return stdout, 200, {'Content-Type': 'application/json'}
+        return jsonify(result)
     except Exception as e:
         print(f"Server Error: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500

@@ -15,11 +15,11 @@ RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn
 
 # Copy built frontend
-COPY --from=build-frontend /app/dist /app/dist
+COPY --from=build-frontend /app/dist /app/configurator/dist
 
 # Copy Python backend and scripts
-COPY generate_tiles_api.py /app/
-COPY server.py /app/
+COPY configurator/generate_tiles_api.py /app/configurator/
+COPY configurator/server.py /app/configurator/
 
 # Copy ESPHome files (needed for schema and scripts)
 COPY esphome /app/esphome
@@ -28,4 +28,4 @@ COPY esphome /app/esphome
 EXPOSE 8099
 
 # Start the server
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8099", "server:app"]
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8099", "--chdir", "/app/configurator", "server:app"]
