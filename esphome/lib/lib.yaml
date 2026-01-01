@@ -138,7 +138,7 @@ switch:
     optimistic: true
     on_turn_off:
       then:
-        - display.page.show: controllers
+        - lambda: id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());
     on_turn_on:
       then:
         - display.page.show: calib

@@ -1,6 +1,7 @@
 esphome/secrets.yaml
 esphome/custom_components/tile_ui/__pycache__/*
 esphome/custom_components/tile_ui/tests/__pycache__*
+server.log
 
 # Configurator
 configurator/node_modules/
