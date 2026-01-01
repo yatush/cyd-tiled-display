@@ -30,6 +30,16 @@ The project transforms a visual design into a working device through three stage
 3.  **C++ Implementation**:
     Under the hood, the ESPHome YAML utilizes a custom C++ component (`tile_ui`) included in this repository. This C++ code handles the actual drawing on the screen, touch events, and page navigation, ensuring high performance on the ESP32.
 
+# Try it Online
+
+You can try the Configurator right now in your browser without installing anything:
+
+**[Launch Online Configurator](https://tinyurl.com/cyd-tiled-diisplay)**
+
+*   **Features**: Design screens, load/save screen YAML configurations, export generated ESPHome code.
+*   **Limitations**: Cannot create/save device YAML files directly to your Home Assistant instance.
+*   **Best for**: Exploring the tool, designing layouts, and generating configuration to copy-paste into your local setup.
+
 # Installation
 
 ## Option 1: Home Assistant Add-on (Recommended)
