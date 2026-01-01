@@ -26,8 +26,6 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const isHaAvailable = isAddon;
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -70,12 +68,9 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">HA Server Files</h3>
-              {!isHaAvailable && (
-                <span className="text-[10px] font-bold bg-slate-100 text-slate-400 px-2 py-0.5 rounded">Not Connected</span>
-              )}
             </div>
             
-            <div className={`space-y-3 ${!isHaAvailable ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+            <div className="space-y-3">
               <button 
                 onClick={() => { onOpenScreensFile(); onClose(); }}
                 className="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700 transition-all group text-left"

@@ -44,15 +44,41 @@ MOCK_ENTITIES = [
     {"entity_id": "mock.cover_garage_door", "state": "closed", "attributes": {}},
 ]
 
+def serve_index_with_env():
+    """Serve index.html with injected environment variables."""
+    try:
+        with open(os.path.join(app.static_folder, 'index.html'), 'r') as f:
+            content = f.read()
+            
+        # Determine IS_ADDON state
+        # 1. Check explicit env var
+        is_addon_env = os.environ.get('IS_ADDON', '').lower()
+        if is_addon_env in ('true', '1', 'yes'):
+            is_addon = 'true'
+        elif is_addon_env in ('false', '0', 'no'):
+            is_addon = 'false'
+        else:
+            # Default to true (Addon mode) if not specified
+            is_addon = 'true'
+
+        # Inject script
+        injection = f'<script>window.__ENV__ = {{ IS_ADDON: {is_addon} }};</script>'
+        content = content.replace('</head>', f'{injection}</head>')
+        
+        return content
+    except Exception as e:
+        print(f"Error serving index: {e}")
+        return send_from_directory(app.static_folder, 'index.html')
+
 @app.route('/')
 def serve_index():
-    return send_from_directory(app.static_folder, 'index.html')
+    return serve_index_with_env()
 
 @app.route('/<path:path>')
 def serve_static(path):
     if os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, 'index.html')
+    return serve_index_with_env()
 
 @app.route('/api/ha/<path:path>', methods=['GET', 'POST'])
 def proxy_ha(path):

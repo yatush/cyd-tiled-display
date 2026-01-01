@@ -9,6 +9,10 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveToHa = useCallback(async () => {
+    if (!isAddon) {
+      alert('Saving is disabled when not running in HA');
+      return;
+    }
     try {
       const path = config.project_path || 'monitor_config/tiles.yaml';
       const res = await apiFetch('/save', {
@@ -147,6 +151,10 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
   };
 
   const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string) => {
+    if (!isAddon) {
+      alert('Saving is disabled when not running in HA');
+      return;
+    }
     try {
       let wifiSection = '';
       try {
