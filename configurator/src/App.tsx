@@ -60,7 +60,7 @@ function App() {
     selectedTileId, setSelectedTileId,
     activePage, selectedTile,
     handleAddTile, handleUpdateTile, handleDeleteTile,
-    handleDeletePage, handleUpdatePage, handleClearConfig,
+    handleDeletePage, handleUpdatePage, handleRenamePage, handleClearConfig,
     handleDragEnd
   } = useTileConfig();
 
@@ -221,6 +221,7 @@ function App() {
           activePage={activePage}
           haEntities={haEntities}
           onUpdatePage={handleUpdatePage}
+          onRenamePage={handleRenamePage}
         />
       </div>
       </div>

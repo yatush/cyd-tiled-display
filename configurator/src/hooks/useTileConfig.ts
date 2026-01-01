@@ -175,6 +175,50 @@ export function useTileConfig() {
     });
   };
 
+  const handleRenamePage = (oldId: string, newId: string) => {
+    if (oldId === newId) return;
+    if (!newId.trim()) {
+        alert("Page ID cannot be empty");
+        return;
+    }
+    if (config.pages.some(p => p.id === newId)) {
+        alert(`Page ID "${newId}" already exists`);
+        return;
+    }
+
+    // 1. Update the page ID
+    const newPages = config.pages.map(p => 
+        p.id === oldId ? { ...p, id: newId } : p
+    );
+
+    // 2. Update references in all tiles across all pages
+    const updatedPagesWithRefs = newPages.map(page => ({
+        ...page,
+        tiles: page.tiles.map(tile => {
+            let updatedTile = { ...tile };
+            
+            // Update move_page destination
+            if (tile.type === 'move_page' && tile.destination === oldId) {
+                updatedTile.destination = newId;
+            }
+            
+            // Update ha_action display_page_if_no_entity
+            if (tile.type === 'ha_action' && tile.display_page_if_no_entity === oldId) {
+                updatedTile.display_page_if_no_entity = newId;
+            }
+            
+            return updatedTile;
+        })
+    }));
+
+    setConfig({ ...config, pages: updatedPagesWithRefs });
+    
+    // Update active page ID if we renamed the active page
+    if (activePageId === oldId) {
+        setActivePageId(newId);
+    }
+  };
+
   const handleClearConfig = () => {
     if (confirm("Are you sure you want to clear the entire configuration? This cannot be undone.")) {
       setConfig(DEFAULT_CONFIG);
@@ -229,6 +273,7 @@ export function useTileConfig() {
     handleDeleteTile,
     handleDeletePage,
     handleUpdatePage,
+    handleRenamePage,
     handleClearConfig,
     handleDragEnd
   };

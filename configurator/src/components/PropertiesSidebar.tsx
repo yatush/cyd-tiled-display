@@ -14,7 +14,7 @@ import {
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, haEntities }: { 
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, onRenamePage, haEntities }: { 
   selectedTile: Tile | null, 
   onUpdate: (t: Tile) => void, 
   onDelete: () => void,
@@ -22,6 +22,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   schema: any,
   activePage: Page,
   onUpdatePage: (p: Page) => void,
+  onRenamePage: (oldId: string, newId: string) => void,
   haEntities: HaEntity[]
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
@@ -39,6 +40,17 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   const renderPageProperties = () => (
     <div className="space-y-6">
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Page Settings</label>
+        <div className="mb-4">
+          <label className="block text-xs text-slate-600 mb-1 font-medium">Page ID</label>
+          <input 
+            type="text" 
+            value={activePage.id} 
+            onChange={e => onRenamePage(activePage.id, e.target.value)}
+            className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+          />
+        </div>
+        
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Grid Dimensions</label>
         <div className="grid grid-cols-2 gap-4">
           <div>
