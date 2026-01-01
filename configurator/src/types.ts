@@ -20,3 +20,8 @@ export interface Config {
   project_name?: string;
   project_path?: string;
 }
+
+export interface HaEntity {
+  entity_id: string;
+  friendly_name?: string;
+}

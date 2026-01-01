@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch, isAddon } from '../utils/api';
+import { HaEntity } from '../types';
 
 export type HaStatus = 'connected' | 'error' | 'mock' | 'idle';
 export type ConnectionType = 'local' | 'remote' | 'mock';
@@ -21,7 +22,7 @@ export function useHaConnection() {
     if (localStorage.getItem('ha_use_mock') === 'true') return 'mock';
     return 'remote';
   });
-  const [haEntities, setHaEntities] = useState<string[]>([]);
+  const [haEntities, setHaEntities] = useState<HaEntity[]>([]);
   const [haStatus, setHaStatus] = useState<HaStatus>('idle');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -50,7 +51,10 @@ export function useHaConnection() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          const entities = data.map((s: any) => s.entity_id).sort();
+          const entities = data.map((s: any) => ({
+            entity_id: s.entity_id,
+            friendly_name: s.attributes?.friendly_name
+          })).sort((a: HaEntity, b: HaEntity) => a.entity_id.localeCompare(b.entity_id));
           setHaEntities(entities);
           setHaStatus(connectionType === 'mock' ? 'mock' : 'connected');
         } else {

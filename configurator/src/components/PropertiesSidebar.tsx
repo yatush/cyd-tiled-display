@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Layout, Settings2 } from 'lucide-react';
-import { Tile, Config, Page } from '../types';
+import { Tile, Config, Page, HaEntity } from '../types';
 import { 
   TextInput, 
   Checkbox, 
@@ -22,7 +22,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   schema: any,
   activePage: Page,
   onUpdatePage: (p: Page) => void,
-  haEntities: string[]
+  haEntities: HaEntity[]
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
 

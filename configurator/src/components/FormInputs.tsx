@@ -1,24 +1,32 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import { HaEntity } from '../types';
 
-export const TextInput = ({ label, value, onChange, haEntities }: { label: string, value: string, onChange: (v: string) => void, haEntities?: string[] }) => (
+export const TextInput = ({ label, value, onChange, haEntities }: { label: string, value: string, onChange: (v: string) => void, haEntities?: HaEntity[] }) => {
+  const listId = `ha-entities-text-${Math.random().toString(36).substr(2, 9)}`;
+  return (
   <div className="mb-2">
     <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
     <input 
       type="text" 
       value={value || ''} 
       onChange={e => onChange(e.target.value)}
-      list={haEntities ? "ha-entities" : undefined}
+      list={haEntities ? listId : undefined}
       className="w-full border rounded p-1 text-sm"
     />
     {haEntities && (
-        <datalist id="ha-entities">
-            {haEntities.map(e => <option key={e} value={e} />)}
+        <datalist id={listId}>
+            {haEntities.map(e => (
+                <option key={e.entity_id} value={e.entity_id}>
+                    {e.friendly_name || e.entity_id}
+                </option>
+            ))}
         </datalist>
     )}
   </div>
-);
+  );
+};
 
 export const ScriptInput = ({ label, value, onChange, type }: { label: string, value: string, onChange: (v: string) => void, type: 'display' | 'action' }) => {
   const [options, setOptions] = useState<string[]>([]);
@@ -154,9 +162,10 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
   label: string, 
   values: string[], 
   onChange: (v: string[]) => void, 
-  haEntities?: string[]
+  haEntities?: HaEntity[]
 }) => {
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
+  const listId = `ha-entities-list-${Math.random().toString(36).substr(2, 9)}`;
 
   return (
     <div className="mb-2">
@@ -172,7 +181,7 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
                 newValues[i] = e.target.value;
                 onChange(newValues);
               }}
-              list="ha-entities"
+              list={listId}
               className="flex-1 border rounded p-1 text-sm"
             />
             <button 
@@ -183,6 +192,13 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
             </button>
           </div>
         ))}
+        <datalist id={listId}>
+          {haEntities?.map(e => (
+            <option key={e.entity_id} value={e.entity_id}>
+              {e.friendly_name || e.entity_id}
+            </option>
+          ))}
+        </datalist>
         <button 
           onClick={() => onChange([...safeValues, ''])}
           className="text-xs text-blue-600 hover:underline flex items-center gap-1"
@@ -190,11 +206,6 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
           <Plus size={12} /> Add Entity
         </button>
       </div>
-      {haEntities && (
-        <datalist id="ha-entities">
-            {haEntities.map(e => <option key={e} value={e} />)}
-        </datalist>
-      )}
     </div>
   );
 };
@@ -333,8 +344,10 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
   fields: { key: string, label: string, type?: string }[],
   onChange: (v: any) => void,
   dynamicEntities?: string[],
-  haEntities?: string[]
-}) => (
+  haEntities?: HaEntity[]
+}) => {
+  const listId = `ha-entities-obj-${Math.random().toString(36).substr(2, 9)}`;
+  return (
   <div className="mb-4">
     {label && <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>}
     <div className="border rounded p-2 bg-slate-50">
@@ -363,11 +376,15 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
                             const newValue = { ...value, [field.key]: e.target.value };
                             onChange(newValue);
                         }}
-                        list="ha-entities"
+                        list={listId}
                         className="w-full border rounded p-1 text-xs"
                     />
-                    <datalist id="ha-entities">
-                        {haEntities.map(e => <option key={e} value={e} />)}
+                    <datalist id={listId}>
+                        {haEntities.map(e => (
+                            <option key={e.entity_id} value={e.entity_id}>
+                                {e.friendly_name || e.entity_id}
+                            </option>
+                        ))}
                     </datalist>
                 </div>
             ) : field.type === 'ha_entity_list' ? (
@@ -413,7 +430,8 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
       </div>
     </div>
   </div>
-);
+  );
+};
 
 export const DynamicEntitiesEditor = ({ entities, onChange }: { entities: string[], onChange: (v: string[]) => void }) => {
   const safeEntities = Array.isArray(entities) ? entities : (entities ? [entities] : []);
@@ -458,9 +476,10 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
   values: any[], 
   onChange: (v: any[]) => void,
   dynamicEntities: string[],
-  haEntities?: string[]
+  haEntities?: HaEntity[]
 }) => {
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
+  const listId = `ha-entities-arr-${Math.random().toString(36).substr(2, 9)}`;
 
   return (
   <div className="mb-4">
@@ -532,7 +551,7 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
                     newValues[i] = { ...item, entity: e.target.value };
                     onChange(newValues);
                   }}
-                  list="ha-entities"
+                  list={listId}
                   className="w-full border rounded p-1 text-xs"
                 />
               </div>
@@ -548,7 +567,7 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
                     newValues[i] = { ...item, sensor: e.target.value };
                     onChange(newValues);
                   }}
-                  list="ha-entities"
+                  list={listId}
                   className="w-full border rounded p-1 text-xs"
                 />
             </div>
@@ -563,8 +582,12 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
       </button>
     </div>
     {haEntities && (
-        <datalist id="ha-entities">
-            {haEntities.map(e => <option key={e} value={e} />)}
+        <datalist id={listId}>
+            {haEntities.map(e => (
+                <option key={e.entity_id} value={e.entity_id}>
+                    {e.friendly_name || e.entity_id}
+                </option>
+            ))}
         </datalist>
     )}
   </div>
@@ -576,8 +599,9 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, haEntities }
   values: any[], 
   fields: { key: string, label: string, type?: string }[],
   onChange: (v: any[]) => void,
-  haEntities?: string[]
+  haEntities?: HaEntity[]
 }) => {
+  const listId = `ha-entities-obj-arr-${Math.random().toString(36).substr(2, 9)}`;
   // Check if one of the fields is 'entity'
   const hasEntityField = fields.some(f => f.key === 'entity');
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
@@ -645,7 +669,7 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, haEntities }
                       newValues[i] = { ...item, [field.key]: e.target.value };
                       onChange(newValues);
                     }}
-                    list={field.type === 'ha_entity' ? "ha-entities" : undefined}
+                    list={field.type === 'ha_entity' ? listId : undefined}
                     className="w-full border rounded p-1 text-xs"
                   />
                 )}
@@ -662,8 +686,12 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, haEntities }
       </button>
     </div>
     {haEntities && (
-        <datalist id="ha-entities">
-            {haEntities.map(e => <option key={e} value={e} />)}
+        <datalist id={listId}>
+            {haEntities.map(e => (
+                <option key={e.entity_id} value={e.entity_id}>
+                    {e.friendly_name || e.entity_id}
+                </option>
+            ))}
         </datalist>
     )}
   </div>

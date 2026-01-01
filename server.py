@@ -40,7 +40,7 @@ MOCK_ENTITIES = [
     {"entity_id": "mock.binary_sensor_front_door", "state": "off", "attributes": {"friendly_name": "Front Door"}},
     {"entity_id": "mock.media_player_tv", "state": "playing", "attributes": {"friendly_name": "TV"}},
     {"entity_id": "mock.climate_living_room", "state": "heat", "attributes": {"friendly_name": "Climate"}},
-    {"entity_id": "mock.cover_garage_door", "state": "closed", "attributes": {"friendly_name": "Garage Door"}},
+    {"entity_id": "mock.cover_garage_door", "state": "closed", "attributes": {}},
 ]
 
 @app.route('/')
