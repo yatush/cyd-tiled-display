@@ -104,6 +104,10 @@ def entities_list(value: Any) -> list[dict]:
             raise cv.Invalid(f"entities items must be dicts, got {type(item).__name__}")
         if not any(key in item for key in ["dynamic_entity", "entity"]):
             raise cv.Invalid(f"entities dict must have 'dynamic_entity' or 'entity' key, got {list(item.keys())}")
+        if "entity" in item and (not isinstance(item["entity"], str) or not item["entity"].strip()):
+            raise cv.Invalid("entity must be a non-empty string")
+        if "dynamic_entity" in item and (not isinstance(item["dynamic_entity"], str) or not item["dynamic_entity"].strip()):
+            raise cv.Invalid("dynamic_entity must be a non-empty string")
     return value
 
 

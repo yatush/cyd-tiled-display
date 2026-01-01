@@ -636,6 +636,12 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
                 raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a dict")
             if not any(k in item for k in ['entity', 'dynamic_entity']):
                  raise ValueError(f"{context}: Field '{field_name}' item {idx} must have 'entity' or 'dynamic_entity'")
+            
+            if 'entity' in item and (not isinstance(item['entity'], str) or not item['entity'].strip()):
+                 raise ValueError(f"{context}: Field '{field_name}' item {idx} 'entity' must be a non-empty string")
+            
+            if 'dynamic_entity' in item and (not isinstance(item['dynamic_entity'], str) or not item['dynamic_entity'].strip()):
+                 raise ValueError(f"{context}: Field '{field_name}' item {idx} 'dynamic_entity' must be a non-empty string")
                  
     elif field_type == 'script_list':
         if not isinstance(value, list):

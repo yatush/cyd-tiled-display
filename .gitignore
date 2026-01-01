@@ -8,4 +8,4 @@ configurator/node_modules/
 configurator/dist/
 configurator/.env
 configurator/.DS_Store
-configurator/__pycache__/*
+configurator/__pycache__*
