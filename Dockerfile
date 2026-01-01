@@ -25,7 +25,8 @@ COPY configurator/server.py /app/configurator/
 COPY esphome /app/esphome
 
 # Expose port for Ingress
-EXPOSE 8099
+ENV PORT=8099
+EXPOSE $PORT
 
 # Start the server
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8099", "--chdir", "/app/configurator", "server:app"]
+CMD gunicorn -w 4 -b 0.0.0.0:$PORT --chdir /app/configurator server:app
