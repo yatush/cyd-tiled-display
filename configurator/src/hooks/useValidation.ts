@@ -30,7 +30,7 @@ export function useValidation(config: Config) {
       } finally {
         setIsValidating(false);
       }
-    }, 1000);
+    }, 5000);
 
     return () => clearTimeout(timer);
   }, [config]);
