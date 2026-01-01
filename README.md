@@ -56,29 +56,26 @@ If you want to run the Configurator on your local machine (e.g., for development
     cd cyd-tiled-display
     ```
 
-2.  **Start the Backend Server**:
-    This Python server handles file operations and the ESPHome generation logic.
+2.  **Install Dependencies**:
     ```bash
-    # Install dependencies
+    # Backend
     pip install flask pyyaml requests
 
-    # Run the server
-    python server.py
-    ```
-    The server will start on `http://localhost:8099`.
-
-3.  **Start the Frontend**:
-    Open a new terminal window.
-    ```bash
+    # Frontend
     cd configurator
-    
-    # Install dependencies
     npm install
-
-    # Run the development server
-    npm run dev
+    cd ..
     ```
-    The UI will open at `http://localhost:5173`.
+
+3.  **Run the Application**:
+    You can start both the backend and frontend with a single script:
+    ```bash
+    chmod +x configurator/start_dev.sh
+    ./configurator/start_dev.sh
+    ```
+    Access the configurator at the URL shown in the terminal (usually `http://localhost:5173`).
+
+    > **Note:** To simulate the Home Assistant Add-on environment (enabling features like "Update HA Esphome files"), append `?mode=ha` to the URL (e.g., `http://localhost:5173/?mode=ha`).
 
 # From YAML file to device
 * **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
