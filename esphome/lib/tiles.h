@@ -536,6 +536,7 @@ protected:
   }
 
   void onActivation() override {
+    this->setCurrentIndexAccordingToEntityState();
     this->updateEntities();
   }
 
@@ -564,12 +565,31 @@ private:
     this->change_entities_callback_();
   }
 
+  void setCurrentIndexAccordingToEntityState() {
+    std::vector<const std::string*> current_values;
+    if (EMContains(this->identifier_)) {
+      current_values = EMGetValues(this->identifier_);
+    }
+
+    for (int i = 0; i < this->entities_and_presntation_names_.size(); ++i) {
+      const auto& pair = this->entities_and_presntation_names_.at(i);
+      if (pair.first.size() != current_values.size()) {
+        continue;
+      }
+      if (pair.first.empty() || EMContains(this->identifier_, pair.first)) {
+        this->current_index_ = i;
+        return;
+      }
+    }
+    this->current_index_ = 0;
+  }
+
   // Vector of functions to draw the tile.
   std::vector<std::function<void(int, int, int, int, std::string, std::vector<std::string>)>> draw_funcs_;
   // Identifier to change.
   const std::string* identifier_;
-  // The entities to set into the identifier and their presentation names. The one
-  // used is always the first one, and the vector is rotating.
+  // The entities to set into the identifier and their presentation names. If the entity is not set, or
+  // it's value is not in the set, the first one will be used. The vector is rotating.
   std::vector<std::pair<std::vector<const std::string*>, const std::string*>> entities_and_presntation_names_;
   // The current indeex.
   int current_index_ = 0;

@@ -532,6 +532,12 @@ screens:
             - entity:
                 - b
               label: b
+            - entity:
+                - c
+              label: c
+            - entity:
+                - e
+              label: e
           x_span: 1
           y_span: 2
           activation_var:
@@ -547,9 +553,18 @@ screens:
           options:
             - entity: '*'
               label: All
+            - label: a
+              entity:
+                - a
             - entity:
                 - b
-              label: B
+              label: b
+            - entity:
+                - c
+              label: c
+            - entity:
+                - d
+              label: d
           x_span: 2
           y_span: 1
           activation_var:
