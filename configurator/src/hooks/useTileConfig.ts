@@ -110,9 +110,6 @@ export function useTileConfig() {
       type,
       x,
       y,
-      ...(type === 'move_page' ? { destination: 'home' } : {}),
-      ...(type === 'toggle_entity' ? { dynamic_entity: 'light', entity: 'light.example' } : {}),
-      ...(type === 'cycle_entity' ? { dynamic_entity: 'scene', options: [] } : {}),
     } as Tile;
 
     const updatedPage = {

@@ -152,15 +152,13 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                     <input 
                       type="checkbox" 
                       id="enable_span"
-                      checked={(selectedTile.x_span || 1) > 1 || (selectedTile.y_span || 1) > 1}
+                      checked={selectedTile.x_span !== undefined || selectedTile.y_span !== undefined}
                       onChange={e => {
                         if (!e.target.checked) {
-                          onUpdate({...selectedTile, x_span: 1, y_span: 1});
+                          const { x_span, y_span, ...rest } = selectedTile;
+                          onUpdate(rest);
                         } else {
-                          // Default to 2x2 if enabled from 1x1, or keep existing if already spanned
-                          if ((selectedTile.x_span || 1) === 1 && (selectedTile.y_span || 1) === 1) {
-                             onUpdate({...selectedTile, x_span: 2, y_span: 2});
-                          }
+                          onUpdate({...selectedTile, x_span: 1, y_span: 1});
                         }
                       }}
                       className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -168,7 +166,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                     <label htmlFor="enable_span" className="text-xs font-medium text-slate-700 select-none cursor-pointer">Span Multiple Cells</label>
                   </div>
                   
-                  {((selectedTile.x_span || 1) > 1 || (selectedTile.y_span || 1) > 1) && (
+                  {(selectedTile.x_span !== undefined || selectedTile.y_span !== undefined) && (
                     <div className="flex gap-3 pl-6">
                       <div className="flex-1">
                         <label className="block text-xs text-slate-600 mb-1 font-medium">X Span</label>

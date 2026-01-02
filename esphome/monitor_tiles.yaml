@@ -1,6 +1,9 @@
 screens:
   - id: controllers
-    flags: [BASE]
+    rows: 2
+    cols: 3
+    flags:
+      - BASE
     tiles:
       - ha_action:
           x: 0
@@ -12,7 +15,6 @@ screens:
           perform:
             - action_lights
           display_page_if_no_entity: light_settings
-
       - ha_action:
           x: 1
           y: 0
@@ -22,17 +24,15 @@ screens:
             - tile_ac
           perform:
             - action_ac
-
       - move_page:
           x: 2
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e8b8"' # Settings
+                icon: '"\U0000e8b8"'
                 color: id(gray)
                 size: id(medium)
           destination: pref
-
       - ha_action:
           x: 0
           y: 1
@@ -48,7 +48,6 @@ screens:
             conditions:
               - blinds_moving_up_fn
               - blinds_moving_down_fn
-
       - ha_action:
           x: 1
           y: 1
@@ -64,7 +63,6 @@ screens:
             conditions:
               - blinds_moving_up_fn
               - blinds_moving_down_fn
-
       - ha_action:
           x: 2
           y: 1
@@ -72,83 +70,106 @@ screens:
             - dynamic_entity: COVER
           display:
             - tile_icon:
-                icon: '"\U0000e286"' # Blinds
+                icon: '"\U0000e286"'
                 color: id(light_purple)
                 size: id(big)
           perform:
             - action_blinds_mid
           display_page_if_no_entity: cover_settings
-
   - id: pref
-    flags: [TEMPORARY]
     rows: 3
     cols: 4
+    flags:
+      - TEMPORARY
     tiles:
       - move_page:
           x: 0
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000eb97"' # Display Settings
+                icon: '"\U0000eb97"'
                 color: Color::WHITE
                 size: id(big)
           destination: disp_settings
-
       - move_page:
           x: 1
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e28b"' # Light Settings
+                icon: '"\U0000e28b"'
                 color: Color::WHITE
                 size: id(big)
           destination: light_settings
-
       - move_page:
           x: 2
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e5c4"' # Back Arrow
+                icon: '"\U0000e5c4"'
                 color: id(gray)
                 size: id(medium)
           destination: controllers
-
       - move_page:
           x: 0
           y: 1
           display:
             - tile_icon:
-                icon: '"\U0000f55b"' # AC Settings
+                icon: '"\U0000f55b"'
                 color: Color::WHITE
                 size: id(big)
           destination: ac_settings
           dynamic_entry:
             dynamic_entity: AC
             value: AC_1_ID
-
       - move_page:
           x: 1
           y: 1
           display:
             - tile_icon:
-                icon: '"\U0000e286"' # Blinds
+                icon: '"\U0000e286"'
                 color: Color::WHITE
                 size: id(big)
           destination: cover_settings
-
       - move_page:
           x: 2
           y: 1
           display:
             - tile_icon:
-                icon: '"\U0000e286"' # Blinds
+                icon: '"\U0000e286"'
                 color: Color::WHITE
                 size: id(big)
           destination: cover_settings_2
-
+      - move_page:
+          x: 0
+          y: 2
+          destination: settngs_3
+          display:
+            - tile_icon:
+                icon: '"\U0000f4b6"'
+                color: Color(66,49,191)
+                size: id(big)
+          dynamic_entry:
+            dynamic_entity: LIGHT
+            value:
+              - a
+      - move_page:
+          x: 1
+          y: 2
+          destination: settngs_3
+          dynamic_entry:
+            dynamic_entity: LIGHT
+            value:
+              - b
+          display:
+            - tile_icon:
+                icon: '"\U0000e5cc"'
+                color: Color(38,215,25)
+                size: id(big)
   - id: ac_settings
-    flags: [TEMPORARY]
+    rows: 2
+    cols: 3
+    flags:
+      - TEMPORARY
     tiles:
       - ha_action:
           x: 0
@@ -158,12 +179,11 @@ screens:
               sensor: temperature
           display:
             - tile_icon:
-                icon: '"\U0000f4b5"' # Arrow Warm Up
+                icon: '"\U0000f4b5"'
                 color: id(light_red)
                 size: id(big)
           perform:
             - action_temp_up
-
       - ha_action:
           x: 0
           y: 1
@@ -172,12 +192,11 @@ screens:
               sensor: temperature
           display:
             - tile_icon:
-                icon: '"\U0000f4b6"' # Arrow Cool Down
+                icon: '"\U0000f4b6"'
                 color: id(light_blue)
                 size: id(big)
           perform:
             - action_temp_down
-
       - ha_action:
           x: 1
           y: 0
@@ -187,7 +206,6 @@ screens:
             - tile_ac_mode
           perform:
             - action_ac_mode
-
       - title:
           x: 1
           y: 1
@@ -198,19 +216,21 @@ screens:
           display:
             - tile_ac_status
           omit_frame: true
-
       - move_page:
           x: 2
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e5c4"' # Back Arrow
+                icon: '"\U0000e5c4"'
                 color: id(gray)
                 size: id(medium)
           destination: controllers
-
   - id: disp_settings
-    flags: [FAST_REFRESH, TEMPORARY]
+    rows: 2
+    cols: 3
+    flags:
+      - FAST_REFRESH
+      - TEMPORARY
     tiles:
       - function:
           x: 0
@@ -219,43 +239,41 @@ screens:
             - tile_brightness
           on_press: on_brightness_press
           on_release: on_brightness_release
-
       - function:
           x: 1
           y: 0
           display:
             - tile_distance
           on_press: change_wakeup_distance
-
       - move_page:
           x: 2
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e5c4"' # Back Arrow
+                icon: '"\U0000e5c4"'
                 color: id(gray)
                 size: id(medium)
           destination: controllers
-
       - function:
           x: 0
           y: 1
           display:
             - tile_wakeup_time
           on_press: change_sleep_time
-
       - function:
           x: 1
           y: 1
           display:
             - tile_icon:
-                icon: '"\U0000f418"' # Power
+                icon: '"\U0000f418"'
                 color: Color::WHITE
                 size: id(big)
           on_press: action_power
-
   - id: light_settings
-    flags: [TEMPORARY]
+    rows: 2
+    cols: 3
+    flags:
+      - TEMPORARY
     tiles:
       - toggle_entity:
           x: 0
@@ -266,7 +284,6 @@ screens:
           entity: LIGHT_1_ID
           presentation_name: Closet
           initially_chosen: true
-
       - toggle_entity:
           x: 1
           y: 0
@@ -275,7 +292,6 @@ screens:
           dynamic_entity: LIGHT
           entity: LIGHT_2_ID
           presentation_name: Ceiling
-
       - toggle_entity:
           x: 0
           y: 1
@@ -284,7 +300,6 @@ screens:
           dynamic_entity: LIGHT
           entity: LIGHT_3_ID
           presentation_name: Comp
-
       - toggle_entity:
           x: 1
           y: 1
@@ -293,32 +308,32 @@ screens:
           dynamic_entity: LIGHT
           entity: LIGHT_4_ID
           presentation_name: Bed
-
       - move_page:
           x: 2
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e5c4"' # Back Arrow
+                icon: '"\U0000e5c4"'
                 color: id(gray)
                 size: id(medium)
           destination: controllers
-
   - id: cover_settings
-    flags: [TEMPORARY]
+    rows: 2
+    cols: 3
+    flags:
+      - TEMPORARY
     tiles:
       - toggle_entity:
-          x: 0
-          y: 0
+          x: 2
+          y: 1
           display:
             - tile_choose_cover
           dynamic_entity: COVER
           entity: COVER_1_ID
           presentation_name: PR1
           initially_chosen: true
-
       - toggle_entity:
-          x: 0
+          x: 1
           y: 1
           display:
             - tile_choose_cover
@@ -326,19 +341,20 @@ screens:
           entity: COVER_2_ID
           presentation_name: PR2
           initially_chosen: true
-
       - move_page:
           x: 2
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e5c4"' # Back Arrow
+                icon: '"\U0000e5c4"'
                 color: id(gray)
                 size: id(medium)
           destination: controllers
-
   - id: cover_settings_2
-    flags: [TEMPORARY]
+    rows: 2
+    cols: 3
+    flags:
+      - TEMPORARY
     tiles:
       - cycle_entity:
           x: 0
@@ -359,13 +375,12 @@ screens:
               label: D
           display:
             - tile_room
-
       - cycle_entity:
           x: 1
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - entity: "*"
+            - entity: '*'
               label: ALL
             - entity: COVER_1_ID
               label: PR1
@@ -376,13 +391,12 @@ screens:
           activation_var:
             dynamic_entity: ROOM
             value: LR
-
       - cycle_entity:
           x: 1
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - entity: "*"
+            - entity: '*'
               label: ALL
             - entity: COVER_3_ID
               label: TR1
@@ -393,15 +407,14 @@ screens:
           activation_var:
             dynamic_entity: ROOM
             value: TOYS
-
       - cycle_entity:
           x: 1
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - entity: "*"
+            - entity: '*'
               label: ALL
-            - entity: "A1_ID, A11_ID"
+            - entity: A1_ID, A11_ID
               label: A1
             - entity: A2_ID
               label: A2
@@ -414,13 +427,12 @@ screens:
           activation_var:
             dynamic_entity: ROOM
             value: A
-
       - cycle_entity:
           x: 1
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - entity: "*"
+            - entity: '*'
               label: ALL
             - entity: B1_ID
               label: B1
@@ -435,13 +447,12 @@ screens:
           activation_var:
             dynamic_entity: ROOM
             value: B
-
       - cycle_entity:
           x: 1
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - entity: "*"
+            - entity: '*'
               label: ALL
             - entity: C1_ID
               label: C1
@@ -456,13 +467,12 @@ screens:
           activation_var:
             dynamic_entity: ROOM
             value: C
-
       - cycle_entity:
           x: 1
           y: 0
           dynamic_entity: COVER_TEMP
           options:
-            - entity: "*"
+            - entity: '*'
               label: ALL
             - entity: D1_ID
               label: D1
@@ -477,7 +487,6 @@ screens:
           activation_var:
             dynamic_entity: ROOM
             value: D
-
       - ha_action:
           x: 0
           y: 1
@@ -497,13 +506,55 @@ screens:
                       - blinds_moving_up_fn
                   - blinds_moving_down_fn
               - blinds_moving_down_fn
-
       - move_page:
           x: 2
           y: 0
           display:
             - tile_icon:
-                icon: '"\U0000e5c4"' # Back Arrow
+                icon: '"\U0000e5c4"'
                 color: id(gray)
                 size: id(medium)
           destination: controllers
+  - id: settngs_3
+    rows: 2
+    cols: 3
+    flags:
+      - TEMPORARY
+    tiles:
+      - cycle_entity:
+          x: 0
+          y: 0
+          dynamic_entity: COVER
+          options:
+            - label: a
+              entity:
+                - a
+            - entity:
+                - b
+              label: b
+          x_span: 1
+          y_span: 2
+          activation_var:
+            dynamic_entity: LIGHT
+            value:
+              - a
+          display:
+            - tile_room
+      - cycle_entity:
+          x: 0
+          y: 0
+          dynamic_entity: COVER
+          options:
+            - entity: '*'
+              label: All
+            - entity:
+                - b
+              label: B
+          x_span: 2
+          y_span: 1
+          activation_var:
+            dynamic_entity: LIGHT
+            value:
+              - b
+          display:
+            - tile_room
