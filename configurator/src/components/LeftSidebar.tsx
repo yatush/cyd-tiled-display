@@ -231,8 +231,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                                 >
                                                     <Trash2 size={12} />
                                                 </button>
-                                              </divsh2 size={12} />
-                                              </button>
+                                              </div>
                                           </div>
                                       ))}
                                       {p.tiles.length === 0 && (
