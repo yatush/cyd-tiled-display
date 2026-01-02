@@ -5,7 +5,7 @@ import { generateYaml } from '../utils/yamlGenerator';
 import { parseYamlToConfig, convertParsedYamlToConfig } from '../utils/yamlParser';
 import { apiFetch, isAddon } from '../utils/api';
 
-export function useFileOperations(config: Config, setConfig: (config: Config) => void, setActivePageId: (id: string) => void, onSaveSuccess?: () => void) {
+export function useFileOperations(config: Config, setConfig: (config: Config) => void, setActivePageId: (id: string) => void, onSaveSuccess?: () => void, onLoadSuccess?: () => void) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveToHa = useCallback(async () => {
@@ -67,6 +67,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
         if (data.pages && data.pages.length > 0) {
           setActivePageId(data.pages[0].id);
         }
+        if (onLoadSuccess) onLoadSuccess();
       } else {
         const err = await res.json();
         alert(`Failed to load: ${err.error || 'Unknown error'}`);
@@ -125,6 +126,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
             const parsedConfig = parseYamlToConfig(content);
             setConfig(parsedConfig);
             setActivePageId(parsedConfig.pages[0]?.id || 'main_page');
+            if (onLoadSuccess) onLoadSuccess();
             return;
         } catch (yamlErr) {
             try {
@@ -132,6 +134,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
                 if (parsed.pages && Array.isArray(parsed.pages)) {
                     setConfig(parsed);
                     setActivePageId(parsed.pages[0]?.id || 'main_page');
+                    if (onLoadSuccess) onLoadSuccess();
                 } else {
                     throw new Error("Invalid JSON format");
                 }

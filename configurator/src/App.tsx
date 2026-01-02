@@ -36,6 +36,7 @@ function App() {
   const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
   const [isScreensFileOpen, setIsScreensFileOpen] = useState(false);
   const [screensFileMode, setScreensFileMode] = useState<'save' | 'load'>('save');
+  const [sidebarKey, setSidebarKey] = useState(0);
 
   // Hooks
   const {
@@ -97,7 +98,7 @@ function App() {
     handleLoadFromHa,
     handleSaveDeviceConfig,
     handleLoadDeviceConfig
-  } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus);
+  } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus, () => setSidebarKey(prev => prev + 1));
 
   useEffect(() => {
     apiFetch('/schema')
@@ -152,6 +153,7 @@ function App() {
 
       <div className="flex flex-1 overflow-hidden">
         <LeftSidebar 
+          key={sidebarKey}
           width={leftSidebarWidth}
           onSidebarClick={handleSidebarClick}
           isDynamicEntitiesOpen={isDynamicEntitiesOpen}
