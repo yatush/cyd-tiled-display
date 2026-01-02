@@ -35,7 +35,7 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        self.assertIn("new HAActionTile(0, 0, { [](int arg0, int arg1, std::vector<std::string> arg2) { id(icon).execute(arg0, arg1, arg2); } }, { [](std::vector<std::string> arg0) { id(action1).execute(arg0); } }, {\"sensor.1\"})", cpp)
+        self.assertIn("new HAActionTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(icon).execute(arg0, arg1, arg2, arg3, arg4); } }, { [](std::vector<std::string> arg0) { id(action1).execute(arg0); } }, {\"sensor.1\"})", cpp)
     
     def test_ha_action_tile_complex(self):
         config = {
@@ -49,7 +49,7 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        expected_args = "1, 1, { [](int arg0, int arg1, std::vector<std::string> arg2) { id(icon).execute(arg0, arg1, arg2); } }, { [](std::vector<std::string> arg0) { id(p1).execute(arg0); } }, { [](float arg0, float arg1, std::vector<std::string> arg2) { id(l1).execute(arg0, arg1, arg2); } }, {\"#{dyn}\"}"
+        expected_args = "1, 1, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(icon).execute(arg0, arg1, arg2, arg3, arg4); } }, { [](std::vector<std::string> arg0) { id(p1).execute(arg0); } }, { [](float arg0, float arg1, std::vector<std::string> arg2) { id(l1).execute(arg0, arg1, arg2); } }, {\"#{dyn}\"}"
         self.assertIn(f"new HAActionTile({expected_args})", cpp)
 
     def test_title_tile(self):
@@ -62,7 +62,7 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        self.assertIn('new TitleTile(0, 0, { [](int arg0, int arg1, std::vector<std::string> arg2) { id(label).execute(arg0, arg1, arg2); } }, {"sensor.time"})', cpp)
+        self.assertIn('new TitleTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(label).execute(arg0, arg1, arg2, arg3, arg4); } }, {"sensor.time"})', cpp)
 
     def test_move_page_tile(self):
         config = {
@@ -74,7 +74,7 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        self.assertIn('new MovePageTile(0, 0, { [](int arg0, int arg1) { id(arrow).execute(arg0, arg1); } }, &id(screen2))', cpp)
+        self.assertIn('new MovePageTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3) { id(arrow).execute(arg0, arg1, arg2, arg3); } }, &id(screen2))', cpp)
         
     def test_move_page_tile_dynamic(self):
         config = {
@@ -101,12 +101,12 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1) { id(btn).execute(arg0, arg1); } }, []() { id(press_cb).execute(); })', cpp)
+        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3) { id(btn).execute(arg0, arg1, arg2, arg3); } }, []() { id(press_cb).execute(); })', cpp)
         
         # With on_release
         config["function"]["on_release"] = "release_cb"
         cpp = generate_tile_cpp(config)
-        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1) { id(btn).execute(arg0, arg1); } }, []() { id(press_cb).execute(); }, []() { id(release_cb).execute(); })', cpp)
+        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3) { id(btn).execute(arg0, arg1, arg2, arg3); } }, []() { id(press_cb).execute(); }, []() { id(release_cb).execute(); })', cpp)
 
     def test_toggle_entity_tile(self):
         config = {
@@ -119,7 +119,7 @@ class TestTileGeneration(unittest.TestCase):
             }
         }
         cpp = generate_tile_cpp(config)
-        expected = 'new ToggleEntityTile(0, 0, { [](int arg0, int arg1, std::string arg2, bool arg3) { id(icon).execute(arg0, arg1, arg2, arg3); } }, "state_var", {"light.living_room"}, "Living Room", false)'
+        expected = 'new ToggleEntityTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::string arg4, bool arg5) { id(icon).execute(arg0, arg1, arg2, arg3, arg4, arg5); } }, "state_var", {"light.living_room"}, "Living Room", false)'
         self.assertIn(expected, cpp)
 
     def test_cycle_entity_tile(self):
@@ -136,7 +136,7 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         options_cpp = '{ { {"mode1"}, "Mode 1" }, { {"mode2"}, "Mode 2" } }'
-        self.assertIn(f'new CycleEntityTile(0, 0, {{ [](int arg0, int arg1, std::string arg2, std::vector<std::string> arg3) {{ id(icon).execute(arg0, arg1, arg2, arg3); }} }}, "mode_var", {options_cpp}, false)', cpp)
+        self.assertIn(f'new CycleEntityTile(0, 0, {{ [](int arg0, int arg1, int arg2, int arg3, std::string arg4, std::vector<std::string> arg5) {{ id(icon).execute(arg0, arg1, arg2, arg3, arg4, arg5); }} }}, "mode_var", {options_cpp}, false)', cpp)
 
     def test_modifiers(self):
         config = {

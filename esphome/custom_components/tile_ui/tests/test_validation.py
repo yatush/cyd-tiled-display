@@ -18,7 +18,8 @@ class TestValidation(unittest.TestCase):
                 {"ha_action": {
                     "x": 0, "y": 0,
                     "display": ["icon"],
-                    "perform": ["action"]
+                    "perform": ["action"],
+                    "entities": ["sensor.test"]
                 }}
             ]
         }
@@ -82,6 +83,7 @@ class TestValidation(unittest.TestCase):
                 {"ha_action": {
                     "x": 0, "y": 0,
                     "display": ["icon"],
+                    "entities": ["sensor.test"]
                     # perform missing
                 }}
             ]
