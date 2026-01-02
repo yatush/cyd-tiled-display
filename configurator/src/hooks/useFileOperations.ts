@@ -109,10 +109,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
   };
 
   const handleSaveYaml = async () => {
-    if (isAddon) {
-      return handleSaveToHa();
-    }
-    return handleDownloadYaml();
+    return handleSaveToHa();
   };
 
   const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {

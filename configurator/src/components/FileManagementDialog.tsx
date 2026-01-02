@@ -50,18 +50,18 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Local Files</h3>
             <div className="grid grid-cols-2 gap-3">
               <button
-                onClick={() => { onLoadLocal(); onClose(); }}
-                className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-all group"
-              >
-                <Upload size={24} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
-                <span className="font-bold text-sm">Load YAML</span>
-              </button>
-              <button
                 onClick={() => { onDownloadLocal(); onClose(); }}
                 className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-all group"
               >
                 <Download size={24} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
                 <span className="font-bold text-sm">Download YAML</span>
+              </button>
+              <button
+                onClick={() => { onLoadLocal(); onClose(); }}
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-all group"
+              >
+                <Upload size={24} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
+                <span className="font-bold text-sm">Load YAML</span>
               </button>
             </div>
           </div>
