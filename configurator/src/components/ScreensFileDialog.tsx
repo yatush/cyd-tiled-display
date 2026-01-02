@@ -11,6 +11,7 @@ interface ScreensFileDialogProps {
   setConfig: (config: Config) => void;
   onSave: () => void;
   onLoad: () => void;
+  mode: 'save' | 'load';
 }
 
 export const ScreensFileDialog: React.FC<ScreensFileDialogProps> = ({
@@ -20,7 +21,8 @@ export const ScreensFileDialog: React.FC<ScreensFileDialogProps> = ({
   config,
   setConfig,
   onSave,
-  onLoad
+  onLoad,
+  mode
 }) => {
   const [showExplorer, setShowExplorer] = useState(false);
 
@@ -37,7 +39,7 @@ export const ScreensFileDialog: React.FC<ScreensFileDialogProps> = ({
               </button>
             )}
             <FileText className="text-blue-600" size={20} />
-            <h2 className="font-bold text-slate-800">Manage Screens File</h2>
+            <h2 className="font-bold text-slate-800">{mode === 'save' ? 'Save Screen File' : 'Load Screen File'}</h2>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
             <X size={20} />
@@ -84,19 +86,22 @@ export const ScreensFileDialog: React.FC<ScreensFileDialogProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button 
-                onClick={() => { onSave(); onClose(); }}
-                className="flex items-center justify-center gap-2 bg-blue-600 text-white border border-blue-700 p-3 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                <Save size={16} /> Save to HA
-              </button>
-              <button 
-                onClick={() => { onLoad(); onClose(); }}
-                className="flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 p-3 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm"
-              >
-                <Upload size={16} /> Load from HA
-              </button>
+            <div className="pt-2">
+              {mode === 'save' ? (
+                <button 
+                  onClick={() => { onSave(); onClose(); }}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white border border-blue-700 p-3 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <Save size={16} /> Save to HA
+                </button>
+              ) : (
+                <button 
+                  onClick={() => { onLoad(); onClose(); }}
+                  className="w-full flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 p-3 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm"
+                >
+                  <Upload size={16} /> Load from HA
+                </button>
+              )}
             </div>
         </div>
       </div>

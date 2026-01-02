@@ -8,7 +8,8 @@ interface FileManagementDialogProps {
   onClose: () => void;
   onLoadLocal: () => void;
   onDownloadLocal: () => void;
-  onOpenScreensFile: () => void;
+  onSaveScreen: () => void;
+  onLoadScreen: () => void;
   onSaveDevice: () => void;
   onLoadDevice: () => void;
   connectionType: ConnectionType;
@@ -19,7 +20,8 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
   onClose,
   onLoadLocal,
   onDownloadLocal,
-  onOpenScreensFile,
+  onSaveScreen,
+  onLoadScreen,
   onSaveDevice,
   onLoadDevice,
   connectionType
@@ -71,18 +73,26 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
             </div>
             
             <div className="space-y-3">
-              <button 
-                onClick={() => { onOpenScreensFile(); onClose(); }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700 transition-all group text-left"
-              >
-                <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-white group-hover:shadow-sm transition-all">
-                  <FileText size={20} className="text-slate-500 group-hover:text-blue-600" />
-                </div>
-                <div>
-                  <div className="font-bold text-sm">Manage Screens File</div>
-                  <div className="text-xs text-slate-500">Save or load individual screen configurations</div>
-                </div>
-              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => { onSaveScreen(); onClose(); }}
+                  className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700 transition-all group text-left"
+                >
+                  <div className="p-1.5 bg-slate-100 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
+                    <FileText size={16} className="text-slate-500 group-hover:text-blue-600" />
+                  </div>
+                  <span className="font-bold text-xs">Save Screen</span>
+                </button>
+                <button 
+                  onClick={() => { onLoadScreen(); onClose(); }}
+                  className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700 transition-all group text-left"
+                >
+                  <div className="p-1.5 bg-slate-100 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
+                    <FolderOpen size={16} className="text-slate-500 group-hover:text-blue-600" />
+                  </div>
+                  <span className="font-bold text-xs">Load Screen</span>
+                </button>
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <button 

@@ -2,7 +2,7 @@ import React, { useRef, useCallback } from 'react';
 import { dump } from 'js-yaml';
 import { Config } from '../types';
 import { generateYaml } from '../utils/yamlGenerator';
-import { parseYamlToConfig } from '../utils/yamlParser';
+import { parseYamlToConfig, convertParsedYamlToConfig } from '../utils/yamlParser';
 import { apiFetch, isAddon } from '../utils/api';
 
 export function useFileOperations(config: Config, setConfig: (config: Config) => void, setActivePageId: (id: string) => void, onSaveSuccess?: () => void) {
@@ -43,7 +43,18 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
       const targetPath = path || config.project_path || 'monitor_config/tiles.yaml';
       const res = await apiFetch(`/load?path=${encodeURIComponent(targetPath)}`);
       if (res.ok) {
-        const data = await res.json();
+        let data = await res.json();
+        
+        // If it's in ESPHome format (has screens), convert it
+        if (data && data.screens && Array.isArray(data.screens)) {
+            try {
+                data = convertParsedYamlToConfig(data);
+            } catch (e) {
+                console.error("Failed to convert config", e);
+                alert('Failed to parse the configuration file.');
+                return;
+            }
+        }
         
         // Basic validation to ensure it's a valid config object
         if (!data || typeof data !== 'object' || !Array.isArray(data.pages)) {

@@ -15,10 +15,7 @@ const transformConditionLogicReverse = (value: any): any => {
     return value;
 };
 
-export const parseYamlToConfig = (yamlString: string): Config => {
-  try {
-    const parsed = yaml.load(yamlString) as any;
-    
+export const convertParsedYamlToConfig = (parsed: any): Config => {
     if (!parsed || !parsed.screens || !Array.isArray(parsed.screens)) {
       throw new Error("Invalid YAML: 'screens' array is missing.");
     }
@@ -104,7 +101,12 @@ export const parseYamlToConfig = (yamlString: string): Config => {
       pages,
       dynamic_entities: Array.from(dynamicEntities)
     };
+};
 
+export const parseYamlToConfig = (yamlString: string): Config => {
+  try {
+    const parsed = yaml.load(yamlString) as any;
+    return convertParsedYamlToConfig(parsed);
   } catch (e) {
     console.error("YAML Parse Error", e);
     throw e;

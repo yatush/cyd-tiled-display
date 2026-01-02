@@ -117,7 +117,11 @@ The Configurator is designed to be intuitive:
     *   **Color**: Customize the tile color based on state.
 
 3.  **File Management**:
-    *   **Manage Screens File**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`), or locally. This allows you to reload your work later, and reuse configurations.
+    *   **Save Screen**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`). This allows you to reload your work later, and reuse configurations.
+    *   **Load Screen**: Load a previously saved layout design from the server.
+    *   **Save Device**: Generate and save the full ESPHome device configuration file (e.g., `monitor.yaml`) to the server.
+    *   **Load Device**: Load an existing device configuration to edit its settings (WiFi, secrets, etc.).
+    *   **Local Files**: You can also Load/Download YAML files to/from your local computer.
 
 4.  **Generating the ESPHome device configuration**:
     *   **Option A (Recommended): Save Device**:

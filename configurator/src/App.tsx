@@ -35,6 +35,7 @@ function App() {
   const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
   const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
   const [isScreensFileOpen, setIsScreensFileOpen] = useState(false);
+  const [screensFileMode, setScreensFileMode] = useState<'save' | 'load'>('save');
 
   // Hooks
   const {
@@ -254,7 +255,13 @@ function App() {
         onClose={() => setIsFileManagementOpen(false)}
         onLoadLocal={() => fileInputRef.current?.click()}
         onDownloadLocal={handleDownloadYaml}
-        onOpenScreensFile={() => {
+        onSaveScreen={() => {
+          setScreensFileMode('save');
+          setIsFileManagementOpen(false);
+          setIsScreensFileOpen(true);
+        }}
+        onLoadScreen={() => {
+          setScreensFileMode('load');
           setIsFileManagementOpen(false);
           setIsScreensFileOpen(true);
         }}
@@ -300,6 +307,7 @@ function App() {
         setConfig={setConfig}
         onSave={handleSaveYaml}
         onLoad={() => handleLoadFromHa()}
+        mode={screensFileMode}
       />
     </div>
   );
