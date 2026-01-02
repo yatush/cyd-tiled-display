@@ -404,7 +404,7 @@ dynamic_entry:
 
 - **dynamic_entry**: (Optional)
   - **dynamic_entity**: *(Required)* Identifier key for the dynamic entity
-  - **value**: *(Required)* Entity ID to populate for this key. Can be a **comma-separated list** of entities.
+  - **value**: *(Required)* Entity ID to set for this key. Can be a **comma-separated list** of entities.
 
 ## Conditions
 

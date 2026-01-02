@@ -24,8 +24,144 @@ sys.modules['esphome.core'] = MockEsphome()
 sys.modules['esphome.components'] = MockEsphome()
 sys.modules['esphome.components.display'] = MockEsphome()
 
-# Mock voluptuous since it's not installed but imported by schema.py
-sys.modules['voluptuous'] = MockEsphome()
+# Minimal implementation of voluptuous and esphome.config_validation
+# to support schema validation without external dependencies.
+
+class Invalid(Exception):
+    def __init__(self, message, path=None):
+        super().__init__(message)
+        self.msg = message
+        self.path = path or []
+    def __str__(self):
+        return self.msg
+
+class Marker:
+    def __init__(self, schema, default=None, msg=None):
+        self.schema = schema
+        self.default = default
+        self.msg = msg
+    def __hash__(self):
+        return hash(self.schema)
+    def __eq__(self, other):
+        return isinstance(other, Marker) and self.schema == other.schema
+
+class Required(Marker):
+    pass
+
+class Optional(Marker):
+    pass
+
+PREVENT_EXTRA = 1
+
+class Schema:
+    def __init__(self, schema, extra=None):
+        self.schema = schema
+        self.extra = extra
+
+    def __call__(self, data):
+        if not isinstance(data, dict):
+            raise Invalid(f"expected dict, got {type(data).__name__}")
+        
+        out = {}
+        schema_map = {}
+        for k, v in self.schema.items():
+            key_name = k.schema if isinstance(k, Marker) else k
+            schema_map[key_name] = (k, v)
+
+        if self.extra == PREVENT_EXTRA:
+            for k in data:
+                if k not in schema_map:
+                    raise Invalid(f"extra keys not allowed: {k}")
+
+        for key_name, (key_schema, validator) in schema_map.items():
+            if key_name in data:
+                value = data[key_name]
+                try:
+                    if isinstance(validator, Schema):
+                        out[key_name] = validator(value)
+                    elif callable(validator):
+                        out[key_name] = validator(value)
+                    elif isinstance(validator, type):
+                        if not isinstance(value, validator):
+                            raise Invalid(f"expected {validator.__name__}, got {type(value).__name__}")
+                        out[key_name] = value
+                    else:
+                        if value != validator:
+                            raise Invalid(f"expected {validator}, got {value}")
+                        out[key_name] = value
+                except Invalid as e:
+                    raise Invalid(f"Invalid value for '{key_name}': {e}")
+                except Exception as e:
+                    raise Invalid(f"Validation error for '{key_name}': {e}")
+            else:
+                if isinstance(key_schema, Required) or not isinstance(key_schema, Optional):
+                     raise Invalid(f"required key not provided: {key_name}")
+        return out
+
+def Any(*validators):
+    def validate(val):
+        errors = []
+        for v in validators:
+            try:
+                if callable(v):
+                    return v(val)
+                elif isinstance(v, type):
+                    if isinstance(val, v):
+                        return val
+                    else:
+                        raise Invalid(f"expected {v.__name__}")
+                else:
+                    if val == v:
+                        return val
+                    else:
+                        raise Invalid(f"expected {v}")
+            except (Invalid, ValueError, TypeError) as e:
+                errors.append(str(e))
+        raise Invalid(f"no valid option found: {'; '.join(errors)}")
+    return validate
+
+def All(*validators):
+    def validate(val):
+        for v in validators:
+            if callable(v):
+                val = v(val)
+            elif isinstance(v, type):
+                if not isinstance(val, v):
+                    raise Invalid(f"expected {v.__name__}")
+            else:
+                if val != v:
+                    raise Invalid(f"expected {v}")
+        return val
+    return validate
+
+class MockVoluptuousModule:
+    def __init__(self):
+        self.Schema = Schema
+        self.Required = Required
+        self.Optional = Optional
+        self.Any = Any
+        self.All = All
+        self.PREVENT_EXTRA = PREVENT_EXTRA
+        self.Invalid = Invalid
+
+class MockConfigValidation:
+    Invalid = Invalid
+    
+    def string(self, value):
+        if not isinstance(value, str):
+            raise Invalid(f"Expected string, got {type(value).__name__}")
+        return value
+        
+    def boolean(self, value):
+        if not isinstance(value, bool):
+            raise Invalid(f"Expected boolean, got {type(value).__name__}")
+        return value
+        
+    def Any(self, *validators):
+        return Any(*validators)
+
+sys.modules['voluptuous'] = MockVoluptuousModule()
+sys.modules['esphome.config_validation'] = MockConfigValidation()
 
 try:
     # Import only what we need, avoiding __init__.py if possible or relying on mocks

@@ -18,7 +18,7 @@ public:
       return;
     }
     if (!this->omit_frame_) {
-      id(draw_tile_frame).execute(this->x_, this->y_);
+      id(draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_);
     }
     this->customDraw();
   }
@@ -46,8 +46,8 @@ public:
 
   // Sets the span of the tile (default: 1x1).
   Tile* setSpan(int x_span, int y_span) {
-    this.x_span_ = x_span;
-    this.y_span_ = y_span;
+    this->x_span_ = x_span;
+    this->y_span_ = y_span;
     return this;
   }
 
@@ -304,14 +304,14 @@ public:
       esphome::display::DisplayPage* target_display_page)
       : Tile(x, y), draw_funcs_(draw_funcs), target_display_page_(target_display_page) {}
 
-  // Adds dynamic entities to the tile and a callback to update the entities map.
+  // Sets dynamic entities to the tile and a callback to update the entities map.
   MovePageTile* setDynamicEntry(const std::string& key,
                                 const std::vector<std::string>& val) {
     this->binary_sensor_->add_on_state_callback([this, key, val](bool x) {
       if (!x) {
         return;
       }
-      EMAdd(Pointer(key), Pointer(val));
+      EMSet(Pointer(key), Pointer(val));
       this->change_entities_callback_();
     });
     auto ptr_vec = Pointer(val);

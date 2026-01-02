@@ -558,3 +558,12 @@ screens:
               - b
           display:
             - tile_room
+      - move_page:
+          x: 2
+          y: 1
+          display:
+            - tile_icon:
+                icon: '"\U0000e5cb"'
+                color: Color(202,205,29)
+                size: id(big)
+          destination: pref

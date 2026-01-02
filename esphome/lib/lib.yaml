@@ -138,7 +138,13 @@ switch:
     optimistic: true
     on_turn_off:
       then:
-        - lambda: id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());
+        - if:
+            condition:
+              - lambda: 'return !View::initialized;'
+            then:
+              - delay: 2500ms
+        - lambda: |-
+            id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());
     on_turn_on:
       then:
         - display.page.show: calib
@@ -565,10 +571,18 @@ script:
     parameters:
       i: int
       j: int
+      i_span: int
+      j_span: int
     then:
       - lambda: |-
           for (int delta = 0; delta < id(tile_border_width); ++delta) {
-            id(rounded_rectangle).execute(id(x_start)[i]+delta, id(y_start)[j]+delta, id(x_rect) - 2*delta, id(y_rect) - 2*delta, id(border_r) - delta, id(gray));
+            id(rounded_rectangle).execute(
+              id(x_start)[i]+delta, 
+              id(y_start)[j]+delta, 
+              id(x_rect) * i_span + (i_span - 1) * id(x_pad) - 2 * delta,
+              id(y_rect) * j_span + (j_span - 1) * id(y_pad) - 2 * delta,
+              id(border_r) - delta,
+              id(gray));
           }
 
   - id: tile_blinds_up
@@ -715,8 +729,8 @@ script:
           }
 
           if (!any) {
-            int gap = id(x_rect) / 6;
-            line(id(x_start)[x] + gap, id(y_start)[y] + id(y_rect) - gap, id(x_start)[x] + id(x_rect) - gap, id(y_start)[y] + gap, id(gray));
+            int gap = x_rect / 6;
+            line(x_start + gap, y_start + y_rect - gap, x_start + x_rect - gap, y_start + gap, id(gray));
           }
 
   - id: tile_lights

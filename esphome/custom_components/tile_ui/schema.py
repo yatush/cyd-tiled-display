@@ -139,6 +139,8 @@ def get_validator(field_type: str, object_fields: list = None):
         return non_empty_string
     if field_type == 'dynamic_entity_select':
         return non_empty_string
+    if field_type == 'ha_entity_list':
+        return cv.Any(non_empty_string, string_list)
     if field_type == 'object':
         if not object_fields:
             return dict
@@ -147,7 +149,7 @@ def get_validator(field_type: str, object_fields: list = None):
         item_schema = {}
         for f in object_fields:
             key = Optional(f['key']) if f.get('optional') else Required(f['key'])
-            item_schema[key] = non_empty_string
+            item_schema[key] = get_validator(f.get('type', 'string'), f.get('objectFields'))
             
         return Schema(item_schema, extra=PREVENT_EXTRA)
     if field_type == 'object_list':
@@ -157,9 +159,8 @@ def get_validator(field_type: str, object_fields: list = None):
         # Build schema for object items
         item_schema = {}
         for f in object_fields:
-            # Assuming all object fields are strings for now based on current usage
             key = Optional(f['key']) if f.get('optional') else Required(f['key'])
-            item_schema[key] = non_empty_string
+            item_schema[key] = get_validator(f.get('type', 'string'), f.get('objectFields'))
             
         return All(
             list,
