@@ -46,7 +46,7 @@ export function useValidation(config: Config) {
 
     const now = Date.now();
     const timeSinceLast = now - lastValidationTimeRef.current;
-    const minInterval = 5000;
+    const minInterval = 1000;
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
