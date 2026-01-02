@@ -210,6 +210,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                               <div className="flex items-center gap-2 truncate">
                                                   <div className={`w-1.5 h-1.5 rounded-full ${tile.x === -1 ? 'bg-amber-400' : 'bg-blue-400'}`} />
                                                   <span className="truncate font-medium">{getTileLabel(tile)}</span>
+                                              </div>
                                               <div className="flex items-center gap-1">
                                                 <button
                                                     onClick={(e) => {
