@@ -60,7 +60,7 @@ function App() {
     activePageId, setActivePageId,
     selectedTileId, setSelectedTileId,
     activePage, selectedTile,
-    handleAddTile, handleUpdateTile, handleDeleteTile,
+    handleAddTile, handleDuplicateTile, handleUpdateTile, handleDeleteTile,
     handleDeletePage, handleUpdatePage, handleRenamePage, handleClearConfig,
     handleDragEnd
   } = useTileConfig();
@@ -162,6 +162,7 @@ function App() {
           setIsAddTileOpen={setIsAddTileOpen}
           schema={schema}
           handleAddTile={handleAddTile}
+          handleDuplicateTile={handleDuplicateTile}
           isPagesOpen={isPagesOpen}
           setIsPagesOpen={setIsPagesOpen}
           activePageId={activePageId}

@@ -913,6 +913,21 @@ script:
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
           print(x_mid, y_mid, size, color, TextAlign::CENTER, icon.c_str());
+  
+  - id: tile_text
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      text: string
+      color: Color
+      size: esphome::display::BaseFont*
+    then:
+      - lambda: |-
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          print(x_mid, y_mid, size, color, TextAlign::CENTER, text.c_str());
 
   - id: action_power
     then:

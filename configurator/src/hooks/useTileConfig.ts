@@ -91,7 +91,16 @@ export function useTileConfig() {
     let found = false;
     for(let r=0; r<activePage.rows; r++) {
       for(let c=0; c<activePage.cols; c++) {
-        if (!activePage.tiles.find(t => t.x === c && t.y === r)) {
+        const isOccupied = activePage.tiles.some(t => {
+          const t_x_span = t.x_span || 1;
+          const t_y_span = t.y_span || 1;
+          return (
+            c >= t.x && c < t.x + t_x_span &&
+            r >= t.y && r < t.y + t_y_span
+          );
+        });
+
+        if (!isOccupied) {
           x = c; y = r;
           found = true;
           break;
@@ -111,6 +120,56 @@ export function useTileConfig() {
       x,
       y,
     } as Tile;
+
+    const updatedPage = {
+      ...activePage,
+      tiles: [...activePage.tiles, newTile]
+    };
+
+    setConfig({
+      ...config,
+      pages: config.pages.map(p => p.id === activePage.id ? updatedPage : p)
+    });
+    setSelectedTileId(newTile.id);
+  };
+
+  const handleDuplicateTile = (tileId: string) => {
+    const tileToDuplicate = activePage.tiles.find(t => t.id === tileId);
+    if (!tileToDuplicate) return;
+
+    let x = 0, y = 0;
+    let found = false;
+    for(let r=0; r<activePage.rows; r++) {
+      for(let c=0; c<activePage.cols; c++) {
+        const isOccupied = activePage.tiles.some(t => {
+          const t_x_span = t.x_span || 1;
+          const t_y_span = t.y_span || 1;
+          return (
+            c >= t.x && c < t.x + t_x_span &&
+            r >= t.y && r < t.y + t_y_span
+          );
+        });
+
+        if (!isOccupied) {
+          x = c; y = r;
+          found = true;
+          break;
+        }
+      }
+      if(found) break;
+    }
+
+    if (!found) {
+      x = -1;
+      y = -1;
+    }
+
+    const newTile: Tile = {
+      ...tileToDuplicate,
+      id: Math.random().toString(36).substr(2, 9),
+      x,
+      y,
+    };
 
     const updatedPage = {
       ...activePage,
@@ -266,6 +325,7 @@ export function useTileConfig() {
     activePage,
     selectedTile,
     handleAddTile,
+    handleDuplicateTile,
     handleUpdateTile,
     handleDeleteTile,
     handleDeletePage,

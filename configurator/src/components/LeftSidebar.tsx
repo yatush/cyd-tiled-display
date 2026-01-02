@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, Monitor } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, Monitor, Copy } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
 import { isAddon } from '../utils/api';
@@ -16,6 +16,7 @@ interface LeftSidebarProps {
   setIsAddTileOpen: (open: boolean) => void;
   schema: any;
   handleAddTile: (type: string) => void;
+  handleDuplicateTile: (id: string) => void;
   isPagesOpen: boolean;
   setIsPagesOpen: (open: boolean) => void;
   activePageId: string;
@@ -41,6 +42,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   isAddTileOpen,
   setIsAddTileOpen,
   schema,
+  handleDuplicateTile,
   handleAddTile,
   isPagesOpen,
   setIsPagesOpen,
@@ -57,6 +59,28 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   handleClearConfig,
 }) => {
   const [showExplorer, setShowExplorer] = useState(false);
+  const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
+
+  useEffect(() => {
+    setExpandedPages(prev => {
+      const next = new Set(prev);
+      next.add(activePageId);
+      return next;
+    });
+  }, [activePageId]);
+
+  const togglePageExpansion = (pageId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedPages(prev => {
+      const next = new Set(prev);
+      if (next.has(pageId)) {
+        next.delete(pageId);
+      } else {
+        next.add(pageId);
+      }
+      return next;
+    });
+  };
 
   return (
     <div 
@@ -152,7 +176,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                   className={`flex items-center justify-between p-2 rounded cursor-pointer mb-1 ${activePageId === p.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100'}`}
                                   onClick={() => setActivePageId(p.id)}
                               >
-                                  <span className="text-xs truncate font-medium">{p.id}</span>
+                                  <div className="flex items-center gap-1 overflow-hidden">
+                                      <button 
+                                        onClick={(e) => togglePageExpansion(p.id, e)}
+                                        className="p-0.5 hover:bg-black/10 rounded text-slate-500"
+                                      >
+                                        {expandedPages.has(p.id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                      </button>
+                                      <span className="text-xs truncate font-medium">{p.id}</span>
+                                  </div>
                                   {config.pages.length > 1 && (
                                       <button
                                           onClick={(e) => {
@@ -167,7 +199,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                   )}
                               </div>
 
-                              {activePageId === p.id && (
+                              {expandedPages.has(p.id) && (
                                   <div className="ml-4 mb-2 space-y-1">
                                       {p.tiles.map(tile => (
                                           <div 
@@ -178,15 +210,28 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                               <div className="flex items-center gap-2 truncate">
                                                   <div className={`w-1.5 h-1.5 rounded-full ${tile.x === -1 ? 'bg-amber-400' : 'bg-blue-400'}`} />
                                                   <span className="truncate font-medium">{getTileLabel(tile)}</span>
-                                              </div>
-                                              <button
-                                                  onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      handleDeleteTile(tile.id);
-                                                  }}
-                                                  className="text-slate-300 hover:text-red-500"
-                                              >
-                                                  <Trash2 size={12} />
+                                              <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDuplicateTile(tile.id);
+                                                    }}
+                                                    className="text-slate-300 hover:text-blue-500"
+                                                    title="Duplicate Tile"
+                                                >
+                                                    <Copy size={12} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteTile(tile.id);
+                                                    }}
+                                                    className="text-slate-300 hover:text-red-500"
+                                                    title="Delete Tile"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                              </divsh2 size={12} />
                                               </button>
                                           </div>
                                       ))}

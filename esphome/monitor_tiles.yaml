@@ -563,8 +563,9 @@ screens:
                 - c
               label: c
             - entity:
-                - d
-              label: d
+                - a
+                - b
+              label: ab
           x_span: 2
           y_span: 1
           activation_var:
@@ -582,3 +583,31 @@ screens:
                 color: Color(202,205,29)
                 size: id(big)
           destination: pref
+      - title:
+          x: 2
+          y: 0
+          display:
+            - tile_icon:
+                icon: '"\U0000f0b0"'
+                color: Color(39,39,160)
+                size: id(big)
+          activation_var:
+            dynamic_entity: COVER
+            value:
+              - a
+          entities:
+            - entity: a
+      - title:
+          x: 1
+          y: 1
+          display:
+            - tile_icon:
+                icon: '"\U0000ebd6"'
+                color: Color(239,37,37)
+                size: id(big)
+          entities:
+            - entity: a
+          activation_var:
+            dynamic_entity: COVER
+            value:
+              - b

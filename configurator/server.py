@@ -444,14 +444,14 @@ def get_scripts():
         
         # Standard colors
         colors = [
-            {'id': 'Color::BLACK', 'value': '#000000'},
-            {'id': 'Color::WHITE', 'value': '#FFFFFF'},
-            {'id': 'Color::RED', 'value': '#FF0000'},
-            {'id': 'Color::GREEN', 'value': '#00FF00'},
-            {'id': 'Color::BLUE', 'value': '#0000FF'},
-            {'id': 'Color::YELLOW', 'value': '#FFFF00'},
-            {'id': 'Color::ORANGE', 'value': '#FFA500'},
-            {'id': 'Color::PURPLE', 'value': '#800080'},
+            {'id': 'Color(0, 0, 0)', 'value': '#000000'},
+            {'id': 'Color(255, 255, 255)', 'value': '#FFFFFF'},
+            {'id': 'Color(255, 0, 0)', 'value': '#FF0000'},
+            {'id': 'Color(0, 255, 0)', 'value': '#00FF00'},
+            {'id': 'Color(0, 0, 255)', 'value': '#0000FF'},
+            {'id': 'Color(255, 255, 0)', 'value': '#FFFF00'},
+            {'id': 'Color(255, 165, 0)', 'value': '#FFA500'},
+            {'id': 'Color(128, 0, 128)', 'value': '#800080'},
         ]
 
         # Add custom colors from lib.yaml
