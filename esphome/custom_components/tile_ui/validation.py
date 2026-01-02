@@ -123,6 +123,30 @@ def validate_tiles_config(
             if not isinstance(y, int) or y < 0:
                 raise ValueError(f"Screen '{screen_id}', {tile_type} tile: y coordinate must be a non-negative integer, got {y}")
             
+            try:
+                x_span = int(config.get("x_span", 1))
+                y_span = int(config.get("y_span", 1))
+            except (ValueError, TypeError):
+                raise ValueError(f"Screen '{screen_id}', {tile_type} tile: spans must be integers")
+            
+            # Validate bounds if screen dimensions are known
+            screen_rows = screen.get("rows")
+            screen_cols = screen.get("cols")
+            
+            if screen_cols is not None:
+                if x + x_span > screen_cols:
+                    raise ValueError(
+                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}) with span {x_span} "
+                        f"exceeds screen width of {screen_cols}"
+                    )
+            
+            if screen_rows is not None:
+                if y + y_span > screen_rows:
+                    raise ValueError(
+                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}) with span {y_span} "
+                        f"exceeds screen height of {screen_rows}"
+                    )
+            
             # Collect dynamic entities from various tile types
             if tile_type == TileType.HA_ACTION.value or tile_type == TileType.TITLE.value:
                 entities_config = config.get("entities", "")
@@ -221,20 +245,37 @@ def _validate_tile_positions(screen_id, tiles):
     1. Multiple tiles can exist at the same (x, y) position.
     2. If multiple tiles exist at the same position, they MUST all have an 'activation_var'.
     3. All tiles at the same position MUST use the same 'dynamic_entity' in their 'activation_var'.
+    4. Tiles with spans occupy multiple grid cells. Overlap rules apply to all occupied cells.
     """
-    positions = {} # (x, y) -> list of (tile_type, config)
+    # Map each grid cell to the list of tiles occupying it
+    grid_cells = {} # (x, y) -> list of (tile_type, config)
+    
     for tile in tiles:
         tile_type = list(tile.keys())[0]
         config = tile[tile_type]
-        x = config.get("x", 0)
-        y = config.get("y", 0)
-        pos_key = (x, y)
         
-        if pos_key not in positions:
-            positions[pos_key] = []
-        positions[pos_key].append((tile_type, config))
+        try:
+            x = int(config.get("x", 0))
+            y = int(config.get("y", 0))
+            x_span = int(config.get("x_span", 1))
+            y_span = int(config.get("y_span", 1))
+        except (ValueError, TypeError):
+            raise ValueError(f"Screen '{screen_id}', {tile_type} tile: coordinates and spans must be integers")
+        
+        if x_span < 1:
+            raise ValueError(f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): x_span must be at least 1")
+        if y_span < 1:
+            raise ValueError(f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): y_span must be at least 1")
+            
+        # Add tile to all cells it occupies
+        for i in range(x_span):
+            for j in range(y_span):
+                pos_key = (x + i, y + j)
+                if pos_key not in grid_cells:
+                    grid_cells[pos_key] = []
+                grid_cells[pos_key].append((tile_type, config))
 
-    for pos_key, tile_list in positions.items():
+    for pos_key, tile_list in grid_cells.items():
         if len(tile_list) > 1:
             x, y = pos_key
             
@@ -242,9 +283,9 @@ def _validate_tile_positions(screen_id, tiles):
             for t_type, t_config in tile_list:
                 if not t_config.get("activation_var"):
                     raise ValueError(
-                        f"Screen '{screen_id}': Multiple tiles at ({x}, {y}) but "
+                        f"Screen '{screen_id}': Overlapping tiles at ({x}, {y}) but "
                         f"{t_type} tile is missing 'activation_var'. "
-                        f"All stacked tiles must have an 'activation_var' to control visibility."
+                        f"All overlapping tiles must have an 'activation_var' to control visibility."
                     )
             
             # Check if all have the same dynamic_entity and unique value sets
@@ -257,7 +298,7 @@ def _validate_tile_positions(screen_id, tiles):
                 
                 if current_var != first_var:
                     raise ValueError(
-                        f"Screen '{screen_id}': Multiple tiles at ({x}, {y}) must use the same "
+                        f"Screen '{screen_id}': Overlapping tiles at ({x}, {y}) must use the same "
                         f"activation variable (dynamic_entity). Found '{first_var}' and '{current_var}'."
                     )
                 
@@ -267,13 +308,13 @@ def _validate_tile_positions(screen_id, tiles):
                     current_vals = set(v.strip() for v in val.split(","))
                 else:
                     current_vals = {str(val)}
-                
+            
                 if current_vals in seen_value_sets:
-                    val_str = ", ".join(sorted(list(current_vals)))
-                    raise ValueError(
-                        f"Screen '{screen_id}': Multiple tiles at ({x}, {y}) have the same "
+                     val_str = ", ".join(sorted(list(current_vals)))
+                     raise ValueError(
+                        f"Screen '{screen_id}': Overlapping tiles at ({x}, {y}) have the same "
                         f"exact activation values: [{val_str}] for variable '{first_var}'. "
-                        f"Each tile in a stack must have a unique set of activation values."
+                        f"Each overlapping tile must have a unique set of activation values."
                     )
                 seen_value_sets.append(current_vals)
 
@@ -417,7 +458,10 @@ def _validate_script_parameters(script_id, script_info, provided_params, context
     
     # Check for missing required parameters
     # Implicit parameters are those that are automatically provided by the system
-    implicit_params = {'x', 'y', 'entities', 'name', 'presentation_name', 'is_on', 'options', 'state'}
+    implicit_params = {
+        'x', 'y', 'entities', 'name', 'presentation_name', 'is_on', 'options', 'state',
+        'x_start', 'x_end', 'y_start', 'y_end'
+    }
     
     for param, param_type in script_params.items():
         if param not in implicit_params and param not in provided_params:
@@ -601,7 +645,15 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
             raise ValueError(f"{context}: Field '{field_name}' must be a non-negative integer, got {value}")
             
     elif field_type in ['string', 'page_select', 'dynamic_entity_select', 'ha_entity_list']:
-        if not isinstance(value, str) or not value.strip():
+        if isinstance(value, list):
+            # Allow list of strings for ha_entity_list
+            if field_type == 'ha_entity_list':
+                for idx, item in enumerate(value):
+                    if not isinstance(item, str) or not item.strip():
+                        raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a non-empty string")
+            else:
+                raise ValueError(f"{context}: Field '{field_name}' must be a string, got list")
+        elif not isinstance(value, str) or not value.strip():
             raise ValueError(f"{context}: Field '{field_name}' must be a non-empty string")
             
     elif field_type == 'boolean':
@@ -632,8 +684,13 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
         if not value:
              raise ValueError(f"{context}: Field '{field_name}' cannot be empty")
         for idx, item in enumerate(value):
+            if isinstance(item, str):
+                if not item.strip():
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} cannot be empty string")
+                continue
+                
             if not isinstance(item, dict):
-                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a dict")
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a dict or string")
             if not any(k in item for k in ['entity', 'dynamic_entity']):
                  raise ValueError(f"{context}: Field '{field_name}' item {idx} must have 'entity' or 'dynamic_entity'")
             

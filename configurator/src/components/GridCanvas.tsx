@@ -33,19 +33,45 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
   useEffect(() => {
     if (selectedTileId) {
       const selectedTile = page.tiles.find(t => t.id === selectedTileId);
-      if (selectedTile && selectedTile.x >= 0 && selectedTile.y >= 0) {
-        const cellKey = `${selectedTile.x},${selectedTile.y}`;
-        const cellTiles = page.tiles.filter(t => t.x === selectedTile.x && t.y === selectedTile.y);
-        const index = cellTiles.findIndex(t => t.id === selectedTileId);
-        if (index !== -1) {
-          setCellActiveIndices(prev => ({
-            ...prev,
-            [cellKey]: index
-          }));
-        }
+      if (selectedTile) {
+        setCellActiveIndices(prev => {
+            const next = { ...prev };
+            let hasChanges = false;
+
+            // Iterate over all cells to find where this tile is present
+            for (let i = 0; i < rows * cols; i++) {
+                const x = i % cols;
+                const y = Math.floor(i / cols);
+                
+                // Check if the selected tile covers this cell
+                const t_x_span = selectedTile.x_span || 1;
+                const t_y_span = selectedTile.y_span || 1;
+                const covers = x >= selectedTile.x && x < selectedTile.x + t_x_span &&
+                               y >= selectedTile.y && y < selectedTile.y + t_y_span;
+                
+                if (covers) {
+                    // Calculate covering tiles for this cell to find the index
+                    const coveringTiles = page.tiles.filter(t => {
+                        const txs = t.x_span || 1;
+                        const tys = t.y_span || 1;
+                        return x >= t.x && x < t.x + txs &&
+                               y >= t.y && y < t.y + tys;
+                    });
+                    
+                    const newIndex = coveringTiles.findIndex(t => t.id === selectedTileId);
+                    const cellKey = `${x},${y}`;
+                    
+                    if (newIndex !== -1 && next[cellKey] !== newIndex) {
+                        next[cellKey] = newIndex;
+                        hasChanges = true;
+                    }
+                }
+            }
+            return hasChanges ? next : prev;
+        });
       }
     }
-  }, [selectedTileId, page.tiles]);
+  }, [selectedTileId, page.tiles, rows, cols]);
   
   const unplacedTiles = page.tiles.filter(t => t.x < 0 || t.y < 0);
 
@@ -63,51 +89,63 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
             {Array.from({ length: cols * rows }).map((_, i) => {
               const x = i % cols;
               const y = Math.floor(i / cols);
-              const tiles = page.tiles.filter(t => t.x === x && t.y === y);
+              
+              // Tiles that physically start in this cell (for rendering)
+              const startingTiles = page.tiles.filter(t => t.x === x && t.y === y);
+              
+              // Tiles that cover this cell (for interaction/selection)
+              const coveringTiles = page.tiles.filter(t => {
+                  const t_x_span = t.x_span || 1;
+                  const t_y_span = t.y_span || 1;
+                  return x >= t.x && x < t.x + t_x_span &&
+                         y >= t.y && y < t.y + t_y_span;
+              });
               
               const cellKey = `${x},${y}`;
               const activeIndex = cellActiveIndices[cellKey] || 0;
-              const validIndex = tiles.length > 0 ? activeIndex % tiles.length : 0;
-              const activeTile = tiles[validIndex];
+              const validIndex = coveringTiles.length > 0 ? activeIndex % coveringTiles.length : 0;
+              const activeTile = coveringTiles[validIndex];
               
               return (
                 <DroppableCell key={i} x={x} y={y}>
-                  {activeTile && (
+                  {startingTiles.map(tile => (
                     <DraggableTile 
-                      tile={activeTile} 
-                      isSelected={selectedTileId === activeTile.id} 
-                      onClick={() => onSelectTile(activeTile)} 
-                      onDelete={() => onDeleteTile(activeTile.id)}
+                      key={tile.id}
+                      tile={tile} 
+                      isSelected={selectedTileId === tile.id} 
+                      onClick={() => onSelectTile(tile)} 
+                      onDelete={() => onDeleteTile(tile.id)}
+                      zIndex={activeTile && activeTile.id === tile.id ? 60 : undefined}
                     />
-                  )}
-                  {tiles.length > 1 && (
-                      <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center bg-white/90 rounded px-1 z-20 text-[10px] font-bold shadow-sm border border-slate-300">
+                  ))}
+                  {coveringTiles.length > 1 && (
+                      <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center bg-white/90 rounded px-1 z-[110] text-[10px] font-bold shadow-sm border border-slate-300">
                           <button 
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
                                   e.stopPropagation();
-                                  const nextIndex = (validIndex - 1 + tiles.length) % tiles.length;
+                                  const nextIndex = (validIndex - 1 + coveringTiles.length) % coveringTiles.length;
                                   setCellActiveIndices(prev => ({
                                       ...prev,
                                       [cellKey]: nextIndex
                                   }));
-                                  onSelectTile(tiles[nextIndex]);
+                                  onSelectTile(coveringTiles[nextIndex]);
                               }}
                               className="hover:text-blue-600 p-0.5 cursor-pointer"
                           >
                               &lt;
                           </button>
-                          <span className="text-slate-600">{validIndex + 1}/{tiles.length}</span>
+                          <span className="text-slate-600">{validIndex + 1}/{coveringTiles.length}</span>
                           <button 
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
                                   e.stopPropagation();
-                                  const nextIndex = (validIndex + 1) % tiles.length;
+                                  const nextIndex = (validIndex + 1) % coveringTiles.length;
                                   setCellActiveIndices(prev => ({
                                       ...prev,
                                       [cellKey]: nextIndex
                                   }));
-                                  onSelectTile(tiles[nextIndex]);
+                                  onSelectTile(coveringTiles[nextIndex]);
                               }}
                               className="hover:text-blue-600 p-0.5 cursor-pointer"
                           >

@@ -259,6 +259,11 @@ def get_tile_modifiers(config, screen_id=None):
     if config.get("omit_frame", False):
         method_chains.append('omitFrame()')
     
+    x_span = config.get("x_span", 1)
+    y_span = config.get("y_span", 1)
+    if x_span > 1 or y_span > 1:
+        method_chains.append(f'setSpan({x_span}, {y_span})')
+    
     activation_var = config.get("activation_var", None)
     if activation_var:
         var_name = activation_var.get("dynamic_entity", None)

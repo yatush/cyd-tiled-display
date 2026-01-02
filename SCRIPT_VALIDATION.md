@@ -9,66 +9,68 @@ The tile UI component now validates that all referenced scripts have the correct
 Scripts are not required to declare all parameters provided by the context. The system will match the script's declared parameters against the available arguments.
 
 - **Partial Signatures**: A script can declare fewer parameters than available. For example, an action script can declare `()` (no parameters) even if `entities` are available.
-- **Required Parameters**: For display and location-based scripts, the `x` and `y` coordinates are **mandatory** and must be declared in the script parameters.
-- **Sequential Optional Parameters**: If a script type has multiple optional parameters (e.g., `name` and `state`), you cannot declare the second one without the first. For example, you cannot declare a script with `(x, y, state)` if the full signature is `(x, y, name, state)`. You must declare `(x, y, name, state)` or just `(x, y, name)` or `(x, y)`.
+- **Required Parameters**: For display scripts, the `x_start`, `x_end`, `y_start`, and `y_end` coordinates are **mandatory** and must be declared in the script parameters. For location-based scripts, `x` and `y` (float) are mandatory.
+- **Sequential Optional Parameters**: If a script type has multiple optional parameters (e.g., `name` and `state`), you cannot declare the second one without the first. For example, you cannot declare a script with `(x_start, x_end, y_start, y_end, state)` if the full signature is `(x_start, x_end, y_start, y_end, name, state)`.
 
 ## Script Types
 
 ESPhome scripts are categorized into several types based on their parameter signatures:
 
 ### 1. Standard Display Scripts
-- **Parameters**: `x: int`, `y: int` (Required), `entities: string[]` (Optional)
-- **Purpose**: Render tile content on the display at specific coordinates using a list of entities
+- **Parameters**: `x_start: int`, `x_end: int`, `y_start: int`, `y_end: int` (Required), `entities: string[]` (Optional)
+- **Purpose**: Render tile content on the display at specific coordinates using a list of entities. **Note**: The coordinates define the full bounding box of the tile, which may span multiple grid cells if `x_span` or `y_span` are used.
 - **Used in**: `display` field of `ha_action` and `title` tiles
 - **Example**:
   ```yaml
   - id: tile_lights
-    parameters: { x: int, y: int, entities: string[] }
+    parameters: { x_start: int, x_end: int, y_start: int, y_end: int, entities: string[] }
     then:
       - lambda: |-
-          id(disp).print(x, y, id(roboto_20), entities[0]);
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          print(x_mid, y_mid, id(roboto_20), id(white), TextAlign::CENTER, entities[0].c_str());
   ```
 
 ### 2. Simple Display Scripts
-- **Parameters**: `x: int`, `y: int` (Required)
-- **Purpose**: Render static tile content (icon/text) without entity data
+- **Parameters**: `x_start: int`, `x_end: int`, `y_start: int`, `y_end: int` (Required)
+- **Purpose**: Render static tile content (icon/text) without entity data. **Note**: The coordinates define the full bounding box of the tile, which may span multiple grid cells.
 - **Used in**: `display` field of `move_page` and `function` tiles
 - **Example**:
   ```yaml
   - id: draw_settings_icon
-    parameters: { x: int, y: int }
+    parameters: { x_start: int, x_end: int, y_start: int, y_end: int }
     then:
       - lambda: |-
-          id(disp).print(x, y, id(mdi_24), "\U0000F013"); // Cog icon
+          print(x_start, y_start, id(mdi_24), id(white), "\U0000F013"); // Cog icon
   ```
 
 ### 3. Toggle Display Scripts
-- **Parameters**: `x: int`, `y: int` (Required), `name: string`, `state: bool` (Optional)
+- **Parameters**: `x_start: int`, `x_end: int`, `y_start: int`, `y_end: int` (Required), `name: string`, `state: bool` (Optional)
 - **Purpose**: Render a toggle button state
 - **Used in**: `display` field of `toggle_entity` tiles
 - **Example**:
   ```yaml
   - id: draw_toggle
-    parameters: { x: int, y: int, name: string, state: bool }
+    parameters: { x_start: int, x_end: int, y_start: int, y_end: int, name: string, state: bool }
     then:
       - lambda: |-
-          id(disp).print(x, y, id(roboto_20), name.c_str());
+          print(x_start, y_start, id(roboto_20), id(white), name.c_str());
           if (state) {
              // Draw ON state
           }
   ```
 
 ### 4. Cycle Display Scripts
-- **Parameters**: `x: int`, `y: int` (Required), `name: string`, `options: string[]` (Optional)
+- **Parameters**: `x_start: int`, `x_end: int`, `y_start: int`, `y_end: int` (Required), `name: string`, `options: string[]` (Optional)
 - **Purpose**: Render a cycle button with multiple options
 - **Used in**: `display` field of `cycle_entity` tiles
 - **Example**:
   ```yaml
   - id: draw_cycle
-    parameters: { x: int, y: int, name: string, options: string[] }
+    parameters: { x_start: int, x_end: int, y_start: int, y_end: int, name: string, options: string[] }
     then:
       - lambda: |-
-          id(disp).print(x, y, id(roboto_20), name.c_str());
+          print(x_start, y_start, id(roboto_20), id(white), name.c_str());
           // options contains the list of values to cycle through
   ```
 

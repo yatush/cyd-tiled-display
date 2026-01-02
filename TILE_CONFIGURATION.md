@@ -45,9 +45,11 @@ screens:
 
 ### Screen Layout
 
-Screens are organized as a 2D grid. Each tile occupies one position using:
+Screens are organized as a 2D grid. Each tile occupies one or more positions using:
 - **x**: Column (0-based, horizontal position)
 - **y**: Row (0-based, vertical position)
+- **x_span**: (Optional, default: 1) Number of columns the tile spans
+- **y_span**: (Optional, default: 1) Number of rows the tile spans
 
 ### Screen Navigation Validation
 
@@ -75,11 +77,14 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
+- **x_span, y_span**: (Optional) Tile dimensions (default: 1)
 - **entities**: *(Required)* List of entities to be passed to the display script (see Entity Formats below)
 - **display**: *(Required)* List of display scripts to render the tile
-  - **Draw Function Arguments**: The display scripts can receive `{x, y, entities}` (x and y are required) where:
-    - `x`: Integer - Column position of the tile
-    - `y`: Integer - Row position of the tile
+  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end, entities}` (coordinates are required) where:
+    - `x_start`: Integer - Pixel x-coordinate of the left edge
+    - `x_end`: Integer - Pixel x-coordinate of the right edge
+    - `y_start`: Integer - Pixel y-coordinate of the top edge
+    - `y_end`: Integer - Pixel y-coordinate of the bottom edge
     - `entities`: String array - The resolved entity values (with dynamic entities replaced at runtime)
   - **Parameterized Scripts**: You can pass static parameters to scripts by using a dictionary format:
     ```yaml
@@ -115,11 +120,14 @@ Displays entity state and performs an action (typically toggle) when pressed.
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
+- **x_span, y_span**: (Optional) Tile dimensions (default: 1)
 - **entities**: *(Required)* List of entities to be passed to the display script
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts can receive `{x, y, entities}` (x and y are required) where:
-    - `x`: Integer - Column position of the tile
-    - `y`: Integer - Row position of the tile
+  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end, entities}` (coordinates are required) where:
+    - `x_start`: Integer - Pixel x-coordinate of the left edge
+    - `x_end`: Integer - Pixel x-coordinate of the right edge
+    - `y_start`: Integer - Pixel y-coordinate of the top edge
+    - `y_end`: Integer - Pixel y-coordinate of the bottom edge
     - `entities`: String array - The resolved entity values (with dynamic entities replaced at runtime)
 - **perform**: *(Required if location_perform not set)* Action function(s) to call when tile is pressed
   - **Action Function Arguments**: The action scripts can receive `{entities}` where:
@@ -155,10 +163,13 @@ Navigates to another screen when pressed.
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
+- **x_span, y_span**: (Optional) Tile dimensions (default: 1)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts can receive `{x, y}` (x and y are required) where:
-    - `x`: Integer - Column position of the tile
-    - `y`: Integer - Row position of the tile
+  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end}` (coordinates are required) where:
+    - `x_start`: Integer - Pixel x-coordinate of the left edge
+    - `x_end`: Integer - Pixel x-coordinate of the right edge
+    - `y_start`: Integer - Pixel y-coordinate of the top edge
+    - `y_end`: Integer - Pixel y-coordinate of the bottom edge
 - **destination**: *(Required)* Screen ID to navigate to (must be valid screen ID)
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
@@ -181,10 +192,13 @@ Calls a script/function when pressed.
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
+- **x_span, y_span**: (Optional) Tile dimensions (default: 1)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts can receive `{x, y}` (x and y are required) where:
-    - `x`: Integer - Column position of the tile
-    - `y`: Integer - Row position of the tile
+  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end}` (coordinates are required) where:
+    - `x_start`: Integer - Pixel x-coordinate of the left edge
+    - `x_end`: Integer - Pixel x-coordinate of the right edge
+    - `y_start`: Integer - Pixel y-coordinate of the top edge
+    - `y_end`: Integer - Pixel y-coordinate of the bottom edge
 - **on_press**: (Optional*) Function to call when tile is pressed
   - **Function Arguments**: No parameters passed to the script
 - **on_release**: (Optional*) Function to call when tile is released
@@ -212,10 +226,13 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
+- **x_span, y_span**: (Optional) Tile dimensions (default: 1)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts can receive `{x, y, presentation_name, state}` (x and y are required) where:
-    - `x`: Integer - Column position of the tile
-    - `y`: Integer - Row position of the tile
+  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end, presentation_name, state}` (coordinates are required) where:
+    - `x_start`: Integer - Pixel x-coordinate of the left edge
+    - `x_end`: Integer - Pixel x-coordinate of the right edge
+    - `y_start`: Integer - Pixel y-coordinate of the top edge
+    - `y_end`: Integer - Pixel y-coordinate of the bottom edge
     - `presentation_name`: String - The label to display for this option
     - `state`: Boolean - `true` if the tile is currently selected, `false` otherwise
 - **dynamic_entity**: *(Required)* Key for the dynamic_entity whose value is set by this tile.
@@ -248,10 +265,13 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 
 **Properties:**
 - **x, y**: *(Required)* Position on screen (non-negative integers)
+- **x_span, y_span**: (Optional) Tile dimensions (default: 1)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts can receive `{x, y, presentation_name, options}` (x and y are required) where:
-    - `x`: Integer - Column position of the tile
-    - `y`: Integer - Row position of the tile
+  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end, presentation_name, options}` (coordinates are required) where:
+    - `x_start`: Integer - Pixel x-coordinate of the left edge
+    - `x_end`: Integer - Pixel x-coordinate of the right edge
+    - `y_start`: Integer - Pixel y-coordinate of the top edge
+    - `y_end`: Integer - Pixel y-coordinate of the bottom edge
     - `presentation_name`: String - The label for the currently selected option
     - `options`: String array - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: If the option is `"*"` (All), this list will contain **all other entities** defined in the `options` list, instead of the literal string `"*"`.
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
@@ -318,6 +338,24 @@ entities:
 
 These modifiers can be applied to any tile type and control additional behavior. All common modifiers are optional.
 
+### Tile Spanning
+
+Tiles can span multiple grid cells.
+
+```yaml
+- ha_action:
+    x: 0
+    y: 0
+    x_span: 2
+    y_span: 2
+    # ... other properties ...
+```
+
+- **x_span**: (Optional, default: 1) Width of the tile in grid cells
+- **y_span**: (Optional, default: 1) Height of the tile in grid cells
+
+**Note on Overlaps**: If a spanned tile overlaps with other tiles (or if multiple tiles are placed at the same coordinates), **ALL** overlapping tiles MUST have an `activation_var` defined. This ensures the system knows which tile to display at any given time based on the active context.
+
 ### Omit Frame
 
 Hide the tile's border/frame:
@@ -343,12 +381,14 @@ Show the tile, only in case the value of the dynamic_entity is as given.
     # ... other properties ...
     activation_var:
       dynamic_entity: ROOM
-      value: LIVING_ROOM
+      value: 
+        - LIVING_ROOM
+        - KITCHEN
 ```
 
 - **activation_var**: (Optional) Set an activation variable
   - **dynamic_entity**: *(Required)* Dynamic entity name
-  - **value**: *(Required)* Variable value. Can be a **comma-separated list** of values, in that case, the *dynamic_entity* should have **ALL** of them set.
+  - **value**: *(Required)* Variable value. Can be a single string, a **comma-separated list** string, or a **YAML list** of strings. The tile will be active if the *dynamic_entity* matches **ANY** of the provided values.
 
 Multiple tiles can use the same variable name to track context (e.g., which room is selected).
 

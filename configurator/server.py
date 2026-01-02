@@ -502,7 +502,7 @@ def get_scripts():
                 param_list = [
                     {'name': k, 'type': v}
                     for k, v in params.items()
-                    if k not in ('x', 'y', 'entities')
+                    if k not in ('x', 'y', 'entities', 'x_start', 'y_start', 'x_end', 'y_end')
                 ]
                 scripts_list.append({'id': s['id'], 'params': param_list})
 

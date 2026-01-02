@@ -31,52 +31,64 @@ def get_script_type(parameters):
     param_types = [type_str for _, type_str in parameters.items()] if parameters else []
     param_count = len(param_types)
     
-    # Check for 5-parameter scripts
-    if param_count == 5:
-        # Icon display script: int, int, string, Color, font
+    # Check for 7-parameter scripts
+    if param_count == 7:
+        # Icon display script: int, int, int, int, string, Color, font
         if (param_types[0] == 'int' and 
             param_types[1] == 'int' and
-            ('string' in str(param_types[2]).lower()) and
-            ('Color' in str(param_types[3])) and
-            ('font' in str(param_types[4]).lower())):
+            param_types[2] == 'int' and
+            param_types[3] == 'int' and
+            ('string' in str(param_types[4]).lower()) and
+            ('Color' in str(param_types[5])) and
+            ('font' in str(param_types[6]).lower())):
             return 'display_icon'
+
+    # Check for 6-parameter scripts
+    if param_count == 6:
+        # Toggle display script: int, int, int, int, string, bool
+        if (param_types[0] == 'int' and 
+            param_types[1] == 'int' and
+            param_types[2] == 'int' and
+            param_types[3] == 'int' and
+            ('string' in str(param_types[4]).lower()) and
+            ('bool' in str(param_types[5]).lower())):
+            return 'display_toggle'
+        
+        # Cycle display script: int, int, int, int, string, string[]
+        if (param_types[0] == 'int' and 
+            param_types[1] == 'int' and
+            param_types[2] == 'int' and
+            param_types[3] == 'int' and
+            ('string' in str(param_types[4]).lower()) and
+            ('string[]' in str(param_types[5]) or 'vector' in str(param_types[5]).lower())):
+            return 'display_cycle'
+
+    # Check for 5-parameter scripts
+    if param_count == 5:
+        # Display script: int, int, int, int, string[]
+        if (param_types[0] == 'int' and 
+            param_types[1] == 'int' and
+            param_types[2] == 'int' and
+            param_types[3] == 'int' and
+            ('string[]' in str(param_types[4]) or 'vector' in str(param_types[4]).lower())):
+            return 'display'
 
     # Check for 4-parameter scripts
     if param_count == 4:
-        # Toggle display script: int, int, string, bool
+        # Simple display script: int, int, int, int
         if (param_types[0] == 'int' and 
             param_types[1] == 'int' and
-            ('string' in str(param_types[2]).lower()) and
-            ('bool' in str(param_types[3]).lower())):
-            return 'display_toggle'
-        
-        # Cycle display script: int, int, string, string[]
-        if (param_types[0] == 'int' and 
-            param_types[1] == 'int' and
-            ('string' in str(param_types[2]).lower()) and
-            ('string[]' in str(param_types[3]) or 'vector' in str(param_types[3]).lower())):
-            return 'display_cycle'
+            param_types[2] == 'int' and
+            param_types[3] == 'int'):
+            return 'display_simple'
 
     # Check for 3-parameter scripts
     if param_count == 3:
-        # Display script: int, int, string[]
-        if (param_types[0] == 'int' and 
-            param_types[1] == 'int' and
-            ('string[]' in str(param_types[2]) or 'vector' in str(param_types[2]).lower())):
-            return 'display'
-        
         # Location action script: float, float, string[]
         if (param_types[0] == 'float' and 
             param_types[1] == 'float' and
             ('string[]' in str(param_types[2]) or 'vector' in str(param_types[2]).lower())):
             return 'location_action'
-    
-    # Check for 2-parameter scripts
-    if param_count == 2:
-        # Simple display script: int, int
-        if (param_types[0] == 'int' and 
-            param_types[1] == 'int'):
-            return 'display_simple'
     
     # Check for 1-parameter scripts: string[] only
     if param_count == 1:
@@ -134,12 +146,12 @@ def validate_script_type(script_id, script_info, expected_type, context, provide
             
     # Map expected_type to expected parameter types
     expected_params_map = {
-        'display': ['int', 'int', 'string[]'],
+        'display': ['int', 'int', 'int', 'int', 'string[]'],
         'action': ['string[]'],
         'location_action': ['float', 'float', 'string[]'],
-        'display_simple': ['int', 'int'],
-        'display_toggle': ['int', 'int', 'string', 'bool'],
-        'display_cycle': ['int', 'int', 'string', 'string[]'],
+        'display_simple': ['int', 'int', 'int', 'int'],
+        'display_toggle': ['int', 'int', 'int', 'int', 'string', 'bool'],
+        'display_cycle': ['int', 'int', 'int', 'int', 'string', 'string[]'],
         'condition': ['string[]'],
     }
     
@@ -155,13 +167,25 @@ def validate_script_type(script_id, script_info, expected_type, context, provide
             )
         return
 
-    # Enforce x and y are required if expected_params implies them
+    # Enforce coordinates are required if expected_params implies them
+    if expected_params and len(expected_params) >= 4:
+        first_four = expected_params[:4]
+        if first_four == ['int', 'int', 'int', 'int']:
+             # Check original parameters for x_start, x_end, y_start, y_end
+             required_coords = ['x_start', 'x_end', 'y_start', 'y_end']
+             missing_coords = [p for p in required_coords if p not in parameters]
+             if missing_coords:
+                 # Fallback to checking first four types if names are not standard (unlikely but possible)
+                 if len(remaining_param_types) < 4:
+                    raise ValueError(
+                        f"{context}: Script '{script_id}' must have coordinate parameters ({', '.join(required_coords)}) for type '{expected_type}'. Missing: {', '.join(missing_coords)}"
+                    )
+    
+    # Enforce x and y are required for location_action
     if expected_params and len(expected_params) >= 2:
         first_two = expected_params[:2]
-        if (first_two == ['int', 'int'] or first_two == ['float', 'float']):
-            # Check original parameters for x and y, as they are usually implicit
+        if first_two == ['float', 'float']:
             if 'x' not in parameters or 'y' not in parameters:
-                 # Fallback to checking first two types if names are not x/y (unlikely but possible)
                  if len(remaining_param_types) < 2:
                     raise ValueError(
                         f"{context}: Script '{script_id}' must have at least 2 parameters (x, y) for type '{expected_type}'. "

@@ -3,6 +3,19 @@ import { Trash2, Plus } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { HaEntity } from '../types';
 
+export const NumberInput = ({ label, value, onChange, min = 0 }: { label: string, value: number, onChange: (v: number) => void, min?: number }) => (
+  <div className="mb-2">
+    <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+    <input 
+      type="number" 
+      value={value || 0} 
+      onChange={e => onChange(parseInt(e.target.value))}
+      min={min}
+      className="w-full border rounded p-1 text-sm"
+    />
+  </div>
+);
+
 export const TextInput = ({ label, value, onChange, haEntities }: { label: string, value: string, onChange: (v: string) => void, haEntities?: HaEntity[] }) => {
   const listId = `ha-entities-text-${Math.random().toString(36).substr(2, 9)}`;
   return (

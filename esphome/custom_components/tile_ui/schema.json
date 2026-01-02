@@ -2,6 +2,8 @@
   "common": [
     { "name": "x", "type": "number", "label": "X" },
     { "name": "y", "type": "number", "label": "Y" },
+    { "name": "x_span", "type": "number", "label": "X Span", "optional": true },
+    { "name": "y_span", "type": "number", "label": "Y Span", "optional": true },
     { "name": "display", "type": "display_list", "label": "Display Scripts" },
     { "name": "omit_frame", "type": "boolean", "label": "Omit Frame", "optional": true },
     { 

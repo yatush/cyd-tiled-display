@@ -47,7 +47,7 @@ def _apply_modifiers(tile_cpp, config, extra_modifiers=None, screen_id=None):
 def generate_action_tile(config, available_scripts, screen_id=None):
     """Generate C++ for an action tile."""
     # HAActionTile display: int, int, vector<string>
-    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), ('entities', 'string[]')])
+    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), ('entities', 'string[]')])
     
     entities_config = config.get("entities", "")
     entity_values = format_entity_value(entities_config)
@@ -112,7 +112,7 @@ def generate_action_tile(config, available_scripts, screen_id=None):
 
 def generate_title_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a title tile."""
-    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), ('entities', 'string[]')])
+    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), ('entities', 'string[]')])
     
     entities_config = config.get("entities", "")
     entity_values = format_entity_value(entities_config)
@@ -135,7 +135,7 @@ def generate_title_tile(config, available_scripts, screen_id=None):
 def generate_move_page_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a move page tile."""
     # MovePageTile display: int, int, string, Color, font
-    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int')])
+    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int')])
     
     destination = config.get("destination", "")
     dynamic_entry = config.get("dynamic_entry", None)
@@ -159,7 +159,7 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
 
 def generate_function_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a function tile."""
-    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int')])
+    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int')])
     
     on_press = config.get("on_press", None)
     on_release = config.get("on_release", None)
@@ -179,7 +179,7 @@ def generate_function_tile(config, available_scripts, screen_id=None):
 
 def generate_toggle_entity_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a toggle entity tile."""
-    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), (['name', 'presentation_name'], 'string'), ('is_on', 'bool')])
+    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), (['name', 'presentation_name'], 'string'), ('is_on', 'bool')])
     
     dynamic_entity = config.get("dynamic_entity", "")
     entity = config.get("entity", "")
@@ -203,7 +203,7 @@ def generate_toggle_entity_tile(config, available_scripts, screen_id=None):
 
 def generate_cycle_entity_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a cycle entity tile."""
-    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x', 'int'), ('y', 'int'), ('name', 'string'), (['options', 'entities'], 'string[]')])
+    x, y, display_cpp = _generate_base_tile_args(config, available_scripts, [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), ('name', 'string'), (['options', 'entities'], 'string[]')])
     
     dynamic_entity = config.get("dynamic_entity", "")
     options = config.get("options", [])

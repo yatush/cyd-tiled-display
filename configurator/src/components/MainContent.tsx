@@ -95,13 +95,11 @@ export const MainContent: React.FC<MainContentProps> = ({
               <>
                   {validationStatus && !validationStatus.success && (
                       <div 
-                          className="absolute top-0 left-0 right-0 z-50 bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 text-red-700 text-xs cursor-pointer hover:bg-red-100 transition-colors shadow-sm"
-                          onClick={() => setActiveTab('output')}
+                          className="absolute top-0 left-0 right-0 z-50 bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 text-red-700 text-xs shadow-sm"
                       >
                           <AlertCircle size={14} className="flex-shrink-0" />
                           <span className="font-bold uppercase tracking-tight">Configuration Error:</span>
                           <span className="font-medium">{validationStatus.error}</span>
-                          <span className="ml-auto text-[10px] font-bold uppercase opacity-40">Click for full output</span>
                       </div>
                   )}
 

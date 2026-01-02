@@ -44,6 +44,13 @@ public:
     return this;
   }
 
+  // Sets the span of the tile (default: 1x1).
+  Tile* setSpan(int x_span, int y_span) {
+    this.x_span_ = x_span;
+    this.y_span_ = y_span;
+    return this;
+  }
+
   // Decodes dynamic entities within the tile (default: no-op).
   virtual void decodeEntities() {};
 
@@ -84,9 +91,11 @@ public:
 
   void updateTouchArea() {
     if (this->binary_sensor_ != nullptr) {
+      int x_end_idx = this->x_ + this->x_span_ - 1;
+      int y_end_idx = this->y_ + this->y_span_ - 1;
       this->binary_sensor_->set_area(
-          id(x_start)[this->x_], id(x_start)[this->x_] + id(x_rect),
-          id(y_start)[this->y_], id(y_start)[this->y_] + id(y_rect));
+          id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect),
+          id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect));
     }
   }
 
@@ -111,6 +120,10 @@ protected:
   int x_;
   // Y-coordinate of the tile.
   int y_;
+  // Span of the tile in the X direction.
+  int x_span_ = 1;
+  // Span of the tile in the Y direction.
+  int y_span_ = 1;
   // Flag to indicate if the frame should be omitted.
   bool omit_frame_ = false;
   // Callback function for entity changes.
@@ -165,7 +178,7 @@ class HAActionTile : public Tile {
 public:
   HAActionTile(
       int x, int y,
-      std::vector<std::function<void(int, int, std::vector<std::string>)>>
+      std::vector<std::function<void(int, int, int, int, std::vector<std::string>)>>
           draw_funcs,
       std::vector<std::function<void(std::vector<std::string>)>>
           action_funcs,
@@ -180,7 +193,7 @@ public:
 
   HAActionTile(
       int x, int y,
-      std::vector<std::function<void(int, int, std::vector<std::string>)>>
+      std::vector<std::function<void(int, int, int, int, std::vector<std::string>)>>
           draw_funcs,
       std::vector<std::function<void(std::vector<std::string>)>>
           action_funcs,
@@ -189,7 +202,7 @@ public:
 
   HAActionTile(
       int x, int y,
-      std::vector<std::function<void(int, int, std::vector<std::string>)>>
+      std::vector<std::function<void(int, int, int, int, std::vector<std::string>)>>
           draw_funcs,
       std::vector<std::function<void(float, float, std::vector<std::string>)>>
           location_action_funcs,
@@ -247,8 +260,13 @@ protected:
         auto entities_vec = Deref(this->decoded_entities_);
         ExecuteScripts(this->action_funcs_, entities_vec);
         if (this->location_action_funcs_.size() > 0) {
-          float x_precent = 1.0 * (id(last_x) - id(x_start)[this->x_]) / id(x_rect);
-          float y_precent = 1.0 * (id(last_y) - id(y_start)[this->y_]) / id(y_rect);
+          int x_end_idx = this->x_ + this->x_span_ - 1;
+          int y_end_idx = this->y_ + this->y_span_ - 1;
+          int total_width = (id(x_start)[x_end_idx] + id(x_rect)) - id(x_start)[this->x_];
+          int total_height = (id(y_start)[y_end_idx] + id(y_rect)) - id(y_start)[this->y_];
+          
+          float x_precent = 1.0 * (id(last_x) - id(x_start)[this->x_]) / total_width;
+          float y_precent = 1.0 * (id(last_y) - id(y_start)[this->y_]) / total_height;
           ExecuteScripts(this->location_action_funcs_, x_precent, y_precent, entities_vec);
         }
       });
@@ -256,14 +274,16 @@ protected:
   }
 
   void customDraw() override {
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, Deref(this->decoded_entities_));
+    int x_end_idx = this->x_ + this->x_span_ - 1;
+    int y_end_idx = this->y_ + this->y_span_ - 1;
+    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect), Deref(this->decoded_entities_));
   }
 
 private:
   // Function to determine if the tile requires fast refresh (default: false).
   std::function<bool(std::vector<std::string>)> requiresFastRefreshFunc_ = [](std::vector<std::string>) { return false; };
   // Vector of functions to draw the tile.
-  std::vector<std::function<void(int, int, std::vector<std::string>)>> draw_funcs_;
+  std::vector<std::function<void(int, int, int, int, std::vector<std::string>)>> draw_funcs_;
   // Vector of scripts to execute when the tile is pressed.
   std::vector<std::function<void(std::vector<std::string>)>> action_funcs_;
   // Vector of scripts to execute when the tile is pressed.
@@ -279,7 +299,7 @@ class MovePageTile : public Tile {
 public:
   MovePageTile(
       int x, int y,
-      std::vector<std::function<void(int, int)>>
+      std::vector<std::function<void(int, int, int, int)>>
           draw_funcs,
       esphome::display::DisplayPage* target_display_page)
       : Tile(x, y), draw_funcs_(draw_funcs), target_display_page_(target_display_page) {}
@@ -319,12 +339,14 @@ protected:
   }
 
   void customDraw() override {
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_);
+    int x_end_idx = this->x_ + this->x_span_ - 1;
+    int y_end_idx = this->y_ + this->y_span_ - 1;
+    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect));
   }
 
 private:
   // Vector of functions to draw the tile.
-  std::vector<std::function<void(int, int)>> draw_funcs_;
+  std::vector<std::function<void(int, int, int, int)>> draw_funcs_;
   // Pointer to the target display page to navigate to.
   esphome::display::DisplayPage* target_display_page_;
   // Vector of dynamic entities associated with the tile.
@@ -336,7 +358,7 @@ class FunctionTile : public Tile {
 public:
   FunctionTile(
       int x, int y,
-      std::vector<std::function<void(int, int)>>
+      std::vector<std::function<void(int, int, int, int)>>
           draw_funcs,
       std::function<void()> on_press,
       std::function<void()> on_release = nullptr)
@@ -356,12 +378,14 @@ protected:
   }
 
   void customDraw() override {
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_);
+    int x_end_idx = this->x_ + this->x_span_ - 1;
+    int y_end_idx = this->y_ + this->y_span_ - 1;
+    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect));
   }
 
 private:
   // Vector of functions to draw the tile.
-  std::vector<std::function<void(int, int)>> draw_funcs_;
+  std::vector<std::function<void(int, int, int, int)>> draw_funcs_;
   // Pointer to the script to execute when the tile is pressed.
   std::function<void()> on_press_;
   // Pointer to the script to execute when the tile is released.
@@ -373,7 +397,7 @@ class TitleTile : public HAActionTile {
 public:
   TitleTile(
       int x, int y,
-      std::vector<std::function<void(int, int, std::vector<std::string>)>>
+      std::vector<std::function<void(int, int, int, int, std::vector<std::string>)>>
           draw_funcs,
       std::vector<std::string> entities)
       : HAActionTile(x, y, draw_funcs, {}, {}, entities) {}
@@ -391,7 +415,7 @@ class ToggleEntityTile : public Tile {
 public:
   ToggleEntityTile(
       int x, int y,
-      std::vector<std::function<void(int, int, std::string, bool)>>
+      std::vector<std::function<void(int, int, int, int, std::string, bool)>>
           draw_funcs,
       const std::string& identifier, const std::vector<std::string>& entities,
       const std::string& presentation_name, bool initially_chosen = false)
@@ -429,13 +453,15 @@ protected:
 
   void customDraw() override {
     bool isOn = EMContains(this->identifier_, this->entities_);
+    int x_end_idx = this->x_ + this->x_span_ - 1;
+    int y_end_idx = this->y_ + this->y_span_ - 1;
     ExecuteScripts(
-      this->draw_funcs_, this->x_, this->y_,
+      this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect),
       this->presentation_name_, isOn);
   }
 
   // Vector of functions to draw the tile.
-  std::vector<std::function<void(int, int, std::string, bool)>> draw_funcs_;
+  std::vector<std::function<void(int, int, int, int, std::string, bool)>> draw_funcs_;
   // Identifier for the group of entities this tile belongs to.
   const std::string* identifier_;
   // The entities associated with this tile.
@@ -452,7 +478,7 @@ class CycleEntityTile : public Tile {
 public:
   CycleEntityTile(
       int x, int y,
-      std::vector<std::function<void(int, int, std::string, std::vector<std::string>)>>
+      std::vector<std::function<void(int, int, int, int, std::string, std::vector<std::string>)>>
           draw_funcs,
       const std::string& identifier,
       std::vector<std::pair<std::vector<std::string>, std::string>> entities_and_presntation_names,
@@ -504,7 +530,9 @@ protected:
         args.push_back(*entity);
       }
     }
-    ExecuteScripts(this->draw_funcs_, this->x_, this->y_, *current_option.second, args);
+    int x_end_idx = this->x_ + this->x_span_ - 1;
+    int y_end_idx = this->y_ + this->y_span_ - 1;
+    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect), *current_option.second, args);
   }
 
   void onActivation() override {
@@ -537,7 +565,7 @@ private:
   }
 
   // Vector of functions to draw the tile.
-  std::vector<std::function<void(int, int, std::string, std::vector<std::string>)>> draw_funcs_;
+  std::vector<std::function<void(int, int, int, int, std::string, std::vector<std::string>)>> draw_funcs_;
   // Identifier to change.
   const std::string* identifier_;
   // The entities to set into the identifier and their presentation names. The one

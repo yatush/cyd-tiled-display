@@ -2,15 +2,30 @@ import { useDraggable } from '@dnd-kit/core';
 import { Trash2 } from 'lucide-react';
 import { Tile } from '../types';
 
-export const DraggableTile = ({ tile, isSelected, onClick, onDelete }: { tile: Tile, isSelected: boolean, onClick: () => void, onDelete: () => void }) => {
+export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex }: { 
+  tile: Tile, 
+  isSelected: boolean, 
+  onClick: () => void, 
+  onDelete: () => void,
+  zIndex?: number 
+}) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: tile.id,
   });
   
-  const style = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-    zIndex: 100,
-  } : undefined;
+  const x_span = tile.x_span || 1;
+  const y_span = tile.y_span || 1;
+
+  const style: React.CSSProperties = {
+    ...(transform ? {
+      transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    } : {}),
+    width: `calc(${x_span} * (100% + 4px) + ${(x_span - 1) * 4}px)`,
+    height: `calc(${y_span} * (100% + 4px) + ${(y_span - 1) * 4}px)`,
+    top: '-2px',
+    left: '-2px',
+    zIndex: isSelected ? 100 : (zIndex ?? (x_span > 1 || y_span > 1 ? 50 : 10)),
+  };
 
   return (
     <div 
@@ -18,7 +33,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete }: { tile: T
       style={style} 
       {...listeners} 
       {...attributes}
-      className={`w-full h-full relative border-2 border-solid rounded flex items-center justify-center group
+      className={`absolute border-2 border-solid rounded flex items-center justify-center group
         ${isSelected ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-400' : 'bg-blue-50 border-blue-500'}
         cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow
       `}

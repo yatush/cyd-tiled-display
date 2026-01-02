@@ -573,18 +573,22 @@ script:
 
   - id: tile_blinds_up
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       entities: string[]
     then:
       - lambda: |-
           bool up = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_up_fn), entities));
           uint32_t millis_val = DRAW_ONLY(millis());
-          handle_caching(std::make_pair(x, y), millis_val, up);
+          handle_caching(std::make_pair(x_start, y_start), millis_val, up);
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
           if (up) {
-            print(id(x_mid)[x], id(y_mid)[y] - static_cast<int>(millis_val / 1000.0 * 12) % 41 + 20, id(big), id(blue), TextAlign::CENTER, "\U0000eacf");
+            print(x_mid, y_mid - static_cast<int>(millis_val / 1000.0 * 12) % 41 + 20, id(big), id(blue), TextAlign::CENTER, "\U0000eacf");
           } else {
-            print(id(x_mid)[x], id(y_mid)[y], id(big), id(light_blue), TextAlign::CENTER, "\U0000eacf");
+            print(x_mid, y_mid, id(big), id(light_blue), TextAlign::CENTER, "\U0000eacf");
           }
 
   - id: action_blinds_up
@@ -601,18 +605,22 @@ script:
  
   - id: tile_blinds_down
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       entities: string[]
     then:
       - lambda: |-
           bool down = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_down_fn), entities));
           uint32_t millis_val = DRAW_ONLY(millis());
-          handle_caching(std::make_pair(x, y), millis_val, down);
+          handle_caching(std::make_pair(x_start, y_start), millis_val, down);
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
           if (down) {
-            print(id(x_mid)[x], id(y_mid)[y] + static_cast<int>(millis_val / 1000.0 * 12) % 41 - 20, id(big), id(red), TextAlign::CENTER, "\U0000ead0");
+            print(x_mid, y_mid + static_cast<int>(millis_val / 1000.0 * 12) % 41 - 20, id(big), id(red), TextAlign::CENTER, "\U0000ead0");
           } else {
-            print(id(x_mid)[x], id(y_mid)[y], id(big), id(light_red), TextAlign::CENTER, "\U0000ead0");
+            print(x_mid, y_mid, id(big), id(light_red), TextAlign::CENTER, "\U0000ead0");
           }
 
   - id: action_blinds_down
@@ -662,40 +670,47 @@ script:
 
   - id: tile_blinds_up_down
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       entities: string[]
     then:
       - lambda: |-
           bool up = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_up_fn), entities));
           bool down = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_down_fn), entities));
           uint32_t millis_val = DRAW_ONLY(millis());
-          handle_caching(std::make_pair(x, y), millis_val, up, down);
+          handle_caching(std::make_pair(x_start, y_start), millis_val, up, down);
           bool one = up != down;
           bool any = up || down;
           bool show_up = !one || up;
           bool show_down = !one || down;
 
-          auto delta_x = one ? 0 : id(x_rect) / 5;
-          auto delta_y = any ? static_cast<int>(millis_val / 1000.0 * 12) % 41 - 20 : id(y_rect) / 5;
-          int text_x = id(x_mid)[x] + (show_up ? -1 : 1) * delta_x;
-          int text_y = id(y_mid)[y] + (show_up ? -1 : 1) * delta_y;
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          int x_rect = x_end - x_start;
+          int y_rect = y_end - y_start;
+
+          auto delta_x = one ? 0 : x_rect / 5;
+          auto delta_y = any ? static_cast<int>(millis_val / 1000.0 * 12) % 41 - 20 : y_rect / 5;
+          int text_x = x_mid + (show_up ? -1 : 1) * delta_x;
+          int text_y = y_mid + (show_up ? -1 : 1) * delta_y;
           auto color = show_up ? id(blue) : id(red);
           const char* symbol = show_up ? "\U0000eacf" : "\U0000ead0";
           print(text_x, text_y, one ? id(big) : id(small), color, TextAlign::CENTER, symbol);
 
           if (show_up) {
             if (one) {
-              print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, id(big), id(blue), TextAlign::CENTER, "\U0000eacf");
+              print(x_mid - delta_x, y_mid - delta_y, id(big), id(blue), TextAlign::CENTER, "\U0000eacf");
             } else {
-              print(id(x_mid)[x] - delta_x, id(y_mid)[y] - delta_y, id(small), id(blue), TextAlign::CENTER, "\U0000eacf");
+              print(x_mid - delta_x, y_mid - delta_y, id(small), id(blue), TextAlign::CENTER, "\U0000eacf");
             }
           }
           if (show_down) {
             if (one) {
-              print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, id(big), id(red), TextAlign::CENTER, "\U0000ead0");
+              print(x_mid + delta_x, y_mid + delta_y, id(big), id(red), TextAlign::CENTER, "\U0000ead0");
             } else {
-              print(id(x_mid)[x] + delta_x, id(y_mid)[y] + delta_y, id(small), id(red), TextAlign::CENTER, "\U0000ead0");
+              print(x_mid + delta_x, y_mid + delta_y, id(small), id(red), TextAlign::CENTER, "\U0000ead0");
             }
           }
 
@@ -706,12 +721,16 @@ script:
 
   - id: tile_lights
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       entities: string[]
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], id(big), IsAnyOn(entities) ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000e0f0");
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          print(x_mid, y_mid, id(big), IsAnyOn(entities) ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000e0f0");
 
   - id: action_lights
     parameters:
@@ -727,13 +746,17 @@ script:
 
   - id: tile_ac
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       entities: string[]
     then:
       - lambda: |-
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
           auto state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0)).c_str();
-          print(id(x_mid)[x], id(y_mid)[y], id(big),
+          print(x_mid, y_mid, id(big),
                       strcmp(state, "cool") == 0   ? id(blue) : strcmp(state, "heat") == 0 ? id(red) : id(gray),
                       TextAlign::CENTER, "\U0000f154");
 
@@ -751,70 +774,88 @@ script:
 
   - id: tile_brightness
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
     then:
       - lambda: |-
           int brightness = DRAW_ONLY(id(backlight).remote_values.get_brightness() * 100);
           bool adapt = DRAW_ONLY(id(adaptive_brightness));
-          handle_caching(std::make_pair(x, y), brightness, adapt);
+          handle_caching(std::make_pair(x_start, y_start), brightness, adapt);
           
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          int x_rect = x_end - x_start;
+          int y_rect = y_end - y_start;
+
           std::string icon = "\U0000e518";
           auto icon_size = measure(id(medium), icon.c_str());
-          int slider_width = id(x_rect) / 9 * 7;
-          int slider_height = id(y_rect) / 9 / 2 * 2;
-          int slider_start = id(x_pad) + (id(x_rect) - slider_width) / 2 + 1;
+          int slider_width = x_rect / 9 * 7;
+          int slider_height = y_rect / 9 / 2 * 2;
+          int slider_start = x_start + (x_rect - slider_width) / 2 + 1;
           int y_gap = 2;
           auto auto_size = measure(id(text_bold), "0");
-          int icon_y = id(y_mid)[y] - (auto_size.second + y_gap) / 2;
-          int slider_y = id(y_mid)[y] + (icon_size.second + y_gap) / 2;
+          int icon_y = y_mid - (auto_size.second + y_gap) / 2;
+          int slider_y = y_mid + (icon_size.second + y_gap) / 2;
 
-          print(id(x_mid)[x], icon_y, id(medium), id(light_yellow), TextAlign::CENTER, icon.c_str());
+          print(x_mid, icon_y, id(medium), id(light_yellow), TextAlign::CENTER, icon.c_str());
           filled_rectangle(
               slider_start + 1, slider_y - slider_height / 2 + 1,
               brightness * slider_width / 100 - 2,
               slider_height - 2, adapt ? id(dark_gray) : id(yellow));
           rectangle(slider_start, slider_y - slider_height / 2, slider_width, slider_height, adapt ? id(gray) : id(light_yellow));
           if (adapt) {
-            print(id(x_mid)[x], slider_y, id(text_bold), id(yellow), TextAlign::CENTER, "Auto");
+            print(x_mid, slider_y, id(text_bold), id(yellow), TextAlign::CENTER, "Auto");
           }
 
   - id: tile_wakeup_time
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
     then:
       - lambda: |-
           int sleep_t = DRAW_ONLY(id(sleep_time));
           int counter = DRAW_ONLY(((millis() - id(last_activity_ms)) / 1000)); 
-          handle_caching(std::make_pair(x, y), sleep_t, counter);
+          handle_caching(std::make_pair(x_start, y_start), sleep_t, counter);
+
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
 
           std::string icon = "\U0000e425";
           auto icon_size = measure(id(medium), icon.c_str());
           auto time_size = measure(id(text_regular), "0");
           auto counter_size = measure(id(text_small), "0");
 
-          int icon_y = id(y_mid)[y] - time_size.second / 2;
-          int time_y = id(y_mid)[y] + icon_size.second / 2;
+          int icon_y = y_mid - time_size.second / 2;
+          int time_y = y_mid + icon_size.second / 2;
           int counter_y = icon_y + counter_size.second / 2 + icon_size.second / 12;
 
-          print(id(x_mid)[x], icon_y, id(medium), id(light_purple), TextAlign::CENTER, icon.c_str());
-          printf(id(x_mid)[x], time_y, id(text_regular), id(light_purple), TextAlign::CENTER, "%d", sleep_t);
-          printf(id(x_mid)[x], counter_y, id(text_small), id(light_blue), TextAlign::CENTER, "%d", counter);
+          print(x_mid, icon_y, id(medium), id(light_purple), TextAlign::CENTER, icon.c_str());
+          printf(x_mid, time_y, id(text_regular), id(light_purple), TextAlign::CENTER, "%d", sleep_t);
+          printf(x_mid, counter_y, id(text_small), id(light_blue), TextAlign::CENTER, "%d", counter);
 
   - id: tile_distance
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
     then:
       - lambda: |-
           int wakeup_dist = DRAW_ONLY(id(wakeup_distance));
           bool nan_moving_dist = DRAW_ONLY(isnan(id(moving_distance).state));
           int moving_dist = DRAW_ONLY(id(moving_distance).state);
-          handle_caching(std::make_pair(x, y), wakeup_dist, moving_dist, nan_moving_dist);
+          handle_caching(std::make_pair(x_start, y_start), wakeup_dist, moving_dist, nan_moving_dist);
+
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          int y_rect = y_end - y_start;
 
           if (wakeup_dist == 0) {
-            print(id(x_mid)[x], id(y_mid)[y], id(medium), id(gray), TextAlign::CENTER, "\U0000e913");
+            print(x_mid, y_mid, id(medium), id(gray), TextAlign::CENTER, "\U0000e913");
           } else {
             // Strings
             std::string icon = "\U0000e536";
@@ -825,35 +866,39 @@ script:
             auto cm_size = measure(id(text_small), cm.c_str());
             auto numbers_size = measure(id(text_bold), "0");
 
-            int icon_y = id(y_mid)[y] - numbers_size.second / 2;
+            int icon_y = y_mid - numbers_size.second / 2;
 
             int x_diff = std::abs(icon_size.first - cm_size.first);
-            int delta_x = std::max(icon_size.first, cm_size.first) / 2 + std::max(0, id(y_rect) / 18 - x_diff);
+            int delta_x = std::max(icon_size.first, cm_size.first) / 2 + std::max(0, y_rect / 18 - x_diff);
 
             auto person_color = id(radar_has_moving_target).state ? id(red) : id(gray);
             auto numbers_color = wakeup_dist > moving_dist ? id(light_red) : id(gray);
 
-            printf(id(x_mid)[x] + delta_x, icon_y - numbers_size.second / 2 - cm_size.second / 2, id(text_bold), numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
-            printf(id(x_mid)[x] + delta_x, icon_y, id(text_small), numbers_color, TextAlign::CENTER, cm.c_str());
-            print(id(x_mid)[x] - delta_x, icon_y, id(medium), person_color, TextAlign::CENTER, icon.c_str());
-            int bottom_y = id(y_mid)[y] + icon_size.second / 2;
+            printf(x_mid + delta_x, icon_y - numbers_size.second / 2 - cm_size.second / 2, id(text_bold), numbers_color, TextAlign::CENTER, "%d", wakeup_dist);
+            printf(x_mid + delta_x, icon_y, id(text_small), numbers_color, TextAlign::CENTER, cm.c_str());
+            print(x_mid - delta_x, icon_y, id(medium), person_color, TextAlign::CENTER, icon.c_str());
+            int bottom_y = y_mid + icon_size.second / 2;
             if (nan_moving_dist) {
-              printf(id(x_mid)[x], bottom_y, id(text_regular), id(gray), TextAlign::CENTER, "------");
+              printf(x_mid, bottom_y, id(text_regular), id(gray), TextAlign::CENTER, "------");
             } else {
-              printf(id(x_mid)[x], bottom_y, id(text_regular), numbers_color, TextAlign::CENTER, "%dcm", moving_dist);
+              printf(x_mid, bottom_y, id(text_regular), numbers_color, TextAlign::CENTER, "%dcm", moving_dist);
             }
           }
 
   - id: tile_icon
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       icon: string
       color: Color
       size: esphome::display::BaseFont*
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], size, color, TextAlign::CENTER, icon.c_str());
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          print(x_mid, y_mid, size, color, TextAlign::CENTER, icon.c_str());
 
   - id: action_power
     then:
@@ -862,76 +907,92 @@ script:
 
   - id: tile_choose_light
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       name: string
       is_on: bool
     then:
       - lambda: |-
           std::string cur_name = DRAW_ONLY(name);
           bool cur_is_on = DRAW_ONLY(is_on);
-          handle_caching(std::make_pair(x, y), cur_is_on, cur_name);
+          handle_caching(std::make_pair(x_start, y_start), cur_is_on, cur_name);
           
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+
           std::string icon = "\U0000f02a";
           // Sizes
           auto icon_size = measure(id(medium), icon.c_str());
           auto text_size = measure(id(text_bold), "0");
 
-          int icon_y = id(y_mid)[y] - text_size.second / 2;
-          int text_y = id(y_mid)[y] + icon_size.second / 2;
+          int icon_y = y_mid - text_size.second / 2;
+          int text_y = y_mid + icon_size.second / 2;
 
-          print(id(x_mid)[x], icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          print(x_mid, icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
   - id: tile_choose_cover
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       name: string
       is_on: bool
     then:
       - lambda: |-
           std::string cur_name = DRAW_ONLY(name);
           bool cur_is_on = DRAW_ONLY(is_on);
-          handle_caching(std::make_pair(x, y), cur_is_on, cur_name);
+          handle_caching(std::make_pair(x_start, y_start), cur_is_on, cur_name);
+
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
 
           std::string icon = "\U0000e286";
           // Sizes
           auto icon_size = measure(id(medium), icon.c_str());
           auto text_size = measure(id(text_bold), "0");
 
-          int icon_y = id(y_mid)[y] - text_size.second / 2;
-          int text_y = id(y_mid)[y] + icon_size.second / 2;
+          int icon_y = y_mid - text_size.second / 2;
+          int text_y = y_mid + icon_size.second / 2;
 
-          print(id(x_mid)[x], icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          print(x_mid, icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
   - id: tile_cover_name
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       name: string
       entities: string[]
     then:
       - lambda: |-
           std::vector<std::string> my_entities = DRAW_ONLY(entities);
           std::string cur_name = DRAW_ONLY(name);
-          handle_caching(std::make_pair(x, y), cur_name, my_entities);
+          handle_caching(std::make_pair(x_start, y_start), cur_name, my_entities);
 
           if (my_entities.empty()) return;
+
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          int x_rect = x_end - x_start;
 
           std::string icon = "\U0000e286";
           // Sizes
           auto icon_size = measure(id(medium), icon.c_str());
           auto text_size = measure(id(text_bold), "0");
 
-          int icon_y = id(y_mid)[y] - text_size.second / 2;
-          int text_y = id(y_mid)[y] + icon_size.second / 2;
+          int icon_y = y_mid - text_size.second / 2;
+          int text_y = y_mid + icon_size.second / 2;
 
-          print(id(x_start)[x] + 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cb");
-          print(id(x_start)[x] + id(x_rect) - 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cc");
-          print(id(x_mid)[x], icon_y, id(medium), id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          print(x_start + 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cb");
+          print(x_start + x_rect - 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cc");
+          print(x_mid, icon_y, id(medium), id(gray), TextAlign::CENTER, icon.c_str());
+          print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
           std::string common_position = "";
           bool all_same = true;
           for (size_t i = 0; i < my_entities.size(); ++i) {
@@ -945,31 +1006,37 @@ script:
           }
           if (all_same && !common_position.empty()) {
             std::string position_str = common_position + "%";
-            print(id(x_mid)[x], text_y - (text_size.second), id(text_bold), Color::WHITE, TextAlign::CENTER, position_str.c_str());
+            print(x_mid, text_y - (text_size.second), id(text_bold), Color::WHITE, TextAlign::CENTER, position_str.c_str());
           }
 
   - id: tile_room
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       name: string
     then:
       - lambda: |-
           std::string cur_name = DRAW_ONLY(name);
-          handle_caching(std::make_pair(x, y), cur_name);
+          handle_caching(std::make_pair(x_start, y_start), cur_name);
+
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          int x_rect = x_end - x_start;
 
           std::string icon = "\U0000e88a";
           // Sizes
           auto icon_size = measure(id(medium), icon.c_str());
           auto text_size = measure(id(text_bold), "0");
 
-          int icon_y = id(y_mid)[y] - text_size.second / 2;
-          int text_y = id(y_mid)[y] + icon_size.second / 2;
+          int icon_y = y_mid - text_size.second / 2;
+          int text_y = y_mid + icon_size.second / 2;
 
-          print(id(x_start)[x] + 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cb");
-          print(id(x_start)[x] + id(x_rect) - 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cc");
-          print(id(x_mid)[x], icon_y, id(medium), id(gray), TextAlign::CENTER, icon.c_str());
-          print(id(x_mid)[x], text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, name.c_str());
+          print(x_start + 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cb");
+          print(x_start + x_rect - 15, icon_y, id(tiny), id(gray), TextAlign::CENTER, "\U0000e5cc");
+          print(x_mid, icon_y, id(medium), id(gray), TextAlign::CENTER, icon.c_str());
+          print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
   - id: action_temp_up
     parameters:
@@ -1003,11 +1070,15 @@ script:
 
   - id: tile_ac_mode
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
     then:
       - lambda: |-
-          print(id(x_mid)[x], id(y_mid)[y], id(text_big_bold), id(gray), TextAlign::CENTER, "Mode");
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          print(x_mid, y_mid, id(text_big_bold), id(gray), TextAlign::CENTER, "Mode");
 
   - id: action_ac_mode
     parameters:
@@ -1025,8 +1096,10 @@ script:
 
   - id: tile_ac_status
     parameters:
-      x: int
-      y: int
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
       entities: string[]
     then:
       - lambda: |-
@@ -1035,8 +1108,10 @@ script:
           }
           std::string state = DRAW_ONLY(entities[0]);
           std::string entity = DRAW_ONLY(entities[1]);
-          handle_caching(std::make_pair(x, y), state, entity);
-          print((id(x_mid)[x] + id(x_mid)[x+1]) / 2, id(y_mid)[y], id(text_big_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
+          handle_caching(std::make_pair(x_start, y_start), state, entity);
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          print(x_mid, y_mid, id(text_big_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
 
   - id: draw_page
     then:

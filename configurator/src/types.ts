@@ -3,6 +3,8 @@ export interface Tile {
   type: string;
   x: number;
   y: number;
+  x_span?: number;
+  y_span?: number;
   [key: string]: any;
 }
 

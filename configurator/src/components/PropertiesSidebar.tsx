@@ -3,6 +3,7 @@ import { Trash2, Layout, Settings2 } from 'lucide-react';
 import { Tile, Config, Page, HaEntity } from '../types';
 import { 
   TextInput, 
+  NumberInput,
   Checkbox, 
   ScriptInput, 
   ArrayInput, 
@@ -146,10 +147,56 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                     </div>
                   ))}
                 </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <input 
+                      type="checkbox" 
+                      id="enable_span"
+                      checked={(selectedTile.x_span || 1) > 1 || (selectedTile.y_span || 1) > 1}
+                      onChange={e => {
+                        if (!e.target.checked) {
+                          onUpdate({...selectedTile, x_span: 1, y_span: 1});
+                        } else {
+                          // Default to 2x2 if enabled from 1x1, or keep existing if already spanned
+                          if ((selectedTile.x_span || 1) === 1 && (selectedTile.y_span || 1) === 1) {
+                             onUpdate({...selectedTile, x_span: 2, y_span: 2});
+                          }
+                        }
+                      }}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="enable_span" className="text-xs font-medium text-slate-700 select-none cursor-pointer">Span Multiple Cells</label>
+                  </div>
+                  
+                  {((selectedTile.x_span || 1) > 1 || (selectedTile.y_span || 1) > 1) && (
+                    <div className="flex gap-3 pl-6">
+                      <div className="flex-1">
+                        <label className="block text-xs text-slate-600 mb-1 font-medium">X Span</label>
+                        <input 
+                          type="number" 
+                          value={selectedTile.x_span || 1} 
+                          onChange={e => onUpdate({...selectedTile, x_span: Math.max(1, parseInt(e.target.value) || 1)})}
+                          min={1}
+                          className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs text-slate-600 mb-1 font-medium">Y Span</label>
+                        <input 
+                          type="number" 
+                          value={selectedTile.y_span || 1} 
+                          onChange={e => onUpdate({...selectedTile, y_span: Math.max(1, parseInt(e.target.value) || 1)})}
+                          min={1}
+                          className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div className="space-y-4">
-                {schema?.common?.filter((f: any) => f.name !== 'x' && f.name !== 'y').map((field: any) => {
+                {schema?.common?.filter((f: any) => f.name !== 'x' && f.name !== 'y' && f.name !== 'x_span' && f.name !== 'y_span').map((field: any) => {
            if (field.type === 'display_list') {
              return (
                 <DisplayListInput 
