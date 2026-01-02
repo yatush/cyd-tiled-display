@@ -134,7 +134,13 @@ export function useTileConfig() {
   };
 
   const handleDuplicateTile = (tileId: string) => {
-    const tileToDuplicate = activePage.tiles.find(t => t.id === tileId);
+    // Search for the tile in all pages, not just the active one
+    let tileToDuplicate: Tile | undefined;
+    for (const page of config.pages) {
+      tileToDuplicate = page.tiles.find(t => t.id === tileId);
+      if (tileToDuplicate) break;
+    }
+    
     if (!tileToDuplicate) return;
 
     let x = 0, y = 0;
