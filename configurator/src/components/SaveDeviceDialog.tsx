@@ -7,7 +7,7 @@ interface SaveDeviceDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onBack?: () => void;
-  onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string) => void;
+  onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string) => void;
 }
 
 export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
@@ -21,6 +21,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   const [fileName, setFileName] = useState('');
   const [encryptionKey, setEncryptionKey] = useState('');
   const [otaPassword, setOtaPassword] = useState('');
+  const [ipAddress, setIpAddress] = useState('');
   const [showExplorer, setShowExplorer] = useState(false);
 
   const generateKey = () => {
@@ -41,7 +42,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
 
   if (!isOpen) return null;
 
-  const checkFileAndGetInfo = async (path: string): Promise<{ key: string | null, deviceName: string | null, screenType: string | null, otaPassword: string | null }> => {
+  const checkFileAndGetInfo = async (path: string): Promise<{ key: string | null, deviceName: string | null, screenType: string | null, otaPassword: string | null, ipAddress: string | null }> => {
       try {
           const res = await apiFetch(`/load?path=${encodeURIComponent(path)}`);
           if (res.ok) {
@@ -65,17 +66,23 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
                   }
               }
 
+              let detectedIpAddress = null;
+              if (data?.wifi?.use_address) {
+                  detectedIpAddress = data.wifi.use_address;
+              }
+
               return {
                   key: data?.api?.encryption?.key || null,
                   deviceName: data?.substitutions?.device_name || null,
                   screenType: detectedScreenType,
-                  otaPassword: detectedOtaPassword
+                  otaPassword: detectedOtaPassword,
+                  ipAddress: detectedIpAddress
               };
           }
       } catch (e) {
           console.error("Error checking file", e);
       }
-      return { key: null, deviceName: null, screenType: null, otaPassword: null };
+      return { key: null, deviceName: null, screenType: null, otaPassword: null, ipAddress: null };
   };
 
   const handleSave = async () => {
@@ -92,7 +99,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
     }
 
     // Use deviceName as friendlyName
-    onSave(deviceName, deviceName, screenType, fileName, encryptionKey, otaPassword);
+    onSave(deviceName, deviceName, screenType, fileName, encryptionKey, otaPassword, ipAddress);
     onClose();
   };
 
@@ -177,6 +184,9 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
                     if (info.otaPassword) {
                         setOtaPassword(info.otaPassword);
                     }
+                    if (info.ipAddress) {
+                        setIpAddress(info.ipAddress);
+                    }
                   }} 
                 />
               </div>
@@ -210,6 +220,18 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
               className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono text-xs"
             />
             <p className="text-[10px] text-slate-400 mt-1">Password for Over-The-Air updates</p>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">IP Address (Optional)</label>
+            <input 
+              type="text" 
+              value={ipAddress} 
+              onChange={e => setIpAddress(e.target.value)}
+              placeholder="e.g. 192.168.1.100"
+              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono text-xs"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">Static IP address for faster connection (use_address)</p>
           </div>
 
           <div>

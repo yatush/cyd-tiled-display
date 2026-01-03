@@ -161,7 +161,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
-  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string) => {
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string) => {
     if (!isAddon) {
       alert('Saving is disabled when not running in HA');
       return;
@@ -173,8 +173,21 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
           if (loadRes.ok) {
               const data = await loadRes.json();
               if (data.wifi) {
+                  // If we have a new IP address, update it in the wifi section
+                  if (ipAddress) {
+                      data.wifi.use_address = ipAddress;
+                  } else if (ipAddress === '') {
+                      // If explicitly cleared, remove it
+                      delete data.wifi.use_address;
+                  }
                   wifiSection = dump({ wifi: data.wifi });
+              } else if (ipAddress) {
+                  // If no wifi section but we have an IP, create it
+                  wifiSection = dump({ wifi: { use_address: ipAddress } });
               }
+          } else if (ipAddress) {
+              // If load failed (new file) but we have an IP
+              wifiSection = dump({ wifi: { use_address: ipAddress } });
           }
       } catch (e) {
           // ignore
