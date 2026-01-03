@@ -152,16 +152,16 @@ switch:
 # Fonts are now defined in the board-specific files (e.g. 3248s035_base.yaml)
 # to save flash space by only compiling used fonts.
 
-# This is BGR for some strange reason :/
+# This is now standard RGB
 color:
   - id: blue
-    hex: "FF0000"
+    hex: "0000FF"
   - id: light_blue
-    hex: "aa3333"
-  - id: red
-    hex: "0000ff"
-  - id: light_red
     hex: "3333aa"
+  - id: red
+    hex: "FF0000"
+  - id: light_red
+    hex: "aa3333"
   - id: light_green
     hex: "33aa33"
   - id: light_purple
@@ -179,9 +179,9 @@ color:
     green: 20%
     blue: 20%
   - id: yellow
-    hex: "00FFFF"
+    hex: "FFFF00"
   - id: light_yellow
-    hex: "33aaaa"
+    hex: "aaaa33"
 
 number:
   - platform: template

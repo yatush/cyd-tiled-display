@@ -116,6 +116,7 @@ display:
       width: 320
       height: 240
     invert_colors: false
+    color_order: BGR
 
 
 touchscreen:

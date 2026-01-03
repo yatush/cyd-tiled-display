@@ -456,11 +456,11 @@ def get_scripts():
         colors = [
             {'id': 'Color(0, 0, 0)', 'value': '#000000'},
             {'id': 'Color(255, 255, 255)', 'value': '#FFFFFF'},
-            {'id': 'Color(255, 0, 0)', 'value': '#FF0000'},
+            {'id': 'Color(0, 0, 255)', 'value': '#FF0000'},
             {'id': 'Color(0, 255, 0)', 'value': '#00FF00'},
-            {'id': 'Color(0, 0, 255)', 'value': '#0000FF'},
-            {'id': 'Color(255, 255, 0)', 'value': '#FFFF00'},
-            {'id': 'Color(255, 165, 0)', 'value': '#FFA500'},
+            {'id': 'Color(255, 0, 0)', 'value': '#0000FF'},
+            {'id': 'Color(0, 255, 255)', 'value': '#FFFF00'},
+            {'id': 'Color(0, 165, 255)', 'value': '#FFA500'},
             {'id': 'Color(128, 0, 128)', 'value': '#800080'},
         ]
 
@@ -470,9 +470,7 @@ def get_scripts():
             if 'hex' in c:
                 hex_val = c['hex'].replace('#', '')
                 if len(hex_val) == 6:
-                    # BGR to RGB conversion as in vite.config.ts
-                    r, g, b = hex_val[4:6], hex_val[2:4], hex_val[0:2]
-                    value = f"#{r}{g}{b}"
+                    value = f"#{hex_val}"
                 else:
                     value = f"#{hex_val}"
             elif all(k in c for k in ('red', 'green', 'blue')):

@@ -117,6 +117,7 @@ display:
     dc_pin: GPIO2
     cs_pin: GPIO15
     invert_colors: False
+    color_order: BGR
     update_interval: 10s
     color_order: RGB
     color_depth: 8BIT
