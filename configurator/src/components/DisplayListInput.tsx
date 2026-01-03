@@ -123,11 +123,20 @@ export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], 
                     }
 
                     if (options.length > 0) {
+                        // Ensure value matches one of the options, or show it as custom if not found (but for size we expect it to be in the list)
+                        // If the value is wrapped in id(), strip it for comparison if needed, but we already strip it in parser.
+                        // However, if the value is "id(text_small)" and options has "text_small", the select won't match.
+                        // The parser should have handled this, but let's be safe.
+                        let currentValue = params[p.name] || '';
+                        if (currentValue.startsWith('id(') && currentValue.endsWith(')')) {
+                            currentValue = currentValue.substring(3, currentValue.length - 1);
+                        }
+
                         return (
                             <div key={p.name}>
                                 <label className="block text-[10px] text-slate-500 uppercase">{p.name} <span className="text-slate-300">({p.type})</span></label>
                                 <select
-                                    value={params[p.name] || ''}
+                                    value={currentValue}
                                     onChange={e => {
                                         const newParams = { ...params, [p.name]: e.target.value };
                                         const newValues = [...safeValue];

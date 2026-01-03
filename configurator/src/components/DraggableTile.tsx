@@ -84,6 +84,15 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex }: {
                    }
                    return <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '24px', lineHeight: 1 }}>{displayChar}</span>;
                }
+
+               if (key === 'tile_text' && first[key]?.text) {
+                   let textVal = first[key].text;
+                   if (typeof textVal === 'string' && textVal.startsWith('"') && textVal.endsWith('"')) {
+                       textVal = textVal.slice(1, -1);
+                   }
+                   return <span className="truncate text-xs font-medium">{textVal}</span>;
+               }
+
                return key;
             })()}
           </div>

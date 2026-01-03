@@ -480,13 +480,19 @@ def get_scripts():
                 value = f"rgb({c['red']}, {c['green']}, {c['blue']})"
             colors.append({'id': c['id'], 'value': value})
 
-        # Fonts from base file in SAME directory
+        # Fonts from base files in SAME directory
         fonts = []
-        base_path = os.path.join(source_dir, '3248s035_base.yaml')
-        if os.path.exists(base_path):
-            with open(base_path, 'r') as f:
-                base_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
-                fonts = [f['id'] for f in base_doc.get('font', [])]
+        for base_file in ['3248s035_base.yaml', '2432s028_base.yaml']:
+            base_path = os.path.join(source_dir, base_file)
+            if os.path.exists(base_path):
+                try:
+                    with open(base_path, 'r') as f:
+                        base_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+                        for font in base_doc.get('font', []):
+                            if 'id' in font and font['id'] not in fonts:
+                                fonts.append(font['id'])
+                except Exception as e:
+                    print(f"Error loading fonts from {base_file}: {e}")
 
         # Icons from mdi_glyphs.yaml in SAME directory
         icons = []
