@@ -21,8 +21,9 @@ logger:
 api:
   id: api_server
 
-ota:
-  - platform: esphome
+# This was moved to the device file, as there might be password here.
+# ota:
+#   - platform: esphome
 
 wifi:
   ssid: !secret wifi_ssid

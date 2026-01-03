@@ -161,7 +161,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
-  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string) => {
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string) => {
     if (!isAddon) {
       alert('Saving is disabled when not running in HA');
       return;
@@ -178,6 +178,18 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
           }
       } catch (e) {
           // ignore
+      }
+
+      let otaSection = '';
+      if (otaPassword) {
+          otaSection = `ota:
+  - platform: esphome
+    password: "${otaPassword}"
+`;
+      } else {
+          otaSection = `ota:
+  - platform: esphome
+`;
       }
 
       const screensYaml = generateYaml(config);
@@ -198,6 +210,7 @@ api:
   encryption:
     key: "${encryptionKey}"
 
+${otaSection}
 ${wifiSection}
 tile_ui:
 ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}

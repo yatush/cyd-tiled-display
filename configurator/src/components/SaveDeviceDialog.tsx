@@ -7,7 +7,7 @@ interface SaveDeviceDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onBack?: () => void;
-  onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string) => void;
+  onSave: (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string) => void;
 }
 
 export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
@@ -20,6 +20,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   const [screenType, setScreenType] = useState('2432s028');
   const [fileName, setFileName] = useState('');
   const [encryptionKey, setEncryptionKey] = useState('');
+  const [otaPassword, setOtaPassword] = useState('');
   const [showExplorer, setShowExplorer] = useState(false);
 
   const generateKey = () => {
@@ -40,7 +41,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
 
   if (!isOpen) return null;
 
-  const checkFileAndGetInfo = async (path: string): Promise<{ key: string | null, deviceName: string | null, screenType: string | null }> => {
+  const checkFileAndGetInfo = async (path: string): Promise<{ key: string | null, deviceName: string | null, screenType: string | null, otaPassword: string | null }> => {
       try {
           const res = await apiFetch(`/load?path=${encodeURIComponent(path)}`);
           if (res.ok) {
@@ -52,16 +53,29 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
                   else if (deviceBase.includes('3248s035')) detectedScreenType = '3248s035';
               }
               
+              let detectedOtaPassword = null;
+              if (data?.ota) {
+                  if (Array.isArray(data.ota)) {
+                      const esphomeOta = data.ota.find((o: any) => o.platform === 'esphome');
+                      if (esphomeOta && esphomeOta.password) {
+                          detectedOtaPassword = esphomeOta.password;
+                      }
+                  } else if (data.ota.password) {
+                      detectedOtaPassword = data.ota.password;
+                  }
+              }
+
               return {
                   key: data?.api?.encryption?.key || null,
                   deviceName: data?.substitutions?.device_name || null,
-                  screenType: detectedScreenType
+                  screenType: detectedScreenType,
+                  otaPassword: detectedOtaPassword
               };
           }
       } catch (e) {
           console.error("Error checking file", e);
       }
-      return { key: null, deviceName: null, screenType: null };
+      return { key: null, deviceName: null, screenType: null, otaPassword: null };
   };
 
   const handleSave = async () => {
@@ -78,7 +92,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
     }
 
     // Use deviceName as friendlyName
-    onSave(deviceName, deviceName, screenType, fileName, encryptionKey);
+    onSave(deviceName, deviceName, screenType, fileName, encryptionKey, otaPassword);
     onClose();
   };
 
@@ -160,6 +174,9 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
                     if (info.screenType) {
                         setScreenType(info.screenType);
                     }
+                    if (info.otaPassword) {
+                        setOtaPassword(info.otaPassword);
+                    }
                   }} 
                 />
               </div>
@@ -181,6 +198,18 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
               className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono text-xs"
             />
             <p className="text-[10px] text-slate-400 mt-1">32-byte base64-encoded key for API encryption</p>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">OTA Password (Optional)</label>
+            <input 
+              type="text" 
+              value={otaPassword} 
+              onChange={e => setOtaPassword(e.target.value)}
+              placeholder="Optional password for OTA updates"
+              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono text-xs"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">Password for Over-The-Air updates</p>
           </div>
 
           <div>
