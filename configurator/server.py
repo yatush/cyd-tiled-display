@@ -103,7 +103,8 @@ def proxy_ha(path):
     else:
         # Local HA mode (Supervisor)
         if not SUPERVISOR_TOKEN:
-             return jsonify({"error": "Supervisor token not set and no remote credentials provided"}), 401
+             print("Error: SUPERVISOR_TOKEN not set", flush=True)
+             return jsonify({"error": "Supervisor token not set and no remote credentials provided"}), 500
              
         url = f"{HA_URL}/api/{path}"
         headers = {
@@ -117,6 +118,10 @@ def proxy_ha(path):
         else:
             response = requests.post(url, headers=headers, json=request.json, timeout=10)
             
+        if response.status_code == 401:
+             print("Error: HA returned 401 Unauthorized", flush=True)
+             return jsonify({"error": "Home Assistant rejected the supervisor token"}), 502
+
         return (response.content, response.status_code, response.headers.items())
     except requests.exceptions.RequestException as e:
         print(f"HA Proxy Connection Error: {str(e)}")
