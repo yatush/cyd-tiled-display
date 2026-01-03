@@ -7,14 +7,8 @@ import yaml
 import hashlib
 from flask import Flask, request, send_from_directory, jsonify
 import requests
-import generate_tiles_api
 
 app = Flask(__name__, static_folder='dist')
-
-@app.errorhandler(401)
-def custom_401(error):
-    # Prevent 401 from reaching Ingress, which might block the page
-    return jsonify({"error": "Unauthorized (Intercepted)"}), 500
 
 # Configuration from environment
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
@@ -25,15 +19,15 @@ HA_URL = "http://supervisor/core"
 if os.path.exists('/config/esphome'):
     BASE_DIR = '/config/esphome'
 else:
-    # Local fallback: use the esphome folder in the parent directory
-    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../esphome'))
+    # Local fallback: use the esphome folder in the current directory
+    BASE_DIR = os.path.abspath('esphome')
 
 # APP_DIR: Where the application code lives (e.g. /app)
 if os.path.exists('/app'):
     APP_DIR = '/app'
 else:
-    # Local fallback: use the parent directory (repo root)
-    APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    # Local fallback: use the current directory
+    APP_DIR = os.path.abspath('.')
 
 print(f"Server starting with:")
 print(f"  BASE_DIR: {BASE_DIR}")
@@ -46,44 +40,18 @@ MOCK_ENTITIES = [
     {"entity_id": "mock.binary_sensor_front_door", "state": "off", "attributes": {"friendly_name": "Front Door"}},
     {"entity_id": "mock.media_player_tv", "state": "playing", "attributes": {"friendly_name": "TV"}},
     {"entity_id": "mock.climate_living_room", "state": "heat", "attributes": {"friendly_name": "Climate"}},
-    {"entity_id": "mock.cover_garage_door", "state": "closed", "attributes": {}},
+    {"entity_id": "mock.cover_garage_door", "state": "closed", "attributes": {"friendly_name": "Garage Door"}},
 ]
-
-def serve_index_with_env():
-    """Serve index.html with injected environment variables."""
-    try:
-        with open(os.path.join(app.static_folder, 'index.html'), 'r') as f:
-            content = f.read()
-            
-        # Determine IS_ADDON state
-        # 1. Check explicit env var
-        is_addon_env = os.environ.get('IS_ADDON', '').lower()
-        if is_addon_env in ('true', '1', 'yes'):
-            is_addon = 'true'
-        elif is_addon_env in ('false', '0', 'no'):
-            is_addon = 'false'
-        else:
-            # Default to true (Addon mode) if not specified
-            is_addon = 'true'
-
-        # Inject script
-        injection = f'<script>window.__ENV__ = {{ IS_ADDON: {is_addon} }};</script>'
-        content = content.replace('</head>', f'{injection}</head>')
-        
-        return content
-    except Exception as e:
-        print(f"Error serving index: {e}")
-        return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/')
 def serve_index():
-    return serve_index_with_env()
+    return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/<path:path>')
 def serve_static(path):
     if os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
-    return serve_index_with_env()
+    return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/api/ha/<path:path>', methods=['GET', 'POST'])
 def proxy_ha(path):
@@ -108,7 +76,6 @@ def proxy_ha(path):
     else:
         # Local HA mode (Supervisor)
         if not SUPERVISOR_TOKEN:
-             print("Error: SUPERVISOR_TOKEN not set", flush=True)
              return jsonify({"error": "Supervisor token not set and no remote credentials provided"}), 500
              
         url = f"{HA_URL}/api/{path}"
@@ -124,7 +91,6 @@ def proxy_ha(path):
             response = requests.post(url, headers=headers, json=request.json, timeout=10)
             
         if response.status_code == 401:
-             print("Error: HA returned 401 Unauthorized", flush=True)
              return jsonify({"error": "Home Assistant rejected the supervisor token"}), 502
 
         return (response.content, response.status_code, response.headers.items())
@@ -138,14 +104,28 @@ def proxy_ha(path):
 @app.route('/api/generate', methods=['POST'])
 def generate():
     try:
-        input_data = request.get_data(as_text=True)
-        result = generate_tiles_api.generate_cpp_from_yaml(input_data)
+        script_path = os.path.join(APP_DIR, 'generate_tiles_api.py')
         
-        if "error" in result:
-            print(f"Generation Error: {result['error']}", flush=True)
-            return jsonify(result), 500
+        if not os.path.exists(script_path):
+            print(f"ERROR: Script not found at {script_path}", flush=True)
+            return jsonify({"error": f"Script not found at {script_path}"}), 500
+
+        # Run the existing generation script
+        process = subprocess.Popen(
+            [sys.executable, script_path],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=APP_DIR # Ensure CWD is correct for relative imports
+        )
+        stdout, stderr = process.communicate(input=request.get_data(as_text=True))
+        
+        if process.returncode != 0:
+            print(f"Generation Error: {stderr}", flush=True)
+            return jsonify({"error": stderr or "Generation failed"}), 500
             
-        return jsonify(result)
+        return stdout, 200, {'Content-Type': 'application/json'}
     except Exception as e:
         print(f"Server Error: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
@@ -454,14 +434,14 @@ def get_scripts():
         
         # Standard colors
         colors = [
-            {'id': 'Color(0, 0, 0)', 'value': '#000000'},
-            {'id': 'Color(255, 255, 255)', 'value': '#FFFFFF'},
-            {'id': 'Color(255, 0, 0)', 'value': '#FF0000'},
-            {'id': 'Color(0, 255, 0)', 'value': '#00FF00'},
-            {'id': 'Color(0, 0, 255)', 'value': '#0000FF'},
-            {'id': 'Color(255, 255, 0)', 'value': '#FFFF00'},
-            {'id': 'Color(255, 165, 0)', 'value': '#FFA500'},
-            {'id': 'Color(128, 0, 128)', 'value': '#800080'},
+            {'id': 'Color::BLACK', 'value': '#000000'},
+            {'id': 'Color::WHITE', 'value': '#FFFFFF'},
+            {'id': 'Color::RED', 'value': '#FF0000'},
+            {'id': 'Color::GREEN', 'value': '#00FF00'},
+            {'id': 'Color::BLUE', 'value': '#0000FF'},
+            {'id': 'Color::YELLOW', 'value': '#FFFF00'},
+            {'id': 'Color::ORANGE', 'value': '#FFA500'},
+            {'id': 'Color::PURPLE', 'value': '#800080'},
         ]
 
         # Add custom colors from lib.yaml
@@ -512,7 +492,7 @@ def get_scripts():
                 param_list = [
                     {'name': k, 'type': v}
                     for k, v in params.items()
-                    if k not in ('x', 'y', 'entities', 'x_start', 'y_start', 'x_end', 'y_end')
+                    if k not in ('x', 'y', 'entities')
                 ]
                 scripts_list.append({'id': s['id'], 'params': param_list})
 
