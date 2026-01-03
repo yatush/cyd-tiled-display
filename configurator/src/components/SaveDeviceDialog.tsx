@@ -231,7 +231,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
               placeholder="e.g. 192.168.1.100"
               className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono text-xs"
             />
-            <p className="text-[10px] text-slate-400 mt-1">Static IP address for faster connection (use_address)</p>
+            <p className="text-[10px] text-slate-400 mt-1">Static IP address for connection (use_address)</p>
           </div>
 
           <div>
