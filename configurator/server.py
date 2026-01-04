@@ -10,12 +10,10 @@ import socket
 import time
 import threading
 from flask import Flask, request, send_from_directory, jsonify
-from flask_sock import Sock
 import requests
 import generate_tiles_api
 
 app = Flask(__name__, static_folder='dist')
-sock = Sock(app)
 
 # Activity Monitoring
 EMULATOR_TIMEOUT = 300  # 5 minutes
@@ -579,6 +577,22 @@ def get_scripts():
         with open(lib_path, 'r') as f:
             doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
 
+        # Load lib_common.yaml from SAME directory if it exists
+        common_lib_path = os.path.join(source_dir, 'lib_common.yaml')
+        if os.path.exists(common_lib_path):
+            try:
+                with open(common_lib_path, 'r') as f:
+                    common_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+                    
+                    # Merge lists from common lib into main doc
+                    for key in ['script', 'color', 'globals']:
+                        if key in common_doc and isinstance(common_doc[key], list):
+                            if key not in doc:
+                                doc[key] = []
+                            doc[key].extend(common_doc[key])
+            except Exception as e:
+                print(f"Error loading common lib: {e}")
+
         # Load custom lib from SAME directory if it exists
         custom_lib_path = os.path.join(source_dir, 'lib_custom.yaml')
         if os.path.exists(custom_lib_path):
@@ -687,60 +701,13 @@ def serve_novnc(path):
     novnc_dir = os.path.join(APP_DIR, 'novnc')
     return send_from_directory(novnc_dir, path)
 
-# Proxy Websocket to VNC
-@sock.route('/websockify')
-def websockify(ws):
-    print("New Websocket connection to /websockify", flush=True)
-    vnc_socket = None
-    try:
-        # Retry connecting to VNC server (it might be starting up)
-        for i in range(10):
-            try:
-                vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                vnc_socket.connect(('localhost', 5900))
-                print("Connected to VNC server on localhost:5900", flush=True)
-                break
-            except ConnectionRefusedError:
-                if i == 9: 
-                    print("Failed to connect to VNC server after retries", flush=True)
-                    raise
-                time.sleep(0.5)
-        
-        def bridge_vnc_to_ws():
-            try:
-                while True:
-                    data = vnc_socket.recv(4096)
-                    if not data:
-                        break
-                    try:
-                        ws.send(data)
-                    except Exception:
-                        break
-            except Exception as e:
-                print(f"VNC->WS error: {e}", flush=True)
-        
-        t = threading.Thread(target=bridge_vnc_to_ws, daemon=True)
-        t.start()
-        
-        while True:
-            data = ws.receive()
-            if data is None:
-                break
-            update_activity()
-            try:
-                vnc_socket.sendall(data)
-            except Exception:
-                break
-                
-    except Exception as e:
-        print(f"Websocket proxy error: {e}", flush=True)
-    finally:
-        print("Websocket connection closed", flush=True)
-        if vnc_socket:
-            try:
-                vnc_socket.close()
-            except:
-                pass
+# Proxy websocket requests to internal websockify (port 6081)
+# This is needed for Cloud Run where we can only expose one port
+@app.route('/websockify')
+def websockify_proxy():
+    # This won't work for actual websocket upgrade - we need a different approach
+    # Return info for debugging
+    return jsonify({"error": "Websocket proxy - this endpoint requires websocket upgrade"}), 400
 
 def monitor_activity():
     while True:

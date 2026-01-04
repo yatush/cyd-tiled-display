@@ -13,8 +13,8 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
-    xvfb x11vnc fluxbox bash git coreutils \
-    && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify flask-sock gevent gevent-websocket
+    xvfb x11vnc fluxbox bash git coreutils nginx \
+    && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify
 
 # Install noVNC
 RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
@@ -37,12 +37,15 @@ RUN chmod +x /app/configurator/run_emulator.sh
 # Copy ESPHome files (needed for schema and scripts)
 COPY esphome /app/esphome
 
-# Expose port for Ingress
-ENV PORT=8099
+# Copy nginx config
+COPY docker_debug/nginx.conf /etc/nginx/nginx.conf
+
+# Expose port for Ingress (nginx listens on PORT, proxies to internal services)
+ENV PORT=8080
 EXPOSE $PORT
 
 # Set entrypoint to VNC startup script
 ENTRYPOINT ["/app/vnc_startup.sh"]
 
-# Start the server
-CMD gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 -b 0.0.0.0:$PORT --chdir /app/configurator server:app
+# Start nginx (foreground) and gunicorn (background)
+CMD sh -c "gunicorn -w 1 --threads 4 -b 127.0.0.1:8099 --chdir /app/configurator server:app & nginx -g 'daemon off;'"

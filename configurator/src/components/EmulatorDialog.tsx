@@ -54,20 +54,18 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
       }).join('\n')
     : logs;
 
-  // For local dev (HTTP on non-standard ports), use direct NoVNC on port 6080
-  // For Cloud Run (HTTPS), use the Flask websocket proxy on the same port
-  const isLocalDev = window.location.port === '8099' || window.location.hostname === 'localhost';
+  // For local dev (HTTP on port 8099), use direct NoVNC on port 6080
+  // For Cloud Run/production (port 8080 or HTTPS), use nginx-proxied websockify
+  const isLocalDevDirect = window.location.port === '8099';
   const isSecure = window.location.protocol === 'https:';
   
   let vncUrl: string;
-  if (isLocalDev && !isSecure) {
-    // Local development: use direct NoVNC proxy on port 6080
+  if (isLocalDevDirect) {
+    // Local development direct mode: use direct NoVNC proxy on port 6080
     vncUrl = `http://${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
   } else {
-    // Cloud Run or production: use Flask websocket proxy
-    const vncHost = window.location.hostname;
-    const vncPort = window.location.port || (isSecure ? '443' : '80');
-    vncUrl = `/novnc/vnc.html?host=${vncHost}&port=${vncPort}&path=websockify&autoconnect=true&resize=scale${isSecure ? '&encrypt=true' : ''}`;
+    // Cloud Run, production, or local nginx mode (port 8080): use nginx-proxied websockify
+    vncUrl = `/novnc/vnc.html?autoconnect=true&resize=scale&path=websockify`;
   }
 
   return (
