@@ -147,7 +147,9 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
         "if (view_ptr->getActiveScreen()) {",
         "  id(rows) = view_ptr->getActiveScreen()->getRows();",
         "  id(cols) = view_ptr->getActiveScreen()->getCols();",
-        "  id(init_coordinates).execute();",
+        "}",
+        "if (view_ptr->getBaseScreen()) {",
+        "  id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());",
         "}",
         "ESP_LOGD(\"InitTiles\", \"Tiles initialized\");",
     ]
@@ -200,12 +202,14 @@ async def to_code(config):
         auto *automation = new esphome::Automation<esphome::display::DisplayPage *, esphome::display::DisplayPage *>(page_change_trigger);
         automation->add_action(new esphome::LambdaAction<esphome::display::DisplayPage *, esphome::display::DisplayPage *>([=](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{
             id(change_page_ms) = millis();
+            if (!id(render_diffs)) {{
+                id(disp).fill(Color::BLACK);
+            }}
             if (view_ptr != nullptr) {{
                 Screen* screen = view_ptr->getScreen(to);
                 if (screen != nullptr) {{
                     id(rows) = screen->getRows();
                     id(cols) = screen->getCols();
-                    id(init_coordinates).execute();
                     screen->onScreenEnter();
                 }}
             }}

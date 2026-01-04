@@ -5,6 +5,7 @@ import subprocess
 import shutil
 import yaml
 import hashlib
+import signal
 from flask import Flask, request, send_from_directory, jsonify
 import requests
 import generate_tiles_api
@@ -134,6 +135,133 @@ def proxy_ha(path):
     except Exception as e:
         print(f"HA Proxy Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+EMULATOR_PID_FILE = '/tmp/emulator.pid'
+
+def is_process_running(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+@app.route('/api/emulator/start', methods=['POST'])
+def start_emulator():
+    # Check existing PID
+    if os.path.exists(EMULATOR_PID_FILE):
+        try:
+            with open(EMULATOR_PID_FILE, 'r') as f:
+                pid = int(f.read().strip())
+            if is_process_running(pid):
+                 return jsonify({"status": "running", "message": "Emulator is already running"})
+        except (ValueError, OSError):
+            pass # Invalid PID file or process dead
+
+    # Validate and Save Configuration
+    try:
+        config_data = request.get_json()
+        if not config_data:
+             return jsonify({"status": "error", "message": "No configuration provided"}), 400
+
+        # Check if we received pre-generated YAML or raw pages
+        if 'yaml' in config_data:
+            yaml_str = config_data['yaml']
+        elif 'pages' in config_data:
+            # Fallback for older clients (though we should avoid this path if possible as it lacks the complex transformation logic)
+            yaml_data = {'screens': config_data['pages']}
+            yaml_str = yaml.dump(yaml_data)
+        else:
+            return jsonify({"status": "error", "message": "Invalid configuration format"}), 400
+        
+        # Validate using generate_tiles_api
+        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str)
+        
+        if "error" in result:
+             return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
+             
+        # Write to user_config.yaml
+        user_config_path = os.path.join(BASE_DIR, 'user_config.yaml')
+        with open(user_config_path, 'w') as f:
+            f.write(yaml_str)
+            
+    except Exception as e:
+        print(f"Config processing error: {e}")
+        return jsonify({"status": "error", "message": f"Failed to process configuration: {str(e)}"}), 500
+
+    script_path = os.path.join(os.path.dirname(__file__), 'run_emulator.sh')
+    log_path = '/tmp/emulator.log'
+    
+    try:
+        if os.path.exists(script_path):
+            os.chmod(script_path, 0o755)
+        
+        with open(log_path, 'w', buffering=1) as log_file:
+            # Use start_new_session=True to create a new process group
+            # This allows us to kill the shell script and all its children (esphome, program)
+            proc = subprocess.Popen(
+                ['/bin/bash', script_path],
+                stdout=log_file, 
+                stderr=subprocess.STDOUT,
+                cwd=os.path.dirname(__file__),
+                start_new_session=True
+            )
+        
+        with open(EMULATOR_PID_FILE, 'w') as f:
+            f.write(str(proc.pid))
+            
+        return jsonify({"status": "started", "pid": proc.pid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/emulator/stop', methods=['POST'])
+def stop_emulator():
+    if os.path.exists(EMULATOR_PID_FILE):
+        try:
+            with open(EMULATOR_PID_FILE, 'r') as f:
+                pid = int(f.read().strip())
+            
+            # Kill the process group to ensure we get the children too
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+                
+            os.remove(EMULATOR_PID_FILE)
+        except Exception as e:
+            print(f"Error stopping emulator: {e}")
+            if os.path.exists(EMULATOR_PID_FILE):
+                os.remove(EMULATOR_PID_FILE)
+            
+    # Fallback cleanup
+    subprocess.run(['pkill', '-f', 'program'])
+    subprocess.run(['pkill', '-f', 'esphome run'])
+    
+    return jsonify({"status": "stopped"})
+
+@app.route('/api/emulator/status', methods=['GET'])
+def emulator_status():
+    if os.path.exists(EMULATOR_PID_FILE):
+        try:
+            with open(EMULATOR_PID_FILE, 'r') as f:
+                pid = int(f.read().strip())
+            if is_process_running(pid):
+                return jsonify({"status": "running"})
+        except:
+            pass
+    return jsonify({"status": "stopped"})
+
+@app.route('/api/emulator/logs', methods=['GET'])
+def emulator_logs():
+    log_path = '/tmp/emulator.log'
+    if os.path.exists(log_path):
+        try:
+            # Read the last 2000 lines to avoid sending too much data
+            # Using tail command for efficiency
+            result = subprocess.run(['tail', '-n', '2000', log_path], capture_output=True, text=True)
+            return result.stdout
+        except Exception as e:
+            return f"Error reading logs: {e}"
+    return "No logs available"
 
 @app.route('/api/generate', methods=['POST'])
 def generate():

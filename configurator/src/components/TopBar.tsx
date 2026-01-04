@@ -11,7 +11,9 @@ import {
   Download,
   Upload,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  Monitor,
+  Square
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
 
@@ -29,6 +31,10 @@ interface TopBarProps {
   onOpenFileManagement: () => void;
   isGenerating: boolean;
   updateAvailable?: boolean;
+  emulatorStatus: 'stopped' | 'running' | 'starting' | 'error';
+  onStartEmulator: () => void;
+  onStopEmulator: () => void;
+  onOpenEmulator?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -44,7 +50,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   onGenerate,
   onOpenFileManagement,
   isGenerating,
-  updateAvailable
+  updateAvailable,
+  emulatorStatus,
+  onStartEmulator,
+  onStopEmulator,
+  onOpenEmulator
 }) => {
   const getStatusIcon = () => {
     if (haStatus === 'idle') return <Loader2 size={18} className="animate-spin text-slate-400" />;
@@ -111,6 +121,43 @@ export const TopBar: React.FC<TopBarProps> = ({
           >
             <Redo2 size={18} className="text-slate-600" />
           </button>
+        </div>
+
+        <div className="flex items-center bg-slate-100 rounded-lg p-1 mr-2">
+          {emulatorStatus === 'running' ? (
+            <div className="flex gap-1">
+              <button
+                onClick={onOpenEmulator}
+                className="flex items-center gap-2 px-3 py-1.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-700 transition-all"
+                title="View Emulator"
+              >
+                <Monitor size={16} />
+                <span className="text-sm font-bold">View</span>
+              </button>
+              <button
+                onClick={onStopEmulator}
+                className="flex items-center gap-2 px-3 py-1.5 rounded bg-red-100 hover:bg-red-200 text-red-700 transition-all"
+                title="Stop Emulator"
+              >
+                <Square size={16} fill="currentColor" />
+                <span className="text-sm font-bold">Stop</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onStartEmulator}
+              disabled={emulatorStatus === 'starting'}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded transition-all ${
+                emulatorStatus === 'starting' 
+                  ? 'bg-slate-200 text-slate-400' 
+                  : 'bg-green-100 hover:bg-green-200 text-green-700'
+              }`}
+              title="Start Emulator"
+            >
+              {emulatorStatus === 'starting' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} fill="currentColor" />}
+              <span className="text-sm font-bold">Emulator</span>
+            </button>
+          )}
         </div>
 
         <button

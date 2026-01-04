@@ -372,13 +372,20 @@ std::function<bool(const std::vector<std::string>&)> IsAnyOn =
 void PerformHaAction(
     const std::string& entity, const std::string& action,
     std::vector<std::pair<std::string, std::string>> data = {}) {
-  HomeassistantActionRequest request;
-  // Construct the service name based on the entity and action.
-  request.set_service(StringRef(
-      (action.find('.') == -1)
+  
+  std::string service_name = (action.find('.') == -1)
           ? entity.substr(0, entity.find('.')).append(".").append(action)
-          : action));
-  HomeassistantServiceMap entity_id_kv;
+          : action;
+
+  ESP_LOGI("ha_action", "Service: %s, Entity: %s", service_name.c_str(), entity.c_str());
+  for (const auto pair : data) {
+    ESP_LOGI("ha_action", "  Data: %s = %s", pair.first.c_str(), pair.second.c_str());
+  }
+
+  esphome::api::HomeassistantActionRequest request;
+  // Construct the service name based on the entity and action.
+  request.set_service(StringRef(service_name));
+  esphome::api::HomeassistantServiceMap entity_id_kv;
   entity_id_kv.set_key(StringRef("entity_id"));
   entity_id_kv.value = entity;
   request.data.push_back(entity_id_kv);
@@ -492,6 +499,22 @@ void ExecuteScripts(const std::vector<std::function<void(Args...)>>& scripts, Ar
   }
 }
 
+int x_rect() {
+  return (id(width) - (id(cols) + 1) * id(x_pad)) / id(cols);
+}
+
+int y_rect() {
+  return (id(height) - (id(rows) + 1) * id(y_pad)) / id(rows);
+}
+
+int x_start(int index) {
+  return index * (x_rect() + id(x_pad)) + id(x_pad);
+}
+
+int y_start(int index) {
+  return index * (y_rect() + id(y_pad)) + id(y_pad);
+}
+
 // Black drawing functionality - erase effectively.
 Color mbb(Color value) {
   if (DrawState::is_delete_mode) { return Color::BLACK; }
@@ -532,7 +555,11 @@ void filled_rectangle (int x1, int y1, int width, int height, Color color) {
 
 template<typename... Args>
 void printf(int x, int y, BaseFont *font, Color color, const char *format, Args&&... args) {
-  id(disp).printf(x, y, font, mbb(color), format, std::forward<Args>(args)...);
+  if (sizeof...(args) == 0) {
+    id(disp).print(x, y, font, mbb(color), format);
+  } else {
+    id(disp).printf(x, y, font, mbb(color), format, std::forward<Args>(args)...);
+  }
 }
 
 template<typename... Args>
@@ -542,7 +569,11 @@ void printf(int x, int y, BaseFont &font, Color color, const char *format, Args&
 
 template<typename... Args>
 void printf(int x, int y, BaseFont *font, Color color, TextAlign align, const char *format, Args&&... args) {
-  id(disp).printf(x, y, font, mbb(color), align, format, std::forward<Args>(args)...);
+  if (sizeof...(args) == 0) {
+    id(disp).print(x, y, font, mbb(color), align, format);
+  } else {
+    id(disp).printf(x, y, font, mbb(color), align, format, std::forward<Args>(args)...);
+  }
 }
 
 template<typename... Args>

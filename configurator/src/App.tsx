@@ -10,6 +10,7 @@ import { FileManagementDialog } from './components/FileManagementDialog';
 import { SaveDeviceDialog } from './components/SaveDeviceDialog';
 import { LoadDeviceDialog } from './components/LoadDeviceDialog';
 import { ScreensFileDialog } from './components/ScreensFileDialog';
+import { EmulatorDialog } from './components/EmulatorDialog';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -18,6 +19,8 @@ import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
 import { apiFetch } from './utils/api';
+
+import { generateYaml } from './utils/yamlGenerator';
 
 function App() {
   // Local UI State
@@ -36,6 +39,7 @@ function App() {
   const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
   const [isScreensFileOpen, setIsScreensFileOpen] = useState(false);
   const [screensFileMode, setScreensFileMode] = useState<'save' | 'load'>('save');
+  const [isEmulatorOpen, setIsEmulatorOpen] = useState(false);
   const [sidebarKey, setSidebarKey] = useState(0);
 
   // Hooks
@@ -100,6 +104,59 @@ function App() {
     handleLoadDeviceConfig
   } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus, () => setSidebarKey(prev => prev + 1));
 
+  // Emulator State
+  const [emulatorStatus, setEmulatorStatus] = useState<'stopped' | 'running' | 'starting' | 'error'>('stopped');
+
+  const checkEmulatorStatus = async () => {
+    try {
+      const res = await apiFetch('/emulator/status');
+      const data = await res.json();
+      setEmulatorStatus(data.status);
+    } catch (e) {
+      // console.error("Failed to check emulator status", e);
+    }
+  };
+
+  useEffect(() => {
+    checkEmulatorStatus();
+    const interval = setInterval(checkEmulatorStatus, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleStartEmulator = async () => {
+    setEmulatorStatus('starting');
+    try {
+      // Generate YAML on the client side to ensure correct transformation
+      const yamlConfig = generateYaml(config);
+      
+      const res = await apiFetch('/emulator/start', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yaml: yamlConfig })
+      });
+      const data = await res.json();
+      if (data.status === 'started' || data.status === 'running') {
+        setEmulatorStatus('running');
+        setIsEmulatorOpen(true);
+      } else {
+        setEmulatorStatus('error');
+        alert(`Failed to start emulator: ${data.message || 'Unknown error'}`);
+      }
+    } catch (e) {
+      setEmulatorStatus('error');
+      console.error(e);
+    }
+  };
+
+  const handleStopEmulator = async () => {
+    try {
+      await apiFetch('/emulator/stop', { method: 'POST' });
+      setEmulatorStatus('stopped');
+    } catch (e) {
+      console.error("Failed to stop emulator", e);
+    }
+  };
+
   useEffect(() => {
     apiFetch('/schema')
       .then(res => res.json())
@@ -149,6 +206,10 @@ function App() {
         onOpenFileManagement={() => setIsFileManagementOpen(true)}
         isGenerating={isGenerating}
         updateAvailable={updateAvailable}
+        emulatorStatus={emulatorStatus}
+        onStartEmulator={handleStartEmulator}
+        onStopEmulator={handleStopEmulator}
+        onOpenEmulator={() => setIsEmulatorOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -311,6 +372,11 @@ function App() {
         onSave={handleSaveYaml}
         onLoad={() => handleLoadFromHa()}
         mode={screensFileMode}
+      />
+
+      <EmulatorDialog 
+        isOpen={isEmulatorOpen} 
+        onClose={() => setIsEmulatorOpen(false)} 
       />
     </div>
   );

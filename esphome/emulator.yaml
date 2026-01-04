@@ -1,0 +1,103 @@
+substitutions:
+  device_name: "emulator"
+  friendly_name: Emulator
+
+packages:
+  lib: !include lib/lib_emulator.yaml
+
+esphome:
+  name: $device_name
+  friendly_name: $friendly_name
+
+script:
+  - id: dummy_service_call
+    then:
+      - homeassistant.service:
+          service: homeassistant.update_entity
+          data:
+            entity_id: sensor.dummy
+
+host:
+
+display:
+  - platform: sdl
+    id: disp
+    dimensions:
+      width: !lambda return id(width);
+      height: !lambda return id(height);
+
+touchscreen:
+  - platform: sdl
+    id: touchscreen_id
+    on_touch:
+      then:
+        - script.execute:
+            id: handle_touch
+            x: !lambda return touch.x;
+            y: !lambda return touch.y;
+            x_raw: !lambda return touch.x;
+            y_raw: !lambda return touch.y;
+
+binary_sensor:
+  - platform: touchscreen
+    id: dummy_touch_sensor
+    x_min: 0
+    x_max: 1
+    y_min: 0
+    y_max: 1
+
+globals:
+  - id: render_diffs
+    type: bool
+    initial_value: "false"
+  - id: width
+    type: int
+    initial_value: "480"
+  - id: height
+    type: int
+    initial_value: "320"
+  - id: tile_border_width
+    type: int
+    initial_value: "1"
+
+font:
+  # Master glyph list - define ALL Material Icons glyphs once
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: tiny
+    size: 32
+    glyphs: !include lib/mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: small
+    size: 60
+    glyphs: !include lib/mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: medium
+    size: 80
+    glyphs: !include lib/mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: big
+    size: 100
+    glyphs: !include lib/mdi_glyphs.yaml
+
+  - file: "gfonts://Roboto"
+    id: text_regular
+    size: 30
+
+  - file: "gfonts://Roboto@900"
+    id: text_bold
+    size: 30
+
+  - file: "gfonts://Roboto@900"
+    id: text_big_bold
+    size: 40
+
+  - file: "gfonts://Roboto@900"
+    id: text_small
+    size: 18
+    glyphs: !include lib/roboto_glyphs.yaml
+    
+tile_ui:
+  tiles_file: user_config.yaml

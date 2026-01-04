@@ -100,9 +100,9 @@ public:
     if (std::any_of(this->tiles_.begin(), this->tiles_.end(),
                     [](const Tile* tile) { return tile->isBelowWifi(); })) {
       auto sizes = wifiHourWidth();
-      auto y = id(x_start)[0], w = id(x_rect),
-           end_x = id(x_start)[id(cols) - 1] + w,
-           h = id(y_rect), r = id(border_r),
+      auto y = x_start(0), w = x_rect(),
+           end_x = x_start(id(cols) - 1) + w,
+           h = y_rect(), r = id(border_r),
            start_x = id(width) - (std::get<0>(sizes).first + std::get<1>(sizes).first + 2 * std::get<2>(sizes)),
            end_y = std::get<0>(sizes).second + std::get<2>(sizes);
       for (int delta = 0; delta < id(tile_border_width); ++delta) {
@@ -164,6 +164,8 @@ public:
     for (Tile* tile : this->tiles_) {
       tile->onScreenLeave();
     }
+    // Clear prev_tiles to prevent drawing old tiles with wrong coordinates on new screen
+    prev_tiles.clear();
   }
 
   static std::vector<Tile*> prev_tiles;

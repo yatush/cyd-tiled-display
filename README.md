@@ -32,13 +32,7 @@ The project transforms a visual design into a working device through three stage
 
 # Try it Online
 
-You can try the Configurator right now in your browser without installing anything:
-
-**[Launch Online Configurator](https://tinyurl.com/cyd-tiled-diisplay)**
-
-*   **Features**: Design screens, load/save screen YAML configurations, export generated ESPHome code.
-*   **Limitations**: Cannot create/save device YAML files directly to your Home Assistant instance.
-*   **Best for**: Exploring the tool, designing layouts, and generating configuration to copy-paste into your local setup.
+You can go to [https://tinyurl.com/cyd-tiled-diisplay](https://tinyurl.com/cyd-tiled-diisplay), create the configuration, test it in the emulator, and download it to your computer.
 
 # Installation
 
@@ -51,9 +45,42 @@ This is the easiest way to get started. The Add-on runs the Configurator directl
 3.  **Start**: Start the Add-on and click "Open Web UI".
 4.  **Usage**: The Configurator will automatically detect your `/config/esphome` directory. You can save your designs and library files directly there.
 
-## Option 2: Local Development
+## Option 2: Local Development (Docker - Recommended)
 
-If you want to run the Configurator on your local machine (e.g., for development or if you don't use HA OS):
+We provide a Docker-based environment that includes the Configurator, an ESPHome build environment, and a graphical emulator (NoVNC). This is the best way to develop and test your configurations locally before flashing a real device.
+
+### Prerequisites
+*   Docker Desktop (Windows/Mac) or Docker Engine (Linux)
+
+### Steps
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/yatush/cyd-tiled-display.git
+    cd cyd-tiled-display
+    ```
+
+2.  **Run the Environment**:
+    We provide helper scripts in the `docker_debug` directory to build and run the container. These scripts handle port mapping, volume mounting, and permissions.
+
+    *   **Windows**:
+        ```powershell
+        .\docker_debug\update_and_run.bat
+        # OR
+        .\docker_debug\update_and_run.ps1
+        ```
+    *   **Linux / macOS**:
+        ```bash
+        chmod +x docker_debug/update_and_run.sh
+        ./docker_debug/update_and_run.sh
+        ```
+
+3.  **Access the Tools**:
+    *   **Configurator UI**: [http://localhost:8099](http://localhost:8099)
+    *   **Emulator View**: [http://localhost:6080/vnc.html](http://localhost:6080/vnc.html) (or access via the "View" button in the Configurator)
+
+## Option 3: Local Development (Manual)
+
+If you want to run the Configurator on your local machine without Docker:
 
 ### Prerequisites
 *   Python 3.x
@@ -90,6 +117,7 @@ If you want to run the Configurator on your local machine (e.g., for development
 # From YAML file to device
 * **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
 * **Copy library files** - In the configurator UI, click Settings and "Update HA Esphome files". Alternatively, you can manually copy to `/config/esphome` dir on the HA the files from this repository.
+    *   *Note*: The library structure has been updated. `lib.yaml` now includes `lib_common.yaml` to share core functionality between the physical device and the emulator. Ensure both files are present in your `esphome/lib/` directory.
 * **Configure files** - Add the configed file from the configurator using "File Management" -> "Save Device". Alternatively you can manually do it by editing YAML files. See [TILE_CONFIGURATION.md](https://github.com/yatush/cyd-tiled-display/raw/main/TILE_CONFIGURATION.md) for detailed documentation.
 * **Enable CYD to execute HA commands** - In your HA, go to *Settings -> Devices and Services -> ESPHome -> <device> -> Configure -> Enable "Allow the device to perform Home Assistant actions"*
 * On ESPHome interface, go to the device, and click `Update`
@@ -97,8 +125,26 @@ If you want to run the Configurator on your local machine (e.g., for development
 
 # Using the Configurator
 
+## Device Emulator
+
+The Configurator now includes a fully functional **Device Emulator**. This allows you to test your screen designs, navigation logic, and Home Assistant integrations directly in your browser without needing physical hardware.
+
+### Features
+*   **Pixel-Perfect Rendering**: Runs the actual ESPHome C++ code compiled for a Linux target (SDL2), ensuring what you see is exactly what you'll get on the device.
+*   **Live Interaction**: Click and drag on the emulator screen just like a real touchscreen.
+*   **Live Logs**: View real-time logs from the device, including specific "HA Action" logs to verify your buttons are triggering the correct services.
+*   **Instant Feedback**: Changes to your configuration are validated and recompiled automatically when you start the emulator.
+
+### How to Use
+1.  **Design your Screen**: Use the Configurator to add tiles, pages, and entities.
+2.  **Start Emulator**: Click the **"Emulator"** button in the top bar.
+    *   *Note*: The first run may take a minute or two as it compiles the ESPHome firmware. Subsequent runs are much faster.
+3.  **View & Interact**: Once running, the button changes to "View" and "Stop". Click **"View"** to open the emulator dialog.
+    *   **Left Side**: The interactive device screen.
+    *   **Right Side**: The log viewer. Use the "Show only HA Commands" checkbox to filter the noise and focus on your interactions.
+
 <p align="center">
-  <img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/configurator.jpg" width="700" />
+  <img src="https://github.com/yatush/cyd-tiled-display/raw/main/images/configurator.png" width="700" />
 </p>
 
 The Configurator is designed to be intuitive:
@@ -109,28 +155,22 @@ The Configurator is designed to be intuitive:
     *   **Resize** tiles by dragging their corners.
 
 
-2.  **Tile Configuration**:
+1.  **Tile Configuration**:
     *   Click on any tile in the grid to open the **Properties Sidebar**.
     *   **Entity**: Select the Home Assistant entity to control or monitor.
     *   **Label**: Set a custom label (or leave blank to use the entity's friendly name).
     *   **Icon**: Choose an icon from the Material Design Icons library.
     *   **Color**: Customize the tile color based on state.
 
-3.  **File Management**:
+1.  **File Management**:
     *   **Save Screen**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`). This allows you to reload your work later, and reuse configurations.
     *   **Load Screen**: Load a previously saved layout design from the server.
     *   **Save Device**: Generate and save the full ESPHome device configuration file (e.g., `monitor.yaml`) to the server.
     *   **Load Device**: Load an existing device configuration to edit its settings (WiFi, secrets, etc.).
     *   **Local Files**: You can also Load/Download YAML files to/from your local computer.
 
-4.  **Generating the ESPHome device configuration**:
-    *   **Option A (Recommended): Save Device**:
-        1.  Open **File Management** and click **Save Device**.
-        2.  Enter a device name (e.g., `monitor`) and a filename (e.g., `monitor.yaml`).
-        3.  This will create a full ESPHome configuration file in your `/config/esphome/` directory.
-        4.  Open the ESPHome dashboard, find the new device, and click **Install**.
-    *   **Option B: Manual Generation**:
-        1.  Use the created YAML file to manually creaete files.
+1.  **Emulator**:
+    * After you have the configuration valid and ready, you can run the emulator to test how it works.
 
 # Hardware
 
@@ -205,7 +245,7 @@ The Configurator is designed to be intuitive:
 
 The project relies on a set of library files that should be placed in your `/esphome/lib/` directory. The Configurator can help manage these files.
 
-*   **`lib.yaml`**: Contains the core script definitions and global variables.
+*   **`lib.yaml`**, **`lib_common.yaml`**: Contains the core script definitions and global variables.
 *   **`lib_custom.yaml`**: (Optional) For your own custom scripts and overrides.
 *   **`*_base.yaml`**: Device-specific base configurations (e.g., `2432s028_base.yaml`).
 *   **`mdi_glyphs.yaml`**: Definitions for Material Design Icons.

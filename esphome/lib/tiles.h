@@ -94,9 +94,9 @@ public:
       int x_end_idx = this->x_ + this->x_span_ - 1;
       int y_end_idx = this->y_ + this->y_span_ - 1;
       this->binary_sensor_->set_area(
-          id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect),
-          id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect));
-    }
+          x_start(this->x_), x_start(x_end_idx) + x_rect(),
+          y_start(this->y_), y_start(y_end_idx) + y_rect());
+  }
   }
 
   friend class TiledScreen;
@@ -163,9 +163,9 @@ private:
             return true;
           }));
       // Define the touch area for the tile.
-      this->binary_sensor_->set_area(
-          id(x_start)[this->x_], id(x_start)[this->x_] + id(x_rect),
-          id(y_start)[this->y_], id(y_start)[this->y_] + id(y_rect));
+          this->binary_sensor_->set_area(
+              x_start(this->x_), x_start(this->x_) + x_rect(),
+              y_start(this->y_), y_start(this->y_) + y_rect());
       this->binary_sensor_->add_page(this->display_page_);
       this->binary_sensor_->setup();
     }
@@ -262,11 +262,11 @@ protected:
         if (this->location_action_funcs_.size() > 0) {
           int x_end_idx = this->x_ + this->x_span_ - 1;
           int y_end_idx = this->y_ + this->y_span_ - 1;
-          int total_width = (id(x_start)[x_end_idx] + id(x_rect)) - id(x_start)[this->x_];
-          int total_height = (id(y_start)[y_end_idx] + id(y_rect)) - id(y_start)[this->y_];
+          int total_width = (x_start(x_end_idx) + x_rect()) - x_start(this->x_);
+          int total_height = (y_start(y_end_idx) + y_rect()) - y_start(this->y_);
           
-          float x_precent = 1.0 * (id(last_x) - id(x_start)[this->x_]) / total_width;
-          float y_precent = 1.0 * (id(last_y) - id(y_start)[this->y_]) / total_height;
+          float x_precent = 1.0 * (id(last_x) - x_start(this->x_)) / total_width;
+          float y_precent = 1.0 * (id(last_y) - y_start(this->y_)) / total_height;
           ExecuteScripts(this->location_action_funcs_, x_precent, y_precent, entities_vec);
         }
       });
@@ -276,7 +276,7 @@ protected:
   void customDraw() override {
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect), Deref(this->decoded_entities_));
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), Deref(this->decoded_entities_));
   }
 
 private:
@@ -341,7 +341,7 @@ protected:
   void customDraw() override {
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect));
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect());
   }
 
 private:
@@ -380,7 +380,7 @@ protected:
   void customDraw() override {
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect));
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect());
   }
 
 private:
@@ -456,7 +456,7 @@ protected:
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
     ExecuteScripts(
-      this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect),
+      this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(),
       this->presentation_name_, isOn);
   }
 
@@ -532,7 +532,7 @@ protected:
     }
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, id(x_start)[this->x_], id(x_start)[x_end_idx] + id(x_rect), id(y_start)[this->y_], id(y_start)[y_end_idx] + id(y_rect), *current_option.second, args);
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), *current_option.second, args);
   }
 
   void onActivation() override {

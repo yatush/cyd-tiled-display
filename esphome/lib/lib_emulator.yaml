@@ -1,0 +1,119 @@
+packages:
+  common: !include lib_common.yaml
+
+time:
+  - platform: host
+    id: esptime
+    timezone: UTC
+
+number:
+  - platform: template
+    id: radar_timeout
+    name: Radar Timeout
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+  - platform: template
+    id: radar_max_move_distance
+    name: Radar Max Move Distance
+    optimistic: true
+    min_value: 0
+    max_value: 800
+    step: 10
+  - platform: template
+    id: radar_max_still_distance
+    name: Radar Max Still Distance
+    optimistic: true
+    min_value: 0
+    max_value: 800
+    step: 10
+  - platform: template
+    id: light_threshold
+    name: light threshold
+    optimistic: true
+    min_value: 0
+    max_value: 255
+    step: 1
+  
+script:
+  - id: init_radar
+    then: []
+  - id: adapt_bright
+    then: []
+
+output:
+  - platform: template
+    id: backlight_output
+    type: float
+    write_action: []
+  - platform: template
+    id: led_red
+    type: float
+    write_action: []
+  - platform: template
+    id: led_green
+    type: float
+    write_action: []
+  - platform: template
+    id: led_blue
+    type: float
+    write_action: []
+
+light:
+  - platform: rgb
+    name: LED
+    id: led
+    red: led_red
+    green: led_green
+    blue: led_blue
+
+button:
+  - platform: template
+    name: "Restart Emulator"
+    id: restart_button
+    on_press:
+      then:
+        - logger.log: "Restart button pressed (simulated)"
+
+binary_sensor:
+  - platform: template
+    name: Radar Target
+    id: radar_has_target
+  - platform: template
+    name: Radar Moving Target
+    id: radar_has_moving_target
+    on_state:
+      then:
+        - script.execute: on_movement
+  - platform: template
+    name: Radar Still Target
+
+sensor:
+  - platform: template
+    name: "WiFi Signal Percent"
+    id: wifi_signal_pct
+    lambda: return 100.0;
+    update_interval: 60s
+
+  - platform: template
+    id: board_ldr_p
+    name: "Ambient Light"
+    lambda: return 50.0;
+
+  - platform: template
+    name: Radar Moving Distance
+    id: moving_distance
+    lambda: return 0.0;
+  - platform: template
+    name: Radar Still Distance
+    id: still_distance
+    lambda: return 0.0;
+  - platform: template
+    name: Radar Detection Distance
+    id: radar_detection_distance
+    lambda: return 0.0;
+  - platform: template
+    name: Radar Light
+    id: radar_light
+    lambda: return 0.0;
