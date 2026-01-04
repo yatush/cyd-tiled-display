@@ -6,11 +6,14 @@ import shutil
 import yaml
 import hashlib
 import signal
+import socket
 from flask import Flask, request, send_from_directory, jsonify
+from flask_sock import Sock
 import requests
 import generate_tiles_api
 
 app = Flask(__name__, static_folder='dist')
+sock = Sock(app)
 
 @app.errorhandler(401)
 def custom_401(error):
@@ -663,6 +666,56 @@ def get_scripts():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Serve NoVNC static files
+@app.route('/novnc/<path:path>')
+def serve_novnc(path):
+    novnc_dir = os.path.join(APP_DIR, 'novnc')
+    return send_from_directory(novnc_dir, path)
+
+# Proxy Websocket to VNC
+@sock.route('/websockify')
+def websockify(ws):
+    try:
+        # Connect to VNC server
+        vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        vnc_socket.connect(('localhost', 5900))
+        
+        while True:
+            # Read from WS and write to VNC
+            # We need to handle bidirectional communication
+            # Since flask-sock is synchronous per connection, we can't easily do full duplex 
+            # without threads or select. However, flask-sock handles the WS part.
+            # But we need to read from VNC socket too.
+            
+            # Actually, the best way with flask-sock is to use a selector or threads
+            # But let's try a simple loop with non-blocking sockets or select
+            import select
+            
+            vnc_socket.setblocking(0)
+            
+            while True:
+                r, _, _ = select.select([ws.sock, vnc_socket], [], [])
+                
+                if ws.sock in r:
+                    data = ws.receive()
+                    if data is None:
+                        break
+                    vnc_socket.sendall(data)
+                    
+                if vnc_socket in r:
+                    data = vnc_socket.recv(4096)
+                    if not data:
+                        break
+                    ws.send(data)
+                    
+    except Exception as e:
+        print(f"Websocket proxy error: {e}")
+    finally:
+        try:
+            vnc_socket.close()
+        except:
+            pass
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8099)

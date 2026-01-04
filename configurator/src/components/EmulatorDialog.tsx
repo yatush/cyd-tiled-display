@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import Ansi from 'ansi-to-react';
 import { apiFetch } from '../utils/api';
 
 interface EmulatorDialogProps {
@@ -46,14 +47,14 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
 
   if (!isOpen) return null;
 
-  // Strip ANSI color codes
-  const cleanLogs = logs.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-
   const filteredLogs = filterHa 
-    ? cleanLogs.split('\n').filter(line => /\[ha_action(:\d+)?\]/.test(line)).join('\n')
-    : cleanLogs;
+    ? logs.split('\n').filter(line => {
+        const cleanLine = line.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+        return /\[ha_action(:\d+)?\]/.test(cleanLine);
+      }).join('\n')
+    : logs;
 
-  const vncUrl = `http://${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
+  const vncUrl = `/novnc/vnc.html?path=websockify&autoconnect=true&resize=scale`;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[200] flex items-center justify-center p-4">
@@ -78,8 +79,8 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
           </div>
 
           {/* Log View */}
-          <div className="w-1/2 flex flex-col bg-gray-50">
-            <div className="p-2 border-b flex justify-between items-center bg-white">
+          <div className="w-1/2 flex flex-col bg-gray-900 text-gray-100">
+            <div className="p-2 border-b flex justify-between items-center bg-gray-800 border-gray-700">
               <div className="flex items-center space-x-4">
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input 
@@ -91,7 +92,7 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
                       }
                       setFilterHa(e.target.checked);
                     }}
-                    className="rounded text-blue-600"
+                    className="rounded text-blue-400 bg-gray-700 border-gray-600"
                   />
                   <span className="text-sm font-medium">Show only HA Commands</span>
                 </label>
@@ -100,14 +101,14 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
                     type="checkbox" 
                     checked={autoRefresh} 
                     onChange={e => setAutoRefresh(e.target.checked)}
-                    className="rounded text-blue-600"
+                    className="rounded text-blue-400 bg-gray-700 border-gray-600"
                   />
                   <span className="text-sm font-medium">Auto-refresh</span>
                 </label>
               </div>
               <button 
                 onClick={fetchLogs}
-                className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded"
+                className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded text-white border border-gray-600"
               >
                 Refresh
               </button>
@@ -116,7 +117,7 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
               ref={scrollContainerRef}
               className="flex-1 overflow-auto p-4 font-mono text-xs whitespace-pre-wrap"
             >
-              {filteredLogs || "No logs available..."}
+              <Ansi>{filteredLogs || "No logs available..."}</Ansi>
               <div ref={logEndRef} />
             </div>
           </div>
