@@ -65,7 +65,9 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
     vncUrl = `http://${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
   } else {
     // Cloud Run, production, or local nginx mode (port 8080): use nginx-proxied websockify
-    vncUrl = `/novnc/vnc.html?autoconnect=true&resize=scale&path=websockify`;
+    // For HTTPS, NoVNC needs encrypt=true to use wss:// instead of ws://
+    const encryptParam = isSecure ? '&encrypt=true' : '';
+    vncUrl = `/novnc/vnc.html?autoconnect=true&resize=scale&path=novnc/websockify${encryptParam}`;
   }
 
   return (
