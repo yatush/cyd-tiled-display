@@ -24,6 +24,7 @@ switch:
     bluetooth:
       name: "control bluetooth"
 
+number:
   - platform: ld2410
     timeout: { name: Radar Timeout }
     max_move_distance_gate: { name: Radar Max Move Distance }

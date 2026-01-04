@@ -161,7 +161,7 @@ number:
 
 light:
   - platform: monochromatic
-    output: backlight_output
+    output: backlight_pwm
     name: Display Backlight
     id: backlight
     restore_mode: ALWAYS_ON

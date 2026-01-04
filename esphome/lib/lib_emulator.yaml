@@ -44,7 +44,7 @@ script:
 
 output:
   - platform: template
-    id: backlight_output
+    id: backlight_pwm
     type: float
     write_action: []
   - platform: template
