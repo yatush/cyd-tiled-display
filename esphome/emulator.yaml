@@ -23,8 +23,8 @@ display:
   - platform: sdl
     id: disp
     dimensions:
-      width: !lambda return id(width);
-      height: !lambda return id(height);
+      width: 480
+      height: 320
 
 touchscreen:
   - platform: sdl
