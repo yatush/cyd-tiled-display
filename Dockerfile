@@ -45,4 +45,4 @@ EXPOSE $PORT
 ENTRYPOINT ["/app/vnc_startup.sh"]
 
 # Start the server
-CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:8099", "--chdir", "/app/configurator", "server:app"]
+CMD gunicorn -w 1 -b 0.0.0.0:$PORT --chdir /app/configurator server:app
