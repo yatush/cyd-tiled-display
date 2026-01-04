@@ -54,7 +54,21 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
       }).join('\n')
     : logs;
 
-  const vncUrl = `/novnc/vnc.html?path=websockify&autoconnect=true&resize=scale`;
+  // For local dev (HTTP on non-standard ports), use direct NoVNC on port 6080
+  // For Cloud Run (HTTPS), use the Flask websocket proxy on the same port
+  const isLocalDev = window.location.port === '8099' || window.location.hostname === 'localhost';
+  const isSecure = window.location.protocol === 'https:';
+  
+  let vncUrl: string;
+  if (isLocalDev && !isSecure) {
+    // Local development: use direct NoVNC proxy on port 6080
+    vncUrl = `http://${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
+  } else {
+    // Cloud Run or production: use Flask websocket proxy
+    const vncHost = window.location.hostname;
+    const vncPort = window.location.port || (isSecure ? '443' : '80');
+    vncUrl = `/novnc/vnc.html?host=${vncHost}&port=${vncPort}&path=websockify&autoconnect=true&resize=scale${isSecure ? '&encrypt=true' : ''}`;
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[200] flex items-center justify-center p-4">

@@ -7,6 +7,8 @@ import yaml
 import hashlib
 import signal
 import socket
+import time
+import threading
 from flask import Flask, request, send_from_directory, jsonify
 from flask_sock import Sock
 import requests
@@ -14,6 +16,14 @@ import generate_tiles_api
 
 app = Flask(__name__, static_folder='dist')
 sock = Sock(app)
+
+# Activity Monitoring
+EMULATOR_TIMEOUT = 300  # 5 minutes
+last_activity_time = time.time()
+
+def update_activity():
+    global last_activity_time
+    last_activity_time = time.time()
 
 @app.errorhandler(401)
 def custom_401(error):
@@ -150,6 +160,7 @@ def is_process_running(pid):
 
 @app.route('/api/emulator/start', methods=['POST'])
 def start_emulator():
+    update_activity()
     # Check existing PID
     if os.path.exists(EMULATOR_PID_FILE):
         try:
@@ -216,8 +227,7 @@ def start_emulator():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/emulator/stop', methods=['POST'])
-def stop_emulator():
+def _stop_emulator_process():
     if os.path.exists(EMULATOR_PID_FILE):
         try:
             with open(EMULATOR_PID_FILE, 'r') as f:
@@ -238,7 +248,10 @@ def stop_emulator():
     # Fallback cleanup
     subprocess.run(['pkill', '-f', 'program'])
     subprocess.run(['pkill', '-f', 'esphome run'])
-    
+
+@app.route('/api/emulator/stop', methods=['POST'])
+def stop_emulator():
+    _stop_emulator_process()
     return jsonify({"status": "stopped"})
 
 @app.route('/api/emulator/status', methods=['GET'])
@@ -255,6 +268,7 @@ def emulator_status():
 
 @app.route('/api/emulator/logs', methods=['GET'])
 def emulator_logs():
+    update_activity()
     log_path = '/tmp/emulator.log'
     if os.path.exists(log_path):
         try:
@@ -676,46 +690,69 @@ def serve_novnc(path):
 # Proxy Websocket to VNC
 @sock.route('/websockify')
 def websockify(ws):
+    print("New Websocket connection to /websockify", flush=True)
+    vnc_socket = None
     try:
-        # Connect to VNC server
-        vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        vnc_socket.connect(('localhost', 5900))
+        # Retry connecting to VNC server (it might be starting up)
+        for i in range(10):
+            try:
+                vnc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                vnc_socket.connect(('localhost', 5900))
+                print("Connected to VNC server on localhost:5900", flush=True)
+                break
+            except ConnectionRefusedError:
+                if i == 9: 
+                    print("Failed to connect to VNC server after retries", flush=True)
+                    raise
+                time.sleep(0.5)
         
-        while True:
-            # Read from WS and write to VNC
-            # We need to handle bidirectional communication
-            # Since flask-sock is synchronous per connection, we can't easily do full duplex 
-            # without threads or select. However, flask-sock handles the WS part.
-            # But we need to read from VNC socket too.
-            
-            # Actually, the best way with flask-sock is to use a selector or threads
-            # But let's try a simple loop with non-blocking sockets or select
-            import select
-            
-            vnc_socket.setblocking(0)
-            
-            while True:
-                r, _, _ = select.select([ws.sock, vnc_socket], [], [])
-                
-                if ws.sock in r:
-                    data = ws.receive()
-                    if data is None:
-                        break
-                    vnc_socket.sendall(data)
-                    
-                if vnc_socket in r:
+        def bridge_vnc_to_ws():
+            try:
+                while True:
                     data = vnc_socket.recv(4096)
                     if not data:
                         break
-                    ws.send(data)
-                    
+                    try:
+                        ws.send(data)
+                    except Exception:
+                        break
+            except Exception as e:
+                print(f"VNC->WS error: {e}", flush=True)
+        
+        t = threading.Thread(target=bridge_vnc_to_ws, daemon=True)
+        t.start()
+        
+        while True:
+            data = ws.receive()
+            if data is None:
+                break
+            update_activity()
+            try:
+                vnc_socket.sendall(data)
+            except Exception:
+                break
+                
     except Exception as e:
-        print(f"Websocket proxy error: {e}")
+        print(f"Websocket proxy error: {e}", flush=True)
     finally:
-        try:
-            vnc_socket.close()
-        except:
-            pass
+        print("Websocket connection closed", flush=True)
+        if vnc_socket:
+            try:
+                vnc_socket.close()
+            except:
+                pass
+
+def monitor_activity():
+    while True:
+        time.sleep(60)
+        if os.path.exists(EMULATOR_PID_FILE):
+            if time.time() - last_activity_time > EMULATOR_TIMEOUT:
+                print("Emulator timeout reached. Stopping...", flush=True)
+                _stop_emulator_process()
+
+# Start monitoring thread
+monitor_thread = threading.Thread(target=monitor_activity, daemon=True)
+monitor_thread.start()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8099)

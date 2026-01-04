@@ -14,7 +14,7 @@ WORKDIR /app
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
     xvfb x11vnc fluxbox bash git coreutils \
-    && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify flask-sock
+    && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify flask-sock gevent gevent-websocket
 
 # Install noVNC
 RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
@@ -45,4 +45,4 @@ EXPOSE $PORT
 ENTRYPOINT ["/app/vnc_startup.sh"]
 
 # Start the server
-CMD gunicorn -w 1 --threads 4 -b 0.0.0.0:$PORT --chdir /app/configurator server:app
+CMD gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 -b 0.0.0.0:$PORT --chdir /app/configurator server:app
