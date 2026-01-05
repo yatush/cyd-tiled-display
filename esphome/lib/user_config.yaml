@@ -1,1 +1,14 @@
-screens: []
+screens:
+  - id: main_page
+    rows: 2
+    cols: 3
+    flags:
+      - BASE
+    tiles:
+      - title:
+          x: 0
+          y: 0
+          display:
+            - tile_lights
+          entities:
+            - entity: a

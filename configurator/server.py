@@ -9,19 +9,29 @@ import signal
 import socket
 import time
 import threading
-from flask import Flask, request, send_from_directory, jsonify
+from flask import Flask, request, send_from_directory, jsonify, Response, stream_with_context
 import requests
 import generate_tiles_api
 
 app = Flask(__name__, static_folder='dist')
 
 # Activity Monitoring
-EMULATOR_TIMEOUT = 300  # 5 minutes
+EMULATOR_TIMEOUT = 30  # 30 seconds
 last_activity_time = time.time()
+
+# Emulator connection tracking
+emulator_connections = 0
+emulator_lock = threading.Lock()
 
 def update_activity():
     global last_activity_time
     last_activity_time = time.time()
+
+@app.before_request
+def before_request():
+    # Update activity on any API call
+    if request.path.startswith('/api/'):
+        update_activity()
 
 @app.errorhandler(401)
 def custom_401(error):
@@ -156,16 +166,45 @@ def is_process_running(pid):
     except OSError:
         return False
 
+def create_emulator_stream(pid, status):
+    """Creates a streaming response that keeps the emulator alive as long as the connection is open."""
+    def generate():
+        global emulator_connections
+        with emulator_lock:
+            emulator_connections += 1
+            print(f"New emulator connection. Total: {emulator_connections}", flush=True)
+        
+        try:
+            # Send initial status
+            yield json.dumps({"status": status, "pid": pid}) + "\n"
+            
+            # Keep connection open as long as process is running
+            while is_process_running(pid):
+                time.sleep(5)
+                yield " " # Keep-alive padding
+        except GeneratorExit:
+            print(f"Emulator connection closed by client.", flush=True)
+        except Exception as e:
+            print(f"Emulator stream error: {e}", flush=True)
+        finally:
+            with emulator_lock:
+                emulator_connections -= 1
+                print(f"Emulator connection closed. Remaining: {emulator_connections}", flush=True)
+                if emulator_connections <= 0:
+                    print(f"All connections closed. Stopping emulator PID {pid}", flush=True)
+                    _stop_emulator_process()
+    
+    return Response(stream_with_context(generate()), mimetype='application/x-ndjson')
+
 @app.route('/api/emulator/start', methods=['POST'])
 def start_emulator():
-    update_activity()
     # Check existing PID
     if os.path.exists(EMULATOR_PID_FILE):
         try:
             with open(EMULATOR_PID_FILE, 'r') as f:
                 pid = int(f.read().strip())
             if is_process_running(pid):
-                 return jsonify({"status": "running", "message": "Emulator is already running"})
+                 return create_emulator_stream(pid, "running")
         except (ValueError, OSError):
             pass # Invalid PID file or process dead
 
@@ -174,6 +213,10 @@ def start_emulator():
         config_data = request.get_json()
         if not config_data:
              return jsonify({"status": "error", "message": "No configuration provided"}), 400
+
+        # If we are just checking and it's not running, don't start it
+        if config_data.get('check_only'):
+            return jsonify({"status": "stopped", "message": "Emulator not running"}), 404
 
         # Check if we received pre-generated YAML or raw pages
         if 'yaml' in config_data:
@@ -221,7 +264,7 @@ def start_emulator():
         with open(EMULATOR_PID_FILE, 'w') as f:
             f.write(str(proc.pid))
             
-        return jsonify({"status": "started", "pid": proc.pid})
+        return create_emulator_stream(proc.pid, "started")
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -266,7 +309,6 @@ def emulator_status():
 
 @app.route('/api/emulator/logs', methods=['GET'])
 def emulator_logs():
-    update_activity()
     log_path = '/tmp/emulator.log'
     if os.path.exists(log_path):
         try:
@@ -713,10 +755,15 @@ def websockify_proxy():
 
 def monitor_activity():
     while True:
-        time.sleep(60)
+        time.sleep(10)
+        # If there are active streaming connections, the emulator is definitely active
+        if emulator_connections > 0:
+            update_activity()
+            continue
+
         if os.path.exists(EMULATOR_PID_FILE):
             if time.time() - last_activity_time > EMULATOR_TIMEOUT:
-                print("Emulator timeout reached. Stopping...", flush=True)
+                print(f"Emulator timeout reached ({EMULATOR_TIMEOUT}s). No activity or connections. Stopping...", flush=True)
                 _stop_emulator_process()
 
 # Start monitoring thread

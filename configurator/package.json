@@ -21,6 +21,12 @@
     "tailwind-merge": "^2.2.1",
     "zustand": "^4.5.1"
   },
+  "overrides": {
+    "ansi-to-react": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.24",
