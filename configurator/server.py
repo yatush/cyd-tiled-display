@@ -187,16 +187,16 @@ def start_emulator():
         else:
             return jsonify({"status": "error", "message": "Invalid configuration format"}), 400
         
+        # Write to user_config.yaml
+        user_config_path = os.path.join(BASE_DIR, 'lib', 'user_config.yaml')
+        with open(user_config_path, 'w') as f:
+            f.write(yaml_str)
+
         # Validate using generate_tiles_api
         result = generate_tiles_api.generate_cpp_from_yaml(yaml_str)
         
         if "error" in result:
              return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
-             
-        # Write to user_config.yaml
-        user_config_path = os.path.join(BASE_DIR, 'lib', 'user_config.yaml')
-        with open(user_config_path, 'w') as f:
-            f.write(yaml_str)
             
     except Exception as e:
         print(f"Config processing error: {e}")
