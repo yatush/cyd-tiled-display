@@ -8,11 +8,16 @@ export PYTHONUNBUFFERED=1
 pkill -f "program" || true
 
 # Navigate to esphome directory
-cd /app/esphome
+if [ -d "/config/esphome" ]; then
+    cd /config/esphome
+else
+    cd /app/esphome
+fi
 
 echo "Starting ESPHome Emulator..."
 
 # Run ESPHome
 # This will compile (if needed) and run the emulator on the existing display
 # Use stdbuf to force line buffering for stdout/stderr to ensure logs appear immediately
+echo "Executing: $(which esphome) run lib/emulator.yaml"
 stdbuf -oL -eL esphome run lib/emulator.yaml
