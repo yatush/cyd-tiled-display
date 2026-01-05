@@ -440,7 +440,7 @@ def update_lib():
                 if os.path.exists(backup_lib):
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
-            shutil.copytree(source_lib, target_lib)
+            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml'))
             
         # Update tile_ui without backup
         source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
@@ -451,7 +451,7 @@ def update_lib():
                 shutil.rmtree(target_ui)
             # Ensure parent directory exists
             os.makedirs(os.path.dirname(target_ui), exist_ok=True)
-            shutil.copytree(source_ui, target_ui)
+            shutil.copytree(source_ui, target_ui, ignore=shutil.ignore_patterns('.*'))
         
         return jsonify({"success": True})
     except Exception as e:
@@ -466,7 +466,7 @@ def get_directory_hashes(directory):
     for root, dirs, files in os.walk(directory):
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
-            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc'):
+            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file.startswith('.'):
                 continue
             path = os.path.join(root, file)
             try:
