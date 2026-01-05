@@ -436,31 +436,12 @@ def update_lib():
              return jsonify({"success": True, "message": "Source and target are the same (local dev)"})
 
         if os.path.exists(source_lib):
-            # Preserve user_config.yaml content if it exists
-            user_config_content = None
-            user_config_path = os.path.join(target_lib, 'user_config.yaml')
-            if os.path.exists(user_config_path):
-                try:
-                    with open(user_config_path, 'r') as f:
-                        user_config_content = f.read()
-                except Exception as e:
-                    print(f"Failed to read user_config.yaml: {e}")
-
             if os.path.exists(target_lib):
                 if os.path.exists(backup_lib):
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
             shutil.copytree(source_lib, target_lib)
             
-            # Restore user_config.yaml
-            if user_config_content is not None:
-                try:
-                    new_user_config_path = os.path.join(target_lib, 'user_config.yaml')
-                    with open(new_user_config_path, 'w') as f:
-                        f.write(user_config_content)
-                except Exception as e:
-                    print(f"Failed to restore user_config.yaml: {e}")
-
         # Update tile_ui without backup
         source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
         target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
@@ -485,7 +466,7 @@ def get_directory_hashes(directory):
     for root, dirs, files in os.walk(directory):
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
-            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml':
+            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc'):
                 continue
             path = os.path.join(root, file)
             try:
