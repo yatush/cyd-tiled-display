@@ -64,22 +64,27 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
     // Local development direct mode: use direct NoVNC proxy on port 6080
     vncUrl = `http://${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
   } else {
-    // Cloud Run, production, or local nginx mode (port 8080): use nginx-proxied websockify
+    // Cloud Run, production, HA Ingress, or local nginx mode: use nginx-proxied websockify
     // For HTTPS, NoVNC needs encrypt=true to use wss:// instead of ws://
     const encryptParam = isSecure ? '&encrypt=true' : '';
     
     // Handle Ingress path (or root path)
-    // window.location.pathname includes the Ingress token path if present
-    const pathPrefix = window.location.pathname.replace(/\/$/, '');
+    // window.location.pathname includes the Ingress token path if present (e.g., /api/hassio_ingress/<token>/)
+    let pathPrefix = window.location.pathname;
+    // Remove trailing /index.html if present (SPA routing artifact)
+    if (pathPrefix.endsWith('/index.html')) {
+      pathPrefix = pathPrefix.slice(0, -'/index.html'.length);
+    }
+    // Remove trailing slash
+    pathPrefix = pathPrefix.replace(/\/$/, '');
     
-    // Construct the websocket path. 
-    // NoVNC combines host:port + path. 
-    // We need path to include the ingress prefix.
-    // Also remove leading slash from path as NoVNC might handle it (or we ensure it's clean)
+    // For the websocket path, NoVNC will prepend the host:port and construct ws://host:port/path
+    // The path needs to be relative to the current location origin, but include the full ingress prefix
+    // NoVNC's path parameter should NOT have a leading slash - it adds one
     const wsPath = `${pathPrefix}/novnc/websockify`.replace(/^\//, '');
     
-    // Use absolute path including prefix for the iframe src so it respects the Ingress root
-    vncUrl = `${pathPrefix}/novnc/vnc.html?autoconnect=true&resize=scale&path=${wsPath}${encryptParam}`;
+    // Construct the full URL for the iframe. The iframe needs the full path with prefix.
+    vncUrl = `${pathPrefix}/novnc/vnc.html?autoconnect=true&resize=scale&host=${window.location.hostname}&port=${window.location.port || (isSecure ? '443' : '80')}&path=${encodeURIComponent(wsPath)}${encryptParam}`;
   }
 
   return (
