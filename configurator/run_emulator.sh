@@ -19,5 +19,4 @@ echo "Starting ESPHome Emulator..."
 # Run ESPHome
 # This will compile (if needed) and run the emulator on the existing display
 # Use stdbuf to force line buffering for stdout/stderr to ensure logs appear immediately
-echo "Executing: $(which esphome) run lib/emulator.yaml"
 stdbuf -oL -eL esphome run lib/emulator.yaml

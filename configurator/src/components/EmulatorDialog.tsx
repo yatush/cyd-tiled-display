@@ -66,9 +66,20 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
   } else {
     // Cloud Run, production, or local nginx mode (port 8080): use nginx-proxied websockify
     // For HTTPS, NoVNC needs encrypt=true to use wss:// instead of ws://
-    // path=websockify is relative to vnc.html location (/novnc/), so becomes /novnc/websockify
     const encryptParam = isSecure ? '&encrypt=true' : '';
-    vncUrl = `/novnc/vnc.html?autoconnect=true&resize=scale&path=websockify${encryptParam}`;
+    
+    // Handle Ingress path (or root path)
+    // window.location.pathname includes the Ingress token path if present
+    const pathPrefix = window.location.pathname.replace(/\/$/, '');
+    
+    // Construct the websocket path. 
+    // NoVNC combines host:port + path. 
+    // We need path to include the ingress prefix.
+    // Also remove leading slash from path as NoVNC might handle it (or we ensure it's clean)
+    const wsPath = `${pathPrefix}/novnc/websockify`.replace(/^\//, '');
+    
+    // Use absolute path including prefix for the iframe src so it respects the Ingress root
+    vncUrl = `${pathPrefix}/novnc/vnc.html?autoconnect=true&resize=scale&path=${wsPath}${encryptParam}`;
   }
 
   return (

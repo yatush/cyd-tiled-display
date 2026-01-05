@@ -158,7 +158,6 @@ def is_process_running(pid):
 
 @app.route('/api/emulator/start', methods=['POST'])
 def start_emulator():
-    print(f"Start emulator request received {request.json}", flush=True)
     update_activity()
     # Check existing PID
     if os.path.exists(EMULATOR_PID_FILE):
@@ -178,7 +177,6 @@ def start_emulator():
 
         # Check if we received pre-generated YAML or raw pages
         if 'yaml' in config_data:
-            print("Using provided YAML configuration", flush=True)
             yaml_str = config_data['yaml']
         elif 'pages' in config_data:
             # Fallback for older clients (though we should avoid this path if possible as it lacks the complex transformation logic)
