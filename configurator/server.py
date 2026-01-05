@@ -464,6 +464,8 @@ def get_directory_hashes(directory):
     
     file_hashes = {}
     for root, dirs, files in os.walk(directory):
+        # Filter out hidden directories to prevent recursion
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
             if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file.startswith('.'):
