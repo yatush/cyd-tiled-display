@@ -1,10 +1,10 @@
 esphome:
   includes:
-    - lib/draw_state.h
-    - lib/utils.h
-    - lib/tiles.h
-    - lib/screens.h
-    - lib/view.h
+    - ${lib_dir}draw_state.h
+    - ${lib_dir}utils.h
+    - ${lib_dir}tiles.h
+    - ${lib_dir}screens.h
+    - ${lib_dir}view.h
   on_boot:
     then:
       - script.execute: init_radar

@@ -1,13 +1,19 @@
 substitutions:
   device_name: "emulator"
   friendly_name: Emulator
+  lib_dir: ""
 
 packages:
-  lib: !include lib/lib_emulator.yaml
+  lib: !include lib_emulator.yaml
 
 esphome:
   name: $device_name
   friendly_name: $friendly_name
+
+external_components:
+  - source:
+      type: local
+      path: ../custom_components
 
 script:
   - id: dummy_service_call
@@ -65,22 +71,22 @@ font:
   - file: "gfonts://Material+Symbols+Outlined"
     id: tiny
     size: 32
-    glyphs: !include lib/mdi_glyphs.yaml
+    glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: small
     size: 60
-    glyphs: !include lib/mdi_glyphs.yaml
+    glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: medium
     size: 80
-    glyphs: !include lib/mdi_glyphs.yaml
+    glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: big
     size: 100
-    glyphs: !include lib/mdi_glyphs.yaml
+    glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Roboto"
     id: text_regular
@@ -97,7 +103,7 @@ font:
   - file: "gfonts://Roboto@900"
     id: text_small
     size: 18
-    glyphs: !include lib/roboto_glyphs.yaml
+    glyphs: !include roboto_glyphs.yaml
     
 tile_ui:
   tiles_file: user_config.yaml

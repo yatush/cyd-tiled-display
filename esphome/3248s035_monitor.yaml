@@ -1,6 +1,7 @@
 substitutions:
   device_name: "display35"
   friendly_name: Display35
+  lib_dir: "lib/"
 
 packages:
   device_base: !include lib/3248s035_base.yaml

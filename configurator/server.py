@@ -192,7 +192,7 @@ def start_emulator():
              return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
              
         # Write to user_config.yaml
-        user_config_path = os.path.join(BASE_DIR, 'user_config.yaml')
+        user_config_path = os.path.join(BASE_DIR, 'lib', 'user_config.yaml')
         with open(user_config_path, 'w') as f:
             f.write(yaml_str)
             
@@ -436,11 +436,30 @@ def update_lib():
              return jsonify({"success": True, "message": "Source and target are the same (local dev)"})
 
         if os.path.exists(source_lib):
+            # Preserve user_config.yaml content if it exists
+            user_config_content = None
+            user_config_path = os.path.join(target_lib, 'user_config.yaml')
+            if os.path.exists(user_config_path):
+                try:
+                    with open(user_config_path, 'r') as f:
+                        user_config_content = f.read()
+                except Exception as e:
+                    print(f"Failed to read user_config.yaml: {e}")
+
             if os.path.exists(target_lib):
                 if os.path.exists(backup_lib):
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
             shutil.copytree(source_lib, target_lib)
+            
+            # Restore user_config.yaml
+            if user_config_content is not None:
+                try:
+                    new_user_config_path = os.path.join(target_lib, 'user_config.yaml')
+                    with open(new_user_config_path, 'w') as f:
+                        f.write(user_config_content)
+                except Exception as e:
+                    print(f"Failed to restore user_config.yaml: {e}")
 
         # Update tile_ui without backup
         source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
@@ -453,16 +472,6 @@ def update_lib():
             os.makedirs(os.path.dirname(target_ui), exist_ok=True)
             shutil.copytree(source_ui, target_ui)
         
-        # Update all yaml files from esphome root, except secrets.yaml
-        esphome_root = os.path.join(APP_DIR, 'esphome')
-        if os.path.exists(esphome_root):
-            for filename in os.listdir(esphome_root):
-                if filename.endswith('.yaml') and filename != 'secrets.yaml':
-                    source_file = os.path.join(esphome_root, filename)
-                    target_file = os.path.join(BASE_DIR, filename)
-                    if os.path.isfile(source_file):
-                        shutil.copy2(source_file, target_file)
-
         return jsonify({"success": True})
     except Exception as e:
         print(f"Update Lib Error: {str(e)}")
@@ -476,7 +485,7 @@ def get_directory_hashes(directory):
     for root, dirs, files in os.walk(directory):
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
-            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc'):
+            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml':
                 continue
             path = os.path.join(root, file)
             try:
@@ -487,29 +496,6 @@ def get_directory_hashes(directory):
                     file_hashes[rel_path] = file_hash
             except:
                 pass
-    return file_hashes
-
-def get_root_yaml_hashes(directory):
-    if not os.path.exists(directory):
-        return {}
-    
-    file_hashes = {}
-    try:
-        # Only list files in the directory, no recursion
-        files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
-        for file in sorted(files):
-            if not file.endswith('.yaml') or file == 'secrets.yaml':
-                continue
-            
-            path = os.path.join(directory, file)
-            try:
-                with open(path, 'rb') as f:
-                    file_hash = hashlib.md5(f.read()).hexdigest()
-                    file_hashes[file] = file_hash
-            except:
-                pass
-    except OSError:
-        pass
     return file_hashes
 
 def get_directory_checksum(directory):
@@ -543,15 +529,11 @@ def check_lib_status():
         source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
         target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
         
-        source_root = os.path.join(APP_DIR, 'esphome')
-        target_root = BASE_DIR
-
         # If source and target are the same (local dev), they are synced
         if os.path.abspath(source_lib) == os.path.abspath(target_lib):
             return jsonify({
                 "lib_synced": True,
                 "ui_synced": True,
-                "root_synced": True,
                 "synced": True,
                 "details": []
             })
@@ -564,13 +546,8 @@ def check_lib_status():
         target_ui_hashes = get_directory_hashes(target_ui)
         ui_diff = get_diff(source_ui_hashes, target_ui_hashes)
         
-        source_root_hashes = get_root_yaml_hashes(source_root)
-        target_root_hashes = get_root_yaml_hashes(target_root)
-        root_diff = get_diff(source_root_hashes, target_root_hashes)
-
         lib_synced = len(lib_diff) == 0
         ui_synced = len(ui_diff) == 0
-        root_synced = len(root_diff) == 0
         
         details = []
         if not lib_synced:
@@ -579,15 +556,11 @@ def check_lib_status():
         if not ui_synced:
             details.append("UI Component files:")
             details.extend([f"  - {d}" for d in ui_diff])
-        if not root_synced:
-            details.append("Root Config files:")
-            details.extend([f"  - {d}" for d in root_diff])
 
         return jsonify({
             "lib_synced": lib_synced,
             "ui_synced": ui_synced,
-            "root_synced": root_synced,
-            "synced": lib_synced and ui_synced and root_synced,
+            "synced": lib_synced and ui_synced,
             "details": details
         })
     except Exception as e:
