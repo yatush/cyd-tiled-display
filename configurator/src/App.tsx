@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 import { Sidebar } from './components/PropertiesSidebar';
 import { NewPageDialog } from './components/NewPageDialog';
@@ -106,6 +106,7 @@ function App() {
 
   // Emulator State
   const [emulatorStatus, setEmulatorStatus] = useState<'stopped' | 'running' | 'starting' | 'error'>('stopped');
+  const emulatorKeepAliveRef = useRef<AbortController | null>(null);
 
   const checkEmulatorStatus = async () => {
     try {
@@ -123,28 +124,92 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (emulatorStatus === 'running' && !emulatorKeepAliveRef.current) {
+      const controller = new AbortController();
+      emulatorKeepAliveRef.current = controller;
+      
+      (async () => {
+        try {
+          const res = await apiFetch('/emulator/start', { 
+            method: 'POST', 
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ check_only: true })
+          });
+          const reader = res.body?.getReader();
+          if (reader) {
+            while (true) {
+              const { done } = await reader.read();
+              if (done) break;
+            }
+          }
+        } catch (e) {
+          // Ignore abort errors
+        } finally {
+          emulatorKeepAliveRef.current = null;
+        }
+      })();
+    } else if (emulatorStatus === 'stopped' && emulatorKeepAliveRef.current) {
+      emulatorKeepAliveRef.current.abort();
+      emulatorKeepAliveRef.current = null;
+    }
+  }, [emulatorStatus]);
+
   const handleStartEmulator = async () => {
+    if (emulatorKeepAliveRef.current) {
+        emulatorKeepAliveRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    emulatorKeepAliveRef.current = controller;
+
     setEmulatorStatus('starting');
+    setIsEmulatorOpen(true);
     try {
       // Generate YAML on the client side to ensure correct transformation
       const yamlConfig = generateYaml(config);
       
       const res = await apiFetch('/emulator/start', { 
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ yaml: yamlConfig })
       });
-      const data = await res.json();
+      
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response body");
+      
+      const { value, done } = await reader.read();
+      if (done) throw new Error("Response closed immediately");
+      
+      const text = new TextDecoder().decode(value);
+      const data = JSON.parse(text.split('\n')[0]);
+
       if (data.status === 'started' || data.status === 'running') {
         setEmulatorStatus('running');
         setIsEmulatorOpen(true);
+        
+        // Keep this connection alive as well
+        (async () => {
+          try {
+            while (true) {
+              const { done } = await reader.read();
+              if (done || controller.signal.aborted) break;
+            }
+          } catch (e) {}
+        })();
       } else {
         setEmulatorStatus('error');
+        emulatorKeepAliveRef.current = null;
         alert(`Failed to start emulator: ${data.message || 'Unknown error'}`);
       }
     } catch (e) {
-      setEmulatorStatus('error');
-      console.error(e);
+      if ((e as Error).name !== 'AbortError') {
+        setEmulatorStatus('error');
+        emulatorKeepAliveRef.current = null;
+        console.error(e);
+      }
     }
   };
 

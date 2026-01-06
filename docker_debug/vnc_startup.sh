@@ -18,10 +18,6 @@ if ! kill -0 $XVFB_PID 2>/dev/null; then
 fi
 echo "Xvfb started (PID: $XVFB_PID)"
 
-# Start fluxbox
-echo "Starting fluxbox..."
-fluxbox 2>&1 &
-sleep 1
 
 # Start x11vnc
 echo "Starting x11vnc on port 5900..."
