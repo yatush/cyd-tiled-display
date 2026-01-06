@@ -1,0 +1,722 @@
+substitutions:
+  device_name: "emulator"
+  friendly_name: Emulator
+  lib_dir: "lib/"
+
+packages:
+  lib: !include lib_emulator.yaml
+
+esphome:
+  name: $device_name
+  friendly_name: $friendly_name
+
+external_components:
+  - source:
+      type: local
+      path: ../custom_components
+
+script:
+  - id: dummy_service_call
+    then:
+      - homeassistant.service:
+          service: homeassistant.update_entity
+          data:
+            entity_id: sensor.dummy
+
+host:
+
+display:
+  - platform: sdl
+    id: disp
+    dimensions:
+      width: 480
+      height: 320
+
+touchscreen:
+  - platform: sdl
+    id: touchscreen_id
+    on_touch:
+      then:
+        - script.execute:
+            id: handle_touch
+            x: !lambda return touch.x;
+            y: !lambda return touch.y;
+            x_raw: !lambda return touch.x;
+            y_raw: !lambda return touch.y;
+
+binary_sensor:
+  - platform: touchscreen
+    id: dummy_touch_sensor
+    x_min: 0
+    x_max: 1
+    y_min: 0
+    y_max: 1
+
+globals:
+  - id: render_diffs
+    type: bool
+    initial_value: "false"
+  - id: width
+    type: int
+    initial_value: "480"
+  - id: height
+    type: int
+    initial_value: "320"
+  - id: tile_border_width
+    type: int
+    initial_value: "1"
+
+font:
+  # Master glyph list - define ALL Material Icons glyphs once
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: tiny
+    size: 32
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: small
+    size: 60
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: medium
+    size: 80
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Material+Symbols+Outlined"
+    id: big
+    size: 100
+    glyphs: !include mdi_glyphs.yaml
+
+  - file: "gfonts://Roboto"
+    id: text_regular
+    size: 30
+
+  - file: "gfonts://Roboto@900"
+    id: text_bold
+    size: 30
+
+  - file: "gfonts://Roboto@900"
+    id: text_big_bold
+    size: 40
+
+  - file: "gfonts://Roboto@900"
+    id: text_small
+    size: 18
+    glyphs: !include roboto_glyphs.yaml
+    
+tile_ui:
+  screens:
+    - id: controllers
+      rows: 2
+      cols: 3
+      flags:
+        - BASE
+      tiles:
+        - ha_action:
+            display:
+              - tile_lights
+            display_page_if_no_entity: light_settings
+            entities:
+              - dynamic_entity: LIGHT
+            perform:
+              - action_lights
+            x: 0
+            y: 0
+        - ha_action:
+            display:
+              - tile_ac
+            entities:
+              - entity: AC_1_ID
+            perform:
+              - action_ac
+            x: 1
+            y: 0
+        - move_page:
+            destination: pref
+            display:
+              - tile_icon:
+                  color: id(gray)
+                  icon: '"\U0000e8b8"'
+                  size: id(medium)
+            x: 2
+            y: 0
+        - ha_action:
+            display:
+              - tile_blinds_up
+            display_page_if_no_entity: cover_settings
+            entities:
+              - dynamic_entity: COVER
+            perform:
+              - action_blinds_up
+            requires_fast_refresh:
+              operator: OR
+              conditions:
+                - blinds_moving_up_fn
+                - blinds_moving_down_fn
+            x: 0
+            y: 1
+        - ha_action:
+            display:
+              - tile_blinds_down
+            display_page_if_no_entity: cover_settings
+            entities:
+              - dynamic_entity: COVER
+            perform:
+              - action_blinds_down
+            requires_fast_refresh:
+              operator: OR
+              conditions:
+                - blinds_moving_up_fn
+                - blinds_moving_down_fn
+            x: 1
+            y: 1
+        - ha_action:
+            display:
+              - tile_icon:
+                  color: id(light_purple)
+                  icon: '"\U0000e286"'
+                  size: id(big)
+            display_page_if_no_entity: cover_settings
+            entities:
+              - dynamic_entity: COVER
+            perform:
+              - action_blinds_mid
+            x: 2
+            y: 1
+    - id: pref
+      rows: 3
+      cols: 4
+      flags:
+        - TEMPORARY
+      tiles:
+        - move_page:
+            destination: disp_settings
+            display:
+              - tile_icon:
+                  color: Color::WHITE
+                  icon: '"\U0000eb97"'
+                  size: id(big)
+            x: 0
+            y: 0
+        - move_page:
+            destination: light_settings
+            display:
+              - tile_icon:
+                  color: Color::WHITE
+                  icon: '"\U0000e28b"'
+                  size: id(big)
+            x: 1
+            y: 0
+        - move_page:
+            destination: controllers
+            display:
+              - tile_icon:
+                  color: id(gray)
+                  icon: '"\U0000e5c4"'
+                  size: id(medium)
+            x: 2
+            y: 0
+        - move_page:
+            destination: ac_settings
+            display:
+              - tile_icon:
+                  color: Color::WHITE
+                  icon: '"\U0000f55b"'
+                  size: id(big)
+            dynamic_entry:
+              dynamic_entity: AC
+              value: AC_1_ID
+            x: 0
+            y: 1
+        - move_page:
+            destination: cover_settings
+            display:
+              - tile_icon:
+                  color: Color::WHITE
+                  icon: '"\U0000e286"'
+                  size: id(big)
+            x: 1
+            y: 1
+        - move_page:
+            destination: cover_settings_2
+            display:
+              - tile_icon:
+                  color: Color::WHITE
+                  icon: '"\U0000e286"'
+                  size: id(big)
+            x: 2
+            y: 1
+        - move_page:
+            destination: settngs_3
+            display:
+              - tile_icon:
+                  color: Color(66,49,191)
+                  icon: '"\U0000f4b6"'
+                  size: id(big)
+            dynamic_entry:
+              dynamic_entity: LIGHT
+              value:
+                - a
+            x: 0
+            y: 2
+        - move_page:
+            destination: settngs_3
+            display:
+              - tile_icon:
+                  color: Color(38,215,25)
+                  icon: '"\U0000e5cc"'
+                  size: id(big)
+            dynamic_entry:
+              dynamic_entity: LIGHT
+              value:
+                - b
+            x: 1
+            y: 2
+    - id: ac_settings
+      rows: 2
+      cols: 3
+      flags:
+        - TEMPORARY
+      tiles:
+        - ha_action:
+            display:
+              - tile_icon:
+                  color: id(light_red)
+                  icon: '"\U0000f4b5"'
+                  size: id(big)
+            entities:
+              - dynamic_entity: AC
+                sensor: temperature
+            perform:
+              - action_temp_up
+            x: 0
+            y: 0
+        - ha_action:
+            display:
+              - tile_icon:
+                  color: id(light_blue)
+                  icon: '"\U0000f4b6"'
+                  size: id(big)
+            entities:
+              - dynamic_entity: AC
+                sensor: temperature
+            perform:
+              - action_temp_down
+            x: 0
+            y: 1
+        - ha_action:
+            display:
+              - tile_ac_mode
+            entities:
+              - dynamic_entity: AC
+            perform:
+              - action_ac_mode
+            x: 1
+            y: 0
+        - title:
+            display:
+              - tile_ac_status
+            entities:
+              - dynamic_entity: AC
+              - dynamic_entity: AC
+                sensor: temperature
+            omit_frame: true
+            x: 1
+            y: 1
+        - move_page:
+            destination: controllers
+            display:
+              - tile_icon:
+                  color: id(gray)
+                  icon: '"\U0000e5c4"'
+                  size: id(medium)
+            x: 2
+            y: 0
+    - id: disp_settings
+      rows: 2
+      cols: 3
+      flags:
+        - FAST_REFRESH
+        - TEMPORARY
+      tiles:
+        - function:
+            display:
+              - tile_brightness
+            on_press: on_brightness_press
+            on_release: on_brightness_release
+            x: 0
+            y: 0
+        - function:
+            display:
+              - tile_distance
+            on_press: change_wakeup_distance
+            x: 1
+            y: 0
+        - move_page:
+            destination: controllers
+            display:
+              - tile_icon:
+                  color: id(gray)
+                  icon: '"\U0000e5c4"'
+                  size: id(medium)
+            x: 2
+            y: 0
+        - function:
+            display:
+              - tile_wakeup_time
+            on_press: change_sleep_time
+            x: 0
+            y: 1
+        - function:
+            display:
+              - tile_icon:
+                  color: Color::WHITE
+                  icon: '"\U0000f418"'
+                  size: id(big)
+            on_press: action_power
+            x: 1
+            y: 1
+    - id: light_settings
+      rows: 2
+      cols: 3
+      flags:
+        - TEMPORARY
+      tiles:
+        - toggle_entity:
+            display:
+              - tile_choose_light
+            dynamic_entity: LIGHT
+            entity: LIGHT_1_ID
+            initially_chosen: true
+            presentation_name: Closet
+            x: 0
+            y: 0
+        - toggle_entity:
+            display:
+              - tile_choose_light
+            dynamic_entity: LIGHT
+            entity: LIGHT_2_ID
+            presentation_name: Ceiling
+            x: 1
+            y: 0
+        - toggle_entity:
+            display:
+              - tile_choose_light
+            dynamic_entity: LIGHT
+            entity: LIGHT_3_ID
+            presentation_name: Comp
+            x: 0
+            y: 1
+        - toggle_entity:
+            display:
+              - tile_choose_light
+            dynamic_entity: LIGHT
+            entity: LIGHT_4_ID
+            presentation_name: Bed
+            x: 1
+            y: 1
+        - move_page:
+            destination: controllers
+            display:
+              - tile_icon:
+                  color: id(gray)
+                  icon: '"\U0000e5c4"'
+                  size: id(medium)
+            x: 2
+            y: 0
+    - id: cover_settings
+      rows: 2
+      cols: 3
+      flags:
+        - TEMPORARY
+      tiles:
+        - toggle_entity:
+            display:
+              - tile_choose_cover
+            dynamic_entity: COVER
+            entity: COVER_1_ID
+            initially_chosen: true
+            presentation_name: PR1
+            x: 2
+            y: 1
+        - toggle_entity:
+            display:
+              - tile_choose_cover
+            dynamic_entity: COVER
+            entity: COVER_2_ID
+            initially_chosen: true
+            presentation_name: PR2
+            x: 1
+            y: 1
+        - move_page:
+            destination: controllers
+            display:
+              - tile_icon:
+                  color: id(gray)
+                  icon: '"\U0000e5c4"'
+                  size: id(medium)
+            x: 2
+            y: 0
+    - id: cover_settings_2
+      rows: 2
+      cols: 3
+      flags:
+        - TEMPORARY
+      tiles:
+        - cycle_entity:
+            display:
+              - tile_room
+            dynamic_entity: ROOM
+            options:
+              - entity: LR
+                label: LR
+              - entity: TOYS
+                label: TOYS
+              - entity: A
+                label: A
+              - entity: B
+                label: B
+              - entity: C
+                label: C
+              - entity: D
+                label: D
+            x: 0
+            y: 0
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: ROOM
+              value: LR
+            display:
+              - tile_cover_name
+            dynamic_entity: COVER_TEMP
+            options:
+              - entity: '*'
+                label: ALL
+              - entity: COVER_1_ID
+                label: PR1
+              - entity: COVER_2_ID
+                label: PR2
+            x: 1
+            y: 0
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: ROOM
+              value: TOYS
+            display:
+              - tile_cover_name
+            dynamic_entity: COVER_TEMP
+            options:
+              - entity: '*'
+                label: ALL
+              - entity: COVER_3_ID
+                label: TR1
+              - entity: COVER_4_ID
+                label: TR2
+            x: 1
+            y: 0
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: ROOM
+              value: A
+            display:
+              - tile_cover_name
+            dynamic_entity: COVER_TEMP
+            options:
+              - entity: '*'
+                label: ALL
+              - entity: A1_ID, A11_ID
+                label: A1
+              - entity: A2_ID
+                label: A2
+              - entity: A3_ID
+                label: A3
+              - entity: A4_ID
+                label: A4
+            x: 1
+            y: 0
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: ROOM
+              value: B
+            display:
+              - tile_cover_name
+            dynamic_entity: COVER_TEMP
+            options:
+              - entity: '*'
+                label: ALL
+              - entity: B1_ID
+                label: B1
+              - entity: B2_ID
+                label: B2
+              - entity: B3_ID
+                label: B3
+              - entity: B4_ID
+                label: B4
+            x: 1
+            y: 0
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: ROOM
+              value: C
+            display:
+              - tile_cover_name
+            dynamic_entity: COVER_TEMP
+            options:
+              - entity: '*'
+                label: ALL
+              - entity: C1_ID
+                label: C1
+              - entity: C2_ID
+                label: C2
+              - entity: C3_ID
+                label: C3
+              - entity: C4_ID
+                label: C4
+            x: 1
+            y: 0
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: ROOM
+              value: D
+            display:
+              - tile_cover_name
+            dynamic_entity: COVER_TEMP
+            options:
+              - entity: '*'
+                label: ALL
+              - entity: D1_ID
+                label: D1
+              - entity: D2_ID
+                label: D2
+              - entity: D3_ID
+                label: D3
+              - entity: D4_ID
+                label: D4
+            x: 1
+            y: 0
+        - ha_action:
+            display:
+              - tile_blinds_up_down
+            entities:
+              - dynamic_entity: COVER_TEMP
+            location_perform:
+              - action_blinds_up_down
+            requires_fast_refresh:
+              operator: OR
+              conditions:
+                - operator: AND
+                  conditions:
+                    - operator: NOT
+                      conditions:
+                        - blinds_moving_up_fn
+                    - blinds_moving_down_fn
+                - blinds_moving_down_fn
+            x: 0
+            y: 1
+        - move_page:
+            destination: controllers
+            display:
+              - tile_icon:
+                  color: id(gray)
+                  icon: '"\U0000e5c4"'
+                  size: id(medium)
+            x: 2
+            y: 0
+    - id: settngs_3
+      rows: 2
+      cols: 3
+      flags:
+        - TEMPORARY
+      tiles:
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: LIGHT
+              value:
+                - a
+            display:
+              - tile_room
+            dynamic_entity: COVER
+            options:
+              - entity:
+                  - a
+                label: a
+              - entity:
+                  - b
+                label: b
+              - entity:
+                  - c
+                label: c
+              - entity:
+                  - e
+                label: e
+            x: 0
+            x_span: 1
+            y: 0
+            y_span: 2
+        - cycle_entity:
+            activation_var:
+              dynamic_entity: LIGHT
+              value:
+                - b
+            display:
+              - tile_room
+            dynamic_entity: COVER
+            options:
+              - entity: '*'
+                label: All
+              - entity:
+                  - a
+                label: a
+              - entity:
+                  - b
+                label: b
+              - entity:
+                  - c
+                label: c
+              - entity:
+                  - a
+                  - b
+                label: ab
+            x: 0
+            x_span: 2
+            y: 0
+            y_span: 1
+        - move_page:
+            destination: pref
+            display:
+              - tile_icon:
+                  color: Color(202,205,29)
+                  icon: '"\U0000e5cb"'
+                  size: id(big)
+            x: 2
+            y: 1
+        - title:
+            activation_var:
+              dynamic_entity: COVER
+              value:
+                - a
+            display:
+              - tile_icon:
+                  color: Color(0, 0, 255)
+                  icon: '"\U0000f0b0"'
+                  size: id(big)
+            entities:
+              - entity: a
+            x: 2
+            y: 0
+        - title:
+            activation_var:
+              dynamic_entity: COVER
+              value:
+                - b
+            display:
+              - tile_icon:
+                  color: Color(153,0,0)
+                  icon: '"\U0000f0b0"'
+                  size: id(big)
+            entities:
+              - entity: a
+            x: 1
+            y: 1
+  

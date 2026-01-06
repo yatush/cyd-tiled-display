@@ -15,6 +15,33 @@ const transformConditionLogicReverse = (value: any): any => {
     return value;
 };
 
+const scanForDynamicEntities = (obj: any, set: Set<string>) => {
+    if (!obj || typeof obj !== 'object') return;
+    
+    if (obj.dynamic_entity && typeof obj.dynamic_entity === 'string') {
+        set.add(obj.dynamic_entity);
+    }
+    
+    Object.values(obj).forEach(val => {
+        if (Array.isArray(val)) {
+            val.forEach(item => {
+                if (typeof item === 'string') {
+                    // Check if string contains #{VAR} format (if we ever use it in YAML)
+                    const match = item.match(/#\{([^}]+)\}/);
+                    if (match) set.add(match[1]);
+                } else {
+                    scanForDynamicEntities(item, set);
+                }
+            });
+        } else if (typeof val === 'object' && val !== null) {
+            scanForDynamicEntities(val, set);
+        } else if (typeof val === 'string') {
+            const match = val.match(/#\{([^}]+)\}/);
+            if (match) set.add(match[1]);
+        }
+    });
+};
+
 export const convertParsedYamlToConfig = (parsed: any): Config => {
     if (!parsed || !parsed.screens || !Array.isArray(parsed.screens)) {
       throw new Error("Invalid YAML: 'screens' array is missing.");
@@ -76,31 +103,28 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
 
     // Extract dynamic entities from tiles to populate the list
     const dynamicEntities = new Set<string>();
+
+    // Support top-level dynamic_entities declaration if present
+    if (parsed.dynamic_entities && Array.isArray(parsed.dynamic_entities)) {
+        parsed.dynamic_entities.forEach((de: any) => {
+            if (typeof de === 'string') dynamicEntities.add(de);
+        });
+    }
+
+    // Recursively scan all pages and tiles for dynamic entities
     pages.forEach(p => {
         p.tiles.forEach(t => {
-            // Check common fields for dynamic entities
-            if (t.dynamic_entity) dynamicEntities.add(t.dynamic_entity);
-            
-            // Check entities list
-            if (Array.isArray(t.entities)) {
-                t.entities.forEach((e: any) => {
-                    if (typeof e === 'object' && e.dynamic_entity) {
-                        dynamicEntities.add(e.dynamic_entity);
-                    }
-                });
-            }
-            
-            // Check dynamic_entry in move_page
-            if (t.dynamic_entry && t.dynamic_entry.dynamic_entity) {
-                dynamicEntities.add(t.dynamic_entry.dynamic_entity);
-            }
+            scanForDynamicEntities(t, dynamicEntities);
         });
     });
 
-    return {
+    const result = {
+      ...parsed,
       pages,
       dynamic_entities: Array.from(dynamicEntities)
     };
+    delete result.screens;
+    return result;
 };
 
 export const parseYamlToConfig = (yamlString: string): Config => {

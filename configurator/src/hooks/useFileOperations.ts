@@ -45,6 +45,11 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
       if (res.ok) {
         let data = await res.json();
         
+        // Handle full device config nesting
+        if (data && data.tile_ui) {
+            data = data.tile_ui;
+        }
+
         // If it's in ESPHome format (has screens), convert it
         if (data && data.screens && Array.isArray(data.screens)) {
             try {
@@ -255,74 +260,35 @@ ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
     try {
       const res = await apiFetch(`/load?path=${encodeURIComponent(path)}`);
       if (res.ok) {
-        const data = await res.json();
+        let data = await res.json();
         
-        // Check if it's a full device config (has tile_ui key)
+        // Use the tile_ui section if this is a full device configuration
         if (data.tile_ui) {
-            // Handle both 'pages' (internal) and 'screens' (YAML) keys
-            const pagesData = data.tile_ui.pages || data.tile_ui.screens;
-            
-            if (!pagesData || !Array.isArray(pagesData)) {
-                 alert('Failed to load: The device configuration is missing valid tile_ui screens/pages.');
-                 return;
-            }
-            
-            // If the data is in 'screens' format (from YAML), we might need to parse it
-            // But setConfig expects the internal format. 
-            // If the loaded JSON already matches the internal structure, we can use it directly.
-            // However, 'screens' usually implies the YAML structure where tiles are wrapped in their type key.
-            
-            let configToSet = data.tile_ui;
-            
-            // If we have 'screens', we likely need to normalize it to 'pages' and flatten tiles
-            if (data.tile_ui.screens) {
-                // We can use the existing parser logic if we convert the tile_ui object to a YAML string and back,
-                // OR we can just map it manually here.
-                // Let's try to use the parser if possible, or replicate its logic.
-                // Actually, since we have the object, let's just map it.
-                
-                const pages = data.tile_ui.screens.map((screen: any) => {
-                    const tiles = (screen.tiles || []).map((tileItem: any) => {
-                        // Check if tile is already in internal format (has type property)
-                        if (tileItem.type) return tileItem;
-                        
-                        // Otherwise assume YAML format: { type: { ...props } }
-                        const type = Object.keys(tileItem)[0];
-                        const props = tileItem[type];
-                        return {
-                            id: Math.random().toString(36).substr(2, 9),
-                            type,
-                            ...props
-                        };
-                    });
-                    
-                    return {
-                        ...screen,
-                        tiles
-                    };
-                });
-                
-                configToSet = { ...data.tile_ui, pages };
-                delete configToSet.screens;
-            }
+            data = data.tile_ui;
+        }
 
-            setConfig(configToSet);
-            if (configToSet.pages.length > 0) {
-                setActivePageId(configToSet.pages[0].id);
-            }
-            alert(`Successfully loaded device configuration from ${path}`);
-        } else {
-            // Fallback: try to load as a screens config
-             if (!data || typeof data !== 'object' || !Array.isArray(data.pages)) {
-                alert('Failed to load: The file does not appear to be a valid device or tile configuration.');
+        // If the data is in 'screens' format, convert it to internal 'pages' format
+        if (data.screens && Array.isArray(data.screens)) {
+            try {
+                data = convertParsedYamlToConfig(data);
+            } catch (e) {
+                console.error("Failed to convert screens to pages", e);
+                alert('Failed to parse the screen configuration.');
                 return;
             }
-            setConfig(data);
-            if (data.pages && data.pages.length > 0) {
-                setActivePageId(data.pages[0].id);
-            }
-            alert(`Successfully loaded configuration from ${path}`);
         }
+
+        // Basic validation
+        if (!data || !data.pages || !Array.isArray(data.pages)) {
+            alert('Failed to load: No valid tile configuration found in file.');
+            return;
+        }
+
+        setConfig(data);
+        if (data.pages.length > 0) {
+            setActivePageId(data.pages[0].id);
+        }
+        alert(`Successfully loaded configuration from ${path}`);
       } else {
         const err = await res.json();
         alert(`Failed to load: ${err.error || 'Unknown error'}`);
