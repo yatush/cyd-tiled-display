@@ -1,0 +1,5 @@
+# Force shell scripts to always use LF (even on Windows)
+*.sh text eol=lf
+
+# Handle other files automatically
+* text=auto
