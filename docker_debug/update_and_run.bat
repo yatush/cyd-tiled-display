@@ -34,9 +34,13 @@ echo Container started.
 echo Waiting for services to initialize...
 timeout /t 5 /nobreak >nul
 
-echo Updating files (just in case)...
+echo Updating ESPHome files...
 docker cp ..\esphome "%CONTAINER_NAME%:/app/"
-docker cp ..\configurator "%CONTAINER_NAME%:/app/"
+
+echo Updating Python backend scripts...
+docker cp ..\configurator\server.py "%CONTAINER_NAME%:/app/configurator/"
+docker cp ..\configurator\generate_tiles_api.py "%CONTAINER_NAME%:/app/configurator/"
+docker cp ..\configurator\run_emulator.sh "%CONTAINER_NAME%:/app/configurator/"
 
 echo.
 echo ---------------------------------------------------

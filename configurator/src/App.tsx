@@ -125,6 +125,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Sync keep-alive connection with status
     if (emulatorStatus === 'running' && !emulatorKeepAliveRef.current) {
       const controller = new AbortController();
       emulatorKeepAliveRef.current = controller;
@@ -157,6 +158,8 @@ function App() {
   }, [emulatorStatus]);
 
   const handleStartEmulator = async () => {
+    setIsEmulatorOpen(true);
+    
     if (emulatorKeepAliveRef.current) {
         emulatorKeepAliveRef.current.abort();
     }
@@ -164,46 +167,18 @@ function App() {
     const controller = new AbortController();
     emulatorKeepAliveRef.current = controller;
 
-    setEmulatorStatus('starting');
-    setIsEmulatorOpen(true);
+    setEmulatorStatus('running');
+    
     try {
-      // Generate YAML on the client side to ensure correct transformation
       const yamlConfig = generateYaml(config);
-      
-      const res = await apiFetch('/emulator/start', { 
+      await apiFetch('/emulator/start', { 
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ yaml: yamlConfig })
       });
       
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No response body");
-      
-      const { value, done } = await reader.read();
-      if (done) throw new Error("Response closed immediately");
-      
-      const text = new TextDecoder().decode(value);
-      const data = JSON.parse(text.split('\n')[0]);
-
-      if (data.status === 'started' || data.status === 'running') {
-        setEmulatorStatus('running');
-        setIsEmulatorOpen(true);
-        
-        // Keep this connection alive as well
-        (async () => {
-          try {
-            while (true) {
-              const { done } = await reader.read();
-              if (done || controller.signal.aborted) break;
-            }
-          } catch (e) {}
-        })();
-      } else {
-        setEmulatorStatus('error');
-        emulatorKeepAliveRef.current = null;
-        alert(`Failed to start emulator: ${data.message || 'Unknown error'}`);
-      }
+      // Connection preserved by background useEffect or implicit streaming
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         setEmulatorStatus('error');
@@ -214,9 +189,16 @@ function App() {
   };
 
   const handleStopEmulator = async () => {
+    setIsEmulatorOpen(false);
+    setEmulatorStatus('stopped');
+    
+    if (emulatorKeepAliveRef.current) {
+      emulatorKeepAliveRef.current.abort();
+      emulatorKeepAliveRef.current = null;
+    }
+
     try {
       await apiFetch('/emulator/stop', { method: 'POST' });
-      setEmulatorStatus('stopped');
     } catch (e) {
       console.error("Failed to stop emulator", e);
     }

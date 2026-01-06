@@ -13,7 +13,7 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
-    xvfb x11vnc fluxbox bash git coreutils nginx \
+    xvfb x11vnc fluxbox bash git coreutils nginx procps net-tools \
     && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify
 
 # Install noVNC
@@ -40,6 +40,10 @@ COPY esphome /app/esphome
 # Copy nginx config
 COPY docker_debug/nginx.conf /etc/nginx/nginx.conf
 
+# Ensure nginx directories exist and have proper permissions
+RUN mkdir -p /run/nginx /var/lib/nginx/tmp /var/log/nginx && \
+    chmod -R 777 /var/lib/nginx /var/log/nginx /run/nginx
+
 # Expose port for Ingress (nginx listens on PORT, proxies to internal services)
 ENV PORT=8080
 EXPOSE $PORT
@@ -50,5 +54,7 @@ ENTRYPOINT ["/app/vnc_startup.sh"]
 # Set SDL to use X11
 ENV SDL_VIDEODRIVER=x11
 
-# Start nginx (foreground) and gunicorn (background)
-CMD sh -c "gunicorn -w 1 --threads 4 -b 127.0.0.1:8099 --chdir /app/configurator server:app & nginx -g 'daemon off;'"
+# Start gunicorn and nginx
+# We use -b 127.0.0.1:8099 because nginx proxies to it
+# Nginx uses the config generated in vnc_startup.sh
+CMD sh -c "gunicorn -w 1 --threads 4 -b 127.0.0.1:8099 --chdir /app/configurator --access-logfile - --error-logfile - server:app & nginx -c /tmp/nginx.conf -g 'daemon off;'"
