@@ -150,20 +150,29 @@ function App() {
           emulatorKeepAliveRef.current = null;
         }
       })();
-    } else if (emulatorStatus !== 'running' && emulatorKeepAliveRef.current) {
+    } else if (emulatorStatus === 'stopped' && emulatorKeepAliveRef.current) {
       emulatorKeepAliveRef.current.abort();
       emulatorKeepAliveRef.current = null;
     }
   }, [emulatorStatus]);
 
   const handleStartEmulator = async () => {
+    if (emulatorKeepAliveRef.current) {
+        emulatorKeepAliveRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    emulatorKeepAliveRef.current = controller;
+
     setEmulatorStatus('starting');
+    setIsEmulatorOpen(true);
     try {
       // Generate YAML on the client side to ensure correct transformation
       const yamlConfig = generateYaml(config);
       
       const res = await apiFetch('/emulator/start', { 
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ yaml: yamlConfig })
       });
@@ -186,17 +195,21 @@ function App() {
           try {
             while (true) {
               const { done } = await reader.read();
-              if (done) break;
+              if (done || controller.signal.aborted) break;
             }
           } catch (e) {}
         })();
       } else {
         setEmulatorStatus('error');
+        emulatorKeepAliveRef.current = null;
         alert(`Failed to start emulator: ${data.message || 'Unknown error'}`);
       }
     } catch (e) {
-      setEmulatorStatus('error');
-      console.error(e);
+      if ((e as Error).name !== 'AbortError') {
+        setEmulatorStatus('error');
+        emulatorKeepAliveRef.current = null;
+        console.error(e);
+      }
     }
   };
 

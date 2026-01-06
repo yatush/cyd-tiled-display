@@ -758,6 +758,7 @@ def monitor_activity():
         time.sleep(10)
         # If there are active streaming connections, the emulator is definitely active
         if emulator_connections > 0:
+            print(f"Emulator active due to {emulator_connections} active connections.", flush=True)
             update_activity()
             continue
 

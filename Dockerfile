@@ -47,5 +47,8 @@ EXPOSE $PORT
 # Set entrypoint to VNC startup script
 ENTRYPOINT ["/app/vnc_startup.sh"]
 
+# Set SDL to use X11
+ENV SDL_VIDEODRIVER=x11
+
 # Start nginx (foreground) and gunicorn (background)
 CMD sh -c "gunicorn -w 1 --threads 4 -b 127.0.0.1:8099 --chdir /app/configurator server:app & nginx -g 'daemon off;'"
