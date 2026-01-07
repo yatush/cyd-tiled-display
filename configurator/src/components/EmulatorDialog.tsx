@@ -6,26 +6,127 @@ import { apiFetch } from '../utils/api';
 interface EmulatorDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  websockifyPort: number | null;
+  emulatorSessionId: string | null;
 }
 
-export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose }) => {
+const ACTIVITY_TRACKING_INTERVAL = 30000; // Track activity every 30 seconds if user is active
+
+export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose, websockifyPort, emulatorSessionId }) => {
   const [logs, setLogs] = useState<string>('');
   const [filterHa, setFilterHa] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isIframeLoaded, setIsIframeLoaded] = useState(false);
+  const [shouldShowIframe, setShouldShowIframe] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const savedScrollTop = useRef<number>(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const lastActivityRef = useRef<number>(0);
+  const activityIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchLogs = async () => {
     try {
-      const res = await apiFetch('/emulator/logs');
+      const res = await apiFetch('/emulator/logs', {}, emulatorSessionId || undefined);
       const text = await res.text();
       setLogs(text);
     } catch (e) {
       // console.error("Failed to fetch logs", e);
     }
   };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsIframeLoaded(false);
+      setShouldShowIframe(false);
+      if (activityIntervalRef.current) {
+        clearInterval(activityIntervalRef.current);
+        activityIntervalRef.current = null;
+      }
+      return;
+    }
+    
+    if (autoRefresh) {
+      fetchLogs();
+      const interval = setInterval(fetchLogs, 1000); // 1s is enough and less taxing
+      return () => clearInterval(interval);
+    }
+  }, [isOpen, autoRefresh]);
+
+  // Add 5-second delay before showing iframe to let emulator initialize
+  useEffect(() => {
+    if (isOpen && websockifyPort && !shouldShowIframe) {
+      const timer = setTimeout(() => {
+        setShouldShowIframe(true);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+    if (!isOpen || !websockifyPort) {
+      setShouldShowIframe(false);
+    }
+  }, [isOpen, websockifyPort, shouldShowIframe]);
+
+  // Track user activity in the emulator iframe
+  const trackActivity = async () => {
+    try {
+      await apiFetch('/emulator/activity', { method: 'POST' }, emulatorSessionId || undefined);
+      lastActivityRef.current = Date.now();
+    } catch (e) {
+      // Silently ignore activity tracking errors
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || !isIframeLoaded) {
+      if (activityIntervalRef.current) {
+        clearInterval(activityIntervalRef.current);
+        activityIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Set up activity tracking - send ping every 30 seconds to keep session alive during usage
+    activityIntervalRef.current = setInterval(() => {
+      const timeSinceLastActivity = Date.now() - lastActivityRef.current;
+      // Only send activity ping if there's been some interaction recently
+      if (timeSinceLastActivity < 60000) {
+        trackActivity();
+      }
+    }, ACTIVITY_TRACKING_INTERVAL);
+
+    // Attempt to attach event listeners to the iframe
+    if (iframeRef.current) {
+      try {
+        const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
+        if (iframeDoc) {
+          const onUserActivity = () => {
+            lastActivityRef.current = Date.now();
+            trackActivity();
+          };
+          
+          iframeDoc.addEventListener('click', onUserActivity, true);
+          iframeDoc.addEventListener('keydown', onUserActivity, true);
+          iframeDoc.addEventListener('mousemove', onUserActivity, true);
+          
+          return () => {
+            iframeDoc.removeEventListener('click', onUserActivity, true);
+            iframeDoc.removeEventListener('keydown', onUserActivity, true);
+            iframeDoc.removeEventListener('mousemove', onUserActivity, true);
+          };
+        }
+      } catch (e) {
+        // Cross-origin iframe, can't attach listeners - but the interval tracking will still work
+        console.debug('Cannot attach activity listeners to iframe (cross-origin)');
+      }
+    }
+
+    return () => {
+      if (activityIntervalRef.current) {
+        clearInterval(activityIntervalRef.current);
+        activityIntervalRef.current = null;
+      }
+    };
+  }, [isOpen, isIframeLoaded]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -67,9 +168,11 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
   const isSecure = window.location.protocol === 'https:';
   
   let vncUrl: string;
-  if (isLocalDevDirect) {
-    // Local development direct mode: use direct NoVNC proxy on port 6080
-    vncUrl = `http://${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
+  if (!websockifyPort) {
+    vncUrl = 'about:blank';
+  } else if (isLocalDevDirect) {
+    // Local development direct mode: use direct NoVNC proxy on the allocated session port
+    vncUrl = `http://${window.location.hostname}:${websockifyPort}/vnc.html?autoconnect=true&resize=scale`;
   } else {
     // Cloud Run, production, HA Ingress, or local nginx mode: use nginx-proxied websockify
     const encryptParam = isSecure ? '&encrypt=true' : '';
@@ -80,10 +183,10 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
     }
     pathPrefix = pathPrefix.replace(/\/$/, '');
     
-    // Ensure we don't have double slashes if pathPrefix is empty
-    const wsPath = `${pathPrefix}/novnc/websockify`.replace(/^\//, '');
+    // Updated path to use session-specific routing via Nginx
+    const wsPath = `${pathPrefix}/novnc/session/${websockifyPort}/websockify`.replace(/^\//, '');
     
-    vncUrl = `${pathPrefix}/novnc/vnc.html?autoconnect=true&resize=scale&host=${window.location.hostname}&port=${window.location.port || (isSecure ? '443' : '80')}&path=${encodeURIComponent(wsPath)}${encryptParam}`;
+    vncUrl = `${pathPrefix}/novnc/session/${websockifyPort}/vnc.html?autoconnect=true&resize=scale&host=${window.location.hostname}&port=${window.location.port || (isSecure ? '443' : '80')}&path=${encodeURIComponent(wsPath)}${encryptParam}`;
   }
 
   return (
@@ -104,19 +207,24 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose 
         <div className="flex-1 flex overflow-hidden">
           {/* Emulator View */}
           <div className="w-1/2 bg-slate-900 flex items-center justify-center border-r relative">
-             {!isIframeLoaded && (
+             {(!isIframeLoaded || !websockifyPort || !shouldShowIframe) && (
                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3 bg-slate-900 z-10">
                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                 <span className="text-sm font-medium animate-pulse">Connecting to VNC...</span>
+                 <span className="text-sm font-medium animate-pulse">
+                   {!websockifyPort ? 'Waiting for session...' : !shouldShowIframe ? 'Initializing emulator...' : 'Connecting to VNC...'}
+                 </span>
                </div>
              )}
              
-             <iframe 
-               src={vncUrl}
-               className={`w-full h-full border-0 transition-opacity duration-500 ${isIframeLoaded ? 'opacity-100' : 'opacity-0'}`}
-               title="NoVNC"
-               onLoad={() => setIsIframeLoaded(true)}
-             />
+             {websockifyPort && shouldShowIframe && (
+               <iframe 
+                 ref={iframeRef}
+                 src={vncUrl}
+                 className={`w-full h-full border-0 transition-opacity duration-500 ${isIframeLoaded ? 'opacity-100' : 'opacity-0'}`}
+                 title="NoVNC"
+                 onLoad={() => setIsIframeLoaded(true)}
+               />
+             )}
           </div>
 
           {/* Log View */}

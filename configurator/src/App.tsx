@@ -18,7 +18,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
-import { apiFetch } from './utils/api';
+import { apiFetch, generateNewSessionId } from './utils/api';
 
 import { generateYaml } from './utils/yamlGenerator';
 
@@ -106,13 +106,18 @@ function App() {
 
   // Emulator State
   const [emulatorStatus, setEmulatorStatus] = useState<'stopped' | 'running' | 'starting' | 'error'>('stopped');
+  const [websockifyPort, setWebsockifyPort] = useState<number | null>(null);
   const emulatorKeepAliveRef = useRef<AbortController | null>(null);
+  const currentEmulatorSessionIdRef = useRef<string | null>(null);
 
   const checkEmulatorStatus = async () => {
     try {
-      const res = await apiFetch('/emulator/status');
+      const res = await apiFetch('/emulator/status', {}, currentEmulatorSessionIdRef.current || undefined);
       const data = await res.json();
       setEmulatorStatus(data.status);
+      if (data.websockify_port) {
+        setWebsockifyPort(data.websockify_port);
+      }
     } catch (e) {
       // console.error("Failed to check emulator status", e);
     }
@@ -137,7 +142,7 @@ function App() {
             signal: controller.signal,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ check_only: true })
-          });
+          }, currentEmulatorSessionIdRef.current || undefined);
           const reader = res.body?.getReader();
           if (reader) {
             while (true) {
@@ -167,18 +172,63 @@ function App() {
     const controller = new AbortController();
     emulatorKeepAliveRef.current = controller;
 
+    // Generate a new session ID for this emulator start
+    const newSessionId = generateNewSessionId();
+    currentEmulatorSessionIdRef.current = newSessionId;
+
     setEmulatorStatus('running');
     
     try {
       const yamlConfig = generateYaml(config);
-      await apiFetch('/emulator/start', { 
+      const res = await apiFetch('/emulator/start', { 
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ yaml: yamlConfig })
-      });
+      }, newSessionId);  // Pass new session ID
       
-      // Connection preserved by background useEffect or implicit streaming
+      // Check for session limit error
+      if (res.status === 429) {
+        const errorData = await res.json();
+        alert(errorData.message || 'Too many emulators are currently running. Please try again later.');
+        setEmulatorStatus('stopped');
+        setIsEmulatorOpen(false);
+        emulatorKeepAliveRef.current = null;
+        return;
+      }
+      
+      // Check for other errors
+      if (!res.ok) {
+        const errorData = await res.json();
+        alert(errorData.message || 'Failed to start emulator');
+        setEmulatorStatus('error');
+        setIsEmulatorOpen(false);
+        emulatorKeepAliveRef.current = null;
+        return;
+      }
+      
+      const reader = res.body?.getReader();
+      if (reader) {
+        const decoder = new TextDecoder();
+        const { value } = await reader.read();
+        const text = decoder.decode(value);
+        try {
+          // Parse the first line which contains the status and ports
+          const firstLine = text.split('\n')[0];
+          const data = JSON.parse(firstLine);
+          if (data.websockify_port) {
+            setWebsockifyPort(data.websockify_port);
+          }
+        } catch (e) {
+          console.error("Failed to parse emulator start response", e);
+        }
+        
+        // Continue reading to keep connection alive
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+      }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         setEmulatorStatus('error');
@@ -198,10 +248,12 @@ function App() {
     }
 
     try {
-      await apiFetch('/emulator/stop', { method: 'POST' });
+      await apiFetch('/emulator/stop', { method: 'POST' }, currentEmulatorSessionIdRef.current || undefined);
     } catch (e) {
       console.error("Failed to stop emulator", e);
     }
+    
+    currentEmulatorSessionIdRef.current = null;
   };
 
   useEffect(() => {
@@ -423,7 +475,9 @@ function App() {
 
       <EmulatorDialog 
         isOpen={isEmulatorOpen} 
-        onClose={() => setIsEmulatorOpen(false)} 
+        onClose={() => setIsEmulatorOpen(false)}
+        websockifyPort={websockifyPort}
+        emulatorSessionId={currentEmulatorSessionIdRef.current}
       />
     </div>
   );

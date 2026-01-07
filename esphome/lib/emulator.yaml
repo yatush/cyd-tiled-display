@@ -2,6 +2,7 @@ substitutions:
   device_name: "emulator"
   friendly_name: Emulator
   lib_dir: ""
+  tiles_file: "user_config.yaml"
 
 packages:
   lib: !include lib_emulator.yaml
@@ -106,4 +107,4 @@ font:
     glyphs: !include roboto_glyphs.yaml
     
 tile_ui:
-  tiles_file: user_config.yaml
+  tiles_file: $tiles_file

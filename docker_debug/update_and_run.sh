@@ -23,7 +23,7 @@ echo "Starting container..."
 docker run -d --name $CONTAINER_NAME \
   -v "$(pwd)/vnc_startup.sh:/app/vnc_startup.sh" \
   -v "$(pwd)/nginx.conf:/etc/nginx/nginx.conf" \
-  -v "cyd_esphome_cache:/app/esphome/.esphome/build" \
+  -v "cyd_pio_cache:/tmp/pio_cache" \
   -p 6080:6080 -p 8080:8080 -p 8099:8099 -p 5900:5900 \
   $IMAGE_NAME
 
@@ -38,6 +38,8 @@ echo "Updating Python backend scripts..."
 docker cp ../configurator/server.py "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/generate_tiles_api.py "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/run_emulator.sh "${CONTAINER_NAME}:/app/configurator/"
+docker cp ../configurator/run_session.sh "${CONTAINER_NAME}:/app/configurator/"
+docker exec $CONTAINER_NAME chmod +x /app/configurator/run_session.sh
 
 echo ""
 echo "---------------------------------------------------"

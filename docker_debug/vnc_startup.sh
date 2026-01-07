@@ -68,4 +68,8 @@ websockify --web /app/novnc 6081 localhost:5900 2>&1 &
 
 echo "VNC environment ready"
 
+# Test nginx config before proceeding
+echo "Testing nginx configuration..."
+nginx -t -c /tmp/nginx.conf || (echo "Nginx config test failed!" && cat /tmp/nginx.conf && exit 1)
+
 exec "$@"

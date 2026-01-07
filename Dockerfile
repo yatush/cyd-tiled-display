@@ -32,10 +32,15 @@ RUN chmod +x /app/vnc_startup.sh
 COPY configurator/generate_tiles_api.py /app/configurator/
 COPY configurator/server.py /app/configurator/
 COPY configurator/run_emulator.sh /app/configurator/
-RUN chmod +x /app/configurator/run_emulator.sh
+COPY configurator/run_session.sh /app/configurator/
+RUN chmod +x /app/configurator/run_emulator.sh /app/configurator/run_session.sh
 
 # Copy ESPHome files (needed for schema and scripts)
 COPY esphome /app/esphome
+
+# Pre-compile the emulator to speed up session starts (populates PlatformIO cache)
+# We use || true because it might need a display for full run, but compile should work.
+RUN cd /app/esphome && esphome compile lib/emulator.yaml || true
 
 # Copy nginx config
 COPY docker_debug/nginx.conf /etc/nginx/nginx.conf
