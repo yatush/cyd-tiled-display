@@ -32,7 +32,7 @@ The project transforms a visual design into a working device through three stage
 
 # Try it Online
 
-You can go to [https://tinyurl.com/cyd-tiled-diisplay](https://tinyurl.com/cyd-tiled-diisplay), create the configuration, test it in the emulator, and download it to your computer.
+You can go to [https://tinyurl.com/cyd-tiled-diisplay](https://tinyurl.com/cyd-tiled-diisplay), create the configuration, test it in the emulator, and download it to your computer. (For easy example to see, go to "File Management" -> "Load Device" -> "test_device.yaml")
 
 **Note**: The Emulator is very buggy running in the GCP hosting, as it cannot deal with multiple requests. For better experience, please run through the HA addon, or locally (see installation below).
 
