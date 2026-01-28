@@ -15,7 +15,7 @@ import {
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, onRenamePage, haEntities }: { 
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig }: { 
   selectedTile: Tile | null, 
   onUpdate: (t: Tile) => void, 
   onDelete: () => void,
@@ -24,7 +24,8 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   activePage: Page,
   onUpdatePage: (p: Page) => void,
   onRenamePage: (oldId: string, newId: string) => void,
-  haEntities: HaEntity[]
+  haEntities: HaEntity[],
+  setConfig?: (config: Config) => void
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
 
@@ -77,12 +78,55 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
       
       <div>
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Page Flags</label>
-        <ArrayInput 
-          label="Flags" 
-          values={activePage.flags || []} 
-          onChange={v => onUpdatePage({...activePage, flags: v})} 
-          allowedValues={['BASE', 'TEMPORARY', 'FAST_REFRESH']}
-        />
+        <div className="space-y-2">
+          {['BASE', 'TEMPORARY', 'FAST_REFRESH'].map(flag => {
+            const isChecked = activePage.flags?.includes(flag) || false;
+            const isBase = flag === 'BASE';
+            const isCurrentBase = activePage.flags?.includes('BASE');
+            const isTemporary = activePage.flags?.includes('TEMPORARY');
+            
+            // Cannot uncheck BASE if it's the current base screen
+            // Cannot check BASE if page is TEMPORARY
+            const isDisabled = (isBase && isCurrentBase) || (isBase && isTemporary && !isChecked);
+            
+            return (
+              <div key={flag} className="flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  id={`flag-${flag}`}
+                  checked={isChecked}
+                  disabled={isDisabled}
+                  onChange={(e) => {
+                    if (isBase && e.target.checked) {
+                      // When setting BASE on this page, remove it from all others
+                      if (setConfig) {
+                        const updatedPages = config.pages.map(p => ({
+                          ...p,
+                          flags: p.id === activePage.id 
+                            ? [...(p.flags || []), 'BASE'] 
+                            : (p.flags?.filter(f => f !== 'BASE') || [])
+                        }));
+                        setConfig({...config, pages: updatedPages});
+                      }
+                    } else {
+                      // For other flags, just add/remove normally
+                      const newFlags = e.target.checked 
+                        ? [...(activePage.flags || []), flag]
+                        : (activePage.flags || []).filter(f => f !== flag);
+                      onUpdatePage({...activePage, flags: newFlags});
+                    }
+                  }}
+                  className={`rounded ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                />
+                <label htmlFor={`flag-${flag}`} className={`text-sm ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                  {flag}
+                  {isBase && isCurrentBase && <span className="text-xs text-slate-500 ml-1">(cannot remove)</span>}
+                  {isBase && isTemporary && !isChecked && <span className="text-xs text-slate-500 ml-1">(cannot use with TEMPORARY)</span>}
+                </label>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

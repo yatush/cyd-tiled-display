@@ -89,6 +89,13 @@ def validate_tiles_config(
                     f"Screen '{screen_id}': Invalid flag(s): {', '.join(invalid_flags)}. "
                     f"Valid flags are: {', '.join(sorted(VALID_FLAGS))}"
                 )
+            
+            # Validate that TEMPORARY pages cannot be BASE
+            if "TEMPORARY" in flags and "BASE" in flags:
+                raise ValueError(
+                    f"Screen '{screen_id}': A TEMPORARY page cannot be a BASE page. "
+                    f"Remove either the TEMPORARY or BASE flag."
+                )
         
         if "BASE" in flags:
             base_screen_count += 1

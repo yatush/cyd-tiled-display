@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, Monitor, Copy } from 'lucide-react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, Monitor, Copy, Home } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
 import { isAddon } from '../utils/api';
@@ -184,8 +184,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                         {expandedPages.has(p.id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                                       </button>
                                       <span className="text-xs truncate font-medium">{p.id}</span>
+                                      {p.flags?.includes('BASE') && (
+                                          <Home size={12} className="text-amber-500 flex-shrink-0" title="Base Screen" />
+                                      )}
                                   </div>
-                                  {config.pages.length > 1 && (
+                                  {config.pages.length > 1 && !p.flags?.includes('BASE') && (
                                       <button
                                           onClick={(e) => {
                                               e.stopPropagation();
