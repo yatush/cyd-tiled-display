@@ -384,15 +384,15 @@ void PerformHaAction(
 
   esphome::api::HomeassistantActionRequest request;
   // Construct the service name based on the entity and action.
-  request.set_service(StringRef(service_name));
+  request.service = StringRef(service_name.c_str());
   esphome::api::HomeassistantServiceMap entity_id_kv;
-  entity_id_kv.set_key(StringRef("entity_id"));
-  entity_id_kv.value = entity;
+  entity_id_kv.key = StringRef("entity_id");
+  entity_id_kv.value = StringRef(entity.c_str());
   request.data.push_back(entity_id_kv);
   // Add any additional data to the service call.
   for (const auto pair : data) {
-    entity_id_kv.set_key(StringRef(pair.first));
-    entity_id_kv.value = pair.second;
+    entity_id_kv.key = StringRef(pair.first.c_str());
+    entity_id_kv.value = StringRef(pair.second.c_str());
     request.data.push_back(entity_id_kv);
   }
   id(api_server).send_homeassistant_action(request);
