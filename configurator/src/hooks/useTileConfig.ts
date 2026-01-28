@@ -4,7 +4,7 @@ import { Config, Tile, Page } from '../types';
 const DEFAULT_CONFIG: Config = {
   project_path: 'tiles.yaml',
   pages: [
-    { id: 'main_page', tiles: [], rows: 2, cols: 3 }
+    { id: 'main_page', tiles: [], rows: 2, cols: 3, flags: ['BASE'] }
   ]
 };
 
@@ -30,14 +30,59 @@ export function useTileConfig() {
   const [history, setHistory] = useState<Config[]>([]);
   const [future, setFuture] = useState<Config[]>([]);
 
+  // Helper function to ensure only one BASE screen
+  const ensureSingleBase = (config: Config): Config => {
+    if (!config.pages || config.pages.length === 0) return config;
+
+    const basePages = config.pages.filter(p => p.flags?.includes('BASE'));
+    
+    // If no BASE page exists, make the first one BASE
+    if (basePages.length === 0) {
+      return {
+        ...config,
+        pages: config.pages.map((p, idx) => 
+          idx === 0 ? { ...p, flags: [...(p.flags || []), 'BASE'] } : p
+        )
+      };
+    }
+
+    // If multiple BASE pages exist, keep only the first one
+    if (basePages.length > 1) {
+      let foundFirst = false;
+      return {
+        ...config,
+        pages: config.pages.map(p => {
+          const isBase = p.flags?.includes('BASE');
+          if (isBase) {
+            if (!foundFirst) {
+              foundFirst = true;
+              return p; // Keep the first BASE
+            } else {
+              // Remove BASE flag from other pages
+              return {
+                ...p,
+                flags: p.flags?.filter(f => f !== 'BASE') || []
+              };
+            }
+          }
+          return p;
+        })
+      };
+    }
+
+    return config;
+  };
+
   const setConfig = useCallback((newConfig: Config | ((prev: Config) => Config), saveToHistory = true) => {
     setConfigState(prev => {
       const next = typeof newConfig === 'function' ? newConfig(prev) : newConfig;
+      // Ensure only one BASE screen
+      const ensured = ensureSingleBase(next);
       if (saveToHistory) {
         setHistory(h => [...h, prev].slice(-50)); // Keep last 50 states
         setFuture([]);
       }
-      return next;
+      return ensured;
     });
   }, []);
 

@@ -50,6 +50,13 @@ class TestValidation(unittest.TestCase):
             validate_tiles_config([self.valid_screen, screen2])
         self.assertIn("Multiple screens with 'BASE' flag found", str(cm.exception))
 
+        # Fail: TEMPORARY and BASE flags together
+        invalid_flags = self.valid_screen.copy()
+        invalid_flags["flags"] = ["BASE", "TEMPORARY"]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config([invalid_flags])
+        self.assertIn("TEMPORARY page cannot be a BASE page", str(cm.exception))
+
     def test_validate_reachability(self):
         # Screen 2 cannot reach BASE
         screen2 = {

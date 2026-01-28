@@ -386,6 +386,7 @@ function App() {
           haEntities={haEntities}
           onUpdatePage={handleUpdatePage}
           onRenamePage={handleRenamePage}
+          setConfig={setConfig}
         />
       </div>
       </div>
