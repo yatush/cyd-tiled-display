@@ -172,7 +172,7 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
     vncUrl = 'about:blank';
   } else if (isLocalDevDirect) {
     // Local development direct mode: use direct NoVNC proxy on the allocated session port
-    vncUrl = `http://${window.location.hostname}:${websockifyPort}/vnc_lite.html?autoconnect=true&resize=scale`;
+    vncUrl = `http://${window.location.hostname}:${websockifyPort}/vnc.html?autoconnect=true&resize=scale`;
   } else {
     // Cloud Run, production, HA Ingress, or local nginx mode: use nginx-proxied websockify
     const encryptParam = isSecure ? '&encrypt=true' : '';
@@ -186,7 +186,7 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
     // Updated path to use session-specific routing via Nginx
     const wsPath = `${pathPrefix}/novnc/session/${websockifyPort}/websockify`.replace(/^\//, '');
     
-    vncUrl = `${pathPrefix}/novnc/session/${websockifyPort}/vnc_lite.html?autoconnect=true&resize=scale&host=${window.location.hostname}&port=${window.location.port || (isSecure ? '443' : '80')}&path=${encodeURIComponent(wsPath)}${encryptParam}`;
+    vncUrl = `${pathPrefix}/novnc/session/${websockifyPort}/vnc.html?autoconnect=true&resize=scale&host=${window.location.hostname}&port=${window.location.port || (isSecure ? '443' : '80')}&path=${encodeURIComponent(wsPath)}${encryptParam}`;
   }
 
   return (

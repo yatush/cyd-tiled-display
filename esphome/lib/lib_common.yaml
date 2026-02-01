@@ -1,7 +1,4 @@
 esphome:
-  platformio_options:
-    build_flags:
-      - -DUSE_API_HOMEASSISTANT_SERVICES
   includes:
     - ${lib_dir}draw_state.h
     - ${lib_dir}utils.h
@@ -218,6 +215,14 @@ text_sensor:
     internal: true
 
 script:
+  # Dummy script to force USER_API_HOMEASSISTANT_SERVICES to be defined
+  - id: _force_ha_services
+    then:
+      - homeassistant.service:
+          service: homeassistant.update_entity
+          data:
+            entity_id: sensor.dummy
+
   - id: increase_bright
     then:
       - lambda: |-

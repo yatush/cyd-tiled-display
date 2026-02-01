@@ -15,6 +15,16 @@ import requests
 import generate_tiles_api
 from aioesphomeapi import APIClient
 
+import logging
+
+# Filter out successful log requests to reduce noise
+class LogsEndpointFilter(logging.Filter):
+    def filter(self, record):
+        return not ("/api/emulator/logs" in record.getMessage() and " 200 " in record.getMessage())
+
+# Apply filter to Werkzeug logger
+logging.getLogger("werkzeug").addFilter(LogsEndpointFilter())
+
 app = Flask(__name__, static_folder='dist')
 
 # Activity Monitoring
@@ -58,6 +68,7 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
 
     async def on_service_call(call):
         print(f"API PROXY [{session_id}]: Service call received: {call.domain}.{call.service}", flush=True)
+        print(f"API PROXY [{session_id}]: Raw Data: {call.data} (Type: {type(call.data)})", flush=True)
         
         # Determine target URL and Token for HA
         if ha_url and ha_url.strip():
@@ -83,10 +94,22 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
         try:
             # Service calls in HA are POST requests
             # Convert call.data (which might be a complex object) to JSON
-            res = requests.post(url, headers=headers, json=call.data, timeout=10)
-            print(f"API PROXY [{session_id}]: Service call forwarded to HA. Status: {res.status_code}", flush=True)
+            # Ensure data is a dict
+            payload = dict(call.data) if call.data else {}
+            
+            print(f"API PROXY [{session_id}]: Forwarding to {url} with payload: {payload}", flush=True)
+            
+            res = requests.post(url, headers=headers, json=payload, timeout=10)
+            
+            print(f"API PROXY [{session_id}]: HA Response [{res.status_code}]: {res.text}", flush=True)
+            
+            if res.status_code not in [200, 201]:
+                 print(f"API PROXY [{session_id}]: WARNING - HA rejected the call!", flush=True)
+                 
         except Exception as e:
             print(f"API PROXY [{session_id}]: Error forwarding service call: {str(e)}", flush=True)
+            import traceback
+            traceback.print_exc()
 
     try:
         await client.connect(login=True)
