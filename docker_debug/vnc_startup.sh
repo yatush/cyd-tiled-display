@@ -61,7 +61,7 @@ echo "x11vnc started successfully"
 
 # Start websockify instances
 echo "Starting websockify on port 6080..."
-/app/novnc/utils/novnc_proxy --vnc localhost:5900 --listen 6080 2>&1 &
+/app/novnc/utils/novnc_proxy --vnc localhost:5900 --listen 6080 --web /app/novnc 2>&1 &
 
 echo "Starting websockify on port 6081 (for Cloud Run nginx proxy)..."
 websockify --web /app/novnc 6081 localhost:5900 2>&1 &
