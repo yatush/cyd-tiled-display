@@ -55,11 +55,10 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
     Connects to the emulator's API port and listens for Home Assistant service calls.
     When a call is received, it's forwarded to the actual Home Assistant instance.
     """
-    print(f"API PROXY [{session_id}]: Starting proxy on port {port}...", flush=True)
+    print(f"API PROXY [{session_id}]: Starting proxy (target port {port})...", flush=True)
     
     # Wait for the emulator to start and listen on the port
-    await asyncio.sleep(5)
-    
+    # It can take a long time to compile, so we retry for up to 3 minutes
     client = APIClient(
         address="127.0.0.1",
         port=port,
@@ -111,25 +110,43 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
             import traceback
             traceback.print_exc()
 
-    try:
-        await client.connect(login=True)
-        print(f"API PROXY [{session_id}]: Connected to emulator API", flush=True)
-        
-        # Subscribe to Home Assistant service calls from the device
-        await client.subscribe_home_assistant_services(on_service_call)
-        
-        # Keep the proxy running as long as the session exists
-        while True:
+    max_retries = 60 # Try for 5 minutes total (5s * 60)
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
             with sessions_lock:
                 if session_id not in sessions:
-                    break
+                    print(f"API PROXY [{session_id}]: Session removed, stopping proxy", flush=True)
+                    return
+
+            print(f"API PROXY [{session_id}]: Attempting connection (Attempt {retry_count + 1}/{max_retries})...", flush=True)
+            await client.connect(login=True)
+            print(f"API PROXY [{session_id}]: Connected to emulator API", flush=True)
+            
+            # Subscribe to Home Assistant service calls from the device
+            await client.subscribe_home_assistant_services(on_service_call)
+            
+            # Reset retry count once connected
+            retry_count = 0
+            
+            # Keep the proxy running as long as the session exists
+            while True:
+                with sessions_lock:
+                    if session_id not in sessions:
+                        return
+                await asyncio.sleep(5)
+                
+        except Exception as e:
+            retry_count += 1
+            print(f"API PROXY [{session_id}]: Connection failed or lost: {str(e)}. Retrying in 5s...", flush=True)
+            try:
+                await client.disconnect()
+            except:
+                pass
             await asyncio.sleep(5)
             
-    except Exception as e:
-        print(f"API PROXY [{session_id}]: Proxy loop terminated: {str(e)}", flush=True)
-    finally:
-        await client.disconnect()
-        print(f"API PROXY [{session_id}]: Disconnected", flush=True)
+    print(f"API PROXY [{session_id}]: Failed to connect after {max_retries} attempts. Giving up.", flush=True)
 
 def api_proxy_thread(session_id, port, ha_url, ha_token):
     """Entry point for the proxy thread."""

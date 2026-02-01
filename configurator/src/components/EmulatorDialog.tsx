@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import Ansi from 'ansi-to-react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 
 interface EmulatorDialogProps {
@@ -18,6 +18,7 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isIframeLoaded, setIsIframeLoaded] = useState(false);
   const [shouldShowIframe, setShouldShowIframe] = useState(false);
+  const [vncKey, setVncKey] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const savedScrollTop = useRef<number>(0);
@@ -172,7 +173,7 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
     vncUrl = 'about:blank';
   } else if (isLocalDevDirect) {
     // Local development direct mode: use direct NoVNC proxy on the allocated session port
-    vncUrl = `http://${window.location.hostname}:${websockifyPort}/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`;
+    vncUrl = `http://${window.location.hostname}:${websockifyPort}/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000&v=${vncKey}`;
   } else {
     // Cloud Run, production, HA Ingress, or local nginx mode: use nginx-proxied websockify
     const encryptParam = isSecure ? '&encrypt=true' : '';
@@ -186,17 +187,32 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
     // Updated path to use session-specific routing via Nginx
     const wsPath = `${pathPrefix}/novnc/session/${websockifyPort}/websockify`.replace(/^\//, '');
     
-    vncUrl = `${pathPrefix}/novnc/session/${websockifyPort}/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000&host=${window.location.hostname}&port=${window.location.port || (isSecure ? '443' : '80')}&path=${encodeURIComponent(wsPath)}${encryptParam}`;
+    vncUrl = `${pathPrefix}/novnc/session/${websockifyPort}/vnc_lite.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000&host=${window.location.hostname}&port=${window.location.port || (isSecure ? '443' : '80')}&path=${encodeURIComponent(wsPath)}${encryptParam}&v=${vncKey}`;
   }
+
+  const handleReconnectVnc = () => {
+    setIsIframeLoaded(false);
+    setVncKey(prev => prev + 1);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-slate-200">
         <div className="flex justify-between items-center p-4 border-b bg-slate-50">
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-            Device Emulator
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+              Device Emulator
+            </h2>
+            <button 
+              onClick={handleReconnectVnc}
+              className="px-2 py-1 text-xs bg-slate-200 hover:bg-slate-300 rounded text-slate-600 flex items-center gap-1 transition-colors"
+              title="Refresh VNC connection"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Reconnect VNC
+            </button>
+          </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
