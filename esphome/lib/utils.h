@@ -378,23 +378,29 @@ void PerformHaAction(
           : action;
 
   ESP_LOGI("ha_action", "Service: %s, Entity: %s", service_name.c_str(), entity.c_str());
-  for (const auto pair : data) {
+  for (const auto& pair : data) {
     ESP_LOGI("ha_action", "  Data: %s = %s", pair.first.c_str(), pair.second.c_str());
   }
 
   esphome::api::HomeassistantActionRequest request;
-  // Construct the service name based on the entity and action.
-  request.service = StringRef(service_name.c_str());
-  esphome::api::HomeassistantServiceMap entity_id_kv;
-  entity_id_kv.key = StringRef("entity_id");
-  entity_id_kv.value = StringRef(entity.c_str());
-  request.data.push_back(entity_id_kv);
-  // Add any additional data to the service call.
-  for (const auto pair : data) {
-    entity_id_kv.key = StringRef(pair.first.c_str());
-    entity_id_kv.value = StringRef(pair.second.c_str());
-    request.data.push_back(entity_id_kv);
+  // Set the service name using the proper setter method
+  request.set_service(StringRef(service_name.c_str()));
+  
+  // Initialize the data vector with the correct size (1 for entity_id + additional data)
+  request.data.init(1 + data.size());
+  
+  // Add entity_id as the first data item
+  auto& entity_kv = request.data.emplace_back();
+  entity_kv.set_key(StringRef("entity_id"));
+  entity_kv.value = entity;  // value is std::string, not StringRef
+  
+  // Add any additional data to the service call
+  for (const auto& pair : data) {
+    auto& kv = request.data.emplace_back();
+    kv.set_key(StringRef(pair.first.c_str()));
+    kv.value = pair.second;  // value is std::string, not StringRef
   }
+  
   id(api_server).send_homeassistant_action(request);
 }
 
