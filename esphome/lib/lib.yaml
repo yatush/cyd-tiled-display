@@ -1,7 +1,4 @@
 esphome:
-  platformio_options:
-    build_flags:
-      - -DUSE_API_HOMEASSISTANT_SERVICES
 
 packages:
   common: !include lib_common.yaml

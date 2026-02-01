@@ -14,7 +14,7 @@ WORKDIR /app
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
     xvfb x11vnc fluxbox bash git coreutils nginx procps net-tools \
-    && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify
+    && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify aioesphomeapi
 
 # Install noVNC
 RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \

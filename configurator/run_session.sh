@@ -1,11 +1,12 @@
 #!/bin/bash
-# Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file>
+# Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file> <api_port>
 
 SESSION_ID=$1
 DISPLAY_NUM=$2
 VNC_PORT=$3
 WEBSOCKIFY_PORT=$4
 TILES_FILE=$5
+API_PORT=$6
 
 if [ -z "$TILES_FILE" ]; then
     TILES_FILE="user_config.yaml"
@@ -69,4 +70,4 @@ mkdir -p "$PLATFORMIO_CACHEDIR"
 
 # Use unique device_name to avoid build directory conflicts
 # The -s substitutions must come before the 'run' command
-stdbuf -oL -eL esphome -s tiles_file "$TILES_FILE" -s device_name "emulator_$SAFE_SESSION_ID" run lib/emulator.yaml
+stdbuf -oL -eL esphome -s tiles_file "$TILES_FILE" -s device_name "emulator_$SAFE_SESSION_ID" -s api_port "$API_PORT" run lib/emulator.yaml

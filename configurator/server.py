@@ -9,9 +9,11 @@ import signal
 import socket
 import time
 import threading
+import asyncio
 from flask import Flask, request, send_from_directory, jsonify, Response, stream_with_context
 import requests
 import generate_tiles_api
+from aioesphomeapi import APIClient
 
 app = Flask(__name__, static_folder='dist')
 
@@ -37,6 +39,85 @@ def update_activity(session_id=None):
         with sessions_lock:
             if session_id in sessions:
                 sessions[session_id]['last_activity'] = time.time()
+
+async def run_api_proxy(session_id, port, ha_url, ha_token):
+    """
+    Connects to the emulator's API port and listens for Home Assistant service calls.
+    When a call is received, it's forwarded to the actual Home Assistant instance.
+    """
+    print(f"API PROXY [{session_id}]: Starting proxy on port {port}...", flush=True)
+    
+    # Wait for the emulator to start and listen on the port
+    await asyncio.sleep(5)
+    
+    client = APIClient(
+        address="127.0.0.1",
+        port=port,
+        password="",
+    )
+
+    async def on_service_call(call):
+        print(f"API PROXY [{session_id}]: Service call received: {call.domain}.{call.service}", flush=True)
+        
+        # Determine target URL and Token for HA
+        if ha_url and ha_url.strip():
+            # Remote HA mode
+            url = f"{ha_url.rstrip('/')}/api/services/{call.domain}/{call.service}"
+            headers = {
+                "Content-Type": "application/json",
+            }
+            if ha_token:
+                headers["Authorization"] = f"Bearer {ha_token}"
+        else:
+            # Local HA mode (Supervisor)
+            if not SUPERVISOR_TOKEN:
+                print(f"API PROXY [{session_id}]: Error - SUPERVISOR_TOKEN not set", flush=True)
+                return
+                 
+            url = f"{HA_URL}/api/services/{call.domain}/{call.service}"
+            headers = {
+                "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+                "Content-Type": "application/json",
+            }
+
+        try:
+            # Service calls in HA are POST requests
+            # Convert call.data (which might be a complex object) to JSON
+            res = requests.post(url, headers=headers, json=call.data, timeout=10)
+            print(f"API PROXY [{session_id}]: Service call forwarded to HA. Status: {res.status_code}", flush=True)
+        except Exception as e:
+            print(f"API PROXY [{session_id}]: Error forwarding service call: {str(e)}", flush=True)
+
+    try:
+        await client.connect(login=True)
+        print(f"API PROXY [{session_id}]: Connected to emulator API", flush=True)
+        
+        # Subscribe to Home Assistant service calls from the device
+        await client.subscribe_home_assistant_services(on_service_call)
+        
+        # Keep the proxy running as long as the session exists
+        while True:
+            with sessions_lock:
+                if session_id not in sessions:
+                    break
+            await asyncio.sleep(5)
+            
+    except Exception as e:
+        print(f"API PROXY [{session_id}]: Proxy loop terminated: {str(e)}", flush=True)
+    finally:
+        await client.disconnect()
+        print(f"API PROXY [{session_id}]: Disconnected", flush=True)
+
+def api_proxy_thread(session_id, port, ha_url, ha_token):
+    """Entry point for the proxy thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(run_api_proxy(session_id, port, ha_url, ha_token))
+    except Exception as e:
+        print(f"API PROXY [{session_id}]: Thread error: {str(e)}", flush=True)
+    finally:
+        loop.close()
 
 @app.before_request
 def before_request():
@@ -308,17 +389,23 @@ def start_emulator():
     
     vnc_port = 5900 + display
     websockify_port = 6000 + display
+    api_port = 6050 + display
+    
+    # Get HA credentials for the proxy
+    ha_url = request.headers.get('x-ha-url')
+    ha_token = request.headers.get('x-ha-token')
+    is_mock = request.headers.get('x-ha-mock') == 'true'
     
     try:
         os.chmod(script_path, 0o755)
-        print(f"Starting session {session_id}: display={display}, vnc={vnc_port}, ws={websockify_port}", flush=True)
+        print(f"Starting session {session_id}: display={display}, vnc={vnc_port}, ws={websockify_port}, api={api_port}", flush=True)
         
         with open(log_path, 'w', buffering=1) as log_file:
             log_file.write(f"--- Starting Session {session_id} ---\n")
             log_file.flush()
-            # Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file>
+            # Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file> <api_port>
             proc = subprocess.Popen(
-                ['/bin/bash', script_path, session_id, str(display), str(vnc_port), str(websockify_port), user_config_filename],
+                ['/bin/bash', script_path, session_id, str(display), str(vnc_port), str(websockify_port), user_config_filename, str(api_port)],
                 stdout=log_file, 
                 stderr=subprocess.STDOUT,
                 cwd=os.path.dirname(__file__),
@@ -335,6 +422,7 @@ def start_emulator():
                 'display': display,
                 'vnc_port': vnc_port,
                 'websockify_port': websockify_port,
+                'api_port': api_port,
                 'connections': 0,
                 'last_activity': None,  # Will be set on VNC connection
                 'session_start_time': time.time(),  # Track session creation time
@@ -342,6 +430,17 @@ def start_emulator():
                 'log_path': log_path,
                 'user_config_path': user_config_path
             }
+        
+        # Start API proxy thread to forward service calls from emulator to HA
+        # Only start if not in mock mode and we have some way to reach HA
+        if not is_mock and (SUPERVISOR_TOKEN or (ha_url and ha_url.strip())):
+            threading.Thread(
+                target=api_proxy_thread, 
+                args=(session_id, api_port, ha_url, ha_token),
+                daemon=True
+            ).start()
+        else:
+            print(f"API PROXY [{session_id}]: Skipping start (Mock mode or no HA credentials)", flush=True)
             
         return create_emulator_stream(session_id, "started")
     except Exception as e:

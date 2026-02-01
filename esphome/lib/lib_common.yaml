@@ -1,4 +1,7 @@
 esphome:
+  platformio_options:
+    build_flags:
+      - -DUSE_API_HOMEASSISTANT_SERVICES
   includes:
     - ${lib_dir}draw_state.h
     - ${lib_dir}utils.h
@@ -12,10 +15,14 @@ esphome:
 packages:
   custom_lib: !include lib_custom.yaml
 
+substitutions:
+  api_port: "6053"
+
 logger:
 
 api:
   id: api_server
+  port: ${api_port}
 
 globals:
   - id: rows
