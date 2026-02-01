@@ -65,14 +65,26 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
         password="",
     )
 
-    async def on_service_call(call):
-        print(f"API PROXY [{session_id}]: Service call received: {call.domain}.{call.service}", flush=True)
-        print(f"API PROXY [{session_id}]: Raw Data: {call.data} (Type: {type(call.data)})", flush=True)
+    def handle_service_call(call):
+        """
+        Inner function to handle the service call. 
+        Note: call is a HomeassistantServiceCall object.
+        """
+        # HomeassistantServiceCall has .service (e.g. "light.turn_on"), .data (dict), etc.
+        # We need to split service into domain and service_name
+        if '.' in call.service:
+            domain, service_name = call.service.split('.', 1)
+        else:
+            domain = "homeassistant"
+            service_name = call.service
+
+        print(f"API PROXY [{session_id}]: Service call received: {domain}.{service_name}", flush=True)
+        print(f"API PROXY [{session_id}]: Data: {call.data}", flush=True)
         
         # Determine target URL and Token for HA
         if ha_url and ha_url.strip():
             # Remote HA mode
-            url = f"{ha_url.rstrip('/')}/api/services/{call.domain}/{call.service}"
+            url = f"{ha_url.rstrip('/')}/api/services/{domain}/{service_name}"
             headers = {
                 "Content-Type": "application/json",
             }
@@ -84,17 +96,15 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
                 print(f"API PROXY [{session_id}]: Error - SUPERVISOR_TOKEN not set", flush=True)
                 return
                  
-            url = f"{HA_URL}/api/services/{call.domain}/{call.service}"
+            url = f"{HA_URL}/api/services/{domain}/{service_name}"
             headers = {
                 "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
                 "Content-Type": "application/json",
             }
 
         try:
-            # Service calls in HA are POST requests
-            # Convert call.data (which might be a complex object) to JSON
-            # Ensure data is a dict
-            payload = dict(call.data) if call.data else {}
+            # Merge data and data_template (ESPHome often uses templates)
+            payload = {**call.data, **call.data_template}
             
             print(f"API PROXY [{session_id}]: Forwarding to {url} with payload: {payload}", flush=True)
             
@@ -107,10 +117,13 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
                  
         except Exception as e:
             print(f"API PROXY [{session_id}]: Error forwarding service call: {str(e)}", flush=True)
-            import traceback
-            traceback.print_exc()
 
-    max_retries = 60 # Try for 5 minutes total (5s * 60)
+    # Wrap the sync handler to be called from the event loop using an executor
+    def on_service_call_callback(call):
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, handle_service_call, call)
+
+    max_retries = 120 # Try for 10 minutes total (5s * 120)
     retry_count = 0
     
     while retry_count < max_retries:
@@ -125,7 +138,7 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
             print(f"API PROXY [{session_id}]: Connected to emulator API", flush=True)
             
             # Subscribe to Home Assistant service calls from the device
-            await client.subscribe_home_assistant_services(on_service_call)
+            client.subscribe_service_calls(on_service_call_callback)
             
             # Reset retry count once connected
             retry_count = 0
