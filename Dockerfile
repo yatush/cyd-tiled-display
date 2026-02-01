@@ -19,7 +19,8 @@ RUN apk add --no-cache g++ gcc musl-dev python3-dev \
 # Install noVNC
 RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
     git clone --depth 1 https://github.com/novnc/websockify /app/novnc/utils/websockify && \
-    ln -s /app/novnc/vnc.html /app/novnc/index.html
+    ln -s /app/novnc/vnc.html /app/novnc/index.html && \
+    sed -i "s/settingElem.addEventListener/if (settingElem) settingElem.addEventListener/" /app/novnc/app/ui.js
 
 # Copy built frontend
 COPY --from=build-frontend /app/dist /app/configurator/dist
