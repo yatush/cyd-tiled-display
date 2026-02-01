@@ -115,6 +115,7 @@ class HAProxy:
             Handle the service call. 
             Note: call is a HomeassistantServiceCall object.
             """
+            self.log(f"DEBUG: Service Call Object: {call!r}")
             # We need to split service into domain and service_name
             if '.' in call.service:
                 domain, service_name = call.service.split('.', 1)
