@@ -12,6 +12,7 @@ import threading
 import asyncio
 from flask import Flask, request, send_from_directory, jsonify, Response, stream_with_context
 import requests
+from api_proxy import run_proxy_thread
 import generate_tiles_api
 from aioesphomeapi import APIClient
 
@@ -50,258 +51,7 @@ def update_activity(session_id=None):
             if session_id in sessions:
                 sessions[session_id]['last_activity'] = time.time()
 
-async def run_api_proxy(session_id, port, ha_url, ha_token):
-    """
-    Connects to the emulator's API port and listens for Home Assistant service calls.
-    When a call is received, it's forwarded to the actual Home Assistant instance.
-    """
-    print(f"API PROXY [{session_id}]: Starting proxy (target port {port})...", flush=True)
-    
-    # Wait for the emulator to start and listen on the port
-    # It can take a long time to compile, so we retry for up to 3 minutes
-    client = APIClient(
-        address="127.0.0.1",
-        port=port,
-        password="",
-    )
 
-    def fetch_and_send_ha_state(entity_id, attribute):
-        """Fetch state from HA and send to emulator."""
-        try:
-             # Determine URL/Header (Reusing logic from handle_service_call would be cleaner, but copying for now)
-            if ha_url and ha_url.strip():
-                url = f"{ha_url.rstrip('/')}/api/states/{entity_id}"
-                headers = {"Content-Type": "application/json"}
-                if ha_token:
-                    headers["Authorization"] = f"Bearer {ha_token}"
-            else:
-                if not SUPERVISOR_TOKEN:
-                    return
-                url = f"{HA_URL}/api/states/{entity_id}"
-                headers = {
-                    "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
-                    "Content-Type": "application/json",
-                }
-
-            logger.info(f"API PROXY [{session_id}]: Fetching state for {entity_id}")
-            res = requests.get(url, headers=headers, timeout=5)
-            
-            if res.status_code == 200:
-                data = res.json()
-                state = data.get("state", "")
-                
-                # If specific attribute requested
-                if attribute:
-                    attrs = data.get("attributes", {})
-                    # Convert to string as ESPHome expects string states for sensors generally, 
-                    # though binary_sensors might differ. text_sensor expects string.
-                    # Send_home_assistant_state takes state as string.
-                    val = attrs.get(attribute, "")
-                    state = str(val) if val is not None else ""
-                
-                logger.info(f"API PROXY [{session_id}]: Sending state {entity_id} = {state} (attr: {attribute})")
-                
-                # Check if client is still connected?
-                # We are in a callback, so client should be valid? 
-                # Actually fetch_and_send_ha_state is called from Executor, client is thread-safe?
-                # AIOESPHomeAPI client should be thread safe for sending messages potentially?
-                # The loop is async. We need to schedule the send_message on the loop.
-                
-                # We can't call client.send_home_assistant_state(entity_id, attribute, state) directly if it's not thread safe 
-                # or if we are in a different thread.
-                # But wait, run_api_proxy is async. The callbacks are invoked... how?
-                # API runs on the loop. 
-                # If we use run_in_executor for the network request, we need to schedule the result back on the loop.
-                
-                async def send_update():
-                    try:
-                        client.send_home_assistant_state(entity_id, attribute, state)
-                    except Exception as ex:
-                        logger.error(f"Error sending update: {ex}")
-
-                # This function is running in an executor thread (see below)
-                # So we need to use run_coroutine_threadsafe
-                loop = asyncio.get_event_loop() 
-                # Warning: get_event_loop() in thread different from main loop might fail or return a new one?
-                # We should capture the loop from run_api_proxy scope.
-                
-                # ACTUALLY: on_state_sub is called from the client's loop.
-                # If we do blocking request inside on_state_sub, we block the loop.
-                # So we MUST start a thread.
-                # Inside that thread, we do request.
-                # Then we schedule send_update on the original loop.
-                pass 
-                
-            else:
-                logger.warning(f"API PROXY [{session_id}]: Failed to fetch state {entity_id}: {res.status_code}")
-                
-        except Exception as e:
-            logger.error(f"API PROXY [{session_id}]: Error fetching state {entity_id}: {e}")
-
-    # Capture main loop
-    main_loop = asyncio.get_running_loop()
-
-    def handle_state_sub(entity_id, attribute):
-        """Callback when device subscribes to a state."""
-        logger.info(f"API PROXY [{session_id}]: Subscription request for {entity_id} (attr: {attribute})")
-        # Run fetch in background thread
-        main_loop.run_in_executor(None, lambda: fetch_and_send_ha_state_wrapped(entity_id, attribute))
-
-    def fetch_and_send_ha_state_wrapped(entity_id, attribute):
-        # Re-implement fetching here or call above
-        # To avoid scope issues with 'client' and 'main_loop', let's define the logic correctly.
-        # This function runs in a thread.
-        try:
-            # COPY PASTE URL LOGIC
-            if ha_url and ha_url.strip():
-                url = f"{ha_url.rstrip('/')}/api/states/{entity_id}"
-                headers = {"Content-Type": "application/json"}
-                if ha_token:
-                    headers["Authorization"] = f"Bearer {ha_token}"
-            else:
-                if not SUPERVISOR_TOKEN:
-                    return
-                url = f"{HA_URL}/api/states/{entity_id}"
-                headers = {
-                    "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
-                    "Content-Type": "application/json",
-                }
-
-            res = requests.get(url, headers=headers, timeout=5)
-            if res.status_code == 200:
-                data = res.json()
-                state = data.get("state", "")
-                if attribute:
-                    state = str(data.get("attributes", {}).get(attribute, ""))
-                
-                # Schedule sending on main loop
-                async def send():
-                    client.send_home_assistant_state(entity_id, attribute, state)
-                
-                asyncio.run_coroutine_threadsafe(send(), main_loop)
-        except Exception as e:
-            print(f"Error checking state {entity_id}: {e}", flush=True)
-
-    def on_device_state(state):
-        # Just log device states
-        pass
-
-    def handle_service_call(call):
-        """
-        Inner function to handle the service call. 
-        Note: call is a HomeassistantServiceCall object.
-        """
-        # HomeassistantServiceCall has .service (e.g. "light.turn_on"), .data (dict), etc.
-        # We need to split service into domain and service_name
-        if '.' in call.service:
-            domain, service_name = call.service.split('.', 1)
-        else:
-            domain = "homeassistant"
-            service_name = call.service
-
-        print(f"API PROXY [{session_id}]: Service call received: {domain}.{service_name}", flush=True)
-        print(f"API PROXY [{session_id}]: Data: {call.data}", flush=True)
-        print(f"API PROXY [{session_id}]: Data Template: {call.data_template}", flush=True)
-        print(f"API PROXY [{session_id}]: Variables: {call.variables}", flush=True)
-        
-        # Determine target URL and Token for HA
-        if ha_url and ha_url.strip():
-            # Remote HA mode
-            url = f"{ha_url.rstrip('/')}/api/services/{domain}/{service_name}"
-            headers = {
-                "Content-Type": "application/json",
-            }
-            if ha_token:
-                headers["Authorization"] = f"Bearer {ha_token}"
-        else:
-            # Local HA mode (Supervisor)
-            if not SUPERVISOR_TOKEN:
-                print(f"API PROXY [{session_id}]: Error - SUPERVISOR_TOKEN not set", flush=True)
-                return
-                 
-            url = f"{HA_URL}/api/services/{domain}/{service_name}"
-            headers = {
-                "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
-                "Content-Type": "application/json",
-            }
-
-        try:
-            # Merge data, data_template and variables
-            # ESPHome can treat these slightly differently, but they all end up modifying the service data in various contexts
-            # We merge them all, with data_template overriding data, and variables overriding both (or just being present)
-            payload = {**call.data, **call.data_template, **call.variables}
-            
-            print(f"API PROXY [{session_id}]: Forwarding to {url} with payload: {payload}", flush=True)
-            
-            res = requests.post(url, headers=headers, json=payload, timeout=10)
-            
-            print(f"API PROXY [{session_id}]: HA Response [{res.status_code}]: {res.text}", flush=True)
-            
-            if res.status_code not in [200, 201]:
-                 print(f"API PROXY [{session_id}]: WARNING - HA rejected the call!", flush=True)
-                 
-        except Exception as e:
-            print(f"API PROXY [{session_id}]: Error forwarding service call: {str(e)}", flush=True)
-
-    # Wrap the sync handler to be called from the event loop using an executor
-    def on_service_call_callback(call):
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, handle_service_call, call)
-
-    max_retries = 120 # Try for 10 minutes total (5s * 120)
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            with sessions_lock:
-                if session_id not in sessions:
-                    print(f"API PROXY [{session_id}]: Session removed, stopping proxy", flush=True)
-                    return
-
-            print(f"API PROXY [{session_id}]: Attempting connection (Attempt {retry_count + 1}/{max_retries})...", flush=True)
-            await client.connect(login=True)
-            print(f"API PROXY [{session_id}]: Connected to emulator API", flush=True)
-            
-            # Subscribe to Home Assistant service calls and states from the device
-            # This method is synchronous, do not await
-            client.subscribe_home_assistant_states_and_services(
-                on_state=on_device_state,
-                on_service_call=on_service_call_callback,
-                on_state_sub=handle_state_sub,
-                on_state_request=handle_state_sub  # Treat request same as subscription for now
-            )
-            
-            # Reset retry count once connected
-            retry_count = 0
-            
-            # Keep the proxy running as long as the session exists
-            while True:
-                with sessions_lock:
-                    if session_id not in sessions:
-                        return
-                await asyncio.sleep(5)
-                
-        except Exception as e:
-            retry_count += 1
-            print(f"API PROXY [{session_id}]: Connection failed or lost: {str(e)}. Retrying in 5s...", flush=True)
-            try:
-                await client.disconnect()
-            except:
-                pass
-            await asyncio.sleep(5)
-            
-    print(f"API PROXY [{session_id}]: Failed to connect after {max_retries} attempts. Giving up.", flush=True)
-
-def api_proxy_thread(session_id, port, ha_url, ha_token):
-    """Entry point for the proxy thread."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(run_api_proxy(session_id, port, ha_url, ha_token))
-    except Exception as e:
-        print(f"API PROXY [{session_id}]: Thread error: {str(e)}", flush=True)
-    finally:
-        loop.close()
 
 @app.before_request
 def before_request():
@@ -618,9 +368,13 @@ def start_emulator():
         # Start API proxy thread to forward service calls from emulator to HA
         # Only start if not in mock mode and we have some way to reach HA
         if not is_mock and (SUPERVISOR_TOKEN or (ha_url and ha_url.strip())):
+            def check_session_alive():
+                with sessions_lock:
+                    return session_id in sessions
+
             threading.Thread(
-                target=api_proxy_thread, 
-                args=(session_id, api_port, ha_url, ha_token),
+                target=run_proxy_thread, 
+                args=(session_id, api_port, ha_url, ha_token, SUPERVISOR_TOKEN, check_session_alive),
                 daemon=True
             ).start()
         else:
