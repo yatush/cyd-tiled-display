@@ -386,6 +386,9 @@ void PerformHaAction(
   // Set the service name using StringRef
   request.service = StringRef(service_name);
   
+  // IMPORTANT: Must call init() before push_back - FixedVector requires this!
+  request.data.init(1 + data.size());
+  
   // Add entity_id as the first data item  
   esphome::api::HomeassistantServiceMap entity_id_kv;
   entity_id_kv.key = StringRef("entity_id");
