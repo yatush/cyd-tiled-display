@@ -263,7 +263,8 @@ async def run_api_proxy(session_id, port, ha_url, ha_token):
             print(f"API PROXY [{session_id}]: Connected to emulator API", flush=True)
             
             # Subscribe to Home Assistant service calls and states from the device
-            await client.subscribe_home_assistant_states_and_services(
+            # This method is synchronous, do not await
+            client.subscribe_home_assistant_states_and_services(
                 on_state=on_device_state,
                 on_service_call=on_service_call_callback,
                 on_state_sub=handle_state_sub,
