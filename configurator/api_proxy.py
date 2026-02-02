@@ -177,7 +177,13 @@ class HAProxy:
                 await client.connect(login=True)
                 self.log("Connected to emulator API")
                 
+                # Wait for tiles to initialize (they are delayed 2 seconds after startup)
+                # This ensures we get all entity subscriptions, not just the static ones
+                self.log("Waiting 3s for tile initialization before subscribing...")
+                await asyncio.sleep(3)
+                
                 # Subscribe to Home Assistant service calls and states
+                self.log("Subscribing to Home Assistant states and services...")
                 client.subscribe_home_assistant_states_and_services(
                     on_state=on_device_state,
                     on_service_call=on_service_call_callback,
