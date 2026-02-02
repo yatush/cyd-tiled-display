@@ -1,3 +1,11 @@
+esphome:
+  includes:
+    - draw_state.h
+    - utils.h
+    - tiles.h
+    - screens.h
+    - view.h
+
 packages:
   common: !include lib_common.yaml
 

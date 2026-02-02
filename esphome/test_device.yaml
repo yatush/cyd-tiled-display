@@ -1,7 +1,6 @@
 substitutions:
   device_name: "emulator"
   friendly_name: Emulator
-  lib_dir: "lib/"
 
 packages:
   lib: !include lib_emulator.yaml

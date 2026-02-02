@@ -170,7 +170,6 @@ FINAL_VALIDATE_SCHEMA = final_validate
 async def to_code(config):
     """Generate and validate YAML tile configuration."""
     from .validation import validate_tiles_config
-    from esphome.core import CORE
     
     all_pages = []
 

@@ -1,7 +1,6 @@
 substitutions:
   device_name: "emulator"
   friendly_name: Emulator
-  lib_dir: ""
   tiles_file: "user_config.yaml"
 
 packages:

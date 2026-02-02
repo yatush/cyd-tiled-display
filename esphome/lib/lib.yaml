@@ -1,4 +1,10 @@
 esphome:
+  includes:
+    - lib/draw_state.h
+    - lib/utils.h
+    - lib/tiles.h
+    - lib/screens.h
+    - lib/view.h
 
 packages:
   common: !include lib_common.yaml
