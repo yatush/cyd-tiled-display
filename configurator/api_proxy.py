@@ -75,23 +75,19 @@ class HAProxy:
                     
                     self.log(f"Sending state {entity_id} = {state} (attr: {attribute})")
                     
-                    # Schedule sending on main loop
-                    async def send():
-                        try:
-                            # client.send_home_assistant_state is a coroutine? No, usually sync method that schedules on the loop?
-                            # In aioesphomeapi, it sends a message. 
-                            # Let's check signature. It seems to be synchronous in the library but sends over the connection.
-                            # But since we are not on the loop thread in this executor, we need to be careful.
-                            # If it's not thread safe, we must schedule it.
-                            # But if it's async, we must await it.
-                            # send_home_assistant_state sends a HomeAssistantStateResponse. 
-                            # It is a synchronous method in the APIClient class that calls send_message.
-                            client.send_home_assistant_state(entity_id, attribute, state)
-                        except Exception as ex:
-                            self.log(f"Error sending update via client: {ex}")
+                    # Capture variables for the closure
+                    eid, attr, st = entity_id, attribute, state
                     
-                    # send() is async def, so we use run_coroutine_threadsafe
-                    asyncio.run_coroutine_threadsafe(send(), main_loop)
+                    # Schedule sending on main loop - send_home_assistant_state is sync but needs to run on the event loop thread
+                    def send_state():
+                        try:
+                            client.send_home_assistant_state(eid, attr, st)
+                            self.log(f"State sent successfully: {eid} = {st}")
+                        except Exception as ex:
+                            self.log(f"Error sending state update via client: {ex}")
+                    
+                    # Schedule the sync call on the main event loop
+                    main_loop.call_soon_threadsafe(send_state)
                     
                 else:
                     self.log(f"Failed to fetch state {entity_id}: {res.status_code}")

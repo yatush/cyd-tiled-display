@@ -201,16 +201,21 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
         <div className="flex justify-between items-center p-4 border-b bg-slate-50">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+              <span className={`w-3 h-3 rounded-full ${isIframeLoaded ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
               Device Emulator
             </h2>
             <button 
               onClick={handleReconnectVnc}
-              className="px-2 py-1 text-xs bg-slate-200 hover:bg-slate-300 rounded text-slate-600 flex items-center gap-1 transition-colors"
-              title="Refresh VNC connection"
+              disabled={isIframeLoaded}
+              className={`px-2 py-1 text-xs rounded flex items-center gap-1 transition-colors ${
+                isIframeLoaded 
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
+              title={isIframeLoaded ? "VNC is connected" : "Click to reconnect VNC"}
             >
-              <RefreshCw className="w-3 h-3" />
-              Reconnect VNC
+              <RefreshCw className={`w-3 h-3 ${!isIframeLoaded ? 'animate-spin' : ''}`} />
+              {isIframeLoaded ? 'Connected' : 'Reconnect VNC'}
             </button>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
