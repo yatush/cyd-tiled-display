@@ -14,6 +14,7 @@ class HAProxy:
         self.default_ha_url = "http://supervisor/core"
         
         self.log_prefix = f"API PROXY [{self.session_id}]:"
+        self.subscribed_entities = set() # (entity_id, attribute) pairs
 
     def log(self, message):
         print(f"{self.log_prefix} {message}", flush=True)
@@ -98,6 +99,8 @@ class HAProxy:
         def handle_state_sub(entity_id, attribute):
             """Callback when device subscribes to a state."""
             self.log(f"Subscription request for {entity_id} (attr: {attribute})")
+            # Track this entity for periodic updates
+            self.subscribed_entities.add((entity_id, attribute))
             # Run fetch in background thread so we don't block the async loop
             if main_loop:
                  main_loop.run_in_executor(None, lambda: fetch_and_send_ha_state_wrapped(entity_id, attribute))
@@ -155,6 +158,25 @@ class HAProxy:
                 
                 if res.status_code not in [200, 201]:
                      self.log("WARNING - HA rejected the call!")
+                else:
+                    # After successful service call, fetch and send updated state
+                    # Extract entity_id from the payload
+                    entity_id = payload.get('entity_id')
+                    if entity_id:
+                        # Handle both single entity_id and list of entity_ids
+                        if isinstance(entity_id, list):
+                            entity_ids = entity_id
+                        else:
+                            entity_ids = [entity_id]
+                        
+                        # Small delay to let HA process the state change
+                        import time
+                        time.sleep(0.3)
+                        
+                        # Fetch and send updated state for each entity
+                        for eid in entity_ids:
+                            self.log(f"Fetching updated state for {eid} after service call")
+                            fetch_and_send_ha_state_wrapped(eid, "")
                      
             except Exception as e:
                 self.log(f"Error forwarding service call: {str(e)}")
@@ -194,9 +216,29 @@ class HAProxy:
                 # Reset retry count once connected
                 retry_count = 0
                 
+                # Start periodic update task
+                async def periodic_updates():
+                    self.log("Starting 5s periodic state update loop")
+                    while True:
+                        if not self.check_session_callback():
+                            break
+                        
+                        entities = list(self.subscribed_entities)
+                        if entities:
+                            # self.log(f"Periodic update: fetching {len(entities)} entities")
+                            for eid, attr in entities:
+                                # Fetch in executor thread
+                                main_loop.run_in_executor(None, fetch_and_send_ha_state_wrapped, eid, attr)
+                        
+                        await asyncio.sleep(5)
+                
+                # Run the periodic update task in the background
+                update_task = asyncio.create_task(periodic_updates())
+                
                 # Keep the proxy running as long as the session checks out
                 while True:
                     if not self.check_session_callback():
+                        update_task.cancel()
                         return
                     await asyncio.sleep(5)
                     
