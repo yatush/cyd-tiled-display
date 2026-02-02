@@ -21,7 +21,8 @@ echo "Starting session $SESSION_ID on display $DISPLAY, VNC port $VNC_PORT, Webs
 rm -f /tmp/.X$DISPLAY_NUM-lock
 
 # Start Xvfb
-Xvfb :$DISPLAY_NUM -screen 0 480x320x16 -ac -noreset 2>&1 &
+# Redirect stdout/stderr to /dev/null to suppress xkbcomp warnings
+Xvfb :$DISPLAY_NUM -screen 0 480x320x16 -ac -noreset >/dev/null 2>&1 &
 XVFB_PID=$!
 
 # Function to clean up background processes
@@ -43,7 +44,8 @@ for i in $(seq 1 10); do
 done
 
 # Start x11vnc
-x11vnc -display :$DISPLAY_NUM -forever -nopw -shared -bg -rfbport $VNC_PORT -quiet -noxkb -noxdamage -no6 2>&1
+# Filter out the DPMS missing warning which is harmless on Xvfb
+x11vnc -display :$DISPLAY_NUM -forever -nopw -shared -bg -rfbport $VNC_PORT -quiet -noxkb -noxdamage -no6 2>&1 | grep -v 'extension "DPMS" missing'
 
 # Start websockify
 # Use the installed websockify from pip or the one in /app/novnc
