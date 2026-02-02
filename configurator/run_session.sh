@@ -43,7 +43,7 @@ for i in $(seq 1 10); do
 done
 
 # Start x11vnc
-x11vnc -display :$DISPLAY_NUM -forever -nopw -shared -bg -rfbport $VNC_PORT 2>&1
+x11vnc -display :$DISPLAY_NUM -forever -nopw -shared -bg -rfbport $VNC_PORT -quiet -noxkb -noxdamage -no6 2>&1
 
 # Start websockify
 # Use the installed websockify from pip or the one in /app/novnc
@@ -61,8 +61,8 @@ else
 fi
 
 echo "Starting ESPHome Emulator for session $SESSION_ID..."
-# Sanitize session ID for ESPHome device name (must be lowercase alphanumeric/underscore)
-SAFE_SESSION_ID=$(echo "$SESSION_ID" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_]/_/g')
+# Sanitize session ID for ESPHome device name (must be lowercase alphanumeric/hyphen)
+SAFE_SESSION_ID=$(echo "$SESSION_ID" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
 
 # Use a shared cache directory to speed up builds across different session names
 export PLATFORMIO_CACHEDIR="/tmp/pio_cache"
@@ -70,4 +70,4 @@ mkdir -p "$PLATFORMIO_CACHEDIR"
 
 # Use unique device_name to avoid build directory conflicts
 # The -s substitutions must come before the 'run' command
-stdbuf -oL -eL esphome -s tiles_file "$TILES_FILE" -s device_name "emulator_$SAFE_SESSION_ID" -s api_port "$API_PORT" run lib/emulator.yaml
+stdbuf -oL -eL esphome -s tiles_file "$TILES_FILE" -s device_name "emulator-$SAFE_SESSION_ID" -s api_port "$API_PORT" run lib/emulator.yaml
