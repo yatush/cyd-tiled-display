@@ -455,6 +455,19 @@ script:
           for (const std::string& blind : entities) {
             PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, FOURTY}});
           }
+  
+  - id: action_blinds_location
+    parameters:
+      entities: string[]
+      location: string
+    then:
+      - lambda: |-
+          static std::string set_cover_position = "set_cover_position";
+          static const char* SET_COVER_POSITION = "set_cover_position";
+          static const char* POSITION = "position";
+          for (const std::string& blind : entities) {
+            PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, location}});
+          }
 
   - id: action_blinds_up_down
     parameters:

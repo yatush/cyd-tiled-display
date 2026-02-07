@@ -41,15 +41,18 @@ export const TextInput = ({ label, value, onChange, haEntities }: { label: strin
   );
 };
 
-export const ScriptInput = ({ label, value, onChange, type }: { label: string, value: string, onChange: (v: string) => void, type: 'display' | 'action' }) => {
+export const ScriptInput = ({ label, value, onChange, type }: { label: string, value: string | Record<string, any>, onChange: (v: string | Record<string, any>) => void, type: 'display' | 'action' }) => {
   const [options, setOptions] = useState<string[]>([]);
+  const [scriptPool, setScriptPool] = useState<any[]>([]);
   
   const fetchOptions = async () => {
     try {
       const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
-        setOptions((data.scripts || []).map((s: any) => s.id));
+        const scripts = data.scripts || [];
+        setScriptPool(scripts);
+        setOptions(scripts.map((s: any) => s.id));
       }
     } catch (e) {
       console.error("Failed to fetch scripts", e);
@@ -60,18 +63,51 @@ export const ScriptInput = ({ label, value, onChange, type }: { label: string, v
     fetchOptions();
   }, [type]);
 
+   const scriptId = typeof value === 'string' ? value : (value && typeof value === 'object' ? Object.keys(value)[0] : '');
+   const params = (value && typeof value === 'object' && scriptId) ? value[scriptId] : {};
+   const scriptDef = scriptPool.find(s => s.id === scriptId);
+   const hasParams = scriptDef && scriptDef.params && scriptDef.params.length > 0;
+
   return (
-    <div className="mb-2">
+    <div className="mb-2 p-2 border rounded bg-slate-50">
       <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
       <select 
-        value={value || ''} 
-        onChange={e => onChange(e.target.value)}
+        value={scriptId || ''} 
+        onChange={e => {
+             const newId = e.target.value;
+             onChange(newId);
+        }}
         onFocus={fetchOptions}
         className="w-full border rounded p-1 text-sm bg-white"
       >
         <option value="">Select script...</option>
         {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
       </select>
+      
+      {hasParams && (
+        <div className="pl-2 space-y-2 mt-2 border-l-2 border-slate-200">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Parameters</div>
+            {scriptDef.params.map((p: any) => (
+                <div key={p.name}>
+                    <label className="block text-xs font-medium text-slate-600 mb-0.5 pointer-events-none truncate">{p.name} <span className="text-[10px] text-slate-400 font-normal">({p.type})</span></label>
+                    <input 
+                        type="text"
+                        value={params[p.name] || ''}
+                        onChange={e => {
+                            const newVal = e.target.value;
+                            const currentParams = {...params};
+                            if (newVal) currentParams[p.name] = newVal;
+                            else delete currentParams[p.name];
+                            
+                            onChange({ [scriptId]: currentParams });
+                        }}
+                        className="w-full border rounded p-1 text-xs focus:border-blue-500 outline-none"
+                        placeholder={`Value for ${p.name}`}
+                    />
+                </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -90,12 +126,13 @@ export const Checkbox = ({ label, checked, onChange }: { label: string, checked:
 
 export const ArrayInput = ({ label, values, onChange, suggestionType, allowedValues }: { 
   label: string, 
-  values: string[], 
-  onChange: (v: string[]) => void, 
+  values: any[], 
+  onChange: (v: any[]) => void, 
   suggestionType?: 'display' | 'action',
   allowedValues?: string[]
 }) => {
   const [options, setOptions] = useState<string[]>([]);
+  const [scriptPool, setScriptPool] = useState<any[]>([]);
 
   const fetchOptions = async () => {
     if (allowedValues) {
@@ -107,7 +144,9 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
       const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
-        setOptions((data.scripts || []).map((s: any) => s.id));
+        const scripts = data.scripts || [];
+        setScriptPool(scripts);
+        setOptions(scripts.map((s: any) => s.id));
       }
     } catch (e) {
       console.error("Failed to fetch scripts", e);
@@ -123,15 +162,24 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
   return (
     <div className="mb-2">
       {label && <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>}
-      <div className="space-y-1">
-        {safeValues.map((v, i) => (
-          <div key={i} className="flex gap-1">
+      <div className="space-y-2">
+        {safeValues.map((v, i) => {
+            const scriptId = typeof v === 'string' ? v : (v && typeof v === 'object' ? Object.keys(v)[0] : '');
+            const params = (v && typeof v === 'object' && scriptId) ? v[scriptId] : {};
+            const scriptDef = scriptPool.find(s => s.id === scriptId);
+            const hasParams = scriptDef && scriptDef.params && scriptDef.params.length > 0;
+            
+            return (
+          <div key={i} className="border p-2 rounded bg-slate-50 relative group">
+            <div className="flex gap-1 mb-1">
             {suggestionType || allowedValues ? (
                 <select
-                  value={v}
+                  value={scriptId}
                   onChange={e => {
+                    const newId = e.target.value;
                     const newValues = [...safeValues];
-                    newValues[i] = e.target.value;
+                    // Reset to string when changing script
+                    newValues[i] = newId;
                     onChange(newValues);
                   }}
                   onFocus={fetchOptions}
@@ -143,7 +191,7 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
             ) : (
                 <input 
                   type="text" 
-                  value={v} 
+                  value={typeof v === 'string' ? v : JSON.stringify(v)} 
                   onChange={e => {
                     const newValues = [...safeValues];
                     newValues[i] = e.target.value;
@@ -158,8 +206,38 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
             >
               <Trash2 size={14} />
             </button>
+            </div>
+            
+            {hasParams && (
+                <div className="pl-2 space-y-2 mt-2 border-l-2 border-slate-200">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Parameters</div>
+                    {scriptDef.params.map((p: any) => (
+                        <div key={p.name}>
+                            <label className="block text-xs font-medium text-slate-600 mb-0.5 pointer-events-none truncate" title={`${p.name} (${p.type})`}>{p.name}</label>
+                            <input 
+                                type="text"
+                                value={params[p.name] || ''}
+                                onChange={e => {
+                                    const newVal = e.target.value;
+                                    const newValues = [...safeValues];
+                                    const currentParams = {...params};
+                                    if (newVal) currentParams[p.name] = newVal;
+                                    else delete currentParams[p.name];
+                                    
+                                    // Switch to object format
+                                    newValues[i] = { [scriptId]: currentParams };
+                                    onChange(newValues);
+                                }}
+                                className="w-full border rounded p-1 text-xs focus:border-blue-500 outline-none"
+                                placeholder={`Value for ${p.name}`}
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
           </div>
-        ))}
+        );
+        })}
         <button 
           onClick={() => onChange([...safeValues, ''])}
           className="text-xs text-blue-600 hover:underline flex items-center gap-1"
