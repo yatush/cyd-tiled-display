@@ -22,11 +22,14 @@ if defined CONTAINER_ID (
 )
 
 echo Starting container...
-REM We mount a volume for the build cache so recompiling is fast across restarts
+REM Mount volumes:
+REM   cyd_esphome_build: preserves the pre-compiled .esphome build cache across container restarts
+REM   cyd_pio_cache: caches PlatformIO downloaded packages
 docker run -d --name %CONTAINER_NAME% ^
   -v "%cd%\vnc_startup.sh:/app/vnc_startup.sh" ^
   -v "%cd%\nginx.conf:/etc/nginx/nginx.conf" ^
-  -v "cyd_esphome_cache:/app/esphome/.esphome/build" ^
+  -v "cyd_esphome_build:/app/esphome/lib/.esphome" ^
+  -v "cyd_pio_cache:/tmp/pio_cache" ^
   -p 6080:6080 -p 8080:8080 -p 8099:8099 -p 5900:5900 ^
   %IMAGE_NAME%
 
@@ -34,8 +37,10 @@ echo Container started.
 echo Waiting for services to initialize...
 timeout /t 5 /nobreak >nul
 
-echo Updating ESPHome files...
-docker cp ..\esphome "%CONTAINER_NAME%:/app/"
+echo Updating ESPHome files (preserving build cache)...
+REM Copy esphome files but exclude the .esphome build cache directory
+REM We use tar to selectively copy, excluding the build cache
+tar -C .. -cf - --exclude=esphome/lib/.esphome esphome | docker exec -i %CONTAINER_NAME% tar -C /app -xf -
 
 echo Updating Python backend scripts...
 docker cp ..\configurator\server.py "%CONTAINER_NAME%:/app/configurator/"

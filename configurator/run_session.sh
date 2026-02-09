@@ -63,13 +63,30 @@ else
 fi
 
 echo "Starting ESPHome Emulator for session $SESSION_ID..."
-# Sanitize session ID for ESPHome device name (must be lowercase alphanumeric/hyphen)
-SAFE_SESSION_ID=$(echo "$SESSION_ID" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
 
 # Use a shared cache directory to speed up builds across different session names
 export PLATFORMIO_CACHEDIR="/tmp/pio_cache"
 mkdir -p "$PLATFORMIO_CACHEDIR"
 
-# Use unique device_name to avoid build directory conflicts
-# The -s substitutions must come before the 'run' command
-stdbuf -oL -eL esphome -s tiles_file "$TILES_FILE" -s device_name "emulator-$SAFE_SESSION_ID" -s api_port "$API_PORT" run lib/emulator.yaml
+# Create a session-specific build directory by copying from the pre-compiled cache
+# This allows concurrent sessions without conflicts, while reusing compiled objects
+SESSION_ESPHOME="/tmp/esphome_sessions/$SESSION_ID/.esphome"
+if [ ! -d "$SESSION_ESPHOME/build/emulator" ] && [ -d "/app/esphome/lib/.esphome/build/emulator" ]; then
+    echo "Seeding session build cache from pre-compiled image..."
+    mkdir -p "$SESSION_ESPHOME"
+    cp -a /app/esphome/lib/.esphome/build "$SESSION_ESPHOME/"
+    cp -a /app/esphome/lib/.esphome/storage "$SESSION_ESPHOME/" 2>/dev/null || true
+
+    # Update build_path in storage JSON so ESPHome doesn't trigger a clean rebuild
+    # ESPHome compares old build_path vs new and deletes .pioenvs if they differ
+    STORAGE_FILE="$SESSION_ESPHOME/storage/emulator.yaml.json"
+    if [ -f "$STORAGE_FILE" ]; then
+        sed -i "s|/app/esphome/lib/.esphome/build/emulator|$SESSION_ESPHOME/build/emulator|g" "$STORAGE_FILE"
+    fi
+fi
+
+# Point ESPHome to the session-specific build directory
+export ESPHOME_DATA_DIR="$SESSION_ESPHOME"
+
+# Use the same device name as the pre-compiled build to maximize cache reuse
+stdbuf -oL -eL esphome -s tiles_file "$TILES_FILE" -s api_port "$API_PORT" run lib/emulator.yaml

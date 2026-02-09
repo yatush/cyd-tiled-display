@@ -112,6 +112,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                       onDeleteTile={handleDeleteTile}
                       rows={activePage.rows}
                       cols={activePage.cols}
+                      dynamicEntities={config.dynamic_entities || []}
                       />
                   </div>
               </>

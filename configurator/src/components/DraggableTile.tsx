@@ -2,12 +2,13 @@ import { useDraggable } from '@dnd-kit/core';
 import { Trash2 } from 'lucide-react';
 import { Tile } from '../types';
 
-export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex }: { 
+export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [] }: { 
   tile: Tile, 
   isSelected: boolean, 
   onClick: () => void, 
   onDelete: () => void,
-  zIndex?: number 
+  zIndex?: number,
+  dynamicEntities?: string[]
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: tile.id,
@@ -27,9 +28,68 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex }: {
     zIndex: isSelected ? 100 : (zIndex ?? (x_span > 1 || y_span > 1 ? 50 : 10)),
   };
 
+  const entityItems = (() => {
+    const t = tile as any;
+    const results: { name: string; sensor?: string }[] = [];
+
+    // Helper: given any value, ensure we get a string or null
+    const asString = (val: any): string | null => {
+        if (typeof val === 'string') return val;
+        if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+        if (Array.isArray(val)) {
+            for (const item of val) {
+                const s = asString(item);
+                if (s) return s;
+            }
+        }
+        return null;
+    };
+
+    // Extract entity info from an entities array item (object like {entity: "x", sensor: "y"} or {dynamic_entity: "var"})
+    const fromEntityObj = (obj: any): { name: string; sensor?: string } | null => {
+        if (!obj || typeof obj !== 'object') return null;
+        if (obj.dynamic_entity && typeof obj.dynamic_entity === 'string') return { name: obj.dynamic_entity, sensor: asString(obj.sensor) || undefined };
+        if (obj.entity) {
+            const e = asString(obj.entity);
+            if (e) return { name: e, sensor: asString(obj.sensor) || undefined };
+        }
+        return null;
+    };
+
+    // 1. Check tile.entities (ha_action, title tiles) - array of entity objects
+    if (t.entities && Array.isArray(t.entities) && t.entities.length > 0) {
+        for (const item of t.entities) {
+            if (typeof item === 'string') { results.push({ name: item }); continue; }
+            const info = fromEntityObj(item);
+            if (info) results.push(info);
+        }
+    }
+
+    // 2. Check tile.entity (toggle_entity) - could be string or array of strings
+    if (t.entity) {
+        if (Array.isArray(t.entity)) {
+            for (const e of t.entity) { const s = asString(e); if (s) results.push({ name: s }); }
+        } else {
+            const e = asString(t.entity);
+            if (e) results.push({ name: e, sensor: asString(t.sensor) || undefined });
+        }
+    }
+
+    // 3. Check tile.dynamic_entity (toggle_entity, cycle_entity)
+    if (t.dynamic_entity && typeof t.dynamic_entity === 'string') {
+        results.push({ name: t.dynamic_entity, sensor: asString(t.sensor) || undefined });
+    }
+
+    // Deduplicate by name
+    const seen = new Set<string>();
+    return results.filter(r => { if (seen.has(r.name)) return false; seen.add(r.name); return true; });
+  })();
+
+  const globalSensor = typeof (tile as any).sensor === 'string' ? (tile as any).sensor : null;
+
   return (
     <div 
-      ref={setNodeRef} 
+      ref={setNodeRef}  
       style={style} 
       {...listeners} 
       {...attributes}
@@ -97,10 +157,31 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex }: {
             })()}
           </div>
         )}
-        {(tile as any).entity && (
-          <div className="text-[9px] text-slate-500 truncate mt-0.5">{(tile as any).entity}</div>
-        )}
       </div>
+      {(entityItems.length > 0 || (globalSensor && entityItems.every(e => !e.sensor))) && (
+        <div className="absolute bottom-0.5 left-0.5 pointer-events-none max-w-[calc(100%-8px)] flex flex-col items-start gap-0.5 border border-blue-300 rounded px-1 py-0.5 bg-white/70">
+          {entityItems.map((ei, idx) => {
+            const dynamic = dynamicEntities?.includes(ei.name);
+            return (
+              <div key={idx} className="flex flex-col items-start max-w-full">
+                <span className={`text-[8px] leading-tight truncate max-w-full px-0.5 rounded inline-block ${dynamic ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`} title={dynamic ? "Dynamic Entity" : "Static Entity"}>
+                  {ei.name}
+                </span>
+                {ei.sensor && (
+                  <span className="text-[7px] leading-tight text-slate-400 truncate max-w-full" title="Sensor">
+                    {ei.sensor}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {globalSensor && entityItems.every(e => !e.sensor) && (
+            <span className="text-[7px] leading-tight text-slate-400 truncate max-w-full" title="Sensor">
+              {globalSensor}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };

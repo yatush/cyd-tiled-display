@@ -36,6 +36,13 @@ for i in $(seq 1 10); do
     sleep 1
 done
 
+# Verify Xvfb socket exists
+if [ ! -S /tmp/.X11-unix/X0 ]; then
+    echo "ERROR: Xvfb failed to create socket /tmp/.X11-unix/X0"
+    kill $XVFB_PID 2>/dev/null
+    exit 1
+fi
+
 # Verify Xvfb is running
 if ! kill -0 $XVFB_PID 2>/dev/null; then
     echo "ERROR: Xvfb failed to start"
