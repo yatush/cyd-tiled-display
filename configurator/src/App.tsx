@@ -362,6 +362,7 @@ function App() {
           generationOutput={generationOutput}
           onGenerate={() => handleGenerate(() => setActiveTab('output'))}
           onCopyYaml={handleExport}
+          onNavigateToPage={setActivePageId}
       />
 
       {/* Right Resizer */}

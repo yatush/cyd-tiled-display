@@ -1,14 +1,15 @@
 import { useDraggable } from '@dnd-kit/core';
-import { Trash2 } from 'lucide-react';
+import { Trash2, ArrowRightCircle } from 'lucide-react';
 import { Tile } from '../types';
 
-export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [] }: { 
+export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage }: { 
   tile: Tile, 
   isSelected: boolean, 
   onClick: () => void, 
   onDelete: () => void,
   zIndex?: number,
-  dynamicEntities?: string[]
+  dynamicEntities?: string[],
+  onNavigateToPage?: (pageId: string) => void
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: tile.id,
@@ -104,7 +105,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       }}
     >
       <button 
-        className="absolute top-1 right-1 p-1 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 hover:bg-red-50 text-red-500 transition-opacity z-10"
+        className="absolute top-0.5 right-0.5 p-1 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 hover:bg-red-50 text-red-500 transition-opacity z-20"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -158,6 +159,22 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
           </div>
         )}
       </div>
+      {tile.type === 'move_page' && tile.destination && (
+        <div
+          className="absolute top-0.5 left-0.5 max-w-[calc(100%-8px)] flex items-center gap-0.5 border border-green-400 rounded px-1 py-0.5 bg-green-50/90 cursor-pointer hover:bg-green-100 transition-colors z-10"
+          title={`Go to page: ${tile.destination}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigateToPage?.(tile.destination);
+          }}
+        >
+          <ArrowRightCircle size={10} className="text-green-600 flex-shrink-0" />
+          <span className="text-[8px] leading-tight text-green-700 font-semibold truncate">
+            {tile.destination}
+          </span>
+        </div>
+      )}
       {(entityItems.length > 0 || (globalSensor && entityItems.every(e => !e.sensor))) && (
         <div className="absolute bottom-0.5 left-0.5 pointer-events-none max-w-[calc(100%-8px)] flex flex-col items-start gap-0.5 border border-blue-300 rounded px-1 py-0.5 bg-white/70">
           {entityItems.map((ei, idx) => {
