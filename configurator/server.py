@@ -10,6 +10,7 @@ import socket
 import time
 import threading
 import asyncio
+import concurrent.futures
 from flask import Flask, request, send_from_directory, jsonify, Response, stream_with_context
 import requests
 from api_proxy import run_proxy_thread
@@ -605,6 +606,316 @@ def load_config():
     except Exception as e:
         print(f"Load Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+# ============================================================
+# ESPHome Device Management - List & Install
+# ============================================================
+
+# Track active install processes so we can cancel them
+install_processes = {}  # session_id -> subprocess.Popen
+install_processes_lock = threading.Lock()
+
+def _get_ha_timezone():
+    """Try to fetch the timezone from Home Assistant, with fallbacks."""
+    # 1. Try HA Supervisor API
+    try:
+        if SUPERVISOR_TOKEN:
+            resp = requests.get(
+                f"{HA_URL}/api/config",
+                headers={"Authorization": f"Bearer {SUPERVISOR_TOKEN}"},
+                timeout=5
+            )
+            if resp.ok:
+                tz = resp.json().get('time_zone')
+                if tz:
+                    print(f"Detected HA timezone: {tz}", flush=True)
+                    return tz
+    except Exception as e:
+        print(f"Could not fetch HA timezone: {e}", flush=True)
+
+    # 2. Try TZ environment variable
+    tz_env = os.environ.get('TZ')
+    if tz_env:
+        print(f"Using TZ env timezone: {tz_env}", flush=True)
+        return tz_env
+
+    # 3. Try reading /etc/timezone
+    try:
+        with open('/etc/timezone', 'r') as f:
+            tz = f.read().strip()
+            if tz:
+                print(f"Using /etc/timezone: {tz}", flush=True)
+                return tz
+    except Exception:
+        pass
+
+    # 4. Try reading /etc/localtime symlink
+    try:
+        link = os.readlink('/etc/localtime')
+        # e.g. /usr/share/zoneinfo/America/New_York -> America/New_York
+        if 'zoneinfo/' in link:
+            tz = link.split('zoneinfo/')[-1]
+            if tz:
+                print(f"Using /etc/localtime timezone: {tz}", flush=True)
+                return tz
+    except Exception:
+        pass
+
+    # 5. Fallback to UTC
+    print("No timezone detected, falling back to UTC", flush=True)
+    return 'UTC'
+
+def _parse_device_yaml(filepath):
+    """Parse a YAML device config file and extract device metadata."""
+    class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+        pass
+    def ignore_any_tag(loader, tag_suffix, node):
+        return None
+    def construct_include(loader, node):
+        return loader.construct_scalar(node)
+    SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
+    SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
+
+    with open(filepath, 'r') as f:
+        data = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
+
+    if not data or not isinstance(data, dict):
+        return None
+
+    device_name = None
+    friendly_name = None
+    screen_type = None
+    ip_address = None
+    is_device_config = False
+
+    # Check substitutions
+    subs = data.get('substitutions', {}) or {}
+    if subs:
+        device_name = subs.get('device_name')
+        friendly_name = subs.get('friendly_name')
+
+    # Check esphome section
+    esphome_section = data.get('esphome', {}) or {}
+    if esphome_section:
+        is_device_config = True
+        if not device_name:
+            device_name = esphome_section.get('name')
+        if not friendly_name:
+            friendly_name = esphome_section.get('friendly_name')
+
+    # Check packages for device_base (CYD screen type detection)
+    packages = data.get('packages', {}) or {}
+    if packages:
+        device_base = packages.get('device_base', '')
+        if isinstance(device_base, str):
+            if '2432s028' in device_base:
+                screen_type = '2432s028'
+                is_device_config = True
+            elif '3248s035' in device_base:
+                screen_type = '3248s035'
+                is_device_config = True
+
+    # Check for tile_ui section (CYD-specific marker)
+    if data.get('tile_ui'):
+        is_device_config = True
+
+    # Get IP address from wifi section
+    wifi = data.get('wifi', {})
+    if isinstance(wifi, dict):
+        ip_address = wifi.get('use_address')
+
+    if not is_device_config or not device_name:
+        return None
+
+    return {
+        'device_name': device_name,
+        'friendly_name': friendly_name or device_name,
+        'screen_type': screen_type,
+        'ip_address': ip_address,
+        'address': ip_address or f"{device_name}.local"
+    }
+
+
+def _check_device_online(device):
+    """Ping a device to check if it's reachable on the network."""
+    address = device['address']
+    try:
+        result = subprocess.run(
+            ['ping', '-c', '1', '-W', '1', address],
+            capture_output=True, timeout=3
+        )
+        device['online'] = (result.returncode == 0)
+    except Exception:
+        device['online'] = False
+    return device
+
+
+@app.route('/api/esphome/devices', methods=['GET'])
+def list_esphome_devices():
+    """List all ESPHome device config files with metadata and online status."""
+    try:
+        devices = []
+        skip_dirs = {'lib', 'custom_components', '.esphome', '__pycache__'}
+
+        for item in os.listdir(BASE_DIR):
+            # Skip hidden files, directories we know aren't device configs
+            if item.startswith('.') or item in skip_dirs:
+                continue
+            filepath = os.path.join(BASE_DIR, item)
+            if not os.path.isfile(filepath):
+                continue
+            if not (item.endswith('.yaml') or item.endswith('.yml')):
+                continue
+
+            try:
+                meta = _parse_device_yaml(filepath)
+                if meta:
+                    meta['filename'] = item
+                    devices.append(meta)
+            except Exception as e:
+                print(f"Error parsing {item}: {e}", flush=True)
+                continue
+
+        # Also scan subdirectories one level deep (e.g. monitor_config/)
+        for subdir in os.listdir(BASE_DIR):
+            subdir_path = os.path.join(BASE_DIR, subdir)
+            if not os.path.isdir(subdir_path) or subdir in skip_dirs or subdir.startswith('.'):
+                continue
+            for item in os.listdir(subdir_path):
+                if not (item.endswith('.yaml') or item.endswith('.yml')):
+                    continue
+                filepath = os.path.join(subdir_path, item)
+                if not os.path.isfile(filepath):
+                    continue
+                try:
+                    meta = _parse_device_yaml(filepath)
+                    if meta:
+                        meta['filename'] = f"{subdir}/{item}"
+                        devices.append(meta)
+                except Exception as e:
+                    print(f"Error parsing {subdir}/{item}: {e}", flush=True)
+                    continue
+
+        # Check online status in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            devices = list(executor.map(_check_device_online, devices))
+
+        # Sort: online first, then by name
+        devices.sort(key=lambda d: (not d.get('online', False), d.get('friendly_name', '').lower()))
+
+        return jsonify({'devices': devices})
+    except Exception as e:
+        print(f"List devices error: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ha/timezone')
+def get_ha_timezone_endpoint():
+    """Return the HA timezone so the frontend can bake it into device configs."""
+    tz = _get_ha_timezone()
+    return jsonify({'timezone': tz})
+
+
+@app.route('/api/esphome/install', methods=['POST'])
+def install_esphome_device():
+    """Compile and install a device config to a device via OTA. Streams output."""
+    try:
+        data = request.get_json()
+        filename = data.get('filename')
+
+        if not filename or '..' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        filepath = os.path.join(BASE_DIR, filename.lstrip('/'))
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'File not found: {filename}'}), 404
+
+        session_id = get_session_id()
+
+        def generate():
+            process = None
+            try:
+                yield json.dumps({
+                    'status': 'started',
+                    'message': f'Starting install of {filename}...'
+                }) + '\n'
+
+                # Get timezone from HA so ESPHome can resolve it at compile time
+                env = os.environ.copy()
+                tz = _get_ha_timezone()
+                if tz:
+                    env['TZ'] = tz
+
+                process = subprocess.Popen(
+                    ['esphome', 'run', filename, '--device', 'OTA'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    cwd=BASE_DIR,
+                    text=True,
+                    bufsize=1,
+                    env=env
+                )
+
+                with install_processes_lock:
+                    install_processes[session_id] = process
+
+                for line in iter(process.stdout.readline, ''):
+                    yield json.dumps({
+                        'status': 'running',
+                        'line': line.rstrip('\n')
+                    }) + '\n'
+
+                process.wait()
+
+                if process.returncode == 0:
+                    yield json.dumps({
+                        'status': 'success',
+                        'message': 'Installation completed successfully!'
+                    }) + '\n'
+                else:
+                    yield json.dumps({
+                        'status': 'error',
+                        'message': f'Installation failed (exit code {process.returncode})'
+                    }) + '\n'
+
+            except GeneratorExit:
+                # Client disconnected – kill the build
+                if process and process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+            except Exception as e:
+                yield json.dumps({
+                    'status': 'error',
+                    'message': str(e)
+                }) + '\n'
+            finally:
+                with install_processes_lock:
+                    install_processes.pop(session_id, None)
+
+        return Response(stream_with_context(generate()), mimetype='application/x-ndjson')
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/esphome/install/cancel', methods=['POST'])
+def cancel_install():
+    """Cancel a running installation."""
+    session_id = get_session_id()
+    with install_processes_lock:
+        process = install_processes.get(session_id)
+        if process and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            return jsonify({'status': 'cancelled'})
+    return jsonify({'status': 'not_running'}), 404
+
 
 @app.route('/api/schema')
 def get_schema():

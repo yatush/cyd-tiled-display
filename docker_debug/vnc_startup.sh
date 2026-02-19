@@ -20,6 +20,10 @@ chmod -R 777 /var/lib/nginx /var/log/nginx /run/nginx /tmp/.X11-unix
 
 export DISPLAY=:0
 
+# Clean up stale X11 locks from previous runs (common in containers)
+rm -f /tmp/.X0-lock
+rm -f /tmp/.X11-unix/X0
+
 # Start Xvfb
 echo "Starting Xvfb..."
 Xvfb :0 -screen 0 480x320x16 -ac -noreset 2>&1 &

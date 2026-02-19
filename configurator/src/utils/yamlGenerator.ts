@@ -32,7 +32,7 @@ const transformConditionLogic = (value: any): any => {
     return value;
 };
 
-export const generateYaml = (config: Config, includeIds: boolean = false) => {
+export const generateYaml = (config: Config, includeIds: boolean = false, includeInternalKeys: boolean = true) => {
     // Convert internal model to YAML structure expected by Python script
     const screens = config.pages.map(page => ({
       id: page.id,
@@ -110,7 +110,7 @@ export const generateYaml = (config: Config, includeIds: boolean = false) => {
     
     const yamlString = yaml.dump({ 
         screens,
-        dynamic_entities: config.dynamic_entities && config.dynamic_entities.length > 0 ? config.dynamic_entities : undefined
+        dynamic_entities: includeInternalKeys && config.dynamic_entities && config.dynamic_entities.length > 0 ? config.dynamic_entities : undefined
     }, { lineWidth: -1, noCompatMode: true, sortKeys: false });
     // Ensure icons are formatted as '"\U..."' for ESPHome compatibility
     return yamlString.replace(/icon:\s*['"]?(\\U[0-9a-fA-F]+)['"]?/g, "icon: '\"$1\"'");

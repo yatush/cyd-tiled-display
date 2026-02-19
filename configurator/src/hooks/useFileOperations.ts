@@ -166,10 +166,10 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
-  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string) => {
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string, silent?: boolean): Promise<boolean> => {
     if (!isAddon) {
-      alert('Saving is disabled when not running in HA');
-      return;
+      if (!silent) alert('Saving is disabled when not running in HA');
+      return false;
     }
     try {
       let wifiSection = '';
@@ -210,7 +210,26 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
 `;
       }
 
-      const screensYaml = generateYaml(config);
+      // Fetch HA timezone so ESPHome can resolve it at compile time
+      let timezone = 'UTC';  // fallback
+      try {
+          const tzRes = await apiFetch('/ha/timezone');
+          if (tzRes.ok) {
+              const tzData = await tzRes.json();
+              if (tzData.timezone) {
+                  timezone = tzData.timezone;
+              }
+          }
+      } catch (e) {
+          // Use UTC fallback
+      }
+
+      const timeSection = `time:
+  - id: !extend esptime
+    timezone: "${timezone}"
+`;
+
+      const screensYaml = generateYaml(config, false, false);
       
       const fullYaml = `substitutions:
   device_name: "${deviceName}"
@@ -230,8 +249,9 @@ api:
 
 ${otaSection}
 ${wifiSection}
+${timeSection}
 tile_ui:
-${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
+${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
 `;
 
       const res = await apiFetch('/save', {
@@ -244,15 +264,18 @@ ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
       });
       
       if (res.ok) {
-        alert(`Successfully saved device configuration to /config/esphome/${fileName}`);
+        if (!silent) alert(`Successfully saved device configuration to /config/esphome/${fileName}`);
         if (onSaveSuccess) onSaveSuccess();
+        return true;
       } else {
         const err = await res.json();
-        alert(`Failed to save: ${err.error}`);
+        if (!silent) alert(`Failed to save: ${err.error}`);
+        return false;
       }
     } catch (err) {
       console.error('Failed to save device config:', err);
-      alert('Failed to save device configuration. Check console for details.');
+      if (!silent) alert('Failed to save device configuration. Check console for details.');
+      return false;
     }
   }, [config]);
 

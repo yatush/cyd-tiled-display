@@ -9,6 +9,7 @@ import { HASettingsDialog } from './components/HASettingsDialog';
 import { FileManagementDialog } from './components/FileManagementDialog';
 import { SaveDeviceDialog } from './components/SaveDeviceDialog';
 import { LoadDeviceDialog } from './components/LoadDeviceDialog';
+import { InstallDialog } from './components/InstallDialog';
 import { ScreensFileDialog } from './components/ScreensFileDialog';
 import { EmulatorDialog } from './components/EmulatorDialog';
 
@@ -37,6 +38,7 @@ function App() {
   const [isFileManagementOpen, setIsFileManagementOpen] = useState(false);
   const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
   const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
+  const [isInstallDeviceOpen, setIsInstallDeviceOpen] = useState(false);
   const [isScreensFileOpen, setIsScreensFileOpen] = useState(false);
   const [screensFileMode, setScreensFileMode] = useState<'save' | 'load'>('save');
   const [isEmulatorOpen, setIsEmulatorOpen] = useState(false);
@@ -438,6 +440,10 @@ function App() {
           setIsFileManagementOpen(false);
           setIsLoadDeviceOpen(true);
         }}
+        onInstallDevice={() => {
+          setIsFileManagementOpen(false);
+          setIsInstallDeviceOpen(true);
+        }}
         connectionType={connectionType}
       />
 
@@ -459,6 +465,21 @@ function App() {
           setIsFileManagementOpen(true);
         }}
         onLoad={handleLoadDeviceConfig}
+      />
+
+      <InstallDialog 
+        isOpen={isInstallDeviceOpen}
+        onClose={() => setIsInstallDeviceOpen(false)}
+        onBack={() => {
+          setIsInstallDeviceOpen(false);
+          setIsFileManagementOpen(true);
+        }}
+        onSaveAndInstall={async (deviceName, friendlyName, screenType, fileName, encryptionKey, otaPassword, ipAddress) => {
+          const saved = await handleSaveDeviceConfig(deviceName, friendlyName, screenType, fileName, encryptionKey, otaPassword, ipAddress, true);
+          if (!saved) {
+            throw new Error('Failed to save device configuration');
+          }
+        }}
       />
       
       <ScreensFileDialog 
