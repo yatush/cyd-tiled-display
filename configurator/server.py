@@ -818,8 +818,9 @@ def get_ha_timezone_endpoint():
 
 @app.route('/api/esphome/install', methods=['POST'])
 def install_esphome_device():
-    """Compile and install a device config to a device via OTA. Streams output."""
+    """Start compiling and installing a device config via OTA. Returns immediately; poll /api/esphome/install/status for progress."""
     try:
+        print(f"[install] Request received", flush=True)
         data = request.get_json()
         filename = data.get('filename')
 
@@ -831,82 +832,95 @@ def install_esphome_device():
             return jsonify({'error': f'File not found: {filename}'}), 404
 
         session_id = get_session_id()
+        print(f"[install] Session: {session_id}, File: {filename}", flush=True)
 
-        def generate():
-            process = None
-            try:
-                yield json.dumps({
-                    'status': 'started',
-                    'message': f'Starting install of {filename}...'
-                }) + '\n'
+        with install_processes_lock:
+            if session_id in install_processes:
+                return jsonify({'error': 'An install is already running for this session'}), 409
 
-                # Get timezone from HA so ESPHome can resolve it at compile time
-                env = os.environ.copy()
-                tz = _get_ha_timezone()
-                if tz:
-                    env['TZ'] = tz
-
-                process = subprocess.Popen(
-                    ['esphome', 'run', filename, '--device', 'OTA'],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    cwd=BASE_DIR,
-                    text=True,
-                    bufsize=1,
-                    env=env
-                )
-
-                with install_processes_lock:
-                    install_processes[session_id] = process
-
-                for line in iter(process.stdout.readline, ''):
-                    yield json.dumps({
-                        'status': 'running',
-                        'line': line.rstrip('\n')
-                    }) + '\n'
-
-                process.wait()
-
-                if process.returncode == 0:
-                    yield json.dumps({
-                        'status': 'success',
-                        'message': 'Installation completed successfully!'
-                    }) + '\n'
-                else:
-                    yield json.dumps({
-                        'status': 'error',
-                        'message': f'Installation failed (exit code {process.returncode})'
-                    }) + '\n'
-
-            except GeneratorExit:
-                # Client disconnected – kill the build
-                if process and process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-            except Exception as e:
-                yield json.dumps({
-                    'status': 'error',
-                    'message': str(e)
-                }) + '\n'
-            finally:
-                with install_processes_lock:
-                    install_processes.pop(session_id, None)
-
-        return Response(
-            stream_with_context(generate()),
-            mimetype='application/x-ndjson',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no',  # Disable nginx buffering
-                'Transfer-Encoding': 'chunked',
-            }
+        # Start the process immediately — timezone is fetched in the background thread
+        process = subprocess.Popen(
+            ['esphome', 'run', filename, '--device', 'OTA'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=BASE_DIR,
+            text=True,
+            bufsize=1,
         )
 
+        install_state = {
+            'process': process,
+            'lines': [],
+            'status': 'running',      # running | success | error
+            'message': f'Starting install of {filename}...',
+            'line_offset': 0,          # not used server-side, just tracks total
+        }
+
+        with install_processes_lock:
+            install_processes[session_id] = install_state
+
+        def _reader_thread(state):
+            """Background thread that reads process stdout into the shared line buffer."""
+            proc = state['process']
+            try:
+                print(f"[install] Reader thread started for PID {proc.pid}", flush=True)
+                for line in iter(proc.stdout.readline, ''):
+                    state['lines'].append(line.rstrip('\n'))
+                proc.wait()
+                if proc.returncode == 0:
+                    state['status'] = 'success'
+                    state['message'] = 'Installation completed successfully!'
+                    print(f"[install] Process completed successfully", flush=True)
+                else:
+                    state['status'] = 'error'
+                    state['message'] = f'Installation failed (exit code {proc.returncode})'
+                    print(f"[install] Process failed with exit code {proc.returncode}", flush=True)
+            except Exception as e:
+                state['status'] = 'error'
+                state['message'] = str(e)
+                print(f"[install] Reader thread error: {e}", flush=True)
+
+        t = threading.Thread(target=_reader_thread, args=(install_state,), daemon=True)
+        t.start()
+
+        print(f"[install] Returning response, process PID: {process.pid}", flush=True)
+        return jsonify({'status': 'started', 'message': install_state['message']})
+
     except Exception as e:
+        print(f"[install] Exception: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/esphome/install/status')
+def install_status():
+    """Poll for install progress. Pass ?offset=N to get only new lines since line N."""
+    session_id = get_session_id()
+    with install_processes_lock:
+        state = install_processes.get(session_id)
+
+    if not state:
+        return jsonify({'status': 'not_running'}), 404
+
+    offset = request.args.get('offset', 0, type=int)
+    lines = state['lines']
+    new_lines = lines[offset:]
+
+    result = {
+        'status': state['status'],
+        'message': state['message'],
+        'lines': new_lines,
+        'offset': len(lines),
+    }
+
+    # Clean up finished installs after client has seen the final status
+    if state['status'] in ('success', 'error'):
+        # Keep the state around for one more poll so the client sees the result,
+        # but if offset already covers all lines, clean up
+        if offset >= len(lines):
+            with install_processes_lock:
+                install_processes.pop(session_id, None)
+
+    return jsonify(result)
 
 
 @app.route('/api/esphome/install/cancel', methods=['POST'])
@@ -914,13 +928,18 @@ def cancel_install():
     """Cancel a running installation."""
     session_id = get_session_id()
     with install_processes_lock:
-        process = install_processes.get(session_id)
-        if process and process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
+        state = install_processes.get(session_id)
+        if state:
+            process = state['process']
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                state['status'] = 'error'
+                state['message'] = 'Installation cancelled by user'
+            install_processes.pop(session_id, None)
             return jsonify({'status': 'cancelled'})
     return jsonify({'status': 'not_running'}), 404
 

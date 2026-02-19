@@ -34,8 +34,8 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const [logs, setLogs] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const [logsExpanded, setLogsExpanded] = useState(true);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchDevices = useCallback(async () => {
     setLoadingDevices(true);
@@ -65,9 +65,9 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
       setSelectedDevice(null);
     } else {
       // Cleanup on close
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
     }
   }, [isOpen, fetchDevices]);
@@ -161,113 +161,89 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
 
     setLogs(prev => [...prev, `Configuration saved. Starting OTA install...`]);
 
-    // Step 2: Install
+    // Step 2: Start install (returns immediately, process runs in background)
     setStatus('installing');
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
 
     try {
       const res = await apiFetch('/esphome/install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: selectedDevice }),
-        signal: controller.signal
       });
 
       if (!res.ok) {
         let errorMsg = `Server returned ${res.status}`;
         try {
           const text = await res.text();
-          // Try parsing as JSON, otherwise use raw text
           try {
             const err = JSON.parse(text);
             errorMsg = err.error || errorMsg;
           } catch {
-            // HTML or other non-JSON response (e.g. from reverse proxy)
             errorMsg = `Server error (${res.status}). Check addon logs for details.`;
           }
-        } catch {
-          // Couldn't read body at all
-        }
+        } catch { /* ignore */ }
         setStatus('error');
         setStatusMessage(errorMsg);
         return;
       }
 
-      const reader = res.body?.getReader();
-      if (!reader) {
-        setStatus('error');
-        setStatusMessage('No response stream available');
-        return;
-      }
+      const startData = await res.json();
+      setLogs(prev => [...prev, startData.message || 'Install started...']);
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const msg = JSON.parse(line);
-            if (msg.status === 'running' && msg.line !== undefined) {
-              setLogs(prev => [...prev, msg.line]);
-            } else if (msg.status === 'success') {
-              setStatus('success');
-              setStatusMessage(msg.message);
-            } else if (msg.status === 'error') {
-              setStatus('error');
-              setStatusMessage(msg.message);
-            } else if (msg.status === 'started') {
-              setLogs(prev => [...prev, msg.message]);
-            }
-          } catch {
-            // Non-JSON line, add as raw log
-            setLogs(prev => [...prev, line]);
-          }
-        }
-      }
-
-      // Process any remaining buffer
-      if (buffer.trim()) {
+      // Step 3: Poll for progress
+      let offset = 0;
+      const poll = async () => {
         try {
-          const msg = JSON.parse(buffer);
-          if (msg.status === 'success') {
-            setStatus('success');
-            setStatusMessage(msg.message);
-          } else if (msg.status === 'error') {
-            setStatus('error');
-            setStatusMessage(msg.message);
+          const statusRes = await apiFetch(`/esphome/install/status?offset=${offset}`);
+          if (!statusRes.ok) {
+            // Install state gone (404) — process was cleaned up
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            if (status === 'installing') {
+              setStatus('error');
+              setStatusMessage('Lost connection to install process');
+            }
+            return;
           }
-        } catch {
-          setLogs(prev => [...prev, buffer]);
+          const data = await statusRes.json();
+
+          if (data.lines && data.lines.length > 0) {
+            setLogs(prev => [...prev, ...data.lines]);
+          }
+          offset = data.offset;
+
+          if (data.status === 'success') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setStatus('success');
+            setStatusMessage(data.message);
+          } else if (data.status === 'error') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setStatus('error');
+            setStatusMessage(data.message);
+          }
+        } catch (e) {
+          console.error('Poll error:', e);
+          // Don't stop polling on transient network errors
         }
-      }
+      };
+
+      // Poll every 1.5 seconds
+      pollRef.current = setInterval(poll, 1500);
+      // Also poll immediately
+      poll();
 
     } catch (e) {
-      if ((e as Error).name === 'AbortError') {
-        setStatus('cancelled');
-        setStatusMessage('Installation cancelled');
-      } else {
-        setStatus('error');
-        setStatusMessage(`Installation failed: ${(e as Error).message}`);
-      }
-    } finally {
-      abortControllerRef.current = null;
+      setStatus('error');
+      setStatusMessage(`Installation failed: ${(e as Error).message}`);
     }
   };
 
   const handleCancel = async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
     try {
       await apiFetch('/esphome/install/cancel', { method: 'POST' });
