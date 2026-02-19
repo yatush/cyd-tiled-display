@@ -176,9 +176,22 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        let errorMsg = `Server returned ${res.status}`;
+        try {
+          const text = await res.text();
+          // Try parsing as JSON, otherwise use raw text
+          try {
+            const err = JSON.parse(text);
+            errorMsg = err.error || errorMsg;
+          } catch {
+            // HTML or other non-JSON response (e.g. from reverse proxy)
+            errorMsg = `Server error (${res.status}). Check addon logs for details.`;
+          }
+        } catch {
+          // Couldn't read body at all
+        }
         setStatus('error');
-        setStatusMessage(err.error || 'Failed to start installation');
+        setStatusMessage(errorMsg);
         return;
       }
 

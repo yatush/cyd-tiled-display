@@ -251,7 +251,7 @@ The project relies on a set of library files that should be placed in your `/esp
 *   **`lib_custom.yaml`**: (Optional) For your own custom scripts and overrides.
 *   **`*_base.yaml`**: Device-specific base configurations (e.g., `2432s028_base.yaml`).
 *   **`mdi_glyphs.yaml`**: Definitions for Material Design Icons.
-*   **`custom_components/tile_ui`**: The C++ component source code.
+*   **`external_components/tile_ui`**: The C++ component source code.
 
 ## Library Synchronization & Customization
 

@@ -69,7 +69,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
       alert('Saving is disabled when not running in HA');
       return;
     }
-    if (!confirm("This will update your /config/esphome/lib (with backup) and /config/esphome/custom_components/tile_ui (no backup). Continue?")) return;
+    if (!confirm("This will update your /config/esphome/lib (with backup) and /config/esphome/external_components/tile_ui (no backup). Continue?")) return;
     
     try {
         const res = await apiFetch('/update_lib', { method: 'POST' });

@@ -755,7 +755,7 @@ def list_esphome_devices():
     """List all ESPHome device config files with metadata and online status."""
     try:
         devices = []
-        skip_dirs = {'lib', 'custom_components', '.esphome', '__pycache__'}
+        skip_dirs = {'lib', 'external_components', '.esphome', '__pycache__'}
 
         for item in os.listdir(BASE_DIR):
             # Skip hidden files, directories we know aren't device configs
@@ -895,7 +895,15 @@ def install_esphome_device():
                 with install_processes_lock:
                     install_processes.pop(session_id, None)
 
-        return Response(stream_with_context(generate()), mimetype='application/x-ndjson')
+        return Response(
+            stream_with_context(generate()),
+            mimetype='application/x-ndjson',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',  # Disable nginx buffering
+                'Transfer-Encoding': 'chunked',
+            }
+        )
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -919,7 +927,7 @@ def cancel_install():
 
 @app.route('/api/schema')
 def get_schema():
-    schema_path = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui/schema.json')
+    schema_path = os.path.join(APP_DIR, 'esphome/external_components/tile_ui/schema.json')
     if os.path.exists(schema_path):
         with open(schema_path, 'r') as f:
             return jsonify(json.load(f))
@@ -945,8 +953,8 @@ def update_lib():
             shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml'))
             
         # Update tile_ui without backup
-        source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
-        target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
+        source_ui = os.path.join(APP_DIR, 'esphome/external_components/tile_ui')
+        target_ui = os.path.join(BASE_DIR, 'external_components/tile_ui')
         
         if os.path.exists(source_ui):
             if os.path.exists(target_ui):
@@ -1011,8 +1019,8 @@ def check_lib_status():
         source_lib = os.path.join(APP_DIR, 'esphome/lib')
         target_lib = os.path.join(BASE_DIR, 'lib')
         
-        source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
-        target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
+        source_ui = os.path.join(APP_DIR, 'esphome/external_components/tile_ui')
+        target_ui = os.path.join(BASE_DIR, 'external_components/tile_ui')
         
         # If source and target are the same (local dev), they are synced
         if os.path.abspath(source_lib) == os.path.abspath(target_lib):

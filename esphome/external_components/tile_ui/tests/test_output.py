@@ -1,7 +1,7 @@
 """
 Test script for tile_ui C++ generation.
 Run this script directly to see the generated C++ code for a sample configuration or a specific YAML file.
-Usage: python3 custom_components/tile_ui/test_output.py [path/to/tiles.yaml]
+Usage: python3 external_components/tile_ui/test_output.py [path/to/tiles.yaml]
 """
 import sys
 import os
@@ -9,11 +9,11 @@ import argparse
 import yaml
 from unittest.mock import MagicMock
 
-# 1. Setup paths to allow importing custom_components.tile_ui
-# Assuming script is at custom_components/tile_ui/test_output.py
+# 1. Setup paths to allow importing external_components.tile_ui
+# Assuming script is at external_components/tile_ui/test_output.py
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir) # tile_ui
-grandparent_dir = os.path.dirname(parent_dir) # custom_components
+grandparent_dir = os.path.dirname(parent_dir) # external_components
 if grandparent_dir not in sys.path:
     sys.path.insert(0, grandparent_dir)
 
@@ -65,7 +65,7 @@ try:
     from tile_ui.schema import screens_list_schema
 except ImportError as e:
     print(f"Error importing tile_ui: {e}")
-    print("Make sure you are running from the esphome directory (e.g., python custom_components/tile_ui/test_output.py)")
+    print("Make sure you are running from the esphome directory (e.g., python external_components/tile_ui/test_output.py)")
     sys.exit(1)
 
 # Mock ESPHome YAML tags for local loading
