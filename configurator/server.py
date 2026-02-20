@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import json
 import subprocess
 import shutil
@@ -835,8 +836,18 @@ def install_esphome_device():
         print(f"[install] Session: {session_id}, File: {filename}", flush=True)
 
         with install_processes_lock:
-            if session_id in install_processes:
-                return jsonify({'error': 'An install is already running for this session'}), 409
+            existing = install_processes.get(session_id)
+            if existing:
+                proc = existing['process']
+                if proc.poll() is None:
+                    # Still running — kill the old one before starting fresh
+                    print(f"[install] Killing stale install process PID {proc.pid}", flush=True)
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                install_processes.pop(session_id, None)
 
         # Start the process immediately — timezone is fetched in the background thread
         process = subprocess.Popen(
@@ -859,25 +870,57 @@ def install_esphome_device():
         with install_processes_lock:
             install_processes[session_id] = install_state
 
+        # Regex to strip ANSI escape codes from ESPHome output
+        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\r')
+
         def _reader_thread(state):
             """Background thread that reads process stdout into the shared line buffer."""
             proc = state['process']
             try:
                 print(f"[install] Reader thread started for PID {proc.pid}", flush=True)
                 for line in iter(proc.stdout.readline, ''):
-                    state['lines'].append(line.rstrip('\n'))
+                    clean = ansi_re.sub('', line.rstrip('\n'))
+                    if clean.strip():  # skip empty lines from stripped control chars
+                        state['lines'].append(clean)
+
+                    # Detect OTA upload success patterns
+                    # ESPHome prints these after successful upload:
+                    #   "INFO Successfully uploaded program"
+                    #   "INFO OTA successful"
+                    #   "INFO Waiting for result..."
+                    #   Then logs start with "[timestamp][I][app:029]: Running..."
+                    lower = clean.lower()
+                    if ('successfully uploaded' in lower or
+                        'ota successful' in lower or
+                        'success' in lower and 'upload' in lower):
+                        print(f"[install] OTA upload success detected, terminating process", flush=True)
+                        state['status'] = 'success'
+                        state['message'] = 'Installation completed successfully!'
+                        # Give it a moment then terminate
+                        import time as _time
+                        _time.sleep(1)
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        return
+
                 proc.wait()
                 if proc.returncode == 0:
                     state['status'] = 'success'
                     state['message'] = 'Installation completed successfully!'
                     print(f"[install] Process completed successfully", flush=True)
                 else:
-                    state['status'] = 'error'
-                    state['message'] = f'Installation failed (exit code {proc.returncode})'
-                    print(f"[install] Process failed with exit code {proc.returncode}", flush=True)
+                    # If we already set success from OTA detection, don't override
+                    if state['status'] != 'success':
+                        state['status'] = 'error'
+                        state['message'] = f'Installation failed (exit code {proc.returncode})'
+                        print(f"[install] Process failed with exit code {proc.returncode}", flush=True)
             except Exception as e:
-                state['status'] = 'error'
-                state['message'] = str(e)
+                if state['status'] != 'success':  # Don't override OTA success
+                    state['status'] = 'error'
+                    state['message'] = str(e)
                 print(f"[install] Reader thread error: {e}", flush=True)
 
         t = threading.Thread(target=_reader_thread, args=(install_state,), daemon=True)
