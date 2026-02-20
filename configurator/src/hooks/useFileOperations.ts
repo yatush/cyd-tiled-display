@@ -173,6 +173,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     }
     try {
       let wifiSection = '';
+      let externalComponentsSection = '';
       try {
           const loadRes = await apiFetch(`/load?path=${encodeURIComponent(fileName)}`);
           if (loadRes.ok) {
@@ -189,6 +190,10 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
               } else if (ipAddress) {
                   // If no wifi section but we have an IP, create it
                   wifiSection = dump({ wifi: { use_address: ipAddress } });
+              }
+              // Preserve external_components from existing file
+              if (data.external_components) {
+                  externalComponentsSection = dump({ external_components: data.external_components });
               }
           } else if (ipAddress) {
               // If load failed (new file) but we have an IP
@@ -243,6 +248,7 @@ esphome:
   name: $device_name
   friendly_name: $friendly_name
 
+${externalComponentsSection}
 api:
   encryption:
     key: "${encryptionKey}"
