@@ -203,6 +203,15 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
           // ignore
       }
 
+      // Default external_components if not found in existing file
+      if (!externalComponentsSection) {
+          externalComponentsSection = `external_components:
+  - source:
+      type: local
+      path: external_components
+`;
+      }
+
       let otaSection = '';
       if (otaPassword) {
           otaSection = `ota:
