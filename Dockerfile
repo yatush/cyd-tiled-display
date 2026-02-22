@@ -38,7 +38,8 @@ RUN chmod +x /app/fix_pio_wrappers.sh
 # Pre-download ESP32 toolchain and fix wrappers in one layer.
 #
 # Phase 1 (timeout 300s): trigger ESPHome/PlatformIO to download all packages.
-#   All packages are downloaded BEFORE cmake starts, so 300s is more than enough.
+#   All packages are downloaded BEFORE cmake starts, so we abort as soon as
+#   the first cmake failure occurs. We do NOT retry — that's Phase 2's job.
 #   The compile is expected to fail (Rust wrappers/cmake not yet fixed) — that's fine.
 #
 # Phase 2: immediately replace the broken PlatformIO binaries:
@@ -46,8 +47,7 @@ RUN chmod +x /app/fix_pio_wrappers.sh
 #   - PlatformIO's glibc cmake (hangs on musl)   → wrapper calling system cmake
 #   - PlatformIO's glibc ninja                   → wrapper calling system ninja
 #
-# Phase 3: one clean compile with all fixes applied to pre-cache build artifacts.
-#   This compile should now succeed.
+# Runtime compilations (USB flash) will use the fixed binaries from this point on.
 RUN mkdir -p /tmp/esp32_setup && \
     printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
     > /tmp/esp32_setup/dummy.yaml && \
@@ -74,8 +74,6 @@ RUN mkdir -p /tmp/esp32_setup && \
     else \
         echo "PlatformIO ninja not found; skipping"; \
     fi && \
-    echo "--- Phase 3: verification compile with fixed tools ---" && \
-    (esphome compile dummy.yaml 2>&1 || true) && \
     rm -rf /tmp/esp32_setup
 
 # Install remaining Python dependencies (done here to benefit from toolchain caching)
