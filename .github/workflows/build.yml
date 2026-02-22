@@ -51,10 +51,7 @@ jobs:
           # Covers every arch listed in config.yaml:
           #   amd64   → linux/amd64
           #   aarch64 → linux/arm64      (RP4 native)
-          #   armv7   → linux/arm/v7
-          #   armhf   → linux/arm/v6
-          #   i386    → linux/386
-          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
