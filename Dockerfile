@@ -1,5 +1,5 @@
 # Stage 1: Build React Frontend
-FROM node:20-alpine AS build-frontend
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build-frontend
 WORKDIR /app
 COPY configurator/package.json configurator/package-lock.json ./
 RUN npm install --legacy-peer-deps
