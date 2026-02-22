@@ -12,10 +12,12 @@ WORKDIR /app
 
 # Install system dependencies
 # gcompat provides glibc compatibility layer needed by PlatformIO's prebuilt binaries
+# cmake and ninja are installed natively (musl-compatible) to replace PlatformIO's
+# glibc binaries which hang on Alpine during "Reading CMake configuration..."
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
     xvfb x11vnc fluxbox bash git coreutils nginx procps net-tools \
-    gcompat
+    gcompat cmake ninja
 
 # We install esphome first so we can download toolchains
 RUN apk add --no-cache --virtual .build-deps rust cargo openssl-dev libffi-dev jpeg-dev zlib-dev \
@@ -44,6 +46,30 @@ RUN mkdir -p /tmp/esp32_setup && \
 # this replaces them with equivalent shell scripts.
 COPY docker_debug/fix_pio_wrappers.sh /app/
 RUN chmod +x /app/fix_pio_wrappers.sh && /app/fix_pio_wrappers.sh
+
+# Replace PlatformIO's bundled cmake (glibc binary) with the system cmake.
+# PlatformIO downloads tool-cmake which is a glibc-compiled binary that hangs
+# on Alpine musl during "Reading CMake configuration..." — the system cmake
+# (installed via apk) is musl-native and works correctly.
+# Also replace ninja for the same reason.
+RUN PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1) && \
+    if [ -n "$PIO_CMAKE" ]; then \
+        echo "Replacing PlatformIO cmake at $PIO_CMAKE with system cmake"; \
+        mv "$PIO_CMAKE" "${PIO_CMAKE}.orig"; \
+        printf '#!/bin/sh\nexec /usr/bin/cmake "$@"\n' > "$PIO_CMAKE"; \
+        chmod +x "$PIO_CMAKE"; \
+    else \
+        echo "WARNING: PlatformIO cmake binary not found; will rely on PATH"; \
+    fi && \
+    PIO_NINJA=$(find /root/.platformio/packages -path '*/tool-ninja/ninja' 2>/dev/null | head -1) && \
+    if [ -n "$PIO_NINJA" ]; then \
+        echo "Replacing PlatformIO ninja at $PIO_NINJA with system ninja"; \
+        mv "$PIO_NINJA" "${PIO_NINJA}.orig"; \
+        printf '#!/bin/sh\nexec /usr/bin/ninja "$@"\n' > "$PIO_NINJA"; \
+        chmod +x "$PIO_NINJA"; \
+    else \
+        echo "PlatformIO ninja not found; skipping"; \
+    fi
 
 # Now that wrappers are fixed, we can clean up the temp directory
 RUN rm -rf /tmp/esp32_setup
