@@ -10,19 +10,47 @@ RUN npm run build
 FROM python:3.11-alpine
 WORKDIR /app
 
-# Install dependencies
-# gcompat provides glibc compatibility layer needed by PlatformIO's prebuilt binaries (cmake, ninja, toolchains)
-# Additional build dependencies (rust, cargo, openssl-dev, libffi-dev, jpeg-dev, zlib-dev) are required for building python packages (cryptography, pillow) on some architectures
+# Install system dependencies
+# gcompat provides glibc compatibility layer needed by PlatformIO's prebuilt binaries
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
     xvfb x11vnc fluxbox bash git coreutils nginx procps net-tools \
-    gcompat rust cargo openssl-dev libffi-dev jpeg-dev zlib-dev \
-    && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify aioesphomeapi
+    gcompat
+
+# We install esphome first so we can download toolchains
+RUN apk add --no-cache --virtual .build-deps rust cargo openssl-dev libffi-dev jpeg-dev zlib-dev \
+    && pip3 install --no-cache-dir esphome aioesphomeapi \
+    && apk del .build-deps \
+    # We must keep some runtime libraries that were previously pulled by dev packages
+    && apk add --no-cache openssl libffi jpeg zlib
 
 # Install noVNC
 RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
     git clone --depth 1 https://github.com/novnc/websockify /app/novnc/utils/websockify && \
     ln -s /app/novnc/vnc_lite.html /app/novnc/index.html
+
+# Pre-download ESP32 toolchain (needed for USB flash compilation)
+# We execute this BEFORE fixing wrappers, so the compile IS EXPECTED TO FAIL.
+# We set a timeout to ensure it doesn't hang indefinitely (though failure should be fast).
+# We assume if it hangs > 1200s, packages are likely downloaded.
+RUN mkdir -p /tmp/esp32_setup && \
+    printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
+    > /tmp/esp32_setup/dummy.yaml && \
+    cd /tmp/esp32_setup && \
+    (timeout 1200s esphome compile dummy.yaml 2>&1 || true)
+
+# Fix PlatformIO's Rust wrapper binaries for Alpine/musl compatibility
+# The xtensa toolchain ships Rust-compiled wrappers that crash on musl;
+# this replaces them with equivalent shell scripts.
+COPY docker_debug/fix_pio_wrappers.sh /app/
+RUN chmod +x /app/fix_pio_wrappers.sh && /app/fix_pio_wrappers.sh
+
+# Now that wrappers are fixed, we can clean up the temp directory
+RUN rm -rf /tmp/esp32_setup
+
+# Install remaining Python dependencies (done here to benefit from toolchain caching)
+# If these change, we don't have to re-download the gigabyte-sized toolchains
+RUN pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn websockify
 
 # Copy built frontend
 COPY --from=build-frontend /app/dist /app/configurator/dist
@@ -45,25 +73,6 @@ COPY esphome /app/esphome
 # Pre-compile the emulator to speed up session starts (populates PlatformIO cache)
 # We use || true because it might need a display for full run, but compile should work.
 RUN cd /app/esphome && esphome compile lib/emulator.yaml || true
-
-# Pre-download ESP32 toolchain (needed for USB flash compilation)
-# We execute this BEFORE fixing wrappers, so the compile IS EXPECTED TO FAIL.
-# We set a timeout to ensure it doesn't hang indefinitely (though failure should be fast).
-# We assume if it hangs > 1200s, packages are likely downloaded.
-RUN mkdir -p /tmp/esp32_setup && \
-    printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
-    > /tmp/esp32_setup/dummy.yaml && \
-    cd /tmp/esp32_setup && \
-    (timeout 1200s esphome compile dummy.yaml 2>&1 || true)
-
-# Fix PlatformIO's Rust wrapper binaries for Alpine/musl compatibility
-# The xtensa toolchain ships Rust-compiled wrappers that crash on musl;
-# this replaces them with equivalent shell scripts.
-COPY docker_debug/fix_pio_wrappers.sh /app/
-RUN chmod +x /app/fix_pio_wrappers.sh && /app/fix_pio_wrappers.sh
-
-# Now that wrappers are fixed, we can clean up the temp directory
-RUN rm -rf /tmp/esp32_setup
 
 # Copy nginx config
 COPY docker_debug/nginx.conf /etc/nginx/nginx.conf
