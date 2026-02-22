@@ -31,35 +31,39 @@ RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
     git clone --depth 1 https://github.com/novnc/websockify /app/novnc/utils/websockify && \
     ln -s /app/novnc/vnc_lite.html /app/novnc/index.html
 
-# Pre-download ESP32 toolchain (needed for USB flash compilation)
-# We execute this BEFORE fixing wrappers, so the compile IS EXPECTED TO FAIL.
-# We set a timeout to ensure it doesn't hang indefinitely (though failure should be fast).
-# We assume if it hangs > 1200s, packages are likely downloaded.
+# Copy fix script early — needed inside the toolchain pre-download step below
+COPY docker_debug/fix_pio_wrappers.sh /app/
+RUN chmod +x /app/fix_pio_wrappers.sh
+
+# Pre-download ESP32 toolchain and fix wrappers in one layer.
+#
+# Phase 1 (timeout 300s): trigger ESPHome/PlatformIO to download all packages.
+#   All packages are downloaded BEFORE cmake starts, so 300s is more than enough.
+#   The compile is expected to fail (Rust wrappers/cmake not yet fixed) — that's fine.
+#
+# Phase 2: immediately replace the broken PlatformIO binaries:
+#   - Rust wrapper ELFs in the xtensa toolchain  → shell scripts via fix_pio_wrappers.sh
+#   - PlatformIO's glibc cmake (hangs on musl)   → wrapper calling system cmake
+#   - PlatformIO's glibc ninja                   → wrapper calling system ninja
+#
+# Phase 3: one clean compile with all fixes applied to pre-cache build artifacts.
+#   This compile should now succeed.
 RUN mkdir -p /tmp/esp32_setup && \
     printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
     > /tmp/esp32_setup/dummy.yaml && \
     cd /tmp/esp32_setup && \
-    (timeout 1200s esphome compile dummy.yaml 2>&1 || true)
-
-# Fix PlatformIO's Rust wrapper binaries for Alpine/musl compatibility
-# The xtensa toolchain ships Rust-compiled wrappers that crash on musl;
-# this replaces them with equivalent shell scripts.
-COPY docker_debug/fix_pio_wrappers.sh /app/
-RUN chmod +x /app/fix_pio_wrappers.sh && /app/fix_pio_wrappers.sh
-
-# Replace PlatformIO's bundled cmake (glibc binary) with the system cmake.
-# PlatformIO downloads tool-cmake which is a glibc-compiled binary that hangs
-# on Alpine musl during "Reading CMake configuration..." — the system cmake
-# (installed via apk) is musl-native and works correctly.
-# Also replace ninja for the same reason.
-RUN PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1) && \
+    echo "--- Phase 1: downloading packages (compile expected to fail) ---" && \
+    (timeout 300s esphome compile dummy.yaml 2>&1 || true) && \
+    echo "--- Phase 2: fixing wrappers ---" && \
+    /app/fix_pio_wrappers.sh && \
+    PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1) && \
     if [ -n "$PIO_CMAKE" ]; then \
         echo "Replacing PlatformIO cmake at $PIO_CMAKE with system cmake"; \
         mv "$PIO_CMAKE" "${PIO_CMAKE}.orig"; \
         printf '#!/bin/sh\nexec /usr/bin/cmake "$@"\n' > "$PIO_CMAKE"; \
         chmod +x "$PIO_CMAKE"; \
     else \
-        echo "WARNING: PlatformIO cmake binary not found; will rely on PATH"; \
+        echo "WARNING: PlatformIO cmake not found"; \
     fi && \
     PIO_NINJA=$(find /root/.platformio/packages -path '*/tool-ninja/ninja' 2>/dev/null | head -1) && \
     if [ -n "$PIO_NINJA" ]; then \
@@ -69,10 +73,10 @@ RUN PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2
         chmod +x "$PIO_NINJA"; \
     else \
         echo "PlatformIO ninja not found; skipping"; \
-    fi
-
-# Now that wrappers are fixed, we can clean up the temp directory
-RUN rm -rf /tmp/esp32_setup
+    fi && \
+    echo "--- Phase 3: verification compile with fixed tools ---" && \
+    (esphome compile dummy.yaml 2>&1 || true) && \
+    rm -rf /tmp/esp32_setup
 
 # Install remaining Python dependencies (done here to benefit from toolchain caching)
 # If these change, we don't have to re-download the gigabyte-sized toolchains
