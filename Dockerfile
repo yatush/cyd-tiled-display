@@ -47,14 +47,14 @@ COPY esphome /app/esphome
 RUN cd /app/esphome && esphome compile lib/emulator.yaml || true
 
 # Pre-download ESP32 toolchain (needed for USB flash compilation)
-# A minimal ESP-IDF config triggers PlatformIO to install all required packages
-# (platform-espressif32, toolchain-xtensa-esp-elf, framework-espidf, etc.)
-# We do not expect compilation to succeed due to Rust wrapper issues on Alpine/musl,
-# but we need the packages installed.
+# We execute this BEFORE fixing wrappers, so the compile IS EXPECTED TO FAIL.
+# We set a timeout to ensure it doesn't hang indefinitely (though failure should be fast).
+# We assume if it hangs > 300s, packages are likely downloaded.
 RUN mkdir -p /tmp/esp32_setup && \
     printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
     > /tmp/esp32_setup/dummy.yaml && \
-    cd /tmp/esp32_setup && esphome compile dummy.yaml 2>&1 || true
+    cd /tmp/esp32_setup && \
+    (timeout 300s esphome compile dummy.yaml 2>&1 || true)
 
 # Fix PlatformIO's Rust wrapper binaries for Alpine/musl compatibility
 # The xtensa toolchain ships Rust-compiled wrappers that crash on musl;
