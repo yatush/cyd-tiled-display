@@ -12,10 +12,11 @@ WORKDIR /app
 
 # Install dependencies
 # gcompat provides glibc compatibility layer needed by PlatformIO's prebuilt binaries (cmake, ninja, toolchains)
+# Additional build dependencies (rust, cargo, openssl-dev, libffi-dev, jpeg-dev, zlib-dev) are required for building python packages (cryptography, pillow) on some architectures
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
     xvfb x11vnc fluxbox bash git coreutils nginx procps net-tools \
-    gcompat \
+    gcompat rust cargo openssl-dev libffi-dev jpeg-dev zlib-dev \
     && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify aioesphomeapi
 
 # Install noVNC
