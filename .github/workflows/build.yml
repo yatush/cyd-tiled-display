@@ -3,8 +3,12 @@ name: Build and Push Addon Image
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'New Version (e.g. 1.2.3)'
+        required: true
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -15,12 +19,14 @@ jobs:
     name: Build multi-arch image
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # QEMU lets the x86 runner emulate ARM/i386 so Buildx can build all platforms
       - name: Set up QEMU
@@ -36,13 +42,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Extract the addon version from config.yaml so the image is tagged to match
-      - name: Extract version from config.yaml
-        id: version
+      # Determine if this run should bump result in a new version
+      - name: Determine Version
+        id: determine_version
         run: |
-          VERSION=$(grep '^version:' config.yaml | sed 's/version:[[:space:]]*"//' | sed 's/"//')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Addon version: $VERSION"
+          CURRENT_VERSION=$(grep '^version:' config.yaml | sed 's/version:[[:space:]]*"//' | sed 's/"//')
+          
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            NEW_VERSION="${{ inputs.version }}"
+            echo "Manual trigger with version: $NEW_VERSION"
+          else
+            # Automatic patch version bump for push events
+            IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+            NEW_PATCH=$((patch + 1))
+            NEW_VERSION="$major.$minor.$NEW_PATCH"
+            echo "Auto-bump trigger. Bumping from $CURRENT_VERSION to $NEW_VERSION"
+          fi
+          
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $NEW_VERSION"
+
+      # Update config.yaml locally securely for the build context
+      - name: Update config.yaml for build
+        run: |
+          sed -i 's/^version: .*/version: "${{ steps.determine_version.outputs.version }}"/' config.yaml
+          cat config.yaml
 
       - name: Build and push multi-platform image
         uses: docker/build-push-action@v5
@@ -54,8 +78,18 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.determine_version.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           # Registry-based cache is the most effective strategy for multi-platform builds
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max
+
+      # Commit and push the version bump
+      - name: Commit Version Bump
+        if: success()
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add config.yaml
+          git commit -m "Bump version to ${{ steps.determine_version.outputs.version }} [skip ci]"
+          git push
