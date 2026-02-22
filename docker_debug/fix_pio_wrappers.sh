@@ -90,10 +90,12 @@ for chip in $CHIPS; do
             continue
         fi
 
-        # Only replace small binaries (Rust wrappers are ~375KB, real tools are 1-28MB)
-        size=$(stat -c%s "$wrapper" 2>/dev/null || stat -f%z "$wrapper" 2>/dev/null)
-        if [ "$size" -gt 1000000 ]; then
-            echo "  SKIP $tool_name (size ${size}B - not a wrapper)"
+        # Only replace ELF binaries (Rust wrappers are compiled ELF binaries).
+        # We previously used a size check but wrapper sizes vary across toolchain versions.
+        # Instead, check for the ELF magic number (\x7fELF) in the first 4 bytes.
+        magic=$(dd if="$wrapper" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')
+        if [ "$magic" != "7f454c46" ]; then
+            echo "  SKIP $tool_name (not an ELF binary - already a shell script?)"
             continue
         fi
 
