@@ -17,7 +17,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   onSave
 }) => {
   const [deviceName, setDeviceName] = useState('');
-  const [screenType, setScreenType] = useState('2432s028');
+  const [screenType, setScreenType] = useState('');
   const [fileName, setFileName] = useState('');
   const [encryptionKey, setEncryptionKey] = useState('');
   const [otaPassword, setOtaPassword] = useState('');
@@ -37,6 +37,15 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   React.useEffect(() => {
     if (isOpen && !encryptionKey) {
         generateKey();
+    }
+    if (!isOpen) {
+        // Reset state when closed so next open is clean
+        setScreenType('');
+        setDeviceName('');
+        setFileName('');
+        // Don't reset encryption key to avoid regenerating unnecessarily, or maybe we should?
+        // If it's a new device, we want a new key.
+        setEncryptionKey('');
     }
   }, [isOpen]);
 
@@ -86,8 +95,8 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
   };
 
   const handleSave = async () => {
-    if (!deviceName || !fileName || !encryptionKey) {
-      alert('Please fill in all fields');
+    if (!deviceName || !fileName || !encryptionKey || !screenType) {
+      alert('Please fill in all fields and select a screen type');
       return;
     }
 
