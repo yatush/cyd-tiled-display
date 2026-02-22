@@ -51,7 +51,11 @@ sensor:
 
 uart:
   tx_pin: GPIO22
-  rx_pin: GPIO21
+  rx_pin:
+    number: GPIO21
+    mode:
+      input: true
+      pullup: true  # Prevents floating RX from generating spurious ld2410 frames when no radar is connected
   baud_rate: 256000
   parity: NONE
   stop_bits: 1

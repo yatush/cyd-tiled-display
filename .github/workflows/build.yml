@@ -1,0 +1,64 @@
+name: Build and Push Addon Image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/cyd-tiled-display-configurator
+
+jobs:
+  build:
+    name: Build multi-arch image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # QEMU lets the x86 runner emulate ARM/i386 so Buildx can build all platforms
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Extract the addon version from config.yaml so the image is tagged to match
+      - name: Extract version from config.yaml
+        id: version
+        run: |
+          VERSION=$(grep '^version:' config.yaml | sed 's/version:[[:space:]]*"//' | sed 's/"//')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Addon version: $VERSION"
+
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # Covers every arch listed in config.yaml:
+          #   amd64   → linux/amd64
+          #   aarch64 → linux/arm64      (RP4 native)
+          #   armv7   → linux/arm/v7
+          #   armhf   → linux/arm/v6
+          #   i386    → linux/386
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # Registry-based cache is the most effective strategy for multi-platform builds
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max
