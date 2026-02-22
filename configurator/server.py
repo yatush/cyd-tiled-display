@@ -23,7 +23,12 @@ import logging
 # Filter out successful log requests to reduce noise
 class LogsEndpointFilter(logging.Filter):
     def filter(self, record):
-        return not ("/api/emulator/logs" in record.getMessage() and " 200 " in record.getMessage())
+        message = record.getMessage()
+        if "/api/emulator/logs" in message and " 200 " in message:
+            return False
+        if "/api/emulator/status" in message and " 200 " in message:
+             return False
+        return True
 
 # Apply filter to Werkzeug logger
 logging.getLogger("werkzeug").addFilter(LogsEndpointFilter())
