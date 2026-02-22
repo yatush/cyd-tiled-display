@@ -116,7 +116,7 @@ export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 exec "$real_path" -mdynconfig=$dynconfig "\$@"
 WRAPPER_EOF
         else
-            cat > "$wrapper" << WRAPPER_EOF
+             cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 exec "$real_path" "\$@"
@@ -125,14 +125,6 @@ WRAPPER_EOF
         
         chmod +x "$wrapper"
         echo "  REPLACED $tool_name with shell script"
-        else
-            cat > "$wrapper" << WRAPPER_EOF
-#!/bin/sh
-exec "$real_path" "\$@"
-WRAPPER_EOF
-        fi
-
-        chmod +x "$wrapper"
         REPLACED=$((REPLACED + 1))
     done
 done
