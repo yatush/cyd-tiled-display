@@ -49,18 +49,21 @@ RUN cd /app/esphome && esphome compile lib/emulator.yaml || true
 # Pre-download ESP32 toolchain (needed for USB flash compilation)
 # A minimal ESP-IDF config triggers PlatformIO to install all required packages
 # (platform-espressif32, toolchain-xtensa-esp-elf, framework-espidf, etc.)
-# The compile itself will fail (Rust wrappers) but packages are cached.
+# We do not expect compilation to succeed due to Rust wrapper issues on Alpine/musl,
+# but we need the packages installed.
 RUN mkdir -p /tmp/esp32_setup && \
     printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
     > /tmp/esp32_setup/dummy.yaml && \
-    cd /tmp/esp32_setup && esphome compile dummy.yaml 2>&1 || true && \
-    rm -rf /tmp/esp32_setup
+    cd /tmp/esp32_setup && esphome compile dummy.yaml 2>&1 || true
 
 # Fix PlatformIO's Rust wrapper binaries for Alpine/musl compatibility
 # The xtensa toolchain ships Rust-compiled wrappers that crash on musl;
 # this replaces them with equivalent shell scripts.
 COPY docker_debug/fix_pio_wrappers.sh /app/
 RUN chmod +x /app/fix_pio_wrappers.sh && /app/fix_pio_wrappers.sh
+
+# Now that wrappers are fixed, we can clean up the temp directory
+RUN rm -rf /tmp/esp32_setup
 
 # Copy nginx config
 COPY docker_debug/nginx.conf /etc/nginx/nginx.conf

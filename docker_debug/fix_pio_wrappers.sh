@@ -13,8 +13,17 @@ set -e
 TOOLCHAIN_DIR=$(find /root/.platformio/packages -maxdepth 1 -name 'toolchain-xtensa-esp-elf*' -type d 2>/dev/null | head -1)
 
 if [ -z "$TOOLCHAIN_DIR" ]; then
+    TOOLCHAIN_DIR=$(ls -d /root/.platformio/packages/toolchain-xtensa-esp-elf* 2>/dev/null | head -1)
+fi
+
+if [ -z "$TOOLCHAIN_DIR" ]; then
     echo "WARNING: toolchain-xtensa-esp-elf not found in /root/.platformio/packages/"
-    echo "Skipping wrapper fix (toolchain not yet downloaded)"
+    echo "This is expected if the toolchain hasn't been downloaded yet."
+    echo "Attempting to locate any xtensa toolchain..."
+    TOOLCHAIN_DIR=$(find /root/.platformio/packages -maxdepth 1 -name 'toolchain-xtensa*' -type d 2>/dev/null | head -1)
+fi
+if [ -z "$TOOLCHAIN_DIR" ]; then
+    echo "No toolchain found. Exiting."
     exit 0
 fi
 
@@ -47,8 +56,16 @@ for chip in $CHIPS; do
 
     # Verify dynconfig .so exists
     if [ ! -f "$LIB_DIR/$dynconfig" ]; then
-        echo "  WARNING: $LIB_DIR/$dynconfig not found, skipping $chip wrappers"
-        continue
+        echo "  WARNING: $LIB_DIR/$dynconfig not found, looking for alternative locations"
+        # Try to find the dynconfig file recursively
+        FOUND_DYN=$(find "$TOOLCHAIN_DIR" -name "$dynconfig" | head -1)
+        if [ -n "$FOUND_DYN" ]; then
+            LIB_DIR=$(dirname "$FOUND_DYN")
+            echo "  Found dynconfig at $LIB_DIR"
+        else
+            echo "  SKIPPING $chip wrappers"
+            continue
+        fi
     fi
 
     for wrapper in "$BIN_DIR"/${prefix}*; do
@@ -98,6 +115,16 @@ for chip in $CHIPS; do
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 exec "$real_path" -mdynconfig=$dynconfig "\$@"
 WRAPPER_EOF
+        else
+            cat > "$wrapper" << WRAPPER_EOF
+#!/bin/sh
+export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
+exec "$real_path" "\$@"
+WRAPPER_EOF
+        fi
+        
+        chmod +x "$wrapper"
+        echo "  REPLACED $tool_name with shell script"
         else
             cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
