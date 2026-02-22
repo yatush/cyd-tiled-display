@@ -32,7 +32,7 @@ The project transforms a visual design into a working device through three stage
 
 # Try it Online
 
-You can go to [https://tinyurl.com/cyd-tiled-diisplay](https://tinyurl.com/cyd-tiled-diisplay), create the configuration, test it in the emulator, and download it to your computer.
+You can go to [https://tinyurl.com/cyd-tiled-diisplay](https://tinyurl.com/cyd-tiled-diisplay), create the configuration, test it in the emulator, and download it to your computer. (For easy example to see, go to "File Management" -> "Load Device" -> "test_device.yaml")
 
 **Note**: The Emulator is very buggy running in the GCP hosting, as it cannot deal with multiple requests. For better experience, please run through the HA addon, or locally (see installation below).
 
@@ -251,7 +251,7 @@ The project relies on a set of library files that should be placed in your `/esp
 *   **`lib_custom.yaml`**: (Optional) For your own custom scripts and overrides.
 *   **`*_base.yaml`**: Device-specific base configurations (e.g., `2432s028_base.yaml`).
 *   **`mdi_glyphs.yaml`**: Definitions for Material Design Icons.
-*   **`custom_components/tile_ui`**: The C++ component source code.
+*   **`external_components/tile_ui`**: The C++ component source code.
 
 ## Library Synchronization & Customization
 

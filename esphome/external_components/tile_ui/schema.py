@@ -119,6 +119,24 @@ def activation_var_schema(value: Any) -> dict:
     }, extra=PREVENT_EXTRA)
     return schema(value)
 
+
+def script_item(value: Any) -> Any:
+    """Validate a single script item (string or dict)."""
+    if isinstance(value, str):
+        if not value.strip():
+            raise cv.Invalid("String cannot be empty")
+        return value
+    elif isinstance(value, dict):
+        if len(value) != 1:
+            raise cv.Invalid(f"Dict items must have exactly one key, got {len(value)}")
+        key = list(value.keys())[0]
+        if not isinstance(key, str) or not key.strip():
+            raise cv.Invalid("Dict key must be a non-empty string")
+        return value
+    else:
+        raise cv.Invalid(f"Item must be string or dict, got {type(value).__name__}")
+
+
 # Helper to map JSON types to validators
 def get_validator(field_type: str, object_fields: list = None):
     if field_type == 'number':
@@ -132,9 +150,9 @@ def get_validator(field_type: str, object_fields: list = None):
     if field_type == 'entity_list':
         return entities_list
     if field_type == 'script_list':
-        return string_list
+        return display_list
     if field_type == 'script':
-        return non_empty_string
+        return script_item
     if field_type == 'page_select':
         return non_empty_string
     if field_type == 'dynamic_entity_select':

@@ -1,7 +1,6 @@
 substitutions:
   device_name: "monitor"
   friendly_name: Monitor
-  lib_dir: "lib/"
 
 packages:
   device_base: !include lib/2432s028_base.yaml

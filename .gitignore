@@ -1,6 +1,6 @@
 esphome/secrets.yaml
-esphome/custom_components/tile_ui/__pycache__/*
-esphome/custom_components/tile_ui/tests/__pycache__*
+esphome/external_components/tile_ui/__pycache__/*
+esphome/external_components/tile_ui/tests/__pycache__*
 server.log
 __pycache__*
 

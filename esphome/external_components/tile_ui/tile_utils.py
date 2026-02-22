@@ -62,8 +62,12 @@ def _generate_lambda(script_id, available_scripts, expected_params, static_param
         for param_name, param_type in script_params.items():
             # 1. Check static params (from YAML)
             if static_params and param_name in static_params:
-                val = str(static_params[param_name])
+                raw_val = static_params[param_name]
+                val = str(raw_val)
+                
                 is_font = param_type == 'font' or param_type == 'esphome::display::BaseFont*'
+                is_string = param_type == 'string' or param_type == 'std::string'
+                
                 if is_font:
                     if val == 'nullptr':
                         pass
@@ -71,6 +75,15 @@ def _generate_lambda(script_id, available_scripts, expected_params, static_param
                         val = '&' + val
                     else:
                         val = f'&id({val})'
+                elif is_string:
+                    # Escape quotes in string value if they are not already escaped
+                    # We assume if the string is wrapped in quotes, we leave it alone (it might be a complex expression)
+                    # But if it's a simple string, we wrap it.
+                    val = str(val)
+                    if not (val.startswith('"') and val.endswith('"')):
+                        escaped_val = val.replace('"', '\\"')
+                        val = f'"{escaped_val}"'
+                
                 script_args.append(val)
                 continue
 

@@ -166,13 +166,14 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
-  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string) => {
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string, silent?: boolean): Promise<boolean> => {
     if (!isAddon) {
-      alert('Saving is disabled when not running in HA');
-      return;
+      if (!silent) alert('Saving is disabled when not running in HA');
+      return false;
     }
     try {
       let wifiSection = '';
+      let externalComponentsSection = '';
       try {
           const loadRes = await apiFetch(`/load?path=${encodeURIComponent(fileName)}`);
           if (loadRes.ok) {
@@ -190,12 +191,25 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
                   // If no wifi section but we have an IP, create it
                   wifiSection = dump({ wifi: { use_address: ipAddress } });
               }
+              // Preserve external_components from existing file
+              if (data.external_components) {
+                  externalComponentsSection = dump({ external_components: data.external_components });
+              }
           } else if (ipAddress) {
               // If load failed (new file) but we have an IP
               wifiSection = dump({ wifi: { use_address: ipAddress } });
           }
       } catch (e) {
           // ignore
+      }
+
+      // Default external_components if not found in existing file
+      if (!externalComponentsSection) {
+          externalComponentsSection = `external_components:
+  - source:
+      type: local
+      path: external_components
+`;
       }
 
       let otaSection = '';
@@ -210,7 +224,26 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
 `;
       }
 
-      const screensYaml = generateYaml(config);
+      // Fetch HA timezone so ESPHome can resolve it at compile time
+      let timezone = 'UTC';  // fallback
+      try {
+          const tzRes = await apiFetch('/ha/timezone');
+          if (tzRes.ok) {
+              const tzData = await tzRes.json();
+              if (tzData.timezone) {
+                  timezone = tzData.timezone;
+              }
+          }
+      } catch (e) {
+          // Use UTC fallback
+      }
+
+      const timeSection = `time:
+  - id: !extend esptime
+    timezone: "${timezone}"
+`;
+
+      const screensYaml = generateYaml(config, false, false);
       
       const fullYaml = `substitutions:
   device_name: "${deviceName}"
@@ -224,14 +257,16 @@ esphome:
   name: $device_name
   friendly_name: $friendly_name
 
+${externalComponentsSection}
 api:
   encryption:
     key: "${encryptionKey}"
 
 ${otaSection}
 ${wifiSection}
+${timeSection}
 tile_ui:
-${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
+${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
 `;
 
       const res = await apiFetch('/save', {
@@ -244,15 +279,18 @@ ${screensYaml.split('\\n').map(line => '  ' + line).join('\\n')}
       });
       
       if (res.ok) {
-        alert(`Successfully saved device configuration to /config/esphome/${fileName}`);
+        if (!silent) alert(`Successfully saved device configuration to /config/esphome/${fileName}`);
         if (onSaveSuccess) onSaveSuccess();
+        return true;
       } else {
         const err = await res.json();
-        alert(`Failed to save: ${err.error}`);
+        if (!silent) alert(`Failed to save: ${err.error}`);
+        return false;
       }
     } catch (err) {
       console.error('Failed to save device config:', err);
-      alert('Failed to save device configuration. Check console for details.');
+      if (!silent) alert('Failed to save device configuration. Check console for details.');
+      return false;
     }
   }, [config]);
 

@@ -4,14 +4,16 @@ import { DroppableCell } from './DroppableCell';
 import { DraggableTile } from './DraggableTile';
 import { Page, Tile } from '../types';
 
-export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols }: { 
+export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage }: { 
   page: Page, 
   onSelectTile: (t: Tile) => void, 
   selectedTileId: string | null,
   onDragEnd: (event: DragEndEvent) => void,
   onDeleteTile: (id: string) => void,
   rows: number,
-  cols: number
+  cols: number,
+  dynamicEntities?: string[],
+  onNavigateToPage?: (pageId: string) => void
 }) => {
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -116,6 +118,8 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                       onClick={() => onSelectTile(tile)} 
                       onDelete={() => onDeleteTile(tile.id)}
                       zIndex={activeTile && activeTile.id === tile.id ? 60 : undefined}
+                      dynamicEntities={dynamicEntities}
+                      onNavigateToPage={onNavigateToPage}
                     />
                   ))}
                   {coveringTiles.length > 1 && (
@@ -173,6 +177,8 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                     isSelected={selectedTileId === tile.id} 
                     onClick={() => onSelectTile(tile)} 
                     onDelete={() => onDeleteTile(tile.id)}
+                    dynamicEntities={dynamicEntities}
+                    onNavigateToPage={onNavigateToPage}
                   />
                 </div>
               ))}

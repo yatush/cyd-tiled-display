@@ -1,7 +1,6 @@
 substitutions:
   device_name: "emulator"
   friendly_name: Emulator
-  lib_dir: "lib/"
 
 packages:
   lib: !include lib_emulator.yaml
@@ -13,7 +12,7 @@ esphome:
 external_components:
   - source:
       type: local
-      path: ../custom_components
+      path: ../external_components
 
 script:
   - id: dummy_service_call

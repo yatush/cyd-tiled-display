@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Upload, Download, FileText, Monitor, FolderOpen } from 'lucide-react';
+import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap } from 'lucide-react';
 import { ConnectionType } from '../hooks/useHaConnection';
 import { isAddon } from '../utils/api';
 
@@ -12,6 +12,7 @@ interface FileManagementDialogProps {
   onLoadScreen: () => void;
   onSaveDevice: () => void;
   onLoadDevice: () => void;
+  onInstallDevice: () => void;
   connectionType: ConnectionType;
 }
 
@@ -24,6 +25,7 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
   onLoadScreen,
   onSaveDevice,
   onLoadDevice,
+  onInstallDevice,
   connectionType
 }) => {
   if (!isOpen) return null;
@@ -94,7 +96,7 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <button 
                   onClick={() => { onSaveDevice(); onClose(); }}
                   className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 text-slate-700 transition-all group text-left"
@@ -112,6 +114,15 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                     <Upload size={16} className="text-slate-500 group-hover:text-indigo-600" />
                   </div>
                   <span className="font-bold text-xs">Load Device</span>
+                </button>
+                <button 
+                  onClick={() => { onInstallDevice(); onClose(); }}
+                  className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:border-green-400 hover:bg-green-50 text-slate-700 transition-all group text-left"
+                >
+                  <div className="p-1.5 bg-slate-100 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
+                    <Zap size={16} className="text-slate-500 group-hover:text-green-600" />
+                  </div>
+                  <span className="font-bold text-xs">Install</span>
                 </button>
               </div>
             </div>

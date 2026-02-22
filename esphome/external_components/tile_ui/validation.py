@@ -651,6 +651,19 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
         if not isinstance(value, int) or value < 0:
             raise ValueError(f"{context}: Field '{field_name}' must be a non-negative integer, got {value}")
             
+    elif field_type == 'script':
+         if isinstance(value, str):
+             if not value.strip():
+                 raise ValueError(f"{context}: Field '{field_name}' must be a non-empty string")
+         elif isinstance(value, dict):
+             if len(value) != 1:
+                  raise ValueError(f"{context}: Field '{field_name}' dict must have exactly one key")
+             key = list(value.keys())[0]
+             if not isinstance(key, str) or not key.strip():
+                 raise ValueError(f"{context}: Field '{field_name}' dict key must be a non-empty string")
+         else:
+             raise ValueError(f"{context}: Field '{field_name}' must be a string or dict")
+
     elif field_type in ['string', 'page_select', 'dynamic_entity_select', 'ha_entity_list']:
         if isinstance(value, list):
             # Allow list of strings for ha_entity_list
@@ -711,8 +724,17 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
         if not isinstance(value, list):
             raise ValueError(f"{context}: Field '{field_name}' must be a list")
         for idx, item in enumerate(value):
-            if not isinstance(item, str) or not item.strip():
-                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a non-empty string")
+            if isinstance(item, str):
+                if not item.strip():
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a non-empty string")
+            elif isinstance(item, dict):
+                if len(item) != 1:
+                     raise ValueError(f"{context}: Field '{field_name}' item {idx} dict must have exactly one key")
+                key = list(item.keys())[0]
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} dict key must be a non-empty string")
+            else:
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a string or dict")
                 
     elif field_type == 'object':
         if not isinstance(value, dict):

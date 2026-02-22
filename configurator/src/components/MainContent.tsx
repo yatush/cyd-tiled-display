@@ -20,6 +20,7 @@ interface MainContentProps {
   generationOutput: { success?: boolean; cpp?: string[]; error?: string; type?: string } | null;
   onGenerate: () => void;
   onCopyYaml: () => void;
+  onNavigateToPage?: (pageId: string) => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({
@@ -37,7 +38,8 @@ export const MainContent: React.FC<MainContentProps> = ({
   activePageId,
   generationOutput,
   onGenerate,
-  onCopyYaml
+  onCopyYaml,
+  onNavigateToPage
 }) => {
   return (
     <div className="flex-1 bg-slate-100 flex flex-col relative min-w-0">
@@ -112,6 +114,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                       onDeleteTile={handleDeleteTile}
                       rows={activePage.rows}
                       cols={activePage.cols}
+                      dynamicEntities={config.dynamic_entities || []}
+                      onNavigateToPage={onNavigateToPage}
                       />
                   </div>
               </>

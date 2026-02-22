@@ -4,9 +4,9 @@ import yaml
 import json
 from pathlib import Path
 
-# Add the custom_components directory to sys.path so we can import tile_ui
+# Add the external_components directory to sys.path so we can import tile_ui
 repo_root = Path(__file__).parent.parent
-tile_ui_path = repo_root / "esphome" / "custom_components"
+tile_ui_path = repo_root / "esphome" / "external_components"
 sys.path.append(str(tile_ui_path))
 
 # Mock esphome module to prevent import errors

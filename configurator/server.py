@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import json
 import subprocess
 import shutil
@@ -9,9 +10,23 @@ import signal
 import socket
 import time
 import threading
+import asyncio
+import concurrent.futures
 from flask import Flask, request, send_from_directory, jsonify, Response, stream_with_context
 import requests
+from api_proxy import run_proxy_thread
 import generate_tiles_api
+from aioesphomeapi import APIClient
+
+import logging
+
+# Filter out successful log requests to reduce noise
+class LogsEndpointFilter(logging.Filter):
+    def filter(self, record):
+        return not ("/api/emulator/logs" in record.getMessage() and " 200 " in record.getMessage())
+
+# Apply filter to Werkzeug logger
+logging.getLogger("werkzeug").addFilter(LogsEndpointFilter())
 
 app = Flask(__name__, static_folder='dist')
 
@@ -37,6 +52,8 @@ def update_activity(session_id=None):
         with sessions_lock:
             if session_id in sessions:
                 sessions[session_id]['last_activity'] = time.time()
+
+
 
 @app.before_request
 def before_request():
@@ -308,17 +325,23 @@ def start_emulator():
     
     vnc_port = 5900 + display
     websockify_port = 6000 + display
+    api_port = 6050 + display
+    
+    # Get HA credentials for the proxy
+    ha_url = request.headers.get('x-ha-url')
+    ha_token = request.headers.get('x-ha-token')
+    is_mock = request.headers.get('x-ha-mock') == 'true'
     
     try:
         os.chmod(script_path, 0o755)
-        print(f"Starting session {session_id}: display={display}, vnc={vnc_port}, ws={websockify_port}", flush=True)
+        print(f"Starting session {session_id}: display={display}, vnc={vnc_port}, ws={websockify_port}, api={api_port}", flush=True)
         
         with open(log_path, 'w', buffering=1) as log_file:
             log_file.write(f"--- Starting Session {session_id} ---\n")
             log_file.flush()
-            # Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file>
+            # Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file> <api_port>
             proc = subprocess.Popen(
-                ['/bin/bash', script_path, session_id, str(display), str(vnc_port), str(websockify_port), user_config_filename],
+                ['/bin/bash', script_path, session_id, str(display), str(vnc_port), str(websockify_port), user_config_filename, str(api_port)],
                 stdout=log_file, 
                 stderr=subprocess.STDOUT,
                 cwd=os.path.dirname(__file__),
@@ -335,6 +358,7 @@ def start_emulator():
                 'display': display,
                 'vnc_port': vnc_port,
                 'websockify_port': websockify_port,
+                'api_port': api_port,
                 'connections': 0,
                 'last_activity': None,  # Will be set on VNC connection
                 'session_start_time': time.time(),  # Track session creation time
@@ -342,6 +366,21 @@ def start_emulator():
                 'log_path': log_path,
                 'user_config_path': user_config_path
             }
+        
+        # Start API proxy thread to forward service calls from emulator to HA
+        # Only start if not in mock mode and we have some way to reach HA
+        if not is_mock and (SUPERVISOR_TOKEN or (ha_url and ha_url.strip())):
+            def check_session_alive():
+                with sessions_lock:
+                    return session_id in sessions
+
+            threading.Thread(
+                target=run_proxy_thread, 
+                args=(session_id, api_port, ha_url, ha_token, SUPERVISOR_TOKEN, check_session_alive),
+                daemon=True
+            ).start()
+        else:
+            print(f"API PROXY [{session_id}]: Skipping start (Mock mode or no HA credentials)", flush=True)
             
         return create_emulator_stream(session_id, "started")
     except Exception as e:
@@ -569,9 +608,691 @@ def load_config():
         print(f"Load Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# ============================================================
+# ESPHome Device Management - List & Install
+# ============================================================
+
+# Track active install processes so we can cancel them
+install_processes = {}  # session_id -> {process, lines, status, message}
+install_processes_lock = threading.Lock()
+
+# Track active compile processes (for USB flash workflow)
+compile_processes = {}  # session_id -> {process, lines, status, message, device_name}
+compile_processes_lock = threading.Lock()
+
+def _get_ha_timezone():
+    """Try to fetch the timezone from Home Assistant, with fallbacks."""
+    # 1. Try HA Supervisor API
+    try:
+        if SUPERVISOR_TOKEN:
+            resp = requests.get(
+                f"{HA_URL}/api/config",
+                headers={"Authorization": f"Bearer {SUPERVISOR_TOKEN}"},
+                timeout=5
+            )
+            if resp.ok:
+                tz = resp.json().get('time_zone')
+                if tz:
+                    print(f"Detected HA timezone: {tz}", flush=True)
+                    return tz
+    except Exception as e:
+        print(f"Could not fetch HA timezone: {e}", flush=True)
+
+    # 2. Try TZ environment variable
+    tz_env = os.environ.get('TZ')
+    if tz_env:
+        print(f"Using TZ env timezone: {tz_env}", flush=True)
+        return tz_env
+
+    # 3. Try reading /etc/timezone
+    try:
+        with open('/etc/timezone', 'r') as f:
+            tz = f.read().strip()
+            if tz:
+                print(f"Using /etc/timezone: {tz}", flush=True)
+                return tz
+    except Exception:
+        pass
+
+    # 4. Try reading /etc/localtime symlink
+    try:
+        link = os.readlink('/etc/localtime')
+        # e.g. /usr/share/zoneinfo/America/New_York -> America/New_York
+        if 'zoneinfo/' in link:
+            tz = link.split('zoneinfo/')[-1]
+            if tz:
+                print(f"Using /etc/localtime timezone: {tz}", flush=True)
+                return tz
+    except Exception:
+        pass
+
+    # 5. Fallback to UTC
+    print("No timezone detected, falling back to UTC", flush=True)
+    return 'UTC'
+
+def _parse_device_yaml(filepath):
+    """Parse a YAML device config file and extract device metadata."""
+    class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+        pass
+    def ignore_any_tag(loader, tag_suffix, node):
+        return None
+    def construct_include(loader, node):
+        return loader.construct_scalar(node)
+    SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
+    SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
+
+    with open(filepath, 'r') as f:
+        data = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
+
+    if not data or not isinstance(data, dict):
+        return None
+
+    device_name = None
+    friendly_name = None
+    screen_type = None
+    ip_address = None
+    is_device_config = False
+
+    # Check substitutions
+    subs = data.get('substitutions', {}) or {}
+    if subs:
+        device_name = subs.get('device_name')
+        friendly_name = subs.get('friendly_name')
+
+    # Check esphome section
+    esphome_section = data.get('esphome', {}) or {}
+    if esphome_section:
+        is_device_config = True
+        if not device_name:
+            device_name = esphome_section.get('name')
+        if not friendly_name:
+            friendly_name = esphome_section.get('friendly_name')
+
+    # Check packages for device_base (CYD screen type detection)
+    packages = data.get('packages', {}) or {}
+    if packages:
+        device_base = packages.get('device_base', '')
+        if isinstance(device_base, str):
+            if '2432s028' in device_base:
+                screen_type = '2432s028'
+                is_device_config = True
+            elif '3248s035' in device_base:
+                screen_type = '3248s035'
+                is_device_config = True
+
+    # Check for tile_ui section (CYD-specific marker)
+    if data.get('tile_ui'):
+        is_device_config = True
+
+    # Get IP address from wifi section
+    wifi = data.get('wifi', {})
+    if isinstance(wifi, dict):
+        ip_address = wifi.get('use_address')
+
+    if not is_device_config or not device_name:
+        return None
+
+    return {
+        'device_name': device_name,
+        'friendly_name': friendly_name or device_name,
+        'screen_type': screen_type,
+        'ip_address': ip_address,
+        'address': ip_address or f"{device_name}.local"
+    }
+
+
+def _check_device_online(device):
+    """Ping a device to check if it's reachable on the network."""
+    address = device['address']
+    try:
+        result = subprocess.run(
+            ['ping', '-c', '1', '-W', '1', address],
+            capture_output=True, timeout=3
+        )
+        device['online'] = (result.returncode == 0)
+    except Exception:
+        device['online'] = False
+    return device
+
+
+@app.route('/api/esphome/devices', methods=['GET'])
+def list_esphome_devices():
+    """List all ESPHome device config files with metadata and online status."""
+    try:
+        devices = []
+        skip_dirs = {'lib', 'external_components', '.esphome', '__pycache__'}
+
+        for item in os.listdir(BASE_DIR):
+            # Skip hidden files, directories we know aren't device configs
+            if item.startswith('.') or item in skip_dirs:
+                continue
+            filepath = os.path.join(BASE_DIR, item)
+            if not os.path.isfile(filepath):
+                continue
+            if not (item.endswith('.yaml') or item.endswith('.yml')):
+                continue
+
+            try:
+                meta = _parse_device_yaml(filepath)
+                if meta:
+                    meta['filename'] = item
+                    devices.append(meta)
+            except Exception as e:
+                print(f"Error parsing {item}: {e}", flush=True)
+                continue
+
+        # Also scan subdirectories one level deep (e.g. monitor_config/)
+        for subdir in os.listdir(BASE_DIR):
+            subdir_path = os.path.join(BASE_DIR, subdir)
+            if not os.path.isdir(subdir_path) or subdir in skip_dirs or subdir.startswith('.'):
+                continue
+            for item in os.listdir(subdir_path):
+                if not (item.endswith('.yaml') or item.endswith('.yml')):
+                    continue
+                filepath = os.path.join(subdir_path, item)
+                if not os.path.isfile(filepath):
+                    continue
+                try:
+                    meta = _parse_device_yaml(filepath)
+                    if meta:
+                        meta['filename'] = f"{subdir}/{item}"
+                        devices.append(meta)
+                except Exception as e:
+                    print(f"Error parsing {subdir}/{item}: {e}", flush=True)
+                    continue
+
+        # Check online status in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            devices = list(executor.map(_check_device_online, devices))
+
+        # Sort: online first, then by name
+        devices.sort(key=lambda d: (not d.get('online', False), d.get('friendly_name', '').lower()))
+
+        return jsonify({'devices': devices})
+    except Exception as e:
+        print(f"List devices error: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ha/timezone')
+def get_ha_timezone_endpoint():
+    """Return the HA timezone so the frontend can bake it into device configs."""
+    tz = _get_ha_timezone()
+    return jsonify({'timezone': tz})
+
+
+@app.route('/api/esphome/install', methods=['POST'])
+def install_esphome_device():
+    """Start compiling and installing a device config via OTA. Returns immediately; poll /api/esphome/install/status for progress."""
+    try:
+        print(f"[install] Request received", flush=True)
+        data = request.get_json()
+        filename = data.get('filename')
+
+        if not filename or '..' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        filepath = os.path.join(BASE_DIR, filename.lstrip('/'))
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'File not found: {filename}'}), 404
+
+        session_id = get_session_id()
+        print(f"[install] Session: {session_id}, File: {filename}", flush=True)
+
+        with install_processes_lock:
+            existing = install_processes.get(session_id)
+            if existing:
+                proc = existing['process']
+                if proc.poll() is None:
+                    # Still running — kill the old one before starting fresh
+                    print(f"[install] Killing stale install process PID {proc.pid}", flush=True)
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                install_processes.pop(session_id, None)
+
+        # Start the process immediately — timezone is fetched in the background thread
+        process = subprocess.Popen(
+            ['esphome', 'run', filename, '--device', 'OTA'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=BASE_DIR,
+            text=True,
+            bufsize=1,
+        )
+
+        install_state = {
+            'process': process,
+            'lines': [],
+            'status': 'running',      # running | success | error
+            'message': f'Starting install of {filename}...',
+            'line_offset': 0,          # not used server-side, just tracks total
+        }
+
+        with install_processes_lock:
+            install_processes[session_id] = install_state
+
+        # Regex to strip ANSI escape codes from ESPHome output
+        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\r')
+
+        def _reader_thread(state):
+            """Background thread that reads process stdout into the shared line buffer."""
+            proc = state['process']
+            try:
+                print(f"[install] Reader thread started for PID {proc.pid}", flush=True)
+                for line in iter(proc.stdout.readline, ''):
+                    clean = ansi_re.sub('', line.rstrip('\n'))
+                    if clean.strip():  # skip empty lines from stripped control chars
+                        state['lines'].append(clean)
+
+                    # Detect OTA upload success patterns
+                    # ESPHome prints these after successful upload:
+                    #   "INFO Successfully uploaded program"
+                    #   "INFO OTA successful"
+                    #   "INFO Waiting for result..."
+                    #   Then logs start with "[timestamp][I][app:029]: Running..."
+                    lower = clean.lower()
+                    if ('successfully uploaded' in lower or
+                        'ota successful' in lower or
+                        'success' in lower and 'upload' in lower):
+                        print(f"[install] OTA upload success detected, terminating process", flush=True)
+                        state['status'] = 'success'
+                        state['message'] = 'Installation completed successfully!'
+                        # Give it a moment then terminate
+                        import time as _time
+                        _time.sleep(1)
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        return
+
+                proc.wait()
+                if proc.returncode == 0:
+                    state['status'] = 'success'
+                    state['message'] = 'Installation completed successfully!'
+                    print(f"[install] Process completed successfully", flush=True)
+                else:
+                    # If we already set success from OTA detection, don't override
+                    if state['status'] != 'success':
+                        state['status'] = 'error'
+                        state['message'] = f'Installation failed (exit code {proc.returncode})'
+                        print(f"[install] Process failed with exit code {proc.returncode}", flush=True)
+            except Exception as e:
+                if state['status'] != 'success':  # Don't override OTA success
+                    state['status'] = 'error'
+                    state['message'] = str(e)
+                print(f"[install] Reader thread error: {e}", flush=True)
+
+        t = threading.Thread(target=_reader_thread, args=(install_state,), daemon=True)
+        t.start()
+
+        print(f"[install] Returning response, process PID: {process.pid}", flush=True)
+        return jsonify({'status': 'started', 'message': install_state['message']})
+
+    except Exception as e:
+        print(f"[install] Exception: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/esphome/install/status')
+def install_status():
+    """Poll for install progress. Pass ?offset=N to get only new lines since line N."""
+    session_id = get_session_id()
+    with install_processes_lock:
+        state = install_processes.get(session_id)
+
+    if not state:
+        return jsonify({'status': 'not_running'}), 404
+
+    offset = request.args.get('offset', 0, type=int)
+    lines = state['lines']
+    new_lines = lines[offset:]
+
+    result = {
+        'status': state['status'],
+        'message': state['message'],
+        'lines': new_lines,
+        'offset': len(lines),
+    }
+
+    # Clean up finished installs after client has seen the final status
+    if state['status'] in ('success', 'error'):
+        # Keep the state around for one more poll so the client sees the result,
+        # but if offset already covers all lines, clean up
+        if offset >= len(lines):
+            with install_processes_lock:
+                install_processes.pop(session_id, None)
+
+    return jsonify(result)
+
+
+@app.route('/api/esphome/install/cancel', methods=['POST'])
+def cancel_install():
+    """Cancel a running installation."""
+    session_id = get_session_id()
+    with install_processes_lock:
+        state = install_processes.get(session_id)
+        if state:
+            process = state['process']
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                state['status'] = 'error'
+                state['message'] = 'Installation cancelled by user'
+            install_processes.pop(session_id, None)
+            return jsonify({'status': 'cancelled'})
+    return jsonify({'status': 'not_running'}), 404
+
+
+# ============================================================
+# WiFi Credentials (secrets.yaml management)
+# ============================================================
+
+WIFI_PLACEHOLDERS = {'WIFI_SSID', 'WIFI_PASSWORD', 'your_ssid', 'your_password', '', 'changeme'}
+
+@app.route('/api/esphome/wifi', methods=['GET'])
+def get_wifi_status():
+    """Check if WiFi credentials are configured (not placeholders)."""
+    secrets_path = os.path.join(BASE_DIR, 'secrets.yaml')
+    if not os.path.exists(secrets_path):
+        return jsonify({'configured': False, 'ssid': '', 'has_password': False})
+
+    try:
+        with open(secrets_path, 'r') as f:
+            secrets = yaml.safe_load(f) or {}
+        ssid = str(secrets.get('wifi_ssid', '')).strip()
+        password = str(secrets.get('wifi_password', '')).strip()
+        configured = ssid not in WIFI_PLACEHOLDERS and password not in WIFI_PLACEHOLDERS
+        return jsonify({
+            'configured': configured,
+            'ssid': ssid if configured else '',
+            'has_password': bool(password) if configured else False,
+        })
+    except Exception as e:
+        print(f"[wifi] Error reading secrets: {e}", flush=True)
+        return jsonify({'configured': False, 'ssid': '', 'has_password': False})
+
+
+@app.route('/api/esphome/wifi', methods=['POST'])
+def save_wifi_credentials():
+    """Save WiFi SSID and password to secrets.yaml."""
+    data = request.get_json()
+    ssid = data.get('ssid', '').strip()
+    password = data.get('password', '').strip()
+
+    if not ssid:
+        return jsonify({'error': 'SSID is required'}), 400
+    if not password:
+        return jsonify({'error': 'Password is required'}), 400
+
+    secrets_path = os.path.join(BASE_DIR, 'secrets.yaml')
+
+    # Read existing secrets to preserve other entries
+    existing = {}
+    if os.path.exists(secrets_path):
+        try:
+            with open(secrets_path, 'r') as f:
+                existing = yaml.safe_load(f) or {}
+        except Exception:
+            existing = {}
+
+    existing['wifi_ssid'] = ssid
+    existing['wifi_password'] = password
+
+    try:
+        with open(secrets_path, 'w') as f:
+            f.write('# Your Wi-Fi SSID and password\n')
+            for key, value in existing.items():
+                # Quote values to handle special characters
+                f.write(f'{key}: "{value}"\n')
+        print(f"[wifi] Saved WiFi credentials (SSID: {ssid})", flush=True)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"[wifi] Error saving secrets: {e}", flush=True)
+        return jsonify({'error': f'Failed to save: {str(e)}'}), 500
+
+
+# ============================================================
+# ESPHome Compile & Firmware Download (for USB/Web Serial flash)
+# ============================================================
+
+@app.route('/api/esphome/compile', methods=['POST'])
+def compile_esphome_device():
+    """Compile firmware for a device config. Returns immediately; poll /api/esphome/compile/status for progress."""
+    try:
+        print(f"[compile] Request received", flush=True)
+        data = request.get_json()
+        filename = data.get('filename')
+
+        if not filename or '..' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        filepath = os.path.join(BASE_DIR, filename.lstrip('/'))
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'File not found: {filename}'}), 404
+
+        session_id = get_session_id()
+        print(f"[compile] Session: {session_id}, File: {filename}", flush=True)
+
+        # Clean up any existing compile for this session
+        with compile_processes_lock:
+            existing = compile_processes.get(session_id)
+            if existing:
+                proc = existing['process']
+                if proc.poll() is None:
+                    print(f"[compile] Killing stale compile process PID {proc.pid}", flush=True)
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                compile_processes.pop(session_id, None)
+
+        # Parse device name from the YAML for locating build output
+        device_name = None
+        try:
+            class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+                pass
+            def ignore_any_tag(loader, tag_suffix, node):
+                return None
+            def construct_include(loader, node):
+                return loader.construct_scalar(node)
+            SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
+            SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
+            with open(filepath, 'r') as f:
+                parsed = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
+                device_name = parsed.get('substitutions', {}).get('device_name') or \
+                              parsed.get('esphome', {}).get('name') or \
+                              os.path.splitext(os.path.basename(filename))[0]
+        except Exception:
+            device_name = os.path.splitext(os.path.basename(filename))[0]
+
+        # Get timezone
+        env = os.environ.copy()
+        tz = _get_ha_timezone()
+        if tz:
+            env['TZ'] = tz
+
+        process = subprocess.Popen(
+            ['esphome', 'compile', filename],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=BASE_DIR,
+            text=True,
+            bufsize=1,
+            env=env
+        )
+
+        compile_state = {
+            'process': process,
+            'lines': [],
+            'status': 'running',
+            'message': f'Compiling {filename}...',
+            'device_name': device_name,
+            'filename': filename,
+        }
+
+        with compile_processes_lock:
+            compile_processes[session_id] = compile_state
+
+        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\r')
+
+        def _reader_thread(state):
+            proc = state['process']
+            try:
+                print(f"[compile] Reader thread started for PID {proc.pid}", flush=True)
+                for line in iter(proc.stdout.readline, ''):
+                    clean = ansi_re.sub('', line.rstrip('\n'))
+                    if clean.strip():
+                        state['lines'].append(clean)
+                proc.wait()
+                if proc.returncode == 0:
+                    state['status'] = 'success'
+                    state['message'] = 'Compilation completed successfully!'
+                    print(f"[compile] Compilation succeeded", flush=True)
+                else:
+                    state['status'] = 'error'
+                    state['message'] = f'Compilation failed (exit code {proc.returncode})'
+                    print(f"[compile] Compilation failed with exit code {proc.returncode}", flush=True)
+            except Exception as e:
+                state['status'] = 'error'
+                state['message'] = str(e)
+                print(f"[compile] Reader thread error: {e}", flush=True)
+
+        t = threading.Thread(target=_reader_thread, args=(compile_state,), daemon=True)
+        t.start()
+
+        print(f"[compile] Returning response, process PID: {process.pid}", flush=True)
+        return jsonify({'status': 'started', 'message': compile_state['message'], 'device_name': device_name})
+
+    except Exception as e:
+        print(f"[compile] Exception: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/esphome/compile/status')
+def compile_status():
+    """Poll for compile progress. Pass ?offset=N to get only new lines since line N."""
+    session_id = get_session_id()
+    with compile_processes_lock:
+        state = compile_processes.get(session_id)
+
+    if not state:
+        return jsonify({'status': 'not_running'}), 404
+
+    offset = request.args.get('offset', 0, type=int)
+    lines = state['lines']
+    new_lines = lines[offset:]
+
+    result = {
+        'status': state['status'],
+        'message': state['message'],
+        'lines': new_lines,
+        'offset': len(lines),
+        'device_name': state.get('device_name'),
+    }
+
+    if state['status'] in ('success', 'error'):
+        if offset >= len(lines):
+            with compile_processes_lock:
+                compile_processes.pop(session_id, None)
+
+    return jsonify(result)
+
+
+@app.route('/api/esphome/compile/cancel', methods=['POST'])
+def cancel_compile():
+    """Cancel a running compilation."""
+    session_id = get_session_id()
+    with compile_processes_lock:
+        state = compile_processes.get(session_id)
+        if state:
+            process = state['process']
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                state['status'] = 'error'
+                state['message'] = 'Compilation cancelled by user'
+            compile_processes.pop(session_id, None)
+            return jsonify({'status': 'cancelled'})
+    return jsonify({'status': 'not_running'}), 404
+
+
+@app.route('/api/esphome/firmware/<device_name>/manifest.json')
+def get_firmware_manifest(device_name):
+    """Return a manifest for flashing via esptool-js (ESP Web Tools compatible)."""
+    if '..' in device_name:
+        return jsonify({'error': 'Invalid device name'}), 400
+
+    build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name)
+
+    if not os.path.isdir(build_dir):
+        return jsonify({'error': f'Build output not found for {device_name}. Compile first.'}), 404
+
+    # Check for factory image (esp-idf, single image that includes bootloader+partitions+app)
+    factory_bin = os.path.join(build_dir, 'firmware.factory.bin')
+    if os.path.exists(factory_bin):
+        return jsonify({
+            'name': device_name,
+            'parts': [
+                {'path': f'/api/esphome/firmware/{device_name}/firmware.factory.bin', 'offset': 0}
+            ]
+        })
+
+    # Arduino framework: separate files
+    parts = []
+    firmware_bin = os.path.join(build_dir, 'firmware.bin')
+    if os.path.exists(firmware_bin):
+        # Typical ESP32 Arduino offsets
+        bootloader = os.path.join(build_dir, 'bootloader.bin')
+        partitions = os.path.join(build_dir, 'partitions.bin')
+        boot_app = os.path.join(build_dir, 'boot_app0.bin')
+
+        if os.path.exists(bootloader):
+            parts.append({'path': f'/api/esphome/firmware/{device_name}/bootloader.bin', 'offset': 4096})
+        if os.path.exists(partitions):
+            parts.append({'path': f'/api/esphome/firmware/{device_name}/partitions.bin', 'offset': 32768})
+        if os.path.exists(boot_app):
+            parts.append({'path': f'/api/esphome/firmware/{device_name}/boot_app0.bin', 'offset': 57344})
+        parts.append({'path': f'/api/esphome/firmware/{device_name}/firmware.bin', 'offset': 65536})
+
+        return jsonify({'name': device_name, 'parts': parts})
+
+    return jsonify({'error': f'No firmware binaries found for {device_name}'}), 404
+
+
+@app.route('/api/esphome/firmware/<device_name>/<filename>')
+def get_firmware_file(device_name, filename):
+    """Serve a compiled firmware binary file."""
+    if '..' in device_name or '..' in filename:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    # Only allow known binary extensions
+    if not filename.endswith('.bin'):
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name)
+    filepath = os.path.join(build_dir, filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': f'File not found: {filename}'}), 404
+
+    return send_from_directory(build_dir, filename, mimetype='application/octet-stream')
+
+
 @app.route('/api/schema')
 def get_schema():
-    schema_path = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui/schema.json')
+    schema_path = os.path.join(APP_DIR, 'esphome/external_components/tile_ui/schema.json')
     if os.path.exists(schema_path):
         with open(schema_path, 'r') as f:
             return jsonify(json.load(f))
@@ -597,8 +1318,8 @@ def update_lib():
             shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml'))
             
         # Update tile_ui without backup
-        source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
-        target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
+        source_ui = os.path.join(APP_DIR, 'esphome/external_components/tile_ui')
+        target_ui = os.path.join(BASE_DIR, 'external_components/tile_ui')
         
         if os.path.exists(source_ui):
             if os.path.exists(target_ui):
@@ -663,8 +1384,8 @@ def check_lib_status():
         source_lib = os.path.join(APP_DIR, 'esphome/lib')
         target_lib = os.path.join(BASE_DIR, 'lib')
         
-        source_ui = os.path.join(APP_DIR, 'esphome/custom_components/tile_ui')
-        target_ui = os.path.join(BASE_DIR, 'custom_components/tile_ui')
+        source_ui = os.path.join(APP_DIR, 'esphome/external_components/tile_ui')
+        target_ui = os.path.join(BASE_DIR, 'external_components/tile_ui')
         
         # If source and target are the same (local dev), they are synced
         if os.path.abspath(source_lib) == os.path.abspath(target_lib):

@@ -1,10 +1,4 @@
 esphome:
-  includes:
-    - ${lib_dir}draw_state.h
-    - ${lib_dir}utils.h
-    - ${lib_dir}tiles.h
-    - ${lib_dir}screens.h
-    - ${lib_dir}view.h
   on_boot:
     then:
       - script.execute: init_radar
@@ -12,10 +6,14 @@ esphome:
 packages:
   custom_lib: !include lib_custom.yaml
 
+substitutions:
+  api_port: "6053"
+
 logger:
 
 api:
   id: api_server
+  port: ${api_port}
 
 globals:
   - id: rows
@@ -211,6 +209,14 @@ text_sensor:
     internal: true
 
 script:
+  # Dummy script to force USER_API_HOMEASSISTANT_SERVICES to be defined
+  - id: _force_ha_services
+    then:
+      - homeassistant.service:
+          service: homeassistant.update_entity
+          data:
+            entity_id: sensor.dummy
+
   - id: increase_bright
     then:
       - lambda: |-
@@ -448,6 +454,19 @@ script:
           static const char* FOURTY = "40";
           for (const std::string& blind : entities) {
             PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, FOURTY}});
+          }
+  
+  - id: action_blinds_location
+    parameters:
+      entities: string[]
+      location: string
+    then:
+      - lambda: |-
+          static std::string set_cover_position = "set_cover_position";
+          static const char* SET_COVER_POSITION = "set_cover_position";
+          static const char* POSITION = "position";
+          for (const std::string& blind : entities) {
+            PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, location}});
           }
 
   - id: action_blinds_up_down

@@ -244,20 +244,30 @@ def collect_referenced_scripts(screens):
                     continue
                 
                 # Handle both single string and list of strings
-                if isinstance(values, str):
+                if isinstance(values, (str, dict)):
                     values = [values]
                 
                 for func in values:
+                    func_name = None
+                    params = None
+                    
                     if isinstance(func, str) and func:
-                        if func not in referenced_scripts:
-                            referenced_scripts[func] = []
-                        referenced_scripts[func].append({
+                        func_name = func
+                    elif isinstance(func, dict) and len(func) == 1:
+                        func_name = list(func.keys())[0]
+                        params = func[func_name]
+
+                    if func_name:
+                        if func_name not in referenced_scripts:
+                            referenced_scripts[func_name] = []
+                        referenced_scripts[func_name].append({
                             'type': expected_type,
                             'screen': screen_id,
                             'tile_type': tile_type,
                             'x': x,
                             'y': y,
-                            'usage': usage
+                            'usage': usage,
+                            'params': params
                         })
             
             # 3. Collect from requires_fast_refresh (ha_action tiles)

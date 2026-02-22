@@ -378,23 +378,31 @@ void PerformHaAction(
           : action;
 
   ESP_LOGI("ha_action", "Service: %s, Entity: %s", service_name.c_str(), entity.c_str());
-  for (const auto pair : data) {
+  for (const auto& pair : data) {
     ESP_LOGI("ha_action", "  Data: %s = %s", pair.first.c_str(), pair.second.c_str());
   }
 
   esphome::api::HomeassistantActionRequest request;
-  // Construct the service name based on the entity and action.
-  request.set_service(StringRef(service_name));
+  // Set the service name using StringRef
+  request.service = StringRef(service_name);
+  
+  // IMPORTANT: Must call init() before push_back - FixedVector requires this!
+  request.data.init(1 + data.size());
+  
+  // Add entity_id as the first data item  
   esphome::api::HomeassistantServiceMap entity_id_kv;
-  entity_id_kv.set_key(StringRef("entity_id"));
-  entity_id_kv.value = entity;
+  entity_id_kv.key = StringRef("entity_id");
+  entity_id_kv.value = StringRef(entity);
   request.data.push_back(entity_id_kv);
-  // Add any additional data to the service call.
-  for (const auto pair : data) {
-    entity_id_kv.set_key(StringRef(pair.first));
-    entity_id_kv.value = pair.second;
-    request.data.push_back(entity_id_kv);
+  
+  // Add any additional data to the service call
+  for (const auto& pair : data) {
+    esphome::api::HomeassistantServiceMap kv;
+    kv.key = StringRef(pair.first);
+    kv.value = StringRef(pair.second);
+    request.data.push_back(kv);
   }
+  
   id(api_server).send_homeassistant_action(request);
 }
 

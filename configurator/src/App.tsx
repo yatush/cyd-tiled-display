@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
 
 import { Sidebar } from './components/PropertiesSidebar';
 import { NewPageDialog } from './components/NewPageDialog';
@@ -9,6 +10,7 @@ import { HASettingsDialog } from './components/HASettingsDialog';
 import { FileManagementDialog } from './components/FileManagementDialog';
 import { SaveDeviceDialog } from './components/SaveDeviceDialog';
 import { LoadDeviceDialog } from './components/LoadDeviceDialog';
+import { InstallDialog } from './components/InstallDialog';
 import { ScreensFileDialog } from './components/ScreensFileDialog';
 import { EmulatorDialog } from './components/EmulatorDialog';
 
@@ -37,10 +39,12 @@ function App() {
   const [isFileManagementOpen, setIsFileManagementOpen] = useState(false);
   const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
   const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
+  const [isInstallDeviceOpen, setIsInstallDeviceOpen] = useState(false);
   const [isScreensFileOpen, setIsScreensFileOpen] = useState(false);
   const [screensFileMode, setScreensFileMode] = useState<'save' | 'load'>('save');
   const [isEmulatorOpen, setIsEmulatorOpen] = useState(false);
   const [sidebarKey, setSidebarKey] = useState(0);
+  const [usbCompileActive, setUsbCompileActive] = useState(false);
 
   // Hooks
   const {
@@ -362,6 +366,7 @@ function App() {
           generationOutput={generationOutput}
           onGenerate={() => handleGenerate(() => setActiveTab('output'))}
           onCopyYaml={handleExport}
+          onNavigateToPage={setActivePageId}
       />
 
       {/* Right Resizer */}
@@ -437,6 +442,10 @@ function App() {
           setIsFileManagementOpen(false);
           setIsLoadDeviceOpen(true);
         }}
+        onInstallDevice={() => {
+          setIsFileManagementOpen(false);
+          setIsInstallDeviceOpen(true);
+        }}
         connectionType={connectionType}
       />
 
@@ -459,6 +468,23 @@ function App() {
         }}
         onLoad={handleLoadDeviceConfig}
       />
+
+      <InstallDialog 
+        isOpen={isInstallDeviceOpen}
+        onClose={() => setIsInstallDeviceOpen(false)}
+        onBack={() => {
+          setIsInstallDeviceOpen(false);
+          setIsFileManagementOpen(true);
+        }}
+        onSaveAndInstall={async (deviceName, friendlyName, screenType, fileName, encryptionKey, otaPassword, ipAddress) => {
+          const saved = await handleSaveDeviceConfig(deviceName, friendlyName, screenType, fileName, encryptionKey, otaPassword, ipAddress, true);
+          if (!saved) {
+            throw new Error('Failed to save device configuration');
+          }
+        }}
+        stayMounted={usbCompileActive}
+        onCompileActiveChange={setUsbCompileActive}
+      />
       
       <ScreensFileDialog 
         isOpen={isScreensFileOpen}
@@ -480,6 +506,17 @@ function App() {
         websockifyPort={websockifyPort}
         emulatorSessionId={currentEmulatorSessionIdRef.current}
       />
+
+      {/* Floating USB Compile indicator — shown when dialog is closed but compile is running */}
+      {usbCompileActive && !isInstallDeviceOpen && (
+        <button
+          onClick={() => setIsInstallDeviceOpen(true)}
+          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-full shadow-lg hover:bg-purple-700 transition-all animate-pulse"
+        >
+          <RefreshCw size={14} className="animate-spin" />
+          <span className="text-sm font-bold">USB Compiling...</span>
+        </button>
+      )}
     </div>
   );
 }
