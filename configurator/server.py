@@ -613,8 +613,12 @@ def load_config():
 # ============================================================
 
 # Track active install processes so we can cancel them
-install_processes = {}  # session_id -> subprocess.Popen
+install_processes = {}  # session_id -> {process, lines, status, message}
 install_processes_lock = threading.Lock()
+
+# Track active compile processes (for USB flash workflow)
+compile_processes = {}  # session_id -> {process, lines, status, message, device_name}
+compile_processes_lock = threading.Lock()
 
 def _get_ha_timezone():
     """Try to fetch the timezone from Home Assistant, with fallbacks."""
@@ -985,6 +989,305 @@ def cancel_install():
             install_processes.pop(session_id, None)
             return jsonify({'status': 'cancelled'})
     return jsonify({'status': 'not_running'}), 404
+
+
+# ============================================================
+# WiFi Credentials (secrets.yaml management)
+# ============================================================
+
+WIFI_PLACEHOLDERS = {'WIFI_SSID', 'WIFI_PASSWORD', 'your_ssid', 'your_password', '', 'changeme'}
+
+@app.route('/api/esphome/wifi', methods=['GET'])
+def get_wifi_status():
+    """Check if WiFi credentials are configured (not placeholders)."""
+    secrets_path = os.path.join(BASE_DIR, 'secrets.yaml')
+    if not os.path.exists(secrets_path):
+        return jsonify({'configured': False, 'ssid': '', 'has_password': False})
+
+    try:
+        with open(secrets_path, 'r') as f:
+            secrets = yaml.safe_load(f) or {}
+        ssid = str(secrets.get('wifi_ssid', '')).strip()
+        password = str(secrets.get('wifi_password', '')).strip()
+        configured = ssid not in WIFI_PLACEHOLDERS and password not in WIFI_PLACEHOLDERS
+        return jsonify({
+            'configured': configured,
+            'ssid': ssid if configured else '',
+            'has_password': bool(password) if configured else False,
+        })
+    except Exception as e:
+        print(f"[wifi] Error reading secrets: {e}", flush=True)
+        return jsonify({'configured': False, 'ssid': '', 'has_password': False})
+
+
+@app.route('/api/esphome/wifi', methods=['POST'])
+def save_wifi_credentials():
+    """Save WiFi SSID and password to secrets.yaml."""
+    data = request.get_json()
+    ssid = data.get('ssid', '').strip()
+    password = data.get('password', '').strip()
+
+    if not ssid:
+        return jsonify({'error': 'SSID is required'}), 400
+    if not password:
+        return jsonify({'error': 'Password is required'}), 400
+
+    secrets_path = os.path.join(BASE_DIR, 'secrets.yaml')
+
+    # Read existing secrets to preserve other entries
+    existing = {}
+    if os.path.exists(secrets_path):
+        try:
+            with open(secrets_path, 'r') as f:
+                existing = yaml.safe_load(f) or {}
+        except Exception:
+            existing = {}
+
+    existing['wifi_ssid'] = ssid
+    existing['wifi_password'] = password
+
+    try:
+        with open(secrets_path, 'w') as f:
+            f.write('# Your Wi-Fi SSID and password\n')
+            for key, value in existing.items():
+                # Quote values to handle special characters
+                f.write(f'{key}: "{value}"\n')
+        print(f"[wifi] Saved WiFi credentials (SSID: {ssid})", flush=True)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"[wifi] Error saving secrets: {e}", flush=True)
+        return jsonify({'error': f'Failed to save: {str(e)}'}), 500
+
+
+# ============================================================
+# ESPHome Compile & Firmware Download (for USB/Web Serial flash)
+# ============================================================
+
+@app.route('/api/esphome/compile', methods=['POST'])
+def compile_esphome_device():
+    """Compile firmware for a device config. Returns immediately; poll /api/esphome/compile/status for progress."""
+    try:
+        print(f"[compile] Request received", flush=True)
+        data = request.get_json()
+        filename = data.get('filename')
+
+        if not filename or '..' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        filepath = os.path.join(BASE_DIR, filename.lstrip('/'))
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'File not found: {filename}'}), 404
+
+        session_id = get_session_id()
+        print(f"[compile] Session: {session_id}, File: {filename}", flush=True)
+
+        # Clean up any existing compile for this session
+        with compile_processes_lock:
+            existing = compile_processes.get(session_id)
+            if existing:
+                proc = existing['process']
+                if proc.poll() is None:
+                    print(f"[compile] Killing stale compile process PID {proc.pid}", flush=True)
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                compile_processes.pop(session_id, None)
+
+        # Parse device name from the YAML for locating build output
+        device_name = None
+        try:
+            class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+                pass
+            def ignore_any_tag(loader, tag_suffix, node):
+                return None
+            def construct_include(loader, node):
+                return loader.construct_scalar(node)
+            SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
+            SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
+            with open(filepath, 'r') as f:
+                parsed = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
+                device_name = parsed.get('substitutions', {}).get('device_name') or \
+                              parsed.get('esphome', {}).get('name') or \
+                              os.path.splitext(os.path.basename(filename))[0]
+        except Exception:
+            device_name = os.path.splitext(os.path.basename(filename))[0]
+
+        # Get timezone
+        env = os.environ.copy()
+        tz = _get_ha_timezone()
+        if tz:
+            env['TZ'] = tz
+
+        process = subprocess.Popen(
+            ['esphome', 'compile', filename],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=BASE_DIR,
+            text=True,
+            bufsize=1,
+            env=env
+        )
+
+        compile_state = {
+            'process': process,
+            'lines': [],
+            'status': 'running',
+            'message': f'Compiling {filename}...',
+            'device_name': device_name,
+            'filename': filename,
+        }
+
+        with compile_processes_lock:
+            compile_processes[session_id] = compile_state
+
+        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\r')
+
+        def _reader_thread(state):
+            proc = state['process']
+            try:
+                print(f"[compile] Reader thread started for PID {proc.pid}", flush=True)
+                for line in iter(proc.stdout.readline, ''):
+                    clean = ansi_re.sub('', line.rstrip('\n'))
+                    if clean.strip():
+                        state['lines'].append(clean)
+                proc.wait()
+                if proc.returncode == 0:
+                    state['status'] = 'success'
+                    state['message'] = 'Compilation completed successfully!'
+                    print(f"[compile] Compilation succeeded", flush=True)
+                else:
+                    state['status'] = 'error'
+                    state['message'] = f'Compilation failed (exit code {proc.returncode})'
+                    print(f"[compile] Compilation failed with exit code {proc.returncode}", flush=True)
+            except Exception as e:
+                state['status'] = 'error'
+                state['message'] = str(e)
+                print(f"[compile] Reader thread error: {e}", flush=True)
+
+        t = threading.Thread(target=_reader_thread, args=(compile_state,), daemon=True)
+        t.start()
+
+        print(f"[compile] Returning response, process PID: {process.pid}", flush=True)
+        return jsonify({'status': 'started', 'message': compile_state['message'], 'device_name': device_name})
+
+    except Exception as e:
+        print(f"[compile] Exception: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/esphome/compile/status')
+def compile_status():
+    """Poll for compile progress. Pass ?offset=N to get only new lines since line N."""
+    session_id = get_session_id()
+    with compile_processes_lock:
+        state = compile_processes.get(session_id)
+
+    if not state:
+        return jsonify({'status': 'not_running'}), 404
+
+    offset = request.args.get('offset', 0, type=int)
+    lines = state['lines']
+    new_lines = lines[offset:]
+
+    result = {
+        'status': state['status'],
+        'message': state['message'],
+        'lines': new_lines,
+        'offset': len(lines),
+        'device_name': state.get('device_name'),
+    }
+
+    if state['status'] in ('success', 'error'):
+        if offset >= len(lines):
+            with compile_processes_lock:
+                compile_processes.pop(session_id, None)
+
+    return jsonify(result)
+
+
+@app.route('/api/esphome/compile/cancel', methods=['POST'])
+def cancel_compile():
+    """Cancel a running compilation."""
+    session_id = get_session_id()
+    with compile_processes_lock:
+        state = compile_processes.get(session_id)
+        if state:
+            process = state['process']
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                state['status'] = 'error'
+                state['message'] = 'Compilation cancelled by user'
+            compile_processes.pop(session_id, None)
+            return jsonify({'status': 'cancelled'})
+    return jsonify({'status': 'not_running'}), 404
+
+
+@app.route('/api/esphome/firmware/<device_name>/manifest.json')
+def get_firmware_manifest(device_name):
+    """Return a manifest for flashing via esptool-js (ESP Web Tools compatible)."""
+    if '..' in device_name:
+        return jsonify({'error': 'Invalid device name'}), 400
+
+    build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name)
+
+    if not os.path.isdir(build_dir):
+        return jsonify({'error': f'Build output not found for {device_name}. Compile first.'}), 404
+
+    # Check for factory image (esp-idf, single image that includes bootloader+partitions+app)
+    factory_bin = os.path.join(build_dir, 'firmware.factory.bin')
+    if os.path.exists(factory_bin):
+        return jsonify({
+            'name': device_name,
+            'parts': [
+                {'path': f'/api/esphome/firmware/{device_name}/firmware.factory.bin', 'offset': 0}
+            ]
+        })
+
+    # Arduino framework: separate files
+    parts = []
+    firmware_bin = os.path.join(build_dir, 'firmware.bin')
+    if os.path.exists(firmware_bin):
+        # Typical ESP32 Arduino offsets
+        bootloader = os.path.join(build_dir, 'bootloader.bin')
+        partitions = os.path.join(build_dir, 'partitions.bin')
+        boot_app = os.path.join(build_dir, 'boot_app0.bin')
+
+        if os.path.exists(bootloader):
+            parts.append({'path': f'/api/esphome/firmware/{device_name}/bootloader.bin', 'offset': 4096})
+        if os.path.exists(partitions):
+            parts.append({'path': f'/api/esphome/firmware/{device_name}/partitions.bin', 'offset': 32768})
+        if os.path.exists(boot_app):
+            parts.append({'path': f'/api/esphome/firmware/{device_name}/boot_app0.bin', 'offset': 57344})
+        parts.append({'path': f'/api/esphome/firmware/{device_name}/firmware.bin', 'offset': 65536})
+
+        return jsonify({'name': device_name, 'parts': parts})
+
+    return jsonify({'error': f'No firmware binaries found for {device_name}'}), 404
+
+
+@app.route('/api/esphome/firmware/<device_name>/<filename>')
+def get_firmware_file(device_name, filename):
+    """Serve a compiled firmware binary file."""
+    if '..' in device_name or '..' in filename:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    # Only allow known binary extensions
+    if not filename.endswith('.bin'):
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name)
+    filepath = os.path.join(build_dir, filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': f'File not found: {filename}'}), 404
+
+    return send_from_directory(build_dir, filename, mimetype='application/octet-stream')
 
 
 @app.route('/api/schema')

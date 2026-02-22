@@ -11,9 +11,11 @@ FROM python:3.11-alpine
 WORKDIR /app
 
 # Install dependencies
+# gcompat provides glibc compatibility layer needed by PlatformIO's prebuilt binaries (cmake, ninja, toolchains)
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
     xvfb x11vnc fluxbox bash git coreutils nginx procps net-tools \
+    gcompat \
     && pip3 install --no-cache-dir flask flask-cors requests pyyaml gunicorn esphome websockify aioesphomeapi
 
 # Install noVNC
@@ -42,6 +44,22 @@ COPY esphome /app/esphome
 # Pre-compile the emulator to speed up session starts (populates PlatformIO cache)
 # We use || true because it might need a display for full run, but compile should work.
 RUN cd /app/esphome && esphome compile lib/emulator.yaml || true
+
+# Pre-download ESP32 toolchain (needed for USB flash compilation)
+# A minimal ESP-IDF config triggers PlatformIO to install all required packages
+# (platform-espressif32, toolchain-xtensa-esp-elf, framework-espidf, etc.)
+# The compile itself will fail (Rust wrappers) but packages are cached.
+RUN mkdir -p /tmp/esp32_setup && \
+    printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
+    > /tmp/esp32_setup/dummy.yaml && \
+    cd /tmp/esp32_setup && esphome compile dummy.yaml 2>&1 || true && \
+    rm -rf /tmp/esp32_setup
+
+# Fix PlatformIO's Rust wrapper binaries for Alpine/musl compatibility
+# The xtensa toolchain ships Rust-compiled wrappers that crash on musl;
+# this replaces them with equivalent shell scripts.
+COPY docker_debug/fix_pio_wrappers.sh /app/
+RUN chmod +x /app/fix_pio_wrappers.sh && /app/fix_pio_wrappers.sh
 
 # Copy nginx config
 COPY docker_debug/nginx.conf /etc/nginx/nginx.conf

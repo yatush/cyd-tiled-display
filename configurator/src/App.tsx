@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
 
 import { Sidebar } from './components/PropertiesSidebar';
 import { NewPageDialog } from './components/NewPageDialog';
@@ -43,6 +44,7 @@ function App() {
   const [screensFileMode, setScreensFileMode] = useState<'save' | 'load'>('save');
   const [isEmulatorOpen, setIsEmulatorOpen] = useState(false);
   const [sidebarKey, setSidebarKey] = useState(0);
+  const [usbCompileActive, setUsbCompileActive] = useState(false);
 
   // Hooks
   const {
@@ -480,6 +482,8 @@ function App() {
             throw new Error('Failed to save device configuration');
           }
         }}
+        stayMounted={usbCompileActive}
+        onCompileActiveChange={setUsbCompileActive}
       />
       
       <ScreensFileDialog 
@@ -502,6 +506,17 @@ function App() {
         websockifyPort={websockifyPort}
         emulatorSessionId={currentEmulatorSessionIdRef.current}
       />
+
+      {/* Floating USB Compile indicator — shown when dialog is closed but compile is running */}
+      {usbCompileActive && !isInstallDeviceOpen && (
+        <button
+          onClick={() => setIsInstallDeviceOpen(true)}
+          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-full shadow-lg hover:bg-purple-700 transition-all animate-pulse"
+        >
+          <RefreshCw size={14} className="animate-spin" />
+          <span className="text-sm font-bold">USB Compiling...</span>
+        </button>
+      )}
     </div>
   );
 }

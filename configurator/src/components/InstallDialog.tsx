@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save } from 'lucide-react';
+import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save, Usb } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import { UsbInstallPanel } from './UsbInstallPanel';
 
 interface Device {
   filename: string;
@@ -17,16 +18,24 @@ interface InstallDialogProps {
   onClose: () => void;
   onBack?: () => void;
   onSaveAndInstall: (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string) => Promise<void>;
+  /** Keep dialog DOM alive even when closed (e.g. USB compile running in background) */
+  stayMounted?: boolean;
+  /** Called when USB compile starts/stops to control stayMounted from parent */
+  onCompileActiveChange?: (active: boolean) => void;
 }
 
 type InstallStatus = 'idle' | 'loading' | 'saving' | 'installing' | 'success' | 'error' | 'cancelled';
+type InstallTab = 'ota' | 'usb';
 
 export const InstallDialog: React.FC<InstallDialogProps> = ({
   isOpen,
   onClose,
   onBack,
-  onSaveAndInstall
+  onSaveAndInstall,
+  stayMounted,
+  onCompileActiveChange,
 }) => {
+  const [activeTab, setActiveTab] = useState<InstallTab>('ota');
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [status, setStatus] = useState<InstallStatus>('idle');
@@ -59,12 +68,13 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   useEffect(() => {
     if (isOpen) {
       fetchDevices();
+      // Only reset OTA state when opening (USB panel manages its own state)
       setStatus('idle');
       setLogs([]);
       setStatusMessage('');
       setSelectedDevice(null);
     } else {
-      // Cleanup on close
+      // Cleanup OTA polling on close (USB polling is managed by UsbInstallPanel)
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -255,6 +265,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   };
 
   const handleClose = () => {
+    // Only confirm/cancel for OTA operations — USB compile continues in background
     if (status === 'installing' || status === 'saving') {
       if (!confirm('Installation is in progress. Cancel and close?')) return;
       handleCancel();
@@ -262,15 +273,17 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     onClose();
   };
 
-  if (!isOpen) return null;
+  // Keep the dialog DOM alive (but hidden) when USB compile is running in background
+  if (!isOpen && !stayMounted) return null;
+  const dialogHidden = !isOpen && stayMounted;
 
   const isWorking = status === 'installing' || status === 'saving';
   const isDone = status === 'success' || status === 'error' || status === 'cancelled';
   const selected = devices.find(d => d.filename === selectedDevice);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4 backdrop-blur-sm" style={{ display: dialogHidden ? 'none' : undefined }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b bg-slate-50 flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -287,10 +300,43 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
           </button>
         </div>
 
+        {/* Tabs */}
+        {!isWorking && !isDone && (
+          <div className="flex border-b bg-white flex-shrink-0">
+            <button
+              onClick={() => setActiveTab('ota')}
+              className={`flex-1 px-4 py-2.5 text-sm font-bold flex items-center justify-center gap-1.5 transition-colors border-b-2 ${
+                activeTab === 'ota'
+                  ? 'text-green-700 border-green-600 bg-green-50/50'
+                  : 'text-slate-500 border-transparent hover:bg-slate-50 hover:text-slate-700'
+              }`}
+            >
+              <Wifi size={14} /> OTA Devices
+            </button>
+            <button
+              onClick={() => setActiveTab('usb')}
+              className={`flex-1 px-4 py-2.5 text-sm font-bold flex items-center justify-center gap-1.5 transition-colors border-b-2 ${
+                activeTab === 'usb'
+                  ? 'text-purple-700 border-purple-600 bg-purple-50/50'
+                  : 'text-slate-500 border-transparent hover:bg-slate-50 hover:text-slate-700'
+              }`}
+            >
+              <Usb size={14} /> USB Flash
+            </button>
+          </div>
+        )}
+
         {/* Content */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Device List */}
-          {!isWorking && !isDone && (
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {/* USB Flash Tab – always mounted, CSS-hidden when OTA tab is active */}
+          <UsbInstallPanel
+            onSaveAndInstall={onSaveAndInstall}
+            onCompileActiveChange={onCompileActiveChange}
+            hidden={activeTab !== 'usb'}
+          />
+
+          {/* OTA Device List */}
+          {activeTab === 'ota' && !isWorking && !isDone && (
             <div className="p-4 flex-1 overflow-auto">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs text-slate-500">
@@ -449,9 +495,10 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer - only for OTA tab (USB panel has its own) */}
+        {(activeTab === 'ota' || isWorking || isDone) && (
         <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 flex-shrink-0">
-          {!isWorking && !isDone && (
+          {activeTab === 'ota' && !isWorking && !isDone && (
             <>
               <button
                 onClick={handleClose}
@@ -498,6 +545,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   );
