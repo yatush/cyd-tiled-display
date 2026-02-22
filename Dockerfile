@@ -62,7 +62,6 @@ RUN chmod +x /app/vnc_startup.sh
 # Copy Python backend and scripts
 COPY configurator/generate_tiles_api.py /app/configurator/
 COPY configurator/server.py /app/configurator/
-COPY configurator/gunicorn_config.py /app/configurator/
 COPY configurator/api_proxy.py /app/configurator/
 COPY configurator/run_emulator.sh /app/configurator/
 COPY configurator/run_session.sh /app/configurator/
@@ -95,4 +94,4 @@ ENV SDL_VIDEODRIVER=x11
 # Start gunicorn and nginx
 # We use -b 127.0.0.1:8099 because nginx proxies to it
 # Nginx uses the config generated in vnc_startup.sh
-CMD ["sh", "-c", "gunicorn -c /app/configurator/gunicorn_config.py -w 1 --threads 4 --timeout 300 -b 127.0.0.1:8099 --chdir /app/configurator server:app & nginx -c /tmp/nginx.conf -g 'daemon off;'"]
+CMD ["sh", "-c", "gunicorn -w 1 --threads 4 --timeout 300 -b 127.0.0.1:8099 --chdir /app/configurator --error-logfile - server:app & nginx -c /tmp/nginx.conf -g 'daemon off;'"]
