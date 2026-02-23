@@ -45,9 +45,9 @@ number:
     step: 1
   
 script:
-  - id: init_radar
+  - id: _init_radar
     then: []
-  - id: adapt_bright
+  - id: _adapt_bright
     then: []
 
 output:
@@ -93,7 +93,7 @@ binary_sensor:
     id: radar_has_moving_target
     on_state:
       then:
-        - script.execute: on_movement
+        - script.execute: _on_movement
   - platform: template
     name: Radar Still Target
 

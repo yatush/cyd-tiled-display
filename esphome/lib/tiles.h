@@ -18,7 +18,7 @@ public:
       return;
     }
     if (!this->omit_frame_) {
-      id(draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_);
+      id(_draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_);
     }
     this->customDraw();
   }

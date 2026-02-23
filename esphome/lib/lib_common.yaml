@@ -1,7 +1,7 @@
 esphome:
   on_boot:
     then:
-      - script.execute: init_radar
+      - script.execute: _init_radar
       
 packages:
   custom_lib: !include lib_custom.yaml
@@ -217,7 +217,7 @@ script:
           data:
             entity_id: sensor.dummy
 
-  - id: increase_bright
+  - id: _increase_bright
     then:
       - lambda: |-
           auto new_brightness = id(backlight).remote_values.get_brightness() + 0.1;
@@ -226,7 +226,7 @@ script:
           }
           id(backlight).make_call().set_brightness(new_brightness).set_transition_length(0).perform();
 
-  - id: handle_touch
+  - id: _handle_touch
     mode: restart
     parameters:
       x: int
@@ -256,7 +256,7 @@ script:
       - lambda: |-
           id(adaptive_brightness) = false;
           id(bright_start_press_ms) = millis();
-          id(increase_bright).execute();
+          id(_increase_bright).execute();
           id(disp).update();
 
   - id: on_brightness_release
@@ -264,7 +264,7 @@ script:
       - lambda: |-
           id(bright_start_press_ms) = 0;
 
-  - id: rounded_rectangle
+  - id: _rounded_rectangle
     parameters: { x: int, y: int, w: int, h: int, r: int, c: Color }
     then:
       - lambda: |-
@@ -308,7 +308,7 @@ script:
           id(wakeup_distance) %= 350;
           id(wakeup_distance_connect).update();
 
-  - id: on_movement
+  - id: _on_movement
     then:
       - lambda: |-
           if (id(wakeup_distance) == 0 ||
@@ -323,7 +323,7 @@ script:
           }
           id(last_activity_ms) = now;
 
-  - id: update_ui_values
+  - id: _update_ui_values
     then:
       - lambda: |-
           if (isnan(id(wifi_signal_pct).state) ||
@@ -361,7 +361,7 @@ script:
       - lambda: |-
           id(script_output) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "opening"; });
 
-  - id: draw_tile_frame
+  - id: _draw_tile_frame
     parameters:
       i: int
       j: int
@@ -370,7 +370,7 @@ script:
     then:
       - lambda: |-
           for (int delta = 0; delta < id(tile_border_width); ++delta) {
-            id(rounded_rectangle).execute(
+            id(_rounded_rectangle).execute(
               x_start(i)+delta, 
               y_start(j)+delta, 
               x_rect() * i_span + (i_span - 1) * id(x_pad) - 2 * delta,
@@ -949,7 +949,7 @@ script:
           int y_mid = (y_start + y_end) / 2;
           print(x_mid, y_mid, id(text_big_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
 
-  - id: draw_page
+  - id: _draw_page
     then:
       - lambda: |-
           if (!View::initialized) {
@@ -959,13 +959,13 @@ script:
           if (!id(backlight).remote_values.is_on()) {
             return;
           }
-          id(update_ui_values).execute();
+          id(_update_ui_values).execute();
           view_ptr->getActiveScreen()->draw();
 
 interval:
   - interval: 250ms
     then:
-      - script.execute: on_movement
+      - script.execute: _on_movement
       - if:
           condition:
             or:
@@ -991,7 +991,7 @@ interval:
             - lambda: |-
                 return id(adaptive_brightness);
           then:
-            - script.execute: adapt_bright
+            - script.execute: _adapt_bright
       # Turn off screen if needed.
       - if:
           condition:

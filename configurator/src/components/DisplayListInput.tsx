@@ -16,7 +16,7 @@ export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], 
       const res = await apiFetch('/scripts');
       if (res.ok) {
         const data = await res.json();
-        setAvailableScripts(data.scripts || []);
+        setAvailableScripts((data.scripts || []).filter((s: any) => !s.id.startsWith('_')).sort((a: any, b: any) => a.id.localeCompare(b.id)));
         if (data.colors) setColors(data.colors);
         if (data.fonts) setFonts(data.fonts);
         if (data.icons) setIcons(data.icons);

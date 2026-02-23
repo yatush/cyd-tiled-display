@@ -185,7 +185,7 @@ async def to_code(config):
     # Register screen pages
     for screen_conf in config.get(CONF_SCREENS, []):
         screen_id = screen_conf[CONF_ID]
-        lambda_str = f"[](esphome::display::Display &it) {{ id(draw_page).execute(); }}"
+        lambda_str = f"[](esphome::display::Display &it) {{ id(_draw_page).execute(); }}"
         lambda_expr = cg.RawExpression(lambda_str)
         var = cg.new_Pvariable(screen_id, lambda_expr)
         all_pages.append(var)

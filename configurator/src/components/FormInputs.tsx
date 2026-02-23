@@ -52,7 +52,7 @@ export const ScriptInput = ({ label, value, onChange, type }: { label: string, v
         const data = await res.json();
         const scripts = data.scripts || [];
         setScriptPool(scripts);
-        setOptions(scripts.map((s: any) => s.id).sort());
+        setOptions(scripts.map((s: any) => s.id).filter((id: string) => !id.startsWith('_')).sort());
       }
     } catch (e) {
       console.error("Failed to fetch scripts", e);
@@ -146,7 +146,7 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
         const data = await res.json();
         const scripts = data.scripts || [];
         setScriptPool(scripts);
-        setOptions(scripts.map((s: any) => s.id).sort());
+        setOptions(scripts.map((s: any) => s.id).filter((id: string) => !id.startsWith('_')).sort());
       }
     } catch (e) {
       console.error("Failed to fetch scripts", e);
@@ -311,7 +311,7 @@ export const ConditionBuilder = ({ value, onChange, scriptOptions: propScriptOpt
     }
 
     apiFetch('/scripts').then(res => res.json()).then(data => {
-        const all = (data.scripts || []).map((s: any) => s.id).sort();
+        const all = (data.scripts || []).map((s: any) => s.id).filter((id: string) => !id.startsWith('_')).sort();
         if (!propScriptOptions) setOptions(all);
     }).catch(e => console.error(e));
   }, [propScriptOptions]);

@@ -85,7 +85,7 @@ binary_sensor:
       id: radar_has_moving_target
       on_state:
         then:
-          - script.execute: on_movement
+          - script.execute: _on_movement
     has_still_target:
       name: Radar Still Target
 
@@ -166,7 +166,7 @@ sensor:
       }
 
 script:
-  - id: init_radar
+  - id: _init_radar
     then:
       - lambda: |-
           static const struct { esphome::ld2410::GateThresholdNumber* gate; int val; } values[] = {
@@ -178,7 +178,7 @@ script:
           for (auto &v : values)
             v.gate->make_call().set_value(v.val).perform();
 
-  - id: adapt_bright
+  - id: _adapt_bright
     then:
       - lambda: |-
           auto computed_bright = max(3, static_cast<int>(id(board_ldr_p).state) / 10) / 10.0;

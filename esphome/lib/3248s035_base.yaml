@@ -145,7 +145,7 @@ touchscreen:
     on_touch:
       then:
         - script.execute:
-            id: handle_touch
+            id: _handle_touch
             x: !lambda return touch.x;
             y: !lambda return touch.y;
             x_raw: !lambda return touch.x_raw;
