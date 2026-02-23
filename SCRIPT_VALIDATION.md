@@ -4,6 +4,15 @@
 
 The tile UI component now validates that all referenced scripts have the correct parameter signatures for their usage context. This prevents runtime errors and compilation issues caused by mismatched script types.
 
+## Private / Internal Scripts
+
+Any script whose ID starts with an underscore (`_`) is treated as **internal**:
+
+- It **will not appear** in any script dropdown in the Configurator UI.
+- It is still compiled and fully functional on the device — it just won't be offered as a selectable option for tiles.
+
+This convention is used for low-level helper scripts that are called by other scripts but are never intended to be attached directly to a tile (e.g. `_adapt_bright`, `_on_movement`, `_init_radar`).
+
 ## Parameter Flexibility
 
 Scripts are not required to declare all parameters provided by the context. The system will match the script's declared parameters against the available arguments.

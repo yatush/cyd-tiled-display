@@ -174,6 +174,36 @@ The Configurator is designed to be intuitive:
 1.  **Emulator**:
     * After you have the configuration valid and ready, you can run the emulator to test how it works.
 
+## Flashing via USB (No ESPHome builder required)
+
+The Configurator includes a built-in **USB flash** workflow that compiles and writes firmware directly to your device — no separate ESPHome dashboard installation needed. This works from any browser that supports the [Web Serial API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API) (Chrome / Edge on desktop).
+
+### How it Works
+1. The server compiles the ESPHome firmware based on your current tile configuration.
+2. The compiled binary is downloaded to your **browser** (it never needs to stay on the server).
+3. The browser flashes the firmware over USB via Web Serial — no local tools required.
+
+### Flashing a New Device (First Flash)
+1. Click **"Install / Flash"** in the top bar to open the Install dialog, then choose the **"USB"** tab.
+2. Select **"New device"**.
+3. Enter a device name, select your screen type (2432S028 or 3248S035), and optionally a friendly name.
+4. Connect your ESP32 via USB, then click **"Flash"**.
+5. The configurator will prompt you to set your **WiFi credentials** if they haven't been saved yet.
+6. The firmware compiles on the server, downloads to your browser, and is flashed over the serial port.
+   - *If auto-reset fails*: follow the on-screen prompt to manually hold **BOOT**, tap **RESET**, then release **BOOT** to enter bootloader mode.
+7. After flashing, unplug and re-plug the USB cable to boot into the new firmware.
+
+### Flashing an Existing Device (OTA or USB update)
+- **OTA**: Select the **"OTA"** tab in the Install dialog, pick your device from the list, and click **"Save & Install"**. The current tile configuration is saved into the device file and pushed over-the-air.
+- **USB**: Select the **"USB"** tab, choose **"Existing device"**, select the device file, and click **"Flash"** — same USB flow as above but preserving all existing device settings (encryption key, OTA password, IP address, etc.).
+
+### Browser Compatibility
+The Web Serial API is required for USB flashing. It is supported in:
+- **Google Chrome** (desktop, v89+)
+- **Microsoft Edge** (desktop, v89+)
+
+Safari, Firefox, and mobile browsers are **not** supported for USB flashing. OTA installs work in all browsers.
+
 # Hardware
 
 ## Touch screen - [CYD](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
@@ -252,6 +282,15 @@ The project relies on a set of library files that should be placed in your `/esp
 *   **`*_base.yaml`**: Device-specific base configurations (e.g., `2432s028_base.yaml`).
 *   **`mdi_glyphs.yaml`**: Definitions for Material Design Icons.
 *   **`external_components/tile_ui`**: The C++ component source code.
+
+### Private / Internal Scripts (the `_` prefix)
+
+Any script whose ID starts with an underscore (`_`) is treated as **internal** by the Configurator:
+
+- It will **not appear** in script dropdown menus (display scripts, action scripts, condition scripts, etc.).
+- It **is still compiled** and fully functional on the device — it simply won't be surfaced to the user in the UI.
+
+This is useful for low-level helpers that are called from other scripts (e.g. `_adapt_bright`, `_on_movement`) but that you never want to select directly on a tile.
 
 ## Library Synchronization & Customization
 
