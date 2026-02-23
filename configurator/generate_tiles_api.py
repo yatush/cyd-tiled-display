@@ -173,7 +173,7 @@ except ImportError as e:
     print(json.dumps({"error": f"Failed to import tile_ui: {e}"}))
     sys.exit(1)
 
-def generate_cpp_from_yaml(input_data):
+def generate_cpp_from_yaml(input_data, user_lib_dir=None):
     try:
         if not input_data:
             return {"error": "No input data provided"}
@@ -182,7 +182,11 @@ def generate_cpp_from_yaml(input_data):
         screens = config.get("screens", [])
 
         # Load lib.yaml to get available scripts and globals
-        lib_path = repo_root / "esphome" / "lib" / "lib.yaml"
+        # Prefer user_lib_dir (e.g. /config/esphome/lib in addon mode) over the bundled lib
+        if user_lib_dir and (Path(user_lib_dir) / "lib.yaml").exists():
+            lib_path = Path(user_lib_dir) / "lib.yaml"
+        else:
+            lib_path = repo_root / "esphome" / "lib" / "lib.yaml"
         available_scripts = {}
         available_globals = set()
 
@@ -208,6 +212,37 @@ def generate_cpp_from_yaml(input_data):
                 
                 lib_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
                 if lib_doc:
+                    # Merge lib_common.yaml
+                    common_lib_path = lib_path.parent / 'lib_common.yaml'
+                    if common_lib_path.exists():
+                        try:
+                            with open(common_lib_path, 'r') as f_common:
+                                common_doc = yaml.load(f_common, Loader=SafeLoaderIgnoreUnknown) or {}
+                            for key in ['script', 'globals']:
+                                if key in common_doc and isinstance(common_doc[key], list):
+                                    lib_doc.setdefault(key, [])
+                                    lib_doc[key].extend(common_doc[key])
+                        except Exception:
+                            pass
+
+                    # Merge lib_custom.yaml — check user_lib_dir first (addon mode), then lib_path.parent
+                    _custom_candidates = []
+                    if user_lib_dir:
+                        _custom_candidates.append(Path(user_lib_dir) / 'lib_custom.yaml')
+                    if lib_path.parent not in [Path(c).parent for c in _custom_candidates]:
+                        _custom_candidates.append(lib_path.parent / 'lib_custom.yaml')
+                    custom_lib_path = next((p for p in _custom_candidates if p.exists()), None)
+                    if custom_lib_path:
+                        try:
+                            with open(custom_lib_path, 'r') as f_custom:
+                                custom_doc = yaml.load(f_custom, Loader=SafeLoaderIgnoreUnknown) or {}
+                            for key in ['script', 'globals']:
+                                if key in custom_doc and isinstance(custom_doc[key], list):
+                                    lib_doc.setdefault(key, [])
+                                    lib_doc[key].extend(custom_doc[key])
+                        except Exception:
+                            pass
+
                     available_scripts = collect_available_scripts(lib_doc)
                     available_globals = collect_available_globals(lib_doc)
 

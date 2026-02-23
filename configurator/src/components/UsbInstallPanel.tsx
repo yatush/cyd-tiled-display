@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Usb, RefreshCw, ChevronDown, ChevronUp, Square, AlertTriangle, Key, Monitor, Plus, FolderOpen, Wifi, Eye, EyeOff } from 'lucide-react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, isAddon } from '../utils/api';
 
 // Types for Web Serial API (not in standard TS lib)
 declare global {
@@ -384,7 +384,14 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
     } catch (e) {
       setStatus('error');
       setStatusMessage(`Failed to download firmware: ${(e as Error).message}`);
+      // Clean up server files even on download failure in cloud mode
+      if (!isAddon) apiFetch('/esphome/compile/cleanup', { method: 'POST' }).catch(() => {});
       return;
+    }
+
+    // Firmware is now fully in browser memory — clean up server files in cloud mode
+    if (!isAddon) {
+      apiFetch('/esphome/compile/cleanup', { method: 'POST' }).catch(() => {});
     }
 
     // Flash via Web Serial — two-phase approach:
@@ -710,6 +717,9 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (status === 'compiling') {
       try { await apiFetch('/esphome/compile/cancel', { method: 'POST' }); } catch { /* */ }
+    }
+    if (!isAddon) {
+      apiFetch('/esphome/compile/cleanup', { method: 'POST' }).catch(() => {});
     }
     setStatus('error');
     setStatusMessage('Operation cancelled');

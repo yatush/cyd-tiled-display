@@ -477,7 +477,8 @@ function App() {
           setIsFileManagementOpen(true);
         }}
         onSaveAndInstall={async (deviceName, friendlyName, screenType, fileName, encryptionKey, otaPassword, ipAddress) => {
-          const saved = await handleSaveDeviceConfig(deviceName, friendlyName, screenType, fileName, encryptionKey, otaPassword, ipAddress, true);
+          // forceWrite=true: USB compile must save the file to the server even in standalone/cloud mode
+          const saved = await handleSaveDeviceConfig(deviceName, friendlyName, screenType, fileName, encryptionKey, otaPassword, ipAddress, true, true);
           if (!saved) {
             throw new Error('Failed to save device configuration');
           }

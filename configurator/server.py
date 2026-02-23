@@ -61,6 +61,7 @@ def custom_401(error):
 # Configuration from environment
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
 HA_URL = "http://supervisor/core"
+IS_ADDON = bool(SUPERVISOR_TOKEN)
 
 # Determine environment paths
 # BASE_DIR: Where the user's configuration lives (e.g. /config/esphome)
@@ -295,7 +296,11 @@ def start_emulator():
             f.write(yaml_str)
 
         # Validate using generate_tiles_api
-        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str)
+        # Resolve lib dir the same way as /api/scripts so lib_custom.yaml is found
+        _lib_dir = os.path.join(BASE_DIR, 'lib')
+        if not os.path.exists(_lib_dir):
+            _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
+        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str, user_lib_dir=_lib_dir)
         if "error" in result:
              return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
             
@@ -467,7 +472,10 @@ def emulator_logs():
 def generate():
     try:
         input_data = request.get_data(as_text=True)
-        result = generate_tiles_api.generate_cpp_from_yaml(input_data)
+        _lib_dir = os.path.join(BASE_DIR, 'lib')
+        if not os.path.exists(_lib_dir):
+            _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
+        result = generate_tiles_api.generate_cpp_from_yaml(input_data, user_lib_dir=_lib_dir)
         
         if "error" in result:
             print(f"Generation Error: {result['error']}", flush=True)
@@ -1129,6 +1137,9 @@ def compile_esphome_device():
             'message': f'Compiling {filename}...',
             'device_name': device_name,
             'filename': filename,
+            # In non-addon (cloud) mode, auto-delete the YAML file after compile so
+            # temporary files from this session are not visible to other users.
+            'auto_cleanup': not IS_ADDON,
         }
 
         with compile_processes_lock:
@@ -1157,6 +1168,18 @@ def compile_esphome_device():
                 state['status'] = 'error'
                 state['message'] = str(e)
                 print(f"[compile] Reader thread error: {e}", flush=True)
+            finally:
+                # Auto-delete the device YAML so cloud users don't see each other's files.
+                if state.get('auto_cleanup'):
+                    _fname = state.get('filename', '')
+                    if _fname and '..' not in _fname:
+                        _yaml_path = os.path.join(BASE_DIR, _fname.lstrip('/'))
+                        try:
+                            if os.path.exists(_yaml_path):
+                                os.remove(_yaml_path)
+                                print(f"[compile] Auto-removed {_yaml_path}", flush=True)
+                        except Exception as _e:
+                            print(f"[compile] Failed to auto-remove {_yaml_path}: {_e}", flush=True)
 
         t = threading.Thread(target=_reader_thread, args=(compile_state,), daemon=True)
         t.start()
@@ -1218,6 +1241,48 @@ def cancel_compile():
             compile_processes.pop(session_id, None)
             return jsonify({'status': 'cancelled'})
     return jsonify({'status': 'not_running'}), 404
+
+
+@app.route('/api/esphome/compile/cleanup', methods=['POST'])
+def cleanup_compile():
+    """Delete the temporary device YAML and build artifacts for the current session.
+    Called by the client after firmware has been downloaded to the browser, so that
+    no files from this session remain visible to other users.
+    """
+    session_id = get_session_id()
+    with compile_processes_lock:
+        state = compile_processes.pop(session_id, None)
+
+    if not state:
+        return jsonify({'status': 'ok', 'message': 'Nothing to clean up'})
+
+    cleaned = []
+    errors = []
+
+    # Remove the device YAML file
+    filename = state.get('filename', '')
+    if filename and '..' not in filename:
+        yaml_path = os.path.join(BASE_DIR, filename.lstrip('/'))
+        try:
+            if os.path.exists(yaml_path):
+                os.remove(yaml_path)
+                cleaned.append(filename)
+        except Exception as e:
+            errors.append(f"Failed to remove {filename}: {e}")
+
+    # Remove the build directory
+    device_name = state.get('device_name', '')
+    if device_name and '..' not in device_name:
+        build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name)
+        try:
+            if os.path.isdir(build_dir):
+                shutil.rmtree(build_dir)
+                cleaned.append(f'.esphome/build/{device_name}')
+        except Exception as e:
+            errors.append(f"Failed to remove build dir: {e}")
+
+    print(f"[cleanup] Session {session_id}: removed {cleaned}, errors: {errors}", flush=True)
+    return jsonify({'status': 'ok', 'cleaned': cleaned, 'errors': errors})
 
 
 @app.route('/api/esphome/firmware/<device_name>/manifest.json')

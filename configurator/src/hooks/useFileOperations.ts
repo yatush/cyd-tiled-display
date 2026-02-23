@@ -166,8 +166,8 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
     });
   };
 
-  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string, silent?: boolean): Promise<boolean> => {
-    if (!isAddon) {
+  const handleSaveDeviceConfig = useCallback(async (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string, silent?: boolean, forceWrite?: boolean): Promise<boolean> => {
+    if (!isAddon && !forceWrite) {
       if (!silent) alert('Saving is disabled when not running in HA');
       return false;
     }
