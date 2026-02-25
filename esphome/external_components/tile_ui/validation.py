@@ -30,7 +30,8 @@ __all__ = [
 def validate_tiles_config(
     screens: list[dict],
     available_scripts: dict | None = None,
-    available_globals: set | None = None
+    available_globals: set | None = None,
+    declared_dynamic_entities: list[str] | None = None
 ) -> None:
     """Validate the complete tiles configuration.
     
@@ -49,11 +50,15 @@ def validate_tiles_config(
     - Action tiles have at least perform or location_perform
     - All referenced scripts are available and have correct types
     - All referenced boolean globals in conditions are available
+    - All dynamic_entity references match entries in declared_dynamic_entities (when provided)
     
     Args:
         screens: List of screen configurations
         available_scripts: Dict of available scripts with parameters
         available_globals: Set of available boolean globals
+        declared_dynamic_entities: Explicit list of valid dynamic entity names from the
+            top-level ``dynamic_entities`` key.  When provided every ``dynamic_entity``
+            reference found in any tile must be present in this list.
     
     Raises:
         ValueError: With detailed error messages if validation fails
@@ -236,6 +241,11 @@ def validate_tiles_config(
                         f"Valid screen IDs are: {', '.join(sorted(valid_screen_ids))}"
                     )
     
+    # Validate all dynamic_entity references against the declared list (when provided)
+    if declared_dynamic_entities is not None:
+        declared_set = set(declared_dynamic_entities)
+        _validate_dynamic_entity_references(screens, declared_set)
+
     # Validate all referenced scripts are available with correct types
     if available_scripts is not None:
         _validate_script_references(screens, available_scripts)
@@ -243,6 +253,60 @@ def validate_tiles_config(
     # Validate all referenced globals are available
     if available_globals is not None:
         _validate_global_references(screens, available_globals)
+
+
+def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[str]) -> None:
+    """Validate that every dynamic_entity reference in every tile is declared.
+
+    Checks the following locations where a dynamic_entity name can appear:
+    - toggle_entity / cycle_entity  -> tile.dynamic_entity
+    - ha_action / title             -> tile.entities[i].dynamic_entity
+    - any tile type                 -> tile.activation_var.dynamic_entity
+    - move_page                     -> tile.dynamic_entry.dynamic_entity
+    """
+    for screen in screens:
+        screen_id = screen.get("id", "")
+        for tile in screen.get("tiles", []):
+            tile_type = list(tile.keys())[0]
+            config = tile[tile_type]
+            x = config.get("x", 0)
+            y = config.get("y", 0)
+
+            def _check(name: str, location: str) -> None:
+                if name and name not in declared_set:
+                    declared_list = ", ".join(sorted(declared_set)) if declared_set else "(none)"
+                    raise ValueError(
+                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                        f"{location} references dynamic entity '{name}' which is not "
+                        f"declared in dynamic_entities. "
+                        f"Declared dynamic entities are: {declared_list}"
+                    )
+
+            # Direct dynamic_entity field (toggle_entity, cycle_entity)
+            direct = config.get("dynamic_entity", "")
+            if direct:
+                _check(direct, "dynamic_entity")
+
+            # entities list (ha_action, title)
+            for i, entry in enumerate(config.get("entities", [])):
+                if isinstance(entry, dict):
+                    de = entry.get("dynamic_entity", "")
+                    if de:
+                        _check(de, f"entities[{i}].dynamic_entity")
+
+            # activation_var.dynamic_entity
+            activation_var = config.get("activation_var")
+            if isinstance(activation_var, dict):
+                de = activation_var.get("dynamic_entity", "")
+                if de:
+                    _check(de, "activation_var.dynamic_entity")
+
+            # dynamic_entry.dynamic_entity (move_page)
+            dynamic_entry = config.get("dynamic_entry")
+            if isinstance(dynamic_entry, dict):
+                de = dynamic_entry.get("dynamic_entity", "")
+                if de:
+                    _check(de, "dynamic_entry.dynamic_entity")
 
 
 def _validate_tile_positions(screen_id, tiles):

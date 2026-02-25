@@ -3,6 +3,17 @@ import { Config } from '../types';
 import { generateYaml } from '../utils/yamlGenerator';
 import { apiFetch } from '../utils/api';
 
+/** Parse JSON from a Response safely – returns null when the body is empty or not valid JSON. */
+async function safeJson(response: Response): Promise<any | null> {
+  try {
+    const text = await response.text();
+    if (!text || !text.trim()) return null;
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export function useValidation(config: Config) {
   const [isValidating, setIsValidating] = useState(false);
   const [validationStatus, setValidationStatus] = useState<{success: boolean, error?: string} | null>(null);
@@ -28,8 +39,10 @@ export function useValidation(config: Config) {
         
         if (!isMounted) return;
 
-        const result = await response.json();
-        if (result.error) {
+        const result = await safeJson(response);
+        if (!result) {
+          setValidationStatus({ success: false, error: `Server error (HTTP ${response.status})` });
+        } else if (result.error) {
           setValidationStatus({ success: false, error: result.error });
         } else {
           setValidationStatus({ success: true });
@@ -78,8 +91,12 @@ export function useValidation(config: Config) {
         headers: { 'Content-Type': 'application/yaml' },
         body: yamlContent
       });
-      const result = await response.json();
-      setGenerationOutput(result);
+      const result = await safeJson(response);
+      if (!result) {
+        setGenerationOutput({ error: `Server returned an empty response (HTTP ${response.status}). The server may be starting up or restarting.`, type: 'network_error' });
+      } else {
+        setGenerationOutput(result);
+      }
     } catch (err) {
       setGenerationOutput({ error: (err as Error).message, type: 'network_error' });
     } finally {

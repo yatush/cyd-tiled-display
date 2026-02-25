@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, Monitor, Copy, Home } from 'lucide-react';
 import { Config, Tile } from '../types';
 import { DynamicEntitiesEditor } from './FormInputs';
+import { applyDynamicEntityListChange } from '../utils/tileUtils';
 import { isAddon } from '../utils/api';
 import { FileExplorer } from './FileExplorer';
 
@@ -11,7 +12,7 @@ interface LeftSidebarProps {
   isDynamicEntitiesOpen: boolean;
   setIsDynamicEntitiesOpen: (open: boolean) => void;
   config: Config;
-  setConfig: (config: Config) => void;
+  setConfig: (config: Config | ((prev: Config) => Config)) => void;
   isAddTileOpen: boolean;
   setIsAddTileOpen: (open: boolean) => void;
   schema: any;
@@ -116,7 +117,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <div className="pt-2">
                       <DynamicEntitiesEditor 
                           entities={config.dynamic_entities || []} 
-                          onChange={v => setConfig({...config, dynamic_entities: v})} 
+                          onChange={v => setConfig(prev => applyDynamicEntityListChange(prev, v))} 
                       />
                   </div>
               </div>

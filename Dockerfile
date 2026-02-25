@@ -100,7 +100,9 @@ COPY esphome /app/esphome
 
 # Pre-compile the emulator to speed up session starts (populates PlatformIO cache)
 # We use || true because it might need a display for full run, but compile should work.
-RUN cd /app/esphome && esphome compile lib/emulator.yaml || true
+# CMAKE_BUILD_PARALLEL_LEVEL=2 limits parallel compilation jobs to avoid OOM in
+# memory-constrained build environments.
+RUN cd /app/esphome && CMAKE_BUILD_PARALLEL_LEVEL=2 esphome compile lib/emulator.yaml || true
 
 # Copy nginx config
 COPY docker_debug/nginx.conf /etc/nginx/nginx.conf

@@ -248,7 +248,8 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None):
 
         # Validate
         try:
-            validate_tiles_config(screens, available_scripts, available_globals)
+            declared_dynamic_entities = config.get("dynamic_entities") or None
+            validate_tiles_config(screens, available_scripts, available_globals, declared_dynamic_entities)
         except ValueError as e:
             return {"error": str(e), "type": "validation_error"}
 
