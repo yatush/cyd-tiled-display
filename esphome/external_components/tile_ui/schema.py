@@ -29,7 +29,7 @@ class TileType(Enum):
 
 
 VALID_TILE_TYPES: set[str] = {t.value for t in TileType}
-VALID_FLAGS: set[str] = {"BASE", "TEMPORARY", "FAST_REFRESH"}
+VALID_FLAGS: set[str] = {"BASE", "TEMPORARY", "FAST_REFRESH", "OMIT_TIME_WIFI"}
 
 __all__ = [
     "TileType",

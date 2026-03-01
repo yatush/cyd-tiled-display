@@ -82,12 +82,15 @@ docker cp ../configurator/run_emulator.sh "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/run_session.sh "${CONTAINER_NAME}:/app/configurator/"
 docker exec $CONTAINER_NAME chmod +x /app/configurator/run_session.sh
 
-echo "Updating frontend build..."
-if [ -d "../configurator/dist" ]; then
-    docker cp ../configurator/dist/. "${CONTAINER_NAME}:/app/configurator/dist/"
-else
-    echo "WARNING: No dist/ folder found. Run 'npx vite build' in configurator/ first."
+echo "Building frontend..."
+(cd ../configurator && npm run build)
+if [ $? -ne 0 ]; then
+    echo "ERROR: Frontend build failed. Aborting."
+    exit 1
 fi
+
+echo "Updating frontend build..."
+docker cp ../configurator/dist/. "${CONTAINER_NAME}:/app/configurator/dist/"
 
 # Gunicorn auto-reloads workers when server.py changes, wait for it to be ready again
 echo -n "Waiting for server to be ready after file updates "

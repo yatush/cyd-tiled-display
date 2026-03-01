@@ -79,7 +79,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
       <div>
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Page Flags</label>
         <div className="space-y-2">
-          {['BASE', 'TEMPORARY', 'FAST_REFRESH'].map(flag => {
+          {['BASE', 'TEMPORARY', 'FAST_REFRESH', 'OMIT_TIME_WIFI'].map(flag => {
             const isChecked = activePage.flags?.includes(flag) || false;
             const isBase = flag === 'BASE';
             const isCurrentBase = activePage.flags?.includes('BASE');
@@ -119,7 +119,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                   className={`rounded ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                 />
                 <label htmlFor={`flag-${flag}`} className={`text-sm ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                  {flag}
+                  {flag === 'OMIT_TIME_WIFI' ? 'Omit time & WiFi indicator' : flag}
                   {isBase && isCurrentBase && <span className="text-xs text-slate-500 ml-1">(cannot remove)</span>}
                   {isBase && isTemporary && !isChecked && <span className="text-xs text-slate-500 ml-1">(cannot use with TEMPORARY)</span>}
                 </label>

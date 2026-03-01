@@ -4,6 +4,7 @@ enum ScreenAtt {
   TEMPORARY,     // Indicates if the screen is temporary - i.e. it will be
                  // replaced by another screen after a certain period of time.
   BASE,          // Indicates if the screen is the base screen.
+  OMIT_TIME_WIFI,  // Omit the time and Wi-Fi indicator drawn in the corner.
 };
 
 // Base class for screens displayed on the device.
@@ -15,6 +16,7 @@ public:
 
   // Virtual function to draw the Wi-Fi signal strength and current hour.
   virtual void drawWifiHour() {
+    if (this->hasAtt(OMIT_TIME_WIFI)) return;
     std::string wifi_icon = DRAW_ONLY(id(wifi_iconstring));
     esphome::ESPTime espt = DRAW_ONLY(id(esptime).now());
     handle_caching("time", wifi_icon, espt);
@@ -96,6 +98,7 @@ public:
   // Overrides the base class drawWifiHour to handle cases where tiles are
   // positioned below the Wi-Fi icon.
   void drawWifiHour() override {
+    if (this->hasAtt(OMIT_TIME_WIFI)) return;
     // Check if any tile is below the Wi-Fi icon.
     if (std::any_of(this->tiles_.begin(), this->tiles_.end(),
                     [](const Tile* tile) { return tile->isBelowWifi(); })) {

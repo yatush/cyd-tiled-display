@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Wifi } from 'lucide-react';
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { DroppableCell } from './DroppableCell';
 import { DraggableTile } from './DraggableTile';
@@ -81,6 +82,12 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
     <DndContext onDragEnd={onDragEnd} sensors={sensors}>
       <div className="flex flex-col items-center gap-6">
         <div className="relative bg-white shadow-lg rounded-lg overflow-hidden" style={{ width: '480px', height: '320px' }}>
+          {!page.flags?.includes('OMIT_TIME_WIFI') && (
+            <div className="absolute top-1.5 right-2 z-[200] flex items-center gap-1 pointer-events-none select-none">
+              <Wifi size={11} className="text-slate-500" />
+              <span className="text-[10px] font-mono text-slate-500 leading-none">12:00</span>
+            </div>
+          )}
           <div 
             className="absolute inset-0 grid gap-1 p-1 bg-slate-200"
             style={{
