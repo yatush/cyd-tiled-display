@@ -196,8 +196,8 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-slate-200" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center p-4 border-b bg-slate-50">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">

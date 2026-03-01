@@ -8,6 +8,7 @@ import { MainContent } from './components/MainContent';
 import { TopBar } from './components/TopBar';
 import { HASettingsDialog } from './components/HASettingsDialog';
 import { FileManagementDialog } from './components/FileManagementDialog';
+import { LibMismatchDialog } from './components/LibMismatchDialog';
 import { SaveDeviceDialog } from './components/SaveDeviceDialog';
 import { LoadDeviceDialog } from './components/LoadDeviceDialog';
 import { InstallDialog } from './components/InstallDialog';
@@ -34,6 +35,9 @@ function App() {
   const [isAddTileOpen, setIsAddTileOpen] = useState(false);
   const [isPagesOpen, setIsPagesOpen] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isMismatchDialogOpen, setIsMismatchDialogOpen] = useState(false);
+  const [libMismatchDetails, setLibMismatchDetails] = useState<string[]>([]);
+  const hasShownMismatchRef = useRef(false);
   
   // File Management State
   const [isFileManagementOpen, setIsFileManagementOpen] = useState(false);
@@ -82,18 +86,27 @@ function App() {
     handleGenerate
   } = useValidation(config);
 
-  const checkLibStatus = (data?: any) => {
+  const handleLibStatusData = (data: any, fromInitialLoad = false) => {
     if (data && typeof data.synced === 'boolean') {
       setUpdateAvailable(!data.synced);
+      if (data.details && Array.isArray(data.details)) {
+        setLibMismatchDetails(data.details);
+      }
+      if (fromInitialLoad && !data.synced && !hasShownMismatchRef.current) {
+        hasShownMismatchRef.current = true;
+        setIsMismatchDialogOpen(true);
+      }
+    }
+  };
+
+  const checkLibStatus = (data?: any) => {
+    if (data && typeof data.synced === 'boolean') {
+      handleLibStatusData(data);
       return;
     }
     apiFetch('/check_lib_status')
       .then(res => res.json())
-      .then(data => {
-        if (data && typeof data.synced === 'boolean') {
-          setUpdateAvailable(!data.synced);
-        }
-      })
+      .then(data => handleLibStatusData(data, true))
       .catch(err => console.error("Failed to check lib status", err));
   };
 
@@ -506,6 +519,13 @@ function App() {
         onClose={() => setIsEmulatorOpen(false)}
         websockifyPort={websockifyPort}
         emulatorSessionId={currentEmulatorSessionIdRef.current}
+      />
+
+      <LibMismatchDialog
+        isOpen={isMismatchDialogOpen}
+        onClose={() => setIsMismatchDialogOpen(false)}
+        onGoToSettings={() => setIsHaSettingsOpen(true)}
+        details={libMismatchDetails}
       />
 
       {/* Floating USB Compile indicator — shown when dialog is closed but compile is running */}

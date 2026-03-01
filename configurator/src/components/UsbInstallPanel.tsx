@@ -1122,8 +1122,8 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
 
       {/* ── WiFi Credentials Dialog ──────────────────────────── */}
       {showWifiDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[300] p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[300] p-4 backdrop-blur-sm" onClick={() => setShowWifiDialog(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b bg-blue-50">
               <div className="flex items-center gap-2">
                 <Wifi className="text-blue-600" size={20} />

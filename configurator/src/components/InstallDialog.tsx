@@ -282,8 +282,8 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const selected = devices.find(d => d.filename === selectedDevice);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4 backdrop-blur-sm" style={{ display: dialogHidden ? 'none' : undefined }}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4 backdrop-blur-sm" style={{ display: dialogHidden ? 'none' : undefined }} onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b bg-slate-50 flex-shrink-0">
           <div className="flex items-center gap-2">
