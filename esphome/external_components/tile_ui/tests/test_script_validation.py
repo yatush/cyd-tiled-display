@@ -3,26 +3,26 @@ from unittest.mock import patch, MagicMock
 import sys
 import os
 
-# Mock esphome module before importing tile_ui
-import types
-esphome = types.ModuleType('esphome')
-esphome.codegen = MagicMock()
-esphome.config_validation = MagicMock()
-esphome.const = MagicMock()
-esphome.core = MagicMock()
-esphome.components = MagicMock()
-esphome.components.display = MagicMock()
-sys.modules['esphome'] = esphome
-sys.modules['esphome.codegen'] = esphome.codegen
-sys.modules['esphome.config_validation'] = esphome.config_validation
-sys.modules['esphome.const'] = esphome.const
-sys.modules['esphome.core'] = esphome.core
-sys.modules['esphome.components'] = esphome.components
-sys.modules['esphome.components.display'] = esphome.components.display
-
-# Mock voluptuous
-voluptuous = MagicMock()
-sys.modules['voluptuous'] = voluptuous
+# Mock esphome module before importing tile_ui.
+# When running under pytest the root conftest.py already provides these mocks;
+# only install them here when running the script standalone.
+if 'esphome' not in sys.modules:
+    import types
+    esphome = types.ModuleType('esphome')
+    esphome.codegen = MagicMock()
+    esphome.config_validation = MagicMock()
+    esphome.config_validation.Invalid = ValueError
+    esphome.const = MagicMock()
+    esphome.core = MagicMock()
+    esphome.components = MagicMock()
+    esphome.components.display = MagicMock()
+    sys.modules['esphome'] = esphome
+    sys.modules['esphome.codegen'] = esphome.codegen
+    sys.modules['esphome.config_validation'] = esphome.config_validation
+    sys.modules['esphome.const'] = esphome.const
+    sys.modules['esphome.core'] = esphome.core
+    sys.modules['esphome.components'] = esphome.components
+    sys.modules['esphome.components.display'] = esphome.components.display
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))

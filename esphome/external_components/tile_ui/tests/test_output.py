@@ -17,38 +17,40 @@ grandparent_dir = os.path.dirname(parent_dir) # external_components
 if grandparent_dir not in sys.path:
     sys.path.insert(0, grandparent_dir)
 
-# 2. Mock esphome dependencies BEFORE importing tile_ui
-# This is necessary because tile_ui/__init__.py imports esphome modules
-mock_esphome = MagicMock()
-sys.modules['esphome'] = mock_esphome
-sys.modules['esphome.codegen'] = mock_esphome.codegen
-sys.modules['esphome.const'] = mock_esphome.const
-sys.modules['esphome.core'] = mock_esphome.core
-sys.modules['esphome.components'] = mock_esphome.components
-sys.modules['esphome.components.display'] = mock_esphome.components.display
+# 2. Mock esphome dependencies BEFORE importing tile_ui.
+# When running under pytest the root conftest.py already provides these mocks;
+# only install them here when running the script standalone.
+if 'esphome' not in sys.modules:
+    mock_esphome = MagicMock()
+    sys.modules['esphome'] = mock_esphome
+    sys.modules['esphome.codegen'] = mock_esphome.codegen
+    sys.modules['esphome.const'] = mock_esphome.const
+    sys.modules['esphome.core'] = mock_esphome.core
+    sys.modules['esphome.components'] = mock_esphome.components
+    sys.modules['esphome.components.display'] = mock_esphome.components.display
 
-# Use real voluptuous for config_validation to enable schema checks
-try:
-    import voluptuous as vol
-    # Create a mock that delegates to voluptuous for schema-related things
-    mock_cv = MagicMock()
-    mock_cv.Schema = vol.Schema
-    mock_cv.Optional = vol.Optional
-    mock_cv.Required = vol.Required
-    mock_cv.Any = vol.Any
-    mock_cv.All = vol.All
-    mock_cv.Invalid = vol.Invalid
-    mock_cv.string = str
-    mock_cv.boolean = bool
-    mock_cv.int_ = int
-    mock_cv.ensure_list = lambda x: x if isinstance(x, list) else [x]
-    
-    sys.modules['esphome.config_validation'] = mock_cv
-    mock_esphome.config_validation = mock_cv
-    print("Using real voluptuous for validation.")
-except ImportError:
-    print("Warning: voluptuous not found. Schema validation will be skipped.")
-    sys.modules['esphome.config_validation'] = mock_esphome.config_validation
+    # Use real voluptuous for config_validation to enable schema checks
+    try:
+        import voluptuous as vol
+        mock_cv = MagicMock()
+        mock_cv.Schema = vol.Schema
+        mock_cv.Optional = vol.Optional
+        mock_cv.Required = vol.Required
+        mock_cv.Any = vol.Any
+        mock_cv.All = vol.All
+        mock_cv.Invalid = vol.Invalid
+        mock_cv.string = str
+        mock_cv.boolean = bool
+        mock_cv.int_ = int
+        mock_cv.ensure_list = lambda x: x if isinstance(x, list) else [x]
+        sys.modules['esphome.config_validation'] = mock_cv
+        mock_esphome.config_validation = mock_cv
+        print("Using real voluptuous for validation.")
+    except ImportError:
+        print("Warning: voluptuous not found. Schema validation will be skipped.")
+        sys.modules['esphome.config_validation'] = mock_esphome.config_validation
+else:
+    mock_esphome = sys.modules['esphome']
 
 # 3. Mock validation to avoid needing full ESPHome config/scripts
 # We mock the module 'tile_ui.validation' so that when it is imported inside functions, it gets our mock

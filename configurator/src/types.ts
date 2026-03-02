@@ -16,11 +16,18 @@ export interface Page {
   flags?: string[];
 }
 
+export interface ImageEntry {
+  data: string;        // base64-encoded PNG data (no data-URI prefix)
+  filename: string;    // original filename, used for the ESPHome file: path
+  type?: string;       // 'RGB565' | 'RGBA' | 'GRAYSCALE', default 'RGB565'
+}
+
 export interface Config {
   pages: Page[];
   dynamic_entities?: string[];
   project_name?: string;
   project_path?: string;
+  images?: Record<string, ImageEntry>;
 }
 
 export interface HaEntity {

@@ -4,7 +4,7 @@
     { "name": "y", "type": "number", "label": "Y" },
     { "name": "x_span", "type": "number", "label": "X Span", "optional": true },
     { "name": "y_span", "type": "number", "label": "Y Span", "optional": true },
-    { "name": "display", "type": "display_list", "label": "Display Scripts" },
+    { "name": "display", "type": "display_list", "label": "Display Scripts", "optional": true },
     { "name": "omit_frame", "type": "boolean", "label": "Omit Frame", "optional": true },
     { 
       "name": "requires_fast_refresh", 
@@ -21,7 +21,8 @@
         { "key": "dynamic_entity", "label": "Dynamic Entity", "type": "dynamic_entity_select" },
         { "key": "value", "label": "Value", "type": "ha_entity_list" }
       ]
-    }
+    },
+    { "name": "images", "type": "images_list", "label": "Images", "optional": true }
   ],
   "types": [
     {

@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Layout, Settings2 } from 'lucide-react';
-import { Tile, Config, Page, HaEntity } from '../types';
+import { Tile, Config, Page, HaEntity, ImageEntry } from '../types';
 import { 
   TextInput, 
-  NumberInput,
   Checkbox, 
   ScriptInput, 
   ArrayInput, 
@@ -11,7 +10,8 @@ import {
   ObjectArrayInput, 
   EntityArrayInput, 
   EntityListInput,
-  ConditionBuilder
+  ConditionBuilder,
+  ImagesListInput
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
 
@@ -31,6 +31,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
 
   const dynamicEntities = config.dynamic_entities || [];
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
+  const images = config.images || {};
 
   // Switch to tile tab when a tile is selected
   useEffect(() => {
@@ -240,13 +241,64 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
               <div className="space-y-4">
                 {schema?.common?.filter((f: any) => f.name !== 'x' && f.name !== 'y' && f.name !== 'x_span' && f.name !== 'y_span').map((field: any) => {
            if (field.type === 'display_list') {
+             const hasImages = Array.isArray(selectedTile.images) && selectedTile.images.length > 0;
+             const hasDisplayScripts = Array.isArray(selectedTile[field.name]) && selectedTile[field.name].length > 0;
+             // Find the images field definition from the schema
+             const imagesField = schema?.common?.find((f: any) => f.type === 'images_list');
+             const imagesEnabled = imagesField && selectedTile[imagesField.name] !== undefined;
              return (
-                <DisplayListInput 
-                  key={field.name}
-                  value={Array.isArray(selectedTile[field.name]) ? selectedTile[field.name] : (selectedTile[field.name] ? [selectedTile[field.name]] : [])} 
-                  onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                  tileType={selectedTile.type}
-                />
+                <div key={field.name} className="space-y-2">
+                  {hasImages && hasDisplayScripts && (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-1">
+                      ⚠ Display scripts are ignored when Images are set. Remove images or clear display scripts.
+                    </div>
+                  )}
+                  <DisplayListInput
+                    value={Array.isArray(selectedTile[field.name]) ? selectedTile[field.name] : (selectedTile[field.name] ? [selectedTile[field.name]] : [])}
+                    onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                    tileType={selectedTile.type}
+                  />
+                  {imagesField && (
+                    <div className="border rounded p-2 bg-slate-50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="checkbox"
+                          checked={!!imagesEnabled}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              onUpdate({...selectedTile, [imagesField.name]: []});
+                            } else {
+                              const newTile = {...selectedTile};
+                              delete newTile[imagesField.name];
+                              onUpdate(newTile);
+                            }
+                          }}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer"
+                          onClick={() => {
+                            if (!imagesEnabled) onUpdate({...selectedTile, [imagesField.name]: []});
+                            else { const t = {...selectedTile}; delete t[imagesField.name]; onUpdate(t); }
+                          }}
+                        >{imagesField.label}</label>
+                      </div>
+                      {imagesEnabled && hasDisplayScripts && (
+                        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-1 mb-2">
+                          ⚠ Cannot have both Images and Display Scripts. Remove the display scripts first.
+                        </div>
+                      )}
+                      {imagesEnabled && (
+                        <div className="pl-2">
+                          <ImagesListInput
+                            value={selectedTile[imagesField.name] || []}
+                            onChange={v => onUpdate({...selectedTile, [imagesField.name]: v})}
+                            images={images}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
              );
            }
            if (field.type === 'boolean') {
@@ -363,6 +415,52 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                       dynamicEntities={dynamicEntities}
                       haEntities={haEntities}
                     />
+                );
+           }
+           if (field.type === 'images_list') {
+                // Rendered inline inside the display_list block above — skip here
+                return null;
+                const isEnabled = selectedTile[field.name] !== undefined;
+                const hasDisplay = Array.isArray(selectedTile.display) && selectedTile.display.length > 0;
+                return (
+                    <div key={field.name} className="mb-4 border rounded p-2 bg-slate-50">
+                        <div className="flex items-center gap-2 mb-2">
+                            <input
+                                type="checkbox"
+                                checked={isEnabled}
+                                onChange={e => {
+                                    if (e.target.checked) {
+                                        onUpdate({...selectedTile, [field.name]: []});
+                                    } else {
+                                        const newTile = {...selectedTile};
+                                        delete newTile[field.name];
+                                        onUpdate(newTile);
+                                    }
+                                }}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer"
+                                onClick={() => {
+                                    if (!isEnabled) onUpdate({...selectedTile, [field.name]: []});
+                                    else { const t = {...selectedTile}; delete t[field.name]; onUpdate(t); }
+                                }}
+                            >{field.label}</label>
+                        </div>
+                        {isEnabled && hasDisplay && (
+                            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-1 mb-2">
+                                ⚠ Cannot have both Images and Display Scripts. Remove the display scripts first.
+                            </div>
+                        )}
+                        {isEnabled && (
+                            <div className="pl-2">
+                                <ImagesListInput
+                                    value={selectedTile[field.name] || []}
+                                    onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                                    images={images}
+                                />
+                            </div>
+                        )}
+                    </div>
                 );
            }
            return null;

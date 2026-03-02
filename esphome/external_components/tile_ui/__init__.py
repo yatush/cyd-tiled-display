@@ -100,7 +100,14 @@ CALIB_PAGE_LAMBDA = """
 def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=None, debug=False):
     """Generate separate lambda scripts for each screen and view init."""
     from .validation import validate_tiles_config
-    
+    from .tile_generation import compute_image_variants, apply_image_variants
+
+    # Apply per-page-size image variant substitution so that the ESPHome IDs
+    # emitted by the lambdas always match the variant filenames in images.yaml.
+    variant_id = compute_image_variants(screens)
+    if variant_id:
+        screens = apply_image_variants(screens, variant_id)
+
     validate_tiles_config(screens, available_scripts, available_globals)
     
     lambdas = []

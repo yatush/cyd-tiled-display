@@ -25,7 +25,10 @@ from tile_ui.schema import (
     coord_schema,
     non_empty_string,
     string_list,
+    display_list,
     entities_list,
+    activation_var_schema,
+    script_item,
     TileType,
     VALID_TILE_TYPES
 )
@@ -79,6 +82,69 @@ class TestSchema(unittest.TestCase):
         self.assertIn("ha_action", VALID_TILE_TYPES)
         self.assertIn("move_page", VALID_TILE_TYPES)
         self.assertEqual(len(VALID_TILE_TYPES), 6)
+
+    # --- display_list ---
+
+    def test_display_list_string_items(self):
+        self.assertEqual(display_list(["icon", "label"]), ["icon", "label"])
+
+    def test_display_list_single_key_dict(self):
+        item = {"draw_icon": {"x": 0}}
+        self.assertEqual(display_list([item]), [item])
+
+    def test_display_list_empty_string_rejected(self):
+        with self.assertRaises(Invalid):
+            display_list([""])
+
+    def test_display_list_multi_key_dict_rejected(self):
+        with self.assertRaises(Invalid):
+            display_list([{"a": 1, "b": 2}])
+
+    def test_display_list_non_list_rejected(self):
+        with self.assertRaises(Invalid):
+            display_list("not_a_list")
+
+    def test_display_list_wrong_item_type_rejected(self):
+        with self.assertRaises(Invalid):
+            display_list([42])
+
+    # --- activation_var_schema ---
+
+    def test_activation_var_schema_valid(self):
+        val = {"dynamic_entity": "screen_state", "value": "on"}
+        result = activation_var_schema(val)
+        self.assertEqual(result["dynamic_entity"], "screen_state")
+
+    def test_activation_var_schema_missing_key(self):
+        with self.assertRaises(Exception):  # voluptuous raises Invalid/Error
+            activation_var_schema({"dynamic_entity": "x"})   # missing value
+
+    def test_activation_var_schema_extra_key_rejected(self):
+        with self.assertRaises(Exception):
+            activation_var_schema(
+                {"dynamic_entity": "x", "value": "on", "extra": "bad"}
+            )
+
+    # --- script_item ---
+
+    def test_script_item_string(self):
+        self.assertEqual(script_item("my_script"), "my_script")
+
+    def test_script_item_single_key_dict(self):
+        item = {"my_script": {"x": 0}}
+        self.assertEqual(script_item(item), item)
+
+    def test_script_item_empty_string_rejected(self):
+        with self.assertRaises(Invalid):
+            script_item("")
+
+    def test_script_item_multi_key_dict_rejected(self):
+        with self.assertRaises(Invalid):
+            script_item({"a": 1, "b": 2})
+
+    def test_script_item_wrong_type_rejected(self):
+        with self.assertRaises(Invalid):
+            script_item(123)
 
 if __name__ == '__main__':
     unittest.main()

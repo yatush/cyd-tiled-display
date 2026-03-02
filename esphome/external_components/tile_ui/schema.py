@@ -186,6 +186,18 @@ def get_validator(field_type: str, object_fields: list = None):
         )
     if field_type == 'condition_logic':
         return cv.Any(dict, non_empty_string)
+    if field_type == 'images_list':
+        # List of {image: str, condition?: str|dict}
+        return All(
+            list,
+            [Schema({
+                Required('image'): non_empty_string,
+                Optional('condition'): cv.Any(dict, non_empty_string, str),
+            }, extra=PREVENT_EXTRA)]
+        )
+    if field_type in ('image_select', 'state_image_map'):
+        # Legacy field types — accept anything for backward compat
+        return cv.Any(str, list, dict)
     return cv.string
 
 def build_tile_schema(tile_type_def):
@@ -209,6 +221,10 @@ def build_tile_schema(tile_type_def):
         else:
             schema_dict[Required(field['name'])] = validator
     
+    # Add deprecated keys for backward compatibility (old 'image' / 'state_images')
+    schema_dict[Optional('image')] = cv.Any(str)
+    schema_dict[Optional('state_images')] = cv.Any(list, dict)
+
     return Schema(schema_dict, extra=PREVENT_EXTRA)
 
 # Generate schemas dynamically

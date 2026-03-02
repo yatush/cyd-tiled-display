@@ -705,6 +705,18 @@ def validate_tile_schema(tile_type: str, tile_config: dict, screen_id: str) -> N
         elif not field.get('optional', False):
             raise ValueError(f"{context} missing required field: '{name}'")
 
+    # Cross-field: exactly one of 'display' or 'images' must be present
+    has_display = bool(tile_config.get('display'))
+    has_images = bool(tile_config.get('images'))
+    if has_display and has_images:
+        raise ValueError(
+            f"{context}: Cannot have both 'display' scripts and 'images'. Use one or the other."
+        )
+    if not has_display and not has_images:
+        raise ValueError(
+            f"{context}: Must have either 'display' scripts or 'images'."
+        )
+
 
 def validate_field_value(value: Any, field_def: dict, context: str) -> None:
     """Validate a single field value against its definition."""
@@ -818,3 +830,15 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
 
     elif field_type == 'condition_logic':
         _validate_condition_expression(value, f"{context} field '{field_name}'")
+
+    elif field_type == 'images_list':
+        if not isinstance(value, list):
+            raise ValueError(f"{context}: Field '{field_name}' must be a list")
+        if not value:
+            raise ValueError(f"{context}: Field '{field_name}' cannot be empty")
+        for idx, entry in enumerate(value):
+            if not isinstance(entry, dict):
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be an object")
+            img = entry.get('image')
+            if not img or not isinstance(img, str) or not img.strip():
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must have a non-empty 'image' key")

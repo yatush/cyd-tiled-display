@@ -10,9 +10,11 @@ from tile_ui.tile_utils import (
     format_functions_list,
     format_entity_value,
     build_fast_refresh_lambda,
+    build_expression,
     format_entity_cpp,
     get_tile_modifiers,
-    flags_to_cpp
+    flags_to_cpp,
+    format_single_function,
 )
 
 class TestTileUtils(unittest.TestCase):
@@ -123,6 +125,100 @@ class TestTileUtils(unittest.TestCase):
         self.assertEqual(flags_to_cpp([]), "{}")
         self.assertEqual(flags_to_cpp(["BASE"]), "{BASE}")
         self.assertEqual(flags_to_cpp(["BASE", "TEMPORARY"]), "{BASE, TEMPORARY}")
+
+    def test_flags_to_cpp_empty(self):
+        self.assertEqual(flags_to_cpp([]), "{}")
+        self.assertEqual(flags_to_cpp(None), "{}")
+
+    def test_flags_to_cpp_values(self):
+        self.assertEqual(flags_to_cpp(["BASE"]), "{BASE}")
+        self.assertEqual(flags_to_cpp(["BASE", "DETAIL"]), "{BASE, DETAIL}")
+
+
+class TestBuildExpression(unittest.TestCase):
+
+    def _leaf(self, name):
+        return f"(id({name}).execute(entities), id(script_output))"
+
+    def test_string_leaf(self):
+        self.assertEqual(build_expression("cond"), self._leaf("cond"))
+
+    def test_none_returns_none(self):
+        self.assertIsNone(build_expression(None))
+        self.assertIsNone(build_expression(""))
+
+    def test_and_two_conditions(self):
+        result = build_expression({"operator": "AND", "conditions": ["a", "b"]})
+        self.assertEqual(result, f"{self._leaf('a')} && {self._leaf('b')}")
+
+    def test_or_two_conditions(self):
+        result = build_expression({"operator": "OR", "conditions": ["a", "b"]})
+        self.assertEqual(result, f"{self._leaf('a')} || {self._leaf('b')}")
+
+    def test_not_single_string(self):
+        result = build_expression({"operator": "NOT", "conditions": "cond"})
+        self.assertEqual(result, f"!{self._leaf('cond')}")
+
+    def test_not_single_list(self):
+        result = build_expression({"operator": "NOT", "conditions": ["cond"]})
+        self.assertEqual(result, f"!({self._leaf('cond')})")
+
+    def test_not_multiple_conditions_raises(self):
+        with self.assertRaises(ValueError, msg="NOT with multiple conditions should raise"):
+            build_expression({"operator": "NOT", "conditions": ["a", "b"]})
+
+    def test_nested_and_or(self):
+        # (a AND b) OR c
+        inner = {"operator": "AND", "conditions": ["a", "b"]}
+        result = build_expression({"operator": "OR", "conditions": [inner, "c"]})
+        inner_expr = f"{self._leaf('a')} && {self._leaf('b')}"
+        # inner expr contains &&, so gets wrapped in () by precedence logic
+        self.assertIn(inner_expr, result)
+        self.assertIn(" || ", result)
+
+    def test_single_condition_list_no_op_appended(self):
+        # AND with one element just returns that element without operator
+        result = build_expression({"operator": "AND", "conditions": ["only"]})
+        self.assertEqual(result, self._leaf("only"))
+
+    def test_empty_conditions_list_returns_none(self):
+        self.assertIsNone(build_expression({"operator": "AND", "conditions": []}))
+
+    def test_default_operator_is_and(self):
+        result = build_expression({"conditions": ["x", "y"]})
+        self.assertIn(" && ", result)
+
+
+class TestFormatSingleFunction(unittest.TestCase):
+
+    def test_none_returns_nullptr(self):
+        self.assertEqual(format_single_function(None), "nullptr")
+        self.assertEqual(format_single_function(""), "nullptr")
+
+    def test_simple_no_params(self):
+        result = format_single_function("my_script")
+        self.assertIn("id(my_script).execute()", result)
+
+    def test_with_expected_params(self):
+        result = format_single_function(
+            "draw_icon",
+            available_scripts={"draw_icon": {"parameters": {"x_start": "int"}}},
+            expected_params=[("x_start", "int")],
+        )
+        self.assertIn("id(draw_icon).execute(", result)
+        self.assertIn("arg0", result)
+
+    def test_with_static_params(self):
+        # Script called via dict with static value
+        scripts = {"draw_label": {"parameters": {"label": "string"}}}
+        result = format_single_function(
+            "draw_label",
+            available_scripts=scripts,
+            expected_params=[],
+        )
+        # label not in expected_params — gets default value
+        self.assertIn("id(draw_label).execute(", result)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -64,6 +64,21 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
             tile.requires_fast_refresh = transformConditionLogic(tile.requires_fast_refresh);
         }
 
+        // Transform condition logic inside images entries
+        if (Array.isArray(tile.images)) {
+            tile.images = tile.images.map((entry: any) => {
+                if (entry && entry.condition != null && entry.condition !== '') {
+                    return { ...entry, condition: transformConditionLogic(entry.condition) };
+                }
+                // No condition key or empty — strip it from output
+                if (entry && 'condition' in entry && (entry.condition == null || entry.condition === '')) {
+                    const { condition: _c, ...rest } = entry;
+                    return rest;
+                }
+                return entry;
+            });
+        }
+
         // Handle display params transformation (icon quoting, color/size id wrapping)
         if (Array.isArray(tile.display)) {
             tile.display = tile.display.map((d: any) => {
@@ -110,7 +125,8 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
     
     const yamlString = yaml.dump({ 
         screens,
-        dynamic_entities: includeInternalKeys && config.dynamic_entities && config.dynamic_entities.length > 0 ? config.dynamic_entities : undefined
+        dynamic_entities: includeInternalKeys && config.dynamic_entities && config.dynamic_entities.length > 0 ? config.dynamic_entities : undefined,
+        images: config.images && Object.keys(config.images).length > 0 ? config.images : undefined
     }, { lineWidth: -1, noCompatMode: true, sortKeys: false });
     // Ensure icons are formatted as '"\U..."' for ESPHome compatibility
     return yamlString.replace(/icon:\s*['"]?(\\U[0-9a-fA-F]+)['"]?/g, "icon: '\"$1\"'");

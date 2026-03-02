@@ -1,15 +1,16 @@
 import { useDraggable } from '@dnd-kit/core';
 import { Trash2, ArrowRightCircle } from 'lucide-react';
-import { Tile } from '../types';
+import { Tile, ImageEntry } from '../types';
 
-export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage }: { 
+export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage, images = {} }: { 
   tile: Tile, 
   isSelected: boolean, 
   onClick: () => void, 
   onDelete: () => void,
   zIndex?: number,
   dynamicEntities?: string[],
-  onNavigateToPage?: (pageId: string) => void
+  onNavigateToPage?: (pageId: string) => void,
+  images?: Record<string, ImageEntry>
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: tile.id,
@@ -94,7 +95,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       style={style} 
       {...listeners} 
       {...attributes}
-      className={`absolute border-2 border-solid rounded flex items-center justify-center group
+      className={`absolute border-2 border-solid rounded flex items-center justify-center group overflow-hidden
         ${isSelected ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-400' : 'bg-blue-50 border-blue-500'}
         cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow
       `}
@@ -115,50 +116,69 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       >
         <Trash2 size={12} />
       </button>
-      <div className="text-center p-1 overflow-hidden w-full pointer-events-none">
-        <div className="font-bold text-[10px] uppercase text-blue-700 truncate">{tile.type.replace('_', ' ')}</div>
-        {tile.display && (
-          <div className="text-[9px] text-slate-600 truncate mt-1" title={(() => {
-            const items = Array.isArray(tile.display) ? tile.display : [tile.display];
-            return items.map(d => typeof d === 'string' ? d : Object.keys(d)[0]).join(', ');
-          })()}>
-            {(() => {
-               const items = Array.isArray(tile.display) ? tile.display : [tile.display];
-               if (items.length === 0) return null;
-               const first = items[0];
-               
-               if (typeof first === 'string') return first;
-               
-               const key = Object.keys(first)[0];
-               if (key === 'tile_icon' && first[key]?.icon) {
-                   let iconVal = first[key].icon;
-                   // Handle potential double quoting from YAML load
-                   if (typeof iconVal === 'string' && iconVal.startsWith('"') && iconVal.endsWith('"')) {
-                       iconVal = iconVal.slice(1, -1);
-                   }
-
-                   let displayChar = iconVal;
-                   if (iconVal.startsWith('\\U')) {
-                       try {
-                           displayChar = String.fromCodePoint(parseInt(iconVal.substring(2), 16));
-                       } catch (e) {}
-                   }
-                   return <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '24px', lineHeight: 1 }}>{displayChar}</span>;
-               }
-
-               if (key === 'tile_text' && first[key]?.text) {
-                   let textVal = first[key].text;
-                   if (typeof textVal === 'string' && textVal.startsWith('"') && textVal.endsWith('"')) {
-                       textVal = textVal.slice(1, -1);
-                   }
-                   return <span className="truncate text-xs font-medium">{textVal}</span>;
-               }
-
-               return key;
+      {(() => {
+        const tileAny = tile as any;
+        // ── Images: constrained to middle zone so top label and bottom entity badge remain visible
+        if (Array.isArray(tileAny.images) && tileAny.images.length > 0) {
+          const firstImgId = tileAny.images[0]?.image;
+          const entry = firstImgId ? images[firstImgId] : null;
+          return (
+            <>
+              {entry && (
+                <img
+                  src={`data:image/png;base64,${entry.data}`}
+                  alt={entry.filename}
+                  className="absolute object-contain pointer-events-none"
+                  style={{ top: '16px', bottom: '20px', left: '5px', right: '5px', width: 'calc(100% - 10px)', height: 'calc(100% - 36px)' }}
+                />
+              )}
+              {!entry && firstImgId && (
+                <div className="absolute inset-0 flex items-center justify-center text-[9px] text-slate-400">{firstImgId}</div>
+              )}
+              <div className="absolute top-0.5 left-0 right-0 text-center pointer-events-none px-1">
+                <span className="text-[9px] font-bold text-blue-700 bg-white/70 rounded px-0.5 truncate inline-block max-w-full">
+                  {tile.type.replace(/_/g, ' ')}
+                </span>
+              </div>
+            </>
+          );
+        }
+        // ── Display scripts ────────────────────────────────────────────────
+        return (
+          <div className="text-center p-1 overflow-hidden w-full pointer-events-none">
+            <div className="font-bold text-[10px] uppercase text-blue-700 truncate">{tile.type.replace('_', ' ')}</div>
+            {tileAny.display && (() => {
+              const items = Array.isArray(tileAny.display) ? tileAny.display : [tileAny.display];
+              if (items.length === 0) return null;
+              const first = items[0];
+              const title = items.map((d: any) => typeof d === 'string' ? d : Object.keys(d)[0]).join(', ');
+              return (
+                <div className="text-[9px] text-slate-600 truncate mt-1" title={title}>
+                  {(() => {
+                    if (typeof first === 'string') return first;
+                    const key = Object.keys(first)[0];
+                    if (key === 'tile_icon' && first[key]?.icon) {
+                      let iconVal = first[key].icon;
+                      if (typeof iconVal === 'string' && iconVal.startsWith('"') && iconVal.endsWith('"')) iconVal = iconVal.slice(1, -1);
+                      let displayChar = iconVal;
+                      if (iconVal.startsWith('\\U')) {
+                        try { displayChar = String.fromCodePoint(parseInt(iconVal.substring(2), 16)); } catch (e) {}
+                      }
+                      return <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '24px', lineHeight: 1 }}>{displayChar}</span>;
+                    }
+                    if (key === 'tile_text' && first[key]?.text) {
+                      let textVal = first[key].text;
+                      if (typeof textVal === 'string' && textVal.startsWith('"') && textVal.endsWith('"')) textVal = textVal.slice(1, -1);
+                      return <span className="truncate text-xs font-medium">{textVal}</span>;
+                    }
+                    return key;
+                  })()}
+                </div>
+              );
             })()}
           </div>
-        )}
-      </div>
+        );
+      })()}
       {tile.type === 'move_page' && tile.destination && (
         <div
           className="absolute top-0.5 left-0.5 max-w-[calc(100%-8px)] flex items-center gap-0.5 border border-green-400 rounded px-1 py-0.5 bg-green-50/90 cursor-pointer hover:bg-green-100 transition-colors z-10"

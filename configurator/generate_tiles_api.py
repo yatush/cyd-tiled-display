@@ -173,7 +173,7 @@ except ImportError as e:
     print(json.dumps({"error": f"Failed to import tile_ui: {e}"}))
     sys.exit(1)
 
-def generate_cpp_from_yaml(input_data, user_lib_dir=None):
+def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None):
     try:
         if not input_data:
             return {"error": "No input data provided"}
@@ -253,12 +253,82 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None):
         except ValueError as e:
             return {"error": str(e), "type": "validation_error"}
 
-        # Generate
+        # ----------------------------------------------------------------
+        # Handle images: build per-(image, page-size) variants so every
+        # page gets an image sized exactly for its tile dimensions.
+        # generate_init_tiles_cpp already applies the same substitution
+        # internally, so we only need to compute the variant map here to
+        # know which PNG files and YAML declarations to write.
+        # ----------------------------------------------------------------
+        import base64 as _base64
+        import os as _os
+        from tile_ui.tile_generation import compute_image_variants
+
+        images = config.get("images") or {}
+        _SCREEN_W, _SCREEN_H, _HEADER_H = 320, 240, 30  # standard CYD landscape
+
+        # Generate CPP — generate_init_tiles_cpp handles variant substitution.
         cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts, available_globals)
-        
+
+        # Build the variant map to know which PNG sizes / IDs to emit.
+        _variant_id = compute_image_variants(screens)  # (img_id, rows, cols) -> variant_id
+
+        # Write source PNGs (original, unmodified — one per image ID) and build YAML.
+        # ESPHome's built-in `resize:` handles per-variant scaling at compile time,
+        # so we only need a single source file per image regardless of how many
+        # page layouts reference it.
+        images_yaml = ""
+        image_declarations = []
+        _written_pngs: set = set()  # track which source PNGs have been written
+
+        for (_iid, _rows, _cols), _vid in sorted(_variant_id.items()):
+            img_entry = images.get(_iid)
+            if not isinstance(img_entry, dict):
+                continue
+
+            filename = img_entry.get("filename", f"{_iid}.png")
+            img_data = img_entry.get("data", "")
+            img_type = img_entry.get("type", "RGB565")
+            _stem, _ext = _os.path.splitext(_os.path.basename(filename))
+            safe_name = f"{_stem}.png"  # always original, unsuffixed
+
+            # Write the source file once; ESPHome resizes each declaration independently.
+            if images_dir and img_data and safe_name not in _written_pngs:
+                _os.makedirs(images_dir, exist_ok=True)
+                try:
+                    with open(_os.path.join(images_dir, safe_name), 'wb') as _f:
+                        _f.write(_base64.b64decode(img_data))
+                    _written_pngs.add(safe_name)
+                except Exception as _e:
+                    print(f"Warning: failed to write image '{_iid}': {_e}")
+
+            # Compute the resize target for this variant's tile dimensions (5 px gap each side).
+            _tile_w = _SCREEN_W // _cols
+            _tile_h = (_SCREEN_H - _HEADER_H) // _rows
+            _max_w = max(8, _tile_w - 10)
+            _max_h = max(8, _tile_h - 10)
+
+            # ESPHome 2026.2 removed the RGBA type; alpha images now use
+            # type: RGB with transparency: alpha_channel instead.
+            if img_type == 'RGBA':
+                type_lines = "    type: RGB\n    transparency: alpha_channel"
+            else:
+                type_lines = f"    type: {img_type}"
+
+            image_declarations.append(
+                f"  - file: images/{safe_name}\n"
+                f"    id: {_vid}\n"
+                f"    resize: {_max_w}x{_max_h}\n"
+                f"{type_lines}"
+            )
+
+        if image_declarations:
+            images_yaml = "image:\n" + "\n".join(image_declarations) + "\n"
+
         return {
             "success": True,
             "cpp": cpp_lambdas,
+            "images_yaml": images_yaml,
             "message": f"Successfully generated {len(cpp_lambdas)} initialization blocks."
         }
 

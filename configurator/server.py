@@ -300,9 +300,21 @@ def start_emulator():
         _lib_dir = os.path.join(BASE_DIR, 'lib')
         if not os.path.exists(_lib_dir):
             _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
-        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str, user_lib_dir=_lib_dir)
+        _images_dir = os.path.join(_lib_dir, 'images')
+        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str, user_lib_dir=_lib_dir, images_dir=_images_dir)
         if "error" in result:
              return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
+
+        # Always refresh images.yaml so the emulator build uses IDs that match
+        # the lambdas generated above (avoids stale-ID compile errors).
+        images_yaml = result.get("images_yaml", "")
+        images_yaml_path = os.path.join(_lib_dir, 'images.yaml')
+        try:
+            os.makedirs(os.path.dirname(images_yaml_path), exist_ok=True)
+            with open(images_yaml_path, 'w') as f:
+                f.write(images_yaml if images_yaml else '# no images\n')
+        except Exception as e:
+            print(f"Warning: could not write images.yaml for emulator: {e}", flush=True)
             
     except Exception as e:
         print(f"Config processing error: {e}")
@@ -475,11 +487,26 @@ def generate():
         _lib_dir = os.path.join(BASE_DIR, 'lib')
         if not os.path.exists(_lib_dir):
             _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
-        result = generate_tiles_api.generate_cpp_from_yaml(input_data, user_lib_dir=_lib_dir)
+        # Images (PNG files + images.yaml) all live inside lib/ so ESPHome resolves
+        # "file: images/foo.png" relative to lib_common.yaml (which is in lib/).
+        _images_dir = os.path.join(_lib_dir, 'images')
+        result = generate_tiles_api.generate_cpp_from_yaml(input_data, user_lib_dir=_lib_dir, images_dir=_images_dir)
         
         if "error" in result:
             print(f"Generation Error: {result['error']}", flush=True)
             return jsonify(result), 500
+
+        # Write images.yaml into lib/ so the !include in lib_common.yaml resolves it.
+        # Always write (even when empty) so precompiled builds and fresh containers
+        # don't fail on a missing include.
+        images_yaml = result.get("images_yaml", "")
+        images_yaml_path = os.path.join(BASE_DIR, 'lib', 'images.yaml')
+        try:
+            os.makedirs(os.path.dirname(images_yaml_path), exist_ok=True)
+            with open(images_yaml_path, 'w') as f:
+                f.write(images_yaml if images_yaml else '# no images\n')
+        except Exception as e:
+            print(f"Warning: could not write images.yaml: {e}", flush=True)
             
         return jsonify(result)
     except Exception as e:

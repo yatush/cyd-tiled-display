@@ -3,9 +3,9 @@ import { Wifi } from 'lucide-react';
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { DroppableCell } from './DroppableCell';
 import { DraggableTile } from './DraggableTile';
-import { Page, Tile } from '../types';
+import { Page, Tile, ImageEntry } from '../types';
 
-export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage }: { 
+export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage, images = {} }: { 
   page: Page, 
   onSelectTile: (t: Tile) => void, 
   selectedTileId: string | null,
@@ -14,7 +14,8 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
   rows: number,
   cols: number,
   dynamicEntities?: string[],
-  onNavigateToPage?: (pageId: string) => void
+  onNavigateToPage?: (pageId: string) => void,
+  images?: Record<string, ImageEntry>
 }) => {
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -127,6 +128,7 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                       zIndex={activeTile && activeTile.id === tile.id ? 60 : undefined}
                       dynamicEntities={dynamicEntities}
                       onNavigateToPage={onNavigateToPage}
+                      images={images}
                     />
                   ))}
                   {coveringTiles.length > 1 && (
@@ -186,6 +188,7 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                     onDelete={() => onDeleteTile(tile.id)}
                     dynamicEntities={dynamicEntities}
                     onNavigateToPage={onNavigateToPage}
+                    images={images}
                   />
                 </div>
               ))}

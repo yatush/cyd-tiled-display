@@ -62,6 +62,16 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
                 props.requires_fast_refresh = transformConditionLogicReverse(props.requires_fast_refresh);
             }
 
+            // Transform condition logic in images entries back to internal format
+            if (Array.isArray(props.images)) {
+                props.images = props.images.map((entry: any) => {
+                    if (entry && entry.condition != null) {
+                        return { ...entry, condition: transformConditionLogicReverse(entry.condition) };
+                    }
+                    return entry;
+                });
+            }
+
             // Strip id() from color and size in display scripts
             if (Array.isArray(props.display)) {
                 props.display = props.display.map((d: any) => {
@@ -121,7 +131,8 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
     const result = {
       ...parsed,
       pages,
-      dynamic_entities: Array.from(dynamicEntities)
+      dynamic_entities: Array.from(dynamicEntities),
+      images: (parsed.images && typeof parsed.images === 'object') ? parsed.images : undefined
     };
     delete result.screens;
     return result;

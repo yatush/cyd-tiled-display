@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Save, Upload, Download, FolderOpen, Monitor, Copy, Home } from 'lucide-react';
-import { Config, Tile } from '../types';
-import { DynamicEntitiesEditor } from './FormInputs';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Upload, ImageIcon, Copy, Home } from 'lucide-react';
+import { Config, Tile, ImageEntry } from '../types';
+import { DynamicEntitiesEditor, ImageManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange } from '../utils/tileUtils';
 import { isAddon } from '../utils/api';
 import { FileExplorer } from './FileExplorer';
@@ -9,6 +9,10 @@ import { FileExplorer } from './FileExplorer';
 interface LeftSidebarProps {
   width: number;
   onSidebarClick: () => void;
+  isImagesOpen: boolean;
+  setIsImagesOpen: (open: boolean) => void;
+  onAddImage: (id: string, entry: ImageEntry) => void;
+  onDeleteImage: (id: string) => void;
   isDynamicEntitiesOpen: boolean;
   setIsDynamicEntitiesOpen: (open: boolean) => void;
   config: Config;
@@ -36,6 +40,10 @@ interface LeftSidebarProps {
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   width,
   onSidebarClick,
+  isImagesOpen,
+  setIsImagesOpen,
+  onAddImage,
+  onDeleteImage,
   isDynamicEntitiesOpen,
   setIsDynamicEntitiesOpen,
   config,
@@ -97,6 +105,33 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       </div>
       
       <div className="p-4 flex-1 overflow-y-auto">
+        {/* Images */}
+        <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
+          <div
+            className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
+            onClick={() => setIsImagesOpen(!isImagesOpen)}
+          >
+            <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+              {isImagesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              <ImageIcon size={14} /> Images
+            </h3>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-1.5 rounded-full">
+              {Object.keys(config.images || {}).length}
+            </span>
+          </div>
+          {isImagesOpen && (
+            <div className="p-3 pt-0 border-t border-slate-100 mt-2">
+              <div className="pt-2">
+                <ImageManagerPanel
+                  images={config.images || {}}
+                  onAddImage={onAddImage}
+                  onDeleteImage={onDeleteImage}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Dynamic Entities */}
         <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
           <div 

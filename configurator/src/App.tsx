@@ -22,6 +22,7 @@ import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
 import { apiFetch, generateNewSessionId } from './utils/api';
+import { ImageEntry } from './types';
 
 import { generateYaml } from './utils/yamlGenerator';
 
@@ -32,6 +33,7 @@ function App() {
   const [isPageDialogOpen, setIsPageDialogOpen] = useState(false);
   const [isHaSettingsOpen, setIsHaSettingsOpen] = useState(false);
   const [isDynamicEntitiesOpen, setIsDynamicEntitiesOpen] = useState(false);
+  const [isImagesOpen, setIsImagesOpen] = useState(false);
   const [isAddTileOpen, setIsAddTileOpen] = useState(false);
   const [isPagesOpen, setIsPagesOpen] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -120,6 +122,35 @@ function App() {
     handleSaveDeviceConfig,
     handleLoadDeviceConfig
   } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus, () => setSidebarKey(prev => prev + 1));
+
+  // Image management handlers
+  const handleAddImage = (id: string, entry: ImageEntry) => {
+    setConfig(prev => ({ ...prev, images: { ...(prev.images || {}), [id]: entry } }));
+  };
+  const handleDeleteImage = (id: string) => {
+    setConfig(prev => {
+      // Remove from the images store.
+      const newImages = { ...(prev.images || {}) };
+      delete newImages[id];
+
+      // Clear the image reference in every tile that uses it, so those
+      // tiles surface a validation error ("image is required").
+      const newPages = prev.pages.map(page => ({
+        ...page,
+        tiles: page.tiles.map(tile => {
+          if (!Array.isArray(tile.images)) return tile;
+          const cleaned = tile.images.map((entry: { image: string;[k: string]: any }) =>
+            entry.image === id ? { ...entry, image: '' } : entry
+          );
+          // Only update the tile if something actually changed.
+          const changed = cleaned.some((e, i) => e.image !== tile.images[i].image);
+          return changed ? { ...tile, images: cleaned } : tile;
+        }),
+      }));
+
+      return { ...prev, images: newImages, pages: newPages };
+    });
+  };
 
   // Emulator State
   const [emulatorStatus, setEmulatorStatus] = useState<'stopped' | 'running' | 'starting' | 'error'>('stopped');
@@ -333,6 +364,10 @@ function App() {
           key={sidebarKey}
           width={leftSidebarWidth}
           onSidebarClick={handleSidebarClick}
+          isImagesOpen={isImagesOpen}
+          setIsImagesOpen={setIsImagesOpen}
+          onAddImage={handleAddImage}
+          onDeleteImage={handleDeleteImage}
           isDynamicEntitiesOpen={isDynamicEntitiesOpen}
           setIsDynamicEntitiesOpen={setIsDynamicEntitiesOpen}
           config={config}
@@ -517,6 +552,7 @@ function App() {
       <EmulatorDialog 
         isOpen={isEmulatorOpen} 
         onClose={() => setIsEmulatorOpen(false)}
+        onStop={handleStopEmulator}
         websockifyPort={websockifyPort}
         emulatorSessionId={currentEmulatorSessionIdRef.current}
       />

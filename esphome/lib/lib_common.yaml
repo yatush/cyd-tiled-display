@@ -5,6 +5,7 @@ esphome:
       
 packages:
   custom_lib: !include lib_custom.yaml
+  images: !include images.yaml
 
 substitutions:
   api_port: "6053"
@@ -539,6 +540,13 @@ script:
             int gap = x_rect / 6;
             line(x_start + gap, y_start + y_rect - gap, x_start + x_rect - gap, y_start + gap, id(gray));
           }
+
+  - id: is_lights_on
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          id(script_output) = IsAnyOn(entities);
 
   - id: tile_lights
     parameters:

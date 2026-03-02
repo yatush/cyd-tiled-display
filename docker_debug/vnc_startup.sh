@@ -102,4 +102,67 @@ echo "VNC environment ready"
 echo "Testing nginx configuration..."
 nginx -t -c /tmp/nginx.conf || (echo "Nginx config test failed!" && cat /tmp/nginx.conf && exit 1)
 
+# ---- First-time PlatformIO + ESP32 toolchain setup (runs in background) --------
+# The toolchain is NOT baked into the image — it lives in the cyd_pio_packages volume
+# (/root/.platformio).  On first container start the volume is empty so we download
+# everything here and leave a marker so subsequent starts skip this block.
+PIO_SETUP_MARKER="/root/.platformio/.cyd_setup_done"
+if [ ! -f "$PIO_SETUP_MARKER" ]; then
+    echo "PlatformIO toolchain not found — running first-time setup in background."
+    echo "The emulator will be available once setup completes (~5-10 min)."
+    (
+        set +e
+        LOG=/tmp/pio_setup.log
+        echo "[PIO SETUP] Starting at $(date)" > "$LOG"
+
+        # Phase 1: trigger PlatformIO to download all ESP32 packages
+        mkdir -p /tmp/esp32_setup
+        printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
+            > /tmp/esp32_setup/dummy.yaml
+        echo "[PIO SETUP] Downloading ESP32 toolchain (Phase 1)…" >> "$LOG"
+        timeout 900s esphome compile /tmp/esp32_setup/dummy.yaml >> "$LOG" 2>&1 || true
+
+        # Phase 2: fix PlatformIO binaries for Alpine/musl compatibility
+        echo "[PIO SETUP] Fixing wrappers (Phase 2)…" >> "$LOG"
+        /app/fix_pio_wrappers.sh >> "$LOG" 2>&1 || true
+
+        PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1)
+        if [ -n "$PIO_CMAKE" ]; then
+            mv "$PIO_CMAKE" "${PIO_CMAKE}.orig"
+            printf '#!/bin/sh\nexec /usr/bin/cmake "$@"\n' > "$PIO_CMAKE"
+            chmod +x "$PIO_CMAKE"
+            echo "[PIO SETUP] Replaced cmake wrapper" >> "$LOG"
+        fi
+
+        PIO_NINJA=$(find /root/.platformio/packages -path '*/tool-ninja/ninja' 2>/dev/null | head -1)
+        if [ -n "$PIO_NINJA" ]; then
+            mv "$PIO_NINJA" "${PIO_NINJA}.orig"
+            printf '#!/bin/sh\nexec /usr/bin/ninja "$@"\n' > "$PIO_NINJA"
+            chmod +x "$PIO_NINJA"
+            echo "[PIO SETUP] Replaced ninja wrapper" >> "$LOG"
+        fi
+
+        # Remove the orig binaries now that wrappers are in place
+        find /root/.platformio -name '*.orig' -delete 2>/dev/null
+
+        rm -rf /tmp/esp32_setup
+
+        # Phase 3: pre-compile the emulator to warm up the build cache.
+        # We do NOT delete .esphome afterwards — the compiled artifacts are left in the
+        # cyd_esphome_build volume so the first real emulator run is instant (incremental build).
+        echo "[PIO SETUP] Pre-compiling emulator (Phase 3)…" >> "$LOG"
+        # Ensure the images.yaml placeholder exists so the !include in lib_common.yaml resolves.
+        touch /app/esphome/lib/images.yaml
+        [ -s /app/esphome/lib/images.yaml ] || printf '{}\n' > /app/esphome/lib/images.yaml
+        cd /app/esphome && CMAKE_BUILD_PARALLEL_LEVEL=2 esphome compile lib/emulator.yaml >> "$LOG" 2>&1 || true
+
+        touch "$PIO_SETUP_MARKER"
+        echo "[PIO SETUP] Done at $(date)" >> "$LOG"
+        echo "PlatformIO setup complete. Emulator is now ready."
+    ) &
+else
+    echo "PlatformIO toolchain already set up (volume populated)."
+fi
+# ---- End PlatformIO setup --------------------------------------------------------
+
 exec "$@"

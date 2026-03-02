@@ -9,6 +9,37 @@ if [ ! -f "../Dockerfile" ]; then
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Ensure Docker daemon is running with the correct data-root.
+# We use /tmp/docker-data (on /dev/sdc1, ~44GB) instead of /var/lib/docker
+# (on /dev/loop4, ~32GB shared with the workspace) to avoid disk space issues.
+# ---------------------------------------------------------------------------
+DOCKER_DATA_ROOT="/tmp/docker-data"
+DAEMON_JSON="/etc/docker/daemon.json"
+
+# Write daemon.json if missing or has wrong data-root
+if ! grep -q "$DOCKER_DATA_ROOT" "$DAEMON_JSON" 2>/dev/null; then
+    echo "Configuring Docker data-root to $DOCKER_DATA_ROOT ..."
+    sudo mkdir -p /etc/docker
+    sudo tee "$DAEMON_JSON" > /dev/null << DAEMON_EOF
+{
+  "data-root": "$DOCKER_DATA_ROOT",
+  "storage-driver": "overlay2"
+}
+DAEMON_EOF
+fi
+
+mkdir -p "$DOCKER_DATA_ROOT"
+
+# Start dockerd if not running
+if ! docker ps > /dev/null 2>&1; then
+    echo "Starting Docker daemon (using data-root: $DOCKER_DATA_ROOT)..."
+    sudo dockerd > /tmp/dockerd.log 2>&1 &
+    echo -n "Waiting for Docker "
+    until docker ps > /dev/null 2>&1; do echo -n "."; sleep 1; done
+    echo " ready!"
+fi
+
 echo "Building image..."
 docker build -t $IMAGE_NAME ..
 
@@ -27,6 +58,7 @@ docker run -d --name $CONTAINER_NAME \
   -v "$(pwd)/nginx.conf:/etc/nginx/nginx.conf" \
   -v "cyd_esphome_build:/app/esphome/lib/.esphome" \
   -v "cyd_pio_cache:/tmp/pio_cache" \
+  -v "cyd_pio_packages:/root/.platformio" \
   -p 6080:6080 -p 8080:8080 -p 8099:8099 -p 5900:5900 \
   $IMAGE_NAME
 
