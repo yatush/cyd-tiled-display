@@ -22,6 +22,8 @@ interface InstallDialogProps {
   stayMounted?: boolean;
   /** Called when USB compile starts/stops to control stayMounted from parent */
   onCompileActiveChange?: (active: boolean) => void;
+  /** Called when OTA install starts/finishes to control stayMounted from parent */
+  onOtaActiveChange?: (active: boolean) => void;
 }
 
 type InstallStatus = 'idle' | 'loading' | 'saving' | 'installing' | 'success' | 'error' | 'cancelled';
@@ -34,6 +36,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   onSaveAndInstall,
   stayMounted,
   onCompileActiveChange,
+  onOtaActiveChange,
 }) => {
   const [activeTab, setActiveTab] = useState<InstallTab>('ota');
   const [devices, setDevices] = useState<Device[]>([]);
@@ -45,6 +48,8 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [logsExpanded, setLogsExpanded] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether an OTA install is running in the background (dialog hidden)
+  const otaRunningRef = useRef(false);
 
   const fetchDevices = useCallback(async () => {
     setLoadingDevices(true);
@@ -90,15 +95,17 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      fetchDevices();
-      // Only reset OTA state when opening (USB panel manages its own state)
-      setStatus('idle');
-      setLogs([]);
-      setStatusMessage('');
-      setSelectedDevice(null);
+      // If OTA is running in the background, just re-attach — don't wipe state
+      if (!otaRunningRef.current) {
+        fetchDevices();
+        setStatus('idle');
+        setLogs([]);
+        setStatusMessage('');
+        setSelectedDevice(null);
+      }
     } else {
-      // Cleanup OTA polling on close (USB polling is managed by UsbInstallPanel)
-      if (pollRef.current) {
+      // When closing, only stop polling if OTA is NOT running in background
+      if (!otaRunningRef.current && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
       }
@@ -248,11 +255,15 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
           if (data.status === 'success') {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
+            otaRunningRef.current = false;
+            onOtaActiveChange?.(false);
             setStatus('success');
             setStatusMessage(data.message);
           } else if (data.status === 'error') {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
+            otaRunningRef.current = false;
+            onOtaActiveChange?.(false);
             setStatus('error');
             setStatusMessage(data.message);
           }
@@ -261,6 +272,10 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
           // Don't stop polling on transient network errors
         }
       };
+
+      // Mark OTA as running in background so closing the dialog won't cancel it
+      otaRunningRef.current = true;
+      onOtaActiveChange?.(true);
 
       // Poll every 1.5 seconds
       pollRef.current = setInterval(poll, 1500);
@@ -278,6 +293,8 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    otaRunningRef.current = false;
+    onOtaActiveChange?.(false);
     try {
       await apiFetch('/esphome/install/cancel', { method: 'POST' });
     } catch {
@@ -288,11 +305,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   };
 
   const handleClose = () => {
-    // Only confirm/cancel for OTA operations — USB compile continues in background
-    if (status === 'installing' || status === 'saving') {
-      if (!confirm('Installation is in progress. Cancel and close?')) return;
-      handleCancel();
-    }
+    // OTA install runs in background — just close the dialog, don't cancel
     onClose();
   };
 

@@ -52,6 +52,7 @@ function App() {
   const [isEmulatorDevicePickerOpen, setIsEmulatorDevicePickerOpen] = useState(false);
   const [sidebarKey, setSidebarKey] = useState(0);
   const [usbCompileActive, setUsbCompileActive] = useState(false);
+  const [otaInstallActive, setOtaInstallActive] = useState(false);
 
   // Hooks
   const {
@@ -532,8 +533,9 @@ function App() {
             throw new Error('Failed to save device configuration');
           }
         }}
-        stayMounted={usbCompileActive}
+        stayMounted={usbCompileActive || otaInstallActive}
         onCompileActiveChange={setUsbCompileActive}
+        onOtaActiveChange={setOtaInstallActive}
       />
       
       <ScreensFileDialog 
@@ -603,6 +605,17 @@ function App() {
         >
           <RefreshCw size={14} className="animate-spin" />
           <span className="text-sm font-bold">USB Compiling...</span>
+        </button>
+      )}
+
+      {/* Floating OTA Install indicator — shown when dialog is closed but install is running */}
+      {otaInstallActive && !isInstallDeviceOpen && (
+        <button
+          onClick={() => setIsInstallDeviceOpen(true)}
+          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition-all animate-pulse"
+        >
+          <RefreshCw size={14} className="animate-spin" />
+          <span className="text-sm font-bold">OTA Installing...</span>
         </button>
       )}
     </div>
