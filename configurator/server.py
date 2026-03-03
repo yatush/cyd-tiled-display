@@ -1680,18 +1680,22 @@ def get_directory_hashes(directory):
     
     file_hashes = {}
     for root, dirs, files in os.walk(directory):
-        # Filter out hidden directories to prevent recursion
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        # Filter out hidden directories and the images/ dir to prevent recursion
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != 'images']
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
             if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file.startswith('.'):
                 continue
             path = os.path.join(root, file)
+            rel_path = os.path.relpath(path, directory).replace('\\', '/')
+            # images.yaml content is always regenerated at compile time;
+            # only track its existence, not its content.
+            if rel_path == 'images.yaml':
+                file_hashes[rel_path] = '__images_yaml_placeholder__'
+                continue
             try:
                 with open(path, 'rb') as f:
                     file_hash = hashlib.md5(f.read()).hexdigest()
-                    # Include relative path
-                    rel_path = os.path.relpath(path, directory).replace('\\', '/')
                     file_hashes[rel_path] = file_hash
             except:
                 pass
@@ -1703,6 +1707,9 @@ def get_diff(source_hashes, target_hashes):
     
     for f in sorted(all_files):
         if f not in source_hashes:
+            # Ignore PNG files that exist only in the target (they are generated artifacts)
+            if f.endswith('.png'):
+                continue
             diff.append(f"{f} (Extra in target)")
         elif f not in target_hashes:
             diff.append(f"{f} (Missing in target)")
