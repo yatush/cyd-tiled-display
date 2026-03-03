@@ -1059,6 +1059,7 @@ def install_esphome_device():
             'status': 'running',      # running | success | error
             'message': f'Starting install of {filename}...',
             'line_offset': 0,          # not used server-side, just tracks total
+            'images_dir': os.path.join(_lib_dir, 'images'),
         }
 
         with install_processes_lock:
@@ -1116,6 +1117,16 @@ def install_esphome_device():
                     state['status'] = 'error'
                     state['message'] = str(e)
                 print(f"[install] Reader thread error: {e}", flush=True)
+            finally:
+                _idir = state.get('images_dir', '')
+                if _idir and os.path.isdir(_idir):
+                    for _f in os.listdir(_idir):
+                        if _f.endswith('.png'):
+                            try:
+                                os.remove(os.path.join(_idir, _f))
+                            except Exception:
+                                pass
+                    print(f"[install] Cleaned up PNGs in {_idir}", flush=True)
 
         t = threading.Thread(target=_reader_thread, args=(install_state,), daemon=True)
         t.start()
@@ -1336,6 +1347,7 @@ def compile_esphome_device():
             # In non-addon (cloud) mode, auto-delete the YAML file after compile so
             # temporary files from this session are not visible to other users.
             'auto_cleanup': not IS_ADDON,
+            'images_dir': os.path.join(_lib_dir_compile, 'images'),
         }
 
         with compile_processes_lock:
@@ -1365,6 +1377,15 @@ def compile_esphome_device():
                 state['message'] = str(e)
                 print(f"[compile] Reader thread error: {e}", flush=True)
             finally:
+                _idir = state.get('images_dir', '')
+                if _idir and os.path.isdir(_idir):
+                    for _f in os.listdir(_idir):
+                        if _f.endswith('.png'):
+                            try:
+                                os.remove(os.path.join(_idir, _f))
+                            except Exception:
+                                pass
+                    print(f"[compile] Cleaned up PNGs in {_idir}", flush=True)
                 # Auto-delete the device YAML so cloud users don't see each other's files.
                 if state.get('auto_cleanup'):
                     _fname = state.get('filename', '')

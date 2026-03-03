@@ -738,7 +738,7 @@ export function generateImageId(filename: string, existing: Record<string, Image
 }
 
 // ---- ImageSelectInput -------------------------------------------------------
-// Simple select-only dropdown (upload is handled by ImageManagerPanel in the left sidebar).
+// Custom thumbnail picker (upload is handled by ImageManagerPanel in the left sidebar).
 
 export const ImageSelectInput = ({
   label,
@@ -751,43 +751,86 @@ export const ImageSelectInput = ({
   onChange: (v: string) => void;
   images: Record<string, ImageEntry>;
 }) => {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const imageIds = Object.keys(images || {});
   const selected = value && images?.[value] ? images[value] : null;
 
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   return (
-    <div className="mb-2">
+    <div className="mb-2" ref={containerRef}>
       {label && <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>}
-      <div className="min-w-0 overflow-hidden">
-        <select
-          value={value || ''}
-          onChange={e => onChange(e.target.value)}
-          className="w-full border rounded p-1 text-sm bg-white"
+
+      {/* Trigger button */}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 border rounded p-1 bg-white hover:bg-slate-50 text-sm text-left min-w-0"
+      >
+        {selected ? (
+          <>
+            <img
+              src={`data:image/png;base64,${selected.data}`}
+              alt={selected.filename}
+              className="flex-shrink-0 h-8 w-8 object-contain rounded bg-slate-100"
+            />
+            <span className="truncate flex-1 text-slate-700" title={value}>{value}</span>
+          </>
+        ) : (
+          <span className="flex-1 text-slate-400">— select image —</span>
+        )}
+        <svg className="flex-shrink-0 w-3 h-3 text-slate-400" viewBox="0 0 10 6" fill="none">
+          <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      </button>
+
+      {/* Clear button (shown when a value is selected) */}
+      {value && (
+        <button
+          type="button"
+          title="Clear"
+          onClick={() => { onChange(''); setOpen(false); }}
+          className="mt-0.5 flex items-center gap-1 text-[10px] text-red-400 hover:text-red-600"
         >
-          <option value="">— select image —</option>
-          {imageIds.map(id => (
-            <option key={id} value={id}>{id}</option>
-          ))}
-        </select>
-      </div>
-      {selected && (
-        <div className="mt-1 flex items-center gap-2">
-          <img
-            src={`data:image/png;base64,${selected.data}`}
-            alt={selected.filename}
-            className="flex-shrink-0 max-h-10 max-w-[50px] object-contain border rounded bg-slate-100"
-          />
-          <span className="text-[10px] text-slate-500 truncate flex-1" title={selected.filename}>
-            {selected.filename}
-          </span>
-          {value && (
-            <button
-              type="button"
-              title="Clear"
-              onClick={() => onChange('')}
-              className="flex-shrink-0 text-red-500 hover:bg-red-50 p-0.5 rounded"
-            >
-              <Trash2 size={12} />
-            </button>
+          <Trash2 size={10} /> clear
+        </button>
+      )}
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute z-50 mt-1 bg-white border rounded shadow-lg p-2 w-56 max-h-64 overflow-y-auto">
+          {imageIds.length === 0 ? (
+            <p className="text-xs text-slate-400 text-center py-2">No images uploaded yet</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {imageIds.map(id => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => { onChange(id); setOpen(false); }}
+                  className={`flex flex-col items-center gap-0.5 p-1 rounded border text-center hover:bg-blue-50 hover:border-blue-300 transition-colors ${value === id ? 'border-blue-400 bg-blue-50' : 'border-transparent'}`}
+                  title={id}
+                >
+                  <img
+                    src={`data:image/png;base64,${images[id].data}`}
+                    alt={id}
+                    className="h-12 w-12 object-contain rounded bg-slate-100"
+                  />
+                  <span className="text-[9px] text-slate-500 truncate w-full leading-tight">{id}</span>
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}
