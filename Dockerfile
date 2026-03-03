@@ -39,13 +39,51 @@ RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
     git clone --depth 1 https://github.com/novnc/websockify /app/novnc/utils/websockify && \
     ln -s /app/novnc/vnc_lite.html /app/novnc/index.html
 
-# Copy fix script — run at container startup (not at build time)
-# The ESP32 PlatformIO toolchain is NOT pre-downloaded in this image.
-# It is downloaded on first container start into the cyd_pio_packages named volume,
-# which persists it across container/image rebuilds. This keeps the image ~1-2GB
-# instead of ~7GB.
+# Copy fix script — also invoked during image build (pre-bake step below).
+# The ESP32 PlatformIO toolchain is pre-baked into the image at build time.
+# This runs once on GitHub Actions (fast NVMe + network) so the RPi4 (slow SD
+# card) never has to download or extract the toolchain at runtime.
+# The .cyd_setup_done marker is written here so vnc_startup.sh skips the
+# background first-time setup block entirely.
 COPY docker_debug/fix_pio_wrappers.sh /app/
 RUN chmod +x /app/fix_pio_wrappers.sh
+
+# ---------------------------------------------------------------------------
+# Pre-bake PlatformIO / ESP-IDF toolchain.
+# esphome compile drives the full package + tool download.  On arm64/musl the
+# PlatformIO-bundled cmake wrapper (a glibc Rust binary) will hang once the
+# downloads finish, so we use a 900 s timeout: downloads complete in the first
+# few minutes, the timeout fires during cmake configuration, and we continue.
+# fix_pio_wrappers.sh and the cmake/ninja replacements below then make
+# subsequent real compiles work correctly.
+# ---------------------------------------------------------------------------
+RUN apk add --no-cache ca-certificates && update-ca-certificates && \
+    mkdir -p /root/.platformio/dist && \
+    mkdir -p /tmp/esp32_setup && \
+    printf 'esphome:\n  name: prebake\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
+        > /tmp/esp32_setup/dummy.yaml && \
+    cd /tmp/esp32_setup && \
+    CMAKE_BUILD_PARALLEL_LEVEL=2 timeout 900s esphome compile dummy.yaml || true && \
+    cd / && rm -rf /tmp/esp32_setup && \
+    # Patch Rust/glibc wrapper binaries with Alpine-compatible shell wrappers. \
+    /app/fix_pio_wrappers.sh || true && \
+    # Replace PlatformIO's cmake binary with the system (musl) cmake wrapper. \
+    PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1) && \
+    if [ -n "$PIO_CMAKE" ]; then \
+        mv "$PIO_CMAKE" "${PIO_CMAKE}.orig" && \
+        printf '#!/bin/sh\nexec /usr/bin/cmake "$@"\n' > "$PIO_CMAKE" && \
+        chmod +x "$PIO_CMAKE"; \
+    fi && \
+    # Replace PlatformIO's ninja binary with the system (musl) ninja wrapper. \
+    PIO_NINJA=$(find /root/.platformio/packages -path '*/tool-ninja/ninja' 2>/dev/null | head -1) && \
+    if [ -n "$PIO_NINJA" ]; then \
+        mv "$PIO_NINJA" "${PIO_NINJA}.orig" && \
+        printf '#!/bin/sh\nexec /usr/bin/ninja "$@"\n' > "$PIO_NINJA" && \
+        chmod +x "$PIO_NINJA"; \
+    fi && \
+    find /root/.platformio -name '*.orig' -delete 2>/dev/null || true && \
+    # Mark setup done so vnc_startup.sh skips the background download phase. \
+    touch /root/.platformio/.cyd_setup_done
 
 # Copy built frontend
 COPY --from=build-frontend /app/dist /app/configurator/dist

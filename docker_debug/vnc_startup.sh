@@ -147,22 +147,35 @@ if [ ! -f "$PIO_SETUP_MARKER" ]; then
 
         rm -rf /tmp/esp32_setup
 
-        # Phase 3: pre-compile the emulator to warm up the build cache.
-        # We do NOT delete .esphome afterwards — the compiled artifacts are left in the
-        # cyd_esphome_build volume so the first real emulator run is instant (incremental build).
-        echo "[PIO SETUP] Pre-compiling emulator (Phase 3)…" >> "$LOG"
-        # Ensure the images.yaml placeholder exists so the !include in lib_common.yaml resolves.
+        touch "$PIO_SETUP_MARKER"
+        echo "[PIO SETUP] Done at $(date)" >> "$LOG"
+        echo "PlatformIO setup complete."
+    ) &
+else
+    echo "PlatformIO toolchain already set up (marker present)."
+fi
+# ---- End PlatformIO setup --------------------------------------------------------
+
+# ---- Emulator pre-compilation (runs once per image deployment) ------------------
+# Runs independently of the PIO setup marker so it still fires when the toolchain
+# is pre-baked into the image.  Uses its own marker inside /app/esphome/ which is
+# reset whenever a new image is pulled (writable-layer is discarded on update).
+EMULATOR_MARKER="/app/esphome/.emulator_prebuilt"
+if [ ! -f "$EMULATOR_MARKER" ]; then
+    echo "Pre-compiling emulator in background (first start after image update)…"
+    (
+        set +e
+        LOG=/tmp/emulator_precompile.log
+        echo "[EMULATOR] Starting at $(date)" > "$LOG"
+        # Ensure images.yaml placeholder exists so the !include in lib_common.yaml resolves.
         touch /app/esphome/lib/images.yaml
         [ -s /app/esphome/lib/images.yaml ] || printf '{}\n' > /app/esphome/lib/images.yaml
         cd /app/esphome && CMAKE_BUILD_PARALLEL_LEVEL=2 esphome compile lib/emulator.yaml >> "$LOG" 2>&1 || true
-
-        touch "$PIO_SETUP_MARKER"
-        echo "[PIO SETUP] Done at $(date)" >> "$LOG"
-        echo "PlatformIO setup complete. Emulator is now ready."
+        touch "$EMULATOR_MARKER"
+        echo "[EMULATOR] Done at $(date)" >> "$LOG"
+        echo "Emulator pre-compilation complete."
     ) &
-else
-    echo "PlatformIO toolchain already set up (volume populated)."
 fi
-# ---- End PlatformIO setup --------------------------------------------------------
+# ---- End emulator pre-compilation -----------------------------------------------
 
 exec "$@"
