@@ -50,6 +50,11 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Track whether an OTA install is running in the background (dialog hidden)
   const otaRunningRef = useRef(false);
+  // Elapsed timer for the installing phase
+  const [elapsed, setElapsed] = useState(0);
+  const installStartRef = useRef<number | null>(null);
+  const [lastLogAge, setLastLogAge] = useState(0);
+  const lastLogTimeRef = useRef<number | null>(null);
 
   const fetchDevices = useCallback(async () => {
     setLoadingDevices(true);
@@ -114,7 +119,26 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (logs.length > 0) lastLogTimeRef.current = Date.now();
   }, [logs]);
+
+  // Elapsed / last-log-age ticker while installing
+  useEffect(() => {
+    if (status === 'installing') {
+      if (!installStartRef.current) installStartRef.current = Date.now();
+      if (!lastLogTimeRef.current) lastLogTimeRef.current = Date.now();
+      const timer = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - installStartRef.current!) / 1000));
+        setLastLogAge(Math.floor((Date.now() - lastLogTimeRef.current!) / 1000));
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      installStartRef.current = null;
+      lastLogTimeRef.current = null;
+      setElapsed(0);
+      setLastLogAge(0);
+    }
+  }, [status]);
 
   // Load full device info from the YAML file for saving
   const loadDeviceInfo = async (filename: string) => {
@@ -479,9 +503,16 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
                 {status === 'installing' && (
                   <>
                     <RefreshCw size={16} className="animate-spin flex-shrink-0" />
-                    <div>
-                      <div className="font-bold text-sm">Installing to {selected?.friendly_name}...</div>
-                      <div className="text-[10px] opacity-70">Compiling and uploading via OTA. This may take a few minutes.</div>
+                    <div className="flex-1">
+                      <div className="font-bold text-sm flex items-center gap-2">
+                        Installing to {selected?.friendly_name}...
+                        <span className="font-mono text-xs opacity-60">{Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,'0')}</span>
+                      </div>
+                      <div className="text-[10px] opacity-70">
+                        {lastLogAge >= 10
+                          ? `No new output for ${lastLogAge}s — compiling (this is normal for CMake/ESP-IDF phases)`
+                          : 'Compiling and uploading via OTA. This may take a few minutes.'}
+                      </div>
                     </div>
                   </>
                 )}

@@ -1134,40 +1134,49 @@ def install_esphome_device():
             install_processes[session_id] = install_state
 
         # Regex to strip ANSI escape codes from ESPHome output
-        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\r')
+        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]')
+        # Split on \r\n, \n, or bare \r so CMake progress lines (\r-terminated) are captured
+        line_split_re = re.compile(r'\r\n|\n|\r')
 
         def _reader_thread(state):
             """Background thread that reads process stdout into the shared line buffer."""
             proc = state['process']
             try:
                 print(f"[install] Reader thread started for PID {proc.pid}", flush=True)
-                for line in iter(proc.stdout.readline, ''):
-                    clean = ansi_re.sub('', line.rstrip('\n'))
-                    if clean.strip():  # skip empty lines from stripped control chars
+                buf = ''
+                while True:
+                    chunk = proc.stdout.read(512)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    parts = line_split_re.split(buf)
+                    buf = parts[-1]  # last part may be incomplete
+                    for raw_line in parts[:-1]:
+                        clean = ansi_re.sub('', raw_line.rstrip())
+                        if not clean.strip():
+                            continue
                         state['lines'].append(clean)
-
-                    # Detect OTA upload success patterns
-                    # ESPHome prints these after successful upload:
-                    #   "INFO Successfully uploaded program"
-                    #   "INFO OTA successful"
-                    #   "INFO Waiting for result..."
-                    #   Then logs start with "[timestamp][I][app:029]: Running..."
-                    lower = clean.lower()
-                    if ('successfully uploaded' in lower or
-                        'ota successful' in lower or
-                        'success' in lower and 'upload' in lower):
-                        print(f"[install] OTA upload success detected, terminating process", flush=True)
-                        state['status'] = 'success'
-                        state['message'] = 'Installation completed successfully!'
-                        # Give it a moment then terminate
-                        import time as _time
-                        _time.sleep(1)
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=5)
-                        except subprocess.TimeoutExpired:
-                            proc.kill()
-                        return
+                        # Detect OTA upload success patterns
+                        lower = clean.lower()
+                        if ('successfully uploaded' in lower or
+                            'ota successful' in lower or
+                            'success' in lower and 'upload' in lower):
+                            print(f"[install] OTA upload success detected, terminating process", flush=True)
+                            state['status'] = 'success'
+                            state['message'] = 'Installation completed successfully!'
+                            import time as _time
+                            _time.sleep(1)
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                            return
+                # flush remaining buffer
+                if buf.strip():
+                    clean = ansi_re.sub('', buf.rstrip())
+                    if clean.strip():
+                        state['lines'].append(clean)
 
                 proc.wait()
                 if proc.returncode == 0:
@@ -1424,14 +1433,27 @@ def compile_esphome_device():
         with compile_processes_lock:
             compile_processes[session_id] = compile_state
 
-        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]|\r')
+        ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]')
+        line_split_re = re.compile(r'\r\n|\n|\r')
 
         def _reader_thread(state):
             proc = state['process']
             try:
                 print(f"[compile] Reader thread started for PID {proc.pid}", flush=True)
-                for line in iter(proc.stdout.readline, ''):
-                    clean = ansi_re.sub('', line.rstrip('\n'))
+                buf = ''
+                while True:
+                    chunk = proc.stdout.read(512)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    parts = line_split_re.split(buf)
+                    buf = parts[-1]
+                    for raw_line in parts[:-1]:
+                        clean = ansi_re.sub('', raw_line.rstrip())
+                        if clean.strip():
+                            state['lines'].append(clean)
+                if buf.strip():
+                    clean = ansi_re.sub('', buf.rstrip())
                     if clean.strip():
                         state['lines'].append(clean)
                 proc.wait()

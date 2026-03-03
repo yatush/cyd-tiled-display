@@ -132,3 +132,23 @@ WRAPPER_EOF
 done
 
 echo "Replaced $REPLACED Rust wrapper binaries with shell scripts"
+
+# Fix PlatformIO's bundled ninja: it's a glibc binary that deadlocks under gcompat on musl/Alpine.
+# Replace it with the system ninja (apk install ninja) which is natively compiled.
+NINJA_PIO=$(find /root/.platformio/packages/tool-ninja -name 'ninja' -not -name '*.bak' 2>/dev/null | head -1)
+if [ -n "$NINJA_PIO" ]; then
+    # Install system ninja if not present
+    if ! command -v ninja >/dev/null 2>&1; then
+        echo "Installing system ninja..."
+        apk add --no-cache ninja 2>/dev/null || true
+    fi
+    SYSTEM_NINJA=$(command -v ninja 2>/dev/null)
+    if [ -n "$SYSTEM_NINJA" ] && [ "$SYSTEM_NINJA" != "$NINJA_PIO" ]; then
+        echo "Replacing PlatformIO ninja with system ninja ($SYSTEM_NINJA)..."
+        cp -f "$NINJA_PIO" "${NINJA_PIO}.bak" 2>/dev/null || true
+        ln -sf "$SYSTEM_NINJA" "$NINJA_PIO"
+        echo "  ninja version: $($SYSTEM_NINJA --version 2>/dev/null)"
+    else
+        echo "System ninja not available or already linked — skipping ninja fix"
+    fi
+fi
