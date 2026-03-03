@@ -56,6 +56,50 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const [lastLogAge, setLastLogAge] = useState(0);
   const lastLogTimeRef = useRef<number | null>(null);
 
+  // On mount: check if an install is already running (page reload / reconnect)
+  useEffect(() => {
+    apiFetch('/esphome/install/status?offset=0')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data || data.status !== 'running') return;
+        // Resume: populate logs and start polling
+        if (data.lines?.length) setLogs(data.lines);
+        setStatus('installing');
+        setLogsExpanded(true);
+        otaRunningRef.current = true;
+        onOtaActiveChange?.(true);
+        let offset = data.offset ?? (data.lines?.length ?? 0);
+        const poll = async () => {
+          try {
+            const sr = await apiFetch(`/esphome/install/status?offset=${offset}`);
+            if (!sr.ok) {
+              clearInterval(pollRef.current!); pollRef.current = null;
+              otaRunningRef.current = false; onOtaActiveChange?.(false);
+              setStatus('error'); setStatusMessage('Lost connection to install process');
+              return;
+            }
+            const d = await sr.json();
+            if (d.lines?.length) setLogs(prev => [...prev, ...d.lines]);
+            offset = d.offset;
+            if (d.status === 'success') {
+              clearInterval(pollRef.current!); pollRef.current = null;
+              otaRunningRef.current = false; onOtaActiveChange?.(false);
+              setStatus('success'); setStatusMessage(d.message);
+            } else if (d.status === 'error') {
+              clearInterval(pollRef.current!); pollRef.current = null;
+              otaRunningRef.current = false; onOtaActiveChange?.(false);
+              setStatus('error'); setStatusMessage(d.message);
+            }
+          } catch { /* transient, keep polling */ }
+        };
+        pollRef.current = setInterval(poll, 1500);
+        poll();
+      })
+      .catch(() => {});
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const fetchDevices = useCallback(async () => {
     setLoadingDevices(true);
     let deviceList: Device[] = [];

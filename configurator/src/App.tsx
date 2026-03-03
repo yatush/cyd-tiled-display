@@ -179,6 +179,19 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // On mount, check if an OTA install is already running (e.g. after page reload)
+  // so the floating badge and dialog resume automatically.
+  useEffect(() => {
+    apiFetch('/esphome/install/status?offset=0')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.status === 'running') {
+          setOtaInstallActive(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     // Sync keep-alive connection with status
     if (emulatorStatus === 'running' && !emulatorKeepAliveRef.current) {
