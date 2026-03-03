@@ -1041,7 +1041,10 @@ def install_esphome_device():
         _lib_dir = os.path.join(BASE_DIR, 'lib')
         if not os.path.exists(_lib_dir):
             _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
-        _regen_images_yaml(filepath, _lib_dir, os.path.join(_lib_dir, 'images'))
+        # PNGs must live in BASE_DIR/images/ because ESPHome resolves "file: images/foo.png"
+        # relative to the root config file (testing-usb.yaml), not relative to lib/images.yaml.
+        _install_images_dir = os.path.join(BASE_DIR, 'images')
+        _regen_images_yaml(filepath, _lib_dir, _install_images_dir)
 
         # Start the process immediately — timezone is fetched in the background thread
         process = subprocess.Popen(
@@ -1059,7 +1062,7 @@ def install_esphome_device():
             'status': 'running',      # running | success | error
             'message': f'Starting install of {filename}...',
             'line_offset': 0,          # not used server-side, just tracks total
-            'images_dir': os.path.join(_lib_dir, 'images'),
+            'images_dir': _install_images_dir,
         }
 
         with install_processes_lock:
@@ -1319,7 +1322,9 @@ def compile_esphome_device():
         _lib_dir_compile = os.path.join(BASE_DIR, 'lib')
         if not os.path.exists(_lib_dir_compile):
             _lib_dir_compile = os.path.join(APP_DIR, 'esphome/lib')
-        _regen_images_yaml(filepath, _lib_dir_compile, os.path.join(_lib_dir_compile, 'images'))
+        # PNGs must live in BASE_DIR/images/ — same reason as install flow.
+        _compile_images_dir = os.path.join(BASE_DIR, 'images')
+        _regen_images_yaml(filepath, _lib_dir_compile, _compile_images_dir)
 
         # Get timezone
         env = os.environ.copy()
@@ -1347,7 +1352,7 @@ def compile_esphome_device():
             # In non-addon (cloud) mode, auto-delete the YAML file after compile so
             # temporary files from this session are not visible to other users.
             'auto_cleanup': not IS_ADDON,
-            'images_dir': os.path.join(_lib_dir_compile, 'images'),
+            'images_dir': _compile_images_dir,
         }
 
         with compile_processes_lock:
