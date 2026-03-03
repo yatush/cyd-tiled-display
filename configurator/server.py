@@ -1146,16 +1146,10 @@ def install_esphome_device():
             proc = state['process']
             try:
                 print(f"[install] Reader thread started for PID {proc.pid}", flush=True)
-                buf = ''
-                while True:
-                    chunk = proc.stdout.read(512)
-                    if not chunk:
-                        break
-                    buf += chunk
-                    parts = line_split_re.split(buf)
-                    buf = parts[-1]  # last part may be incomplete
-                    for raw_line in parts[:-1]:
-                        clean = ansi_re.sub('', raw_line.rstrip())
+                for line in iter(proc.stdout.readline, ''):
+                    # readline() returns on \n; split on \r to catch CMake progress lines
+                    for raw_part in line_split_re.split(line):
+                        clean = ansi_re.sub('', raw_part.rstrip())
                         if not clean.strip():
                             continue
                         state['lines'].append(clean)
@@ -1175,11 +1169,6 @@ def install_esphome_device():
                             except subprocess.TimeoutExpired:
                                 proc.kill()
                             return
-                # flush remaining buffer
-                if buf.strip():
-                    clean = ansi_re.sub('', buf.rstrip())
-                    if clean.strip():
-                        state['lines'].append(clean)
 
                 proc.wait()
                 if proc.returncode == 0:
@@ -1443,22 +1432,11 @@ def compile_esphome_device():
             proc = state['process']
             try:
                 print(f"[compile] Reader thread started for PID {proc.pid}", flush=True)
-                buf = ''
-                while True:
-                    chunk = proc.stdout.read(512)
-                    if not chunk:
-                        break
-                    buf += chunk
-                    parts = line_split_re.split(buf)
-                    buf = parts[-1]
-                    for raw_line in parts[:-1]:
-                        clean = ansi_re.sub('', raw_line.rstrip())
+                for line in iter(proc.stdout.readline, ''):
+                    for raw_part in line_split_re.split(line):
+                        clean = ansi_re.sub('', raw_part.rstrip())
                         if clean.strip():
                             state['lines'].append(clean)
-                if buf.strip():
-                    clean = ansi_re.sub('', buf.rstrip())
-                    if clean.strip():
-                        state['lines'].append(clean)
                 proc.wait()
                 if proc.returncode == 0:
                     state['status'] = 'success'
