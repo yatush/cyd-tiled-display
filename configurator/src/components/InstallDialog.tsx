@@ -10,7 +10,7 @@ interface Device {
   screen_type: string | null;
   ip_address: string | null;
   address: string;
-  online: boolean;
+  online: boolean | null;
 }
 
 interface InstallDialogProps {
@@ -48,11 +48,13 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
 
   const fetchDevices = useCallback(async () => {
     setLoadingDevices(true);
+    let deviceList: Device[] = [];
     try {
       const res = await apiFetch('/esphome/devices');
       if (res.ok) {
         const data = await res.json();
-        setDevices(data.devices || []);
+        deviceList = data.devices || [];
+        setDevices(deviceList);
       } else {
         console.error('Failed to fetch devices');
         setDevices([]);
@@ -62,6 +64,27 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
       setDevices([]);
     } finally {
       setLoadingDevices(false);
+    }
+
+    // Ping devices asynchronously after the list is already shown
+    if (deviceList.length === 0) return;
+    try {
+      const pingRes = await apiFetch('/esphome/devices/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          devices: deviceList.map(d => ({ address: d.address, filename: d.filename }))
+        }),
+      });
+      if (pingRes.ok) {
+        const { results } = await pingRes.json();
+        setDevices(prev => prev.map(d => ({
+          ...d,
+          online: results[d.filename] ?? d.online,
+        })));
+      }
+    } catch (e) {
+      console.error('Failed to ping devices:', e);
     }
   }, []);
 
@@ -393,13 +416,17 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
                               {device.screen_type === '2432s028' ? '2.8"' : '3.5"'}
                             </span>
                           )}
-                          {device.online ? (
+                          {device.online === true ? (
                             <span className="flex items-center gap-1 text-[10px] text-green-600 font-bold">
                               <Wifi size={12} /> Online
                             </span>
-                          ) : (
+                          ) : device.online === false ? (
                             <span className="flex items-center gap-1 text-[10px] text-slate-400 font-bold">
                               <WifiOff size={12} /> Offline
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                              <RefreshCw size={10} className="animate-spin" />
                             </span>
                           )}
                         </div>

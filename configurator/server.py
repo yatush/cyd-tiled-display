@@ -985,16 +985,49 @@ def list_esphome_devices():
                     print(f"Error parsing {subdir}/{item}: {e}", flush=True)
                     continue
 
-        # Check online status in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            devices = list(executor.map(_check_device_online, devices))
+        # Don't ping here — return immediately. The frontend calls
+        # /api/esphome/devices/ping to check online status asynchronously.
+        for d in devices:
+            d['online'] = None  # unknown until pinged
 
-        # Sort: online first, then by name
-        devices.sort(key=lambda d: (not d.get('online', False), d.get('friendly_name', '').lower()))
+        # Sort by name (no online status yet)
+        devices.sort(key=lambda d: d.get('friendly_name', '').lower())
 
         return jsonify({'devices': devices})
     except Exception as e:
         print(f"List devices error: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/esphome/devices/ping', methods=['POST'])
+def ping_esphome_devices():
+    """Check online status for a list of device addresses in parallel. 
+    Body: {"devices": [{"address": "...", "filename": "..."}, ...]}
+    Returns: {"results": {"<filename>": true/false, ...}}"""
+    try:
+        data = request.get_json() or {}
+        devices_to_ping = data.get('devices', [])
+        if not devices_to_ping:
+            return jsonify({'results': {}})
+
+        def _ping(item):
+            address = item.get('address', '')
+            filename = item.get('filename', address)
+            try:
+                result = subprocess.run(
+                    ['ping', '-c', '1', '-W', '1', address],
+                    capture_output=True, timeout=3
+                )
+                return filename, result.returncode == 0
+            except Exception:
+                return filename, False
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            results = dict(executor.map(_ping, devices_to_ping))
+
+        return jsonify({'results': results})
+    except Exception as e:
+        print(f"Ping devices error: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
 
 
