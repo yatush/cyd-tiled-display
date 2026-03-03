@@ -1111,8 +1111,11 @@ def install_esphome_device():
         # Start the process immediately — timezone is fetched in the background thread
         _install_env = os.environ.copy()
         _install_env['PYTHONUNBUFFERED'] = '1'
+        # No --device flag: ESPHome reads wifi.use_address from the YAML config automatically.
+        # Passing '--device OTA' was wrong — ESPHome treated "OTA" as a literal hostname to
+        # connect to, compiled successfully, then silently failed to upload.
         process = subprocess.Popen(
-            ['esphome', 'run', filename, '--device', 'OTA'],
+            ['esphome', 'run', filename],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=BASE_DIR,
