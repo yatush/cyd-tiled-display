@@ -994,26 +994,6 @@ def list_esphome_devices():
                 print(f"Error parsing {item}: {e}", flush=True)
                 continue
 
-        # Also scan subdirectories one level deep (e.g. monitor_config/)
-        for subdir in os.listdir(BASE_DIR):
-            subdir_path = os.path.join(BASE_DIR, subdir)
-            if not os.path.isdir(subdir_path) or subdir in skip_dirs or subdir.startswith('.'):
-                continue
-            for item in os.listdir(subdir_path):
-                if not (item.endswith('.yaml') or item.endswith('.yml')):
-                    continue
-                filepath = os.path.join(subdir_path, item)
-                if not os.path.isfile(filepath):
-                    continue
-                try:
-                    meta = _parse_device_yaml(filepath)
-                    if meta:
-                        meta['filename'] = f"{subdir}/{item}"
-                        devices.append(meta)
-                except Exception as e:
-                    print(f"Error parsing {subdir}/{item}: {e}", flush=True)
-                    continue
-
         # Don't ping here — return immediately. The frontend calls
         # /api/esphome/devices/ping to check online status asynchronously.
         for d in devices:
