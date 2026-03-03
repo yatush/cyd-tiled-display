@@ -1109,6 +1109,8 @@ def install_esphome_device():
         _regen_images_yaml(filepath, _lib_dir, _install_images_dir)
 
         # Start the process immediately — timezone is fetched in the background thread
+        _install_env = os.environ.copy()
+        _install_env['PYTHONUNBUFFERED'] = '1'
         process = subprocess.Popen(
             ['esphome', 'run', filename, '--device', 'OTA'],
             stdout=subprocess.PIPE,
@@ -1116,6 +1118,7 @@ def install_esphome_device():
             cwd=BASE_DIR,
             text=True,
             bufsize=1,
+            env=_install_env,
         )
 
         install_state = {
@@ -1390,6 +1393,7 @@ def compile_esphome_device():
 
         # Get timezone
         env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
         tz = _get_ha_timezone()
         if tz:
             env['TZ'] = tz
