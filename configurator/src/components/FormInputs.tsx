@@ -336,12 +336,12 @@ export const ConditionBuilder = ({ value, onChange, scriptOptions: propScriptOpt
   const conditions = value?.conditions ?? (value?.and || value?.or || value?.not || (Array.isArray(value) ? value : []));
 
   return (
-    <div className="border rounded p-2 bg-white mb-2">
-        <div className="flex items-center gap-2 mb-2">
+    <div className="border rounded p-2 bg-white mb-2 overflow-hidden">
+        <div className="flex items-center gap-2 mb-2 min-w-0">
             <select 
                 value={type} 
                 onChange={e => handleTypeChange(e.target.value)}
-                className="border rounded p-1 text-xs font-bold bg-slate-100"
+                className="flex-shrink-0 border rounded p-1 text-xs font-bold bg-slate-100"
             >
                 <option value="leaf">Condition</option>
                 <option value="and">AND</option>
@@ -349,11 +349,11 @@ export const ConditionBuilder = ({ value, onChange, scriptOptions: propScriptOpt
                 <option value="not">NOT</option>
             </select>
             {type === 'leaf' && (
-                <div className="flex-1 flex gap-1">
+                <div className="flex-1 min-w-0">
                     <select 
                         value={value as string} 
                         onChange={e => onChange(e.target.value)}
-                        className="flex-1 border rounded p-1 text-xs"
+                        className="w-full min-w-0 border rounded p-1 text-xs"
                     >
                         <option value="">Select script...</option>
                         {options.map(o => <option key={o} value={o}>{o}</option>)}
