@@ -1065,19 +1065,18 @@ def install_esphome_device():
         session_id = get_session_id()
         print(f"[install] Session: {session_id}, File: {filename}", flush=True)
 
+        # Kill ALL existing install processes across all sessions — only one at a time allowed
         with install_processes_lock:
-            existing = install_processes.get(session_id)
-            if existing:
+            for sid, existing in list(install_processes.items()):
                 proc = existing['process']
                 if proc.poll() is None:
-                    # Still running — kill the old one before starting fresh
-                    print(f"[install] Killing stale install process PID {proc.pid}", flush=True)
+                    print(f"[install] Killing existing install process PID {proc.pid} (session {sid})", flush=True)
                     proc.terminate()
                     try:
                         proc.wait(timeout=5)
                     except subprocess.TimeoutExpired:
                         proc.kill()
-                install_processes.pop(session_id, None)
+            install_processes.clear()
 
         # Regenerate images.yaml with dimensions matched to this device before compiling.
         _lib_dir = os.path.join(BASE_DIR, 'lib')
@@ -1194,6 +1193,11 @@ def install_status():
     session_id = get_session_id()
     with install_processes_lock:
         state = install_processes.get(session_id)
+        # Fall back to any running process (e.g. browser reloaded and got new session)
+        if not state:
+            for s in install_processes.values():
+                state = s
+                break
 
     if not state:
         return jsonify({'status': 'not_running'}), 404
@@ -1223,10 +1227,10 @@ def install_status():
 @app.route('/api/esphome/install/cancel', methods=['POST'])
 def cancel_install():
     """Cancel a running installation."""
-    session_id = get_session_id()
     with install_processes_lock:
-        state = install_processes.get(session_id)
-        if state:
+        if not install_processes:
+            return jsonify({'status': 'not_running'}), 404
+        for sid, state in list(install_processes.items()):
             process = state['process']
             if process.poll() is None:
                 process.terminate()
@@ -1234,11 +1238,10 @@ def cancel_install():
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                state['status'] = 'error'
-                state['message'] = 'Installation cancelled by user'
-            install_processes.pop(session_id, None)
-            return jsonify({'status': 'cancelled'})
-    return jsonify({'status': 'not_running'}), 404
+            state['status'] = 'error'
+            state['message'] = 'Installation cancelled by user'
+        install_processes.clear()
+        return jsonify({'status': 'cancelled'})
 
 
 # ============================================================
