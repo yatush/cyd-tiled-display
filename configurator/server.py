@@ -855,7 +855,34 @@ def _regen_images_yaml(filepath, lib_dir, images_dir):
 
 
 def _parse_device_yaml(filepath):
-    """Parse a YAML device config file and extract device metadata."""
+    """Parse a YAML device config file and extract device metadata.
+
+    Reads only the top-level metadata sections (substitutions, esphome, packages,
+    wifi) — stops before the tile_ui block which can be very large.  Uses a quick
+    string search to detect whether tile_ui is present.
+    """
+    try:
+        lines = []
+        has_tile_ui = False
+        with open(filepath, 'r', errors='replace') as f:
+            for line in f:
+                # Stop accumulating lines once we hit the tile_ui block to avoid
+                # parsing the potentially huge tile configuration YAML.
+                if line.startswith('tile_ui:') or line.startswith('tile_ui '):
+                    has_tile_ui = True
+                    break
+                lines.append(line)
+        # If we never hit a tile_ui: line, do one fast string check so we still
+        # detect files where tile_ui appears indented (e.g. inside a package).
+        if not has_tile_ui:
+            truncated = ''.join(lines)
+            if 'tile_ui:' in truncated:
+                has_tile_ui = True
+
+        content = ''.join(lines)
+    except Exception:
+        return None
+
     class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
         pass
     def ignore_any_tag(loader, tag_suffix, node):
@@ -865,8 +892,10 @@ def _parse_device_yaml(filepath):
     SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
     SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
 
-    with open(filepath, 'r') as f:
-        data = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
+    try:
+        data = yaml.load(content, Loader=SafeLoaderIgnoreUnknown)
+    except Exception:
+        return None
 
     if not data or not isinstance(data, dict):
         return None
@@ -904,8 +933,8 @@ def _parse_device_yaml(filepath):
                 screen_type = '3248s035'
                 is_device_config = True
 
-    # Check for tile_ui section (CYD-specific marker)
-    if data.get('tile_ui'):
+    # Check for tile_ui section (CYD-specific marker) — detected during line scan above
+    if has_tile_ui:
         is_device_config = True
 
     # Get IP address from wifi section
