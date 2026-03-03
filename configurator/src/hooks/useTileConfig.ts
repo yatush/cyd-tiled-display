@@ -1,36 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Config, Tile, Page, ImageEntry } from '../types';
-
-/** Remove config.images entries that are no longer referenced by any tile on any page. */
-function pruneUnusedImages(config: Config): Config {
-  const images = config.images;
-  if (!images || Object.keys(images).length === 0) return config;
-  const imageKeys = new Set(Object.keys(images));
-  const referenced = new Set<string>();
-
-  const collectFromValue = (val: unknown) => {
-    if (typeof val === 'string' && imageKeys.has(val)) {
-      referenced.add(val);
-    } else if (Array.isArray(val)) {
-      for (const item of val) collectFromValue(item);
-    } else if (val && typeof val === 'object') {
-      for (const inner of Object.values(val as Record<string, unknown>)) {
-        collectFromValue(inner);
-      }
-    }
-  };
-
-  for (const page of config.pages) {
-    for (const tile of page.tiles) {
-      for (const val of Object.values(tile)) {
-        collectFromValue(val);
-      }
-    }
-  }
-  const pruned: Record<string, ImageEntry> = {};
-  for (const k of referenced) pruned[k] = images[k];
-  return { ...config, images: pruned };
-}
+import { Config, Tile, Page } from '../types';
 
 const DEFAULT_CONFIG: Config = {
   project_path: 'tiles.yaml',

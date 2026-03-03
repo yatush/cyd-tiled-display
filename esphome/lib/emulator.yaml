@@ -2,6 +2,19 @@ substitutions:
   device_name: "emulator"
   friendly_name: Emulator
   tiles_file: "user_config.yaml"
+  # Screen dimensions and font sizes below are defaults for the 3248s035 device.
+  # When launched via run_session.sh these are always overridden with values
+  # parsed directly from the esphome/lib/*_base.yaml file for the selected device.
+  screen_w: "480"
+  screen_h: "320"
+  font_tiny: "32"
+  font_small: "60"
+  font_medium: "80"
+  font_big: "100"
+  font_text_regular: "30"
+  font_text_bold: "30"
+  font_text_big_bold: "40"
+  font_text_small: "18"
 
 packages:
   lib: !include lib_emulator.yaml
@@ -29,8 +42,8 @@ display:
   - platform: sdl
     id: disp
     dimensions:
-      width: 480
-      height: 320
+      width: ${screen_w}
+      height: ${screen_h}
 
 touchscreen:
   - platform: sdl
@@ -58,10 +71,10 @@ globals:
     initial_value: "false"
   - id: width
     type: int
-    initial_value: "480"
+    initial_value: "${screen_w}"
   - id: height
     type: int
-    initial_value: "320"
+    initial_value: "${screen_h}"
   - id: tile_border_width
     type: int
     initial_value: "1"
@@ -70,39 +83,39 @@ font:
   # Master glyph list - define ALL Material Icons glyphs once
   - file: "gfonts://Material+Symbols+Outlined"
     id: tiny
-    size: 32
+    size: ${font_tiny}
     glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: small
-    size: 60
+    size: ${font_small}
     glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: medium
-    size: 80
+    size: ${font_medium}
     glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Material+Symbols+Outlined"
     id: big
-    size: 100
+    size: ${font_big}
     glyphs: !include mdi_glyphs.yaml
 
   - file: "gfonts://Roboto"
     id: text_regular
-    size: 30
+    size: ${font_text_regular}
 
   - file: "gfonts://Roboto@900"
     id: text_bold
-    size: 30
+    size: ${font_text_bold}
 
   - file: "gfonts://Roboto@900"
     id: text_big_bold
-    size: 40
+    size: ${font_text_big_bold}
 
   - file: "gfonts://Roboto@900"
     id: text_small
-    size: 18
+    size: ${font_text_small}
     glyphs: !include roboto_glyphs.yaml
     
 tile_ui:

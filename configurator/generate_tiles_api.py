@@ -173,7 +173,7 @@ except ImportError as e:
     print(json.dumps({"error": f"Failed to import tile_ui: {e}"}))
     sys.exit(1)
 
-def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None):
+def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, screen_w=320, screen_h=240):
     try:
         if not input_data:
             return {"error": "No input data provided"}
@@ -265,7 +265,8 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None):
         from tile_ui.tile_generation import compute_image_variants
 
         images = config.get("images") or {}
-        _SCREEN_W, _SCREEN_H, _HEADER_H = 320, 240, 30  # standard CYD landscape
+        # Tile padding matches the x_pad / y_pad globals in lib_common.yaml.
+        _TILE_PAD = 10
 
         # Generate CPP — generate_init_tiles_cpp handles variant substitution.
         cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts, available_globals)
@@ -302,11 +303,18 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None):
                 except Exception as _e:
                     print(f"Warning: failed to write image '{_iid}': {_e}")
 
-            # Compute the resize target for this variant's tile dimensions (5 px gap each side).
-            _tile_w = _SCREEN_W // _cols
-            _tile_h = (_SCREEN_H - _HEADER_H) // _rows
-            _max_w = max(8, _tile_w - 10)
-            _max_h = max(8, _tile_h - 10)
+            # Compute the resize target for this variant's tile dimensions.
+            # Formula mirrors the C++ x_rect()/y_rect() helpers in utils.h:
+            #   x_rect = (width  - (cols+1)*pad) / cols
+            #   y_rect = (height - (rows+1)*pad) / rows
+            # where pad == _TILE_PAD (10 px).  An additional visual margin of
+            # 5% of the larger tile dimension is then removed on each side so
+            # the image sits neatly inside the tile.
+            _tile_w = (screen_w - (_cols + 1) * _TILE_PAD) // _cols
+            _tile_h = (screen_h - (_rows + 1) * _TILE_PAD) // _rows
+            _img_pad = max(1, int(max(_tile_w, _tile_h) * 0.025))
+            _max_w = max(8, _tile_w - _img_pad * 2)
+            _max_h = max(8, _tile_h - _img_pad * 2)
 
             # ESPHome 2026.2 removed the RGBA type; alpha images now use
             # type: RGB with transparency: alpha_channel instead.

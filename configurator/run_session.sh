@@ -1,5 +1,7 @@
 #!/bin/bash
 # Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file> <api_port>
+# Device configuration (SCREEN_W, SCREEN_H, FONT_* etc.) is supplied by the
+# caller via environment variables — see _DEVICE_CONFIG in server.py.
 
 SESSION_ID=$1
 DISPLAY_NUM=$2
@@ -7,6 +9,18 @@ VNC_PORT=$3
 WEBSOCKIFY_PORT=$4
 TILES_FILE=$5
 API_PORT=$6
+
+# Apply defaults so the script can also be run standalone (matches 3248s035)
+SCREEN_W=${SCREEN_W:-480}
+SCREEN_H=${SCREEN_H:-320}
+FONT_TINY=${FONT_TINY:-32}
+FONT_SMALL=${FONT_SMALL:-60}
+FONT_MEDIUM=${FONT_MEDIUM:-80}
+FONT_BIG=${FONT_BIG:-100}
+FONT_TEXT_REGULAR=${FONT_TEXT_REGULAR:-30}
+FONT_TEXT_BOLD=${FONT_TEXT_BOLD:-30}
+FONT_TEXT_BIG_BOLD=${FONT_TEXT_BIG_BOLD:-40}
+FONT_TEXT_SMALL=${FONT_TEXT_SMALL:-18}
 
 if [ -z "$TILES_FILE" ]; then
     TILES_FILE="user_config.yaml"
@@ -22,7 +36,7 @@ rm -f /tmp/.X$DISPLAY_NUM-lock
 
 # Start Xvfb
 # Redirect stdout/stderr to /dev/null to suppress xkbcomp warnings
-Xvfb :$DISPLAY_NUM -screen 0 480x320x16 -ac -noreset >/dev/null 2>&1 &
+Xvfb :$DISPLAY_NUM -screen 0 ${SCREEN_W}x${SCREEN_H}x16 -ac -noreset >/dev/null 2>&1 &
 XVFB_PID=$!
 
 # Function to clean up background processes
@@ -89,4 +103,17 @@ fi
 export ESPHOME_DATA_DIR="$SESSION_ESPHOME"
 
 # Use the same device name as the pre-compiled build to maximize cache reuse
-stdbuf -oL -eL esphome -s tiles_file "$TILES_FILE" -s api_port "$API_PORT" run lib/emulator.yaml
+stdbuf -oL -eL esphome \
+  -s tiles_file "$TILES_FILE" \
+  -s api_port "$API_PORT" \
+  -s screen_w "$SCREEN_W" \
+  -s screen_h "$SCREEN_H" \
+  -s font_tiny "$FONT_TINY" \
+  -s font_small "$FONT_SMALL" \
+  -s font_medium "$FONT_MEDIUM" \
+  -s font_big "$FONT_BIG" \
+  -s font_text_regular "$FONT_TEXT_REGULAR" \
+  -s font_text_bold "$FONT_TEXT_BOLD" \
+  -s font_text_big_bold "$FONT_TEXT_BIG_BOLD" \
+  -s font_text_small "$FONT_TEXT_SMALL" \
+  run lib/emulator.yaml

@@ -280,6 +280,10 @@ def start_emulator():
         if config_data.get('check_only'):
             return jsonify({"status": "stopped", "message": "Emulator not running"}), 404
 
+        # Determine screen type / dimensions
+        screen_type = config_data.get('screen_type', _DEFAULT_DEVICE)
+        _dev_cfg = _DEVICE_CONFIG.get(screen_type, _DEVICE_CONFIG[_DEFAULT_DEVICE])
+
         # Check if we received pre-generated YAML or raw pages
         if 'yaml' in config_data:
             yaml_str = config_data['yaml']
@@ -301,7 +305,7 @@ def start_emulator():
         if not os.path.exists(_lib_dir):
             _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
         _images_dir = os.path.join(_lib_dir, 'images')
-        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str, user_lib_dir=_lib_dir, images_dir=_images_dir)
+        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str, user_lib_dir=_lib_dir, images_dir=_images_dir, screen_w=_dev_cfg['screen_w'], screen_h=_dev_cfg['screen_h'])
         if "error" in result:
              return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
 
@@ -349,12 +353,14 @@ def start_emulator():
             log_file.write(f"--- Starting Session {session_id} ---\n")
             log_file.flush()
             # Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file> <api_port>
+            # Device config (screen dims, font sizes) is passed via environment variables.
             proc = subprocess.Popen(
                 ['/bin/bash', script_path, session_id, str(display), str(vnc_port), str(websockify_port), user_config_filename, str(api_port)],
-                stdout=log_file, 
+                stdout=log_file,
                 stderr=subprocess.STDOUT,
                 cwd=os.path.dirname(__file__),
-                start_new_session=True
+                start_new_session=True,
+                env={**os.environ, **{k.upper(): str(v) for k, v in _dev_cfg.items()}},
             )
         
         pid_file = f'/tmp/emulator_{session_id}.pid'
@@ -373,7 +379,10 @@ def start_emulator():
                 'session_start_time': time.time(),  # Track session creation time
                 'pid_file': pid_file,
                 'log_path': log_path,
-                'user_config_path': user_config_path
+                'user_config_path': user_config_path,
+                'screen_type': screen_type,
+                'screen_w': _dev_cfg['screen_w'],
+                'screen_h': _dev_cfg['screen_h'],
             }
         
         # Start API proxy thread to forward service calls from emulator to HA
@@ -697,6 +706,154 @@ def _get_ha_timezone():
     print("No timezone detected, falling back to UTC", flush=True)
     return 'UTC'
 
+# ---------------------------------------------------------------------------
+# Device configuration — auto-discovered from esphome/lib/*_base.yaml files.
+# ---------------------------------------------------------------------------
+
+def _parse_base_yaml(filepath):
+    """Return a config dict (screen_w, screen_h, font_tiny, …) from a *_base.yaml.
+
+    Font keys are derived from the YAML font list ids (e.g. id: tiny → font_tiny).
+    Screen dimensions come from the globals block (id: width / id: height).
+    Returns None if the file can't be parsed or is missing required fields.
+    """
+    class _L(yaml.SafeLoader):
+        pass
+    _L.add_constructor('!include', lambda l, n: l.construct_scalar(n))
+    _L.add_multi_constructor('!', lambda l, s, n: None)
+
+    try:
+        with open(filepath, 'r') as _f:
+            data = yaml.load(_f, Loader=_L)
+    except Exception:
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    cfg = {}
+
+    # Screen dimensions from globals block
+    for g in (data.get('globals') or []):
+        if not isinstance(g, dict):
+            continue
+        gid = g.get('id')
+        val = g.get('initial_value')
+        if gid == 'width' and val is not None:
+            try:
+                cfg['screen_w'] = int(str(val).strip('"'))
+            except ValueError:
+                pass
+        elif gid == 'height' and val is not None:
+            try:
+                cfg['screen_h'] = int(str(val).strip('"'))
+            except ValueError:
+                pass
+
+    # Font sizes from font list  (id → font_<id>)
+    for font in (data.get('font') or []):
+        if not isinstance(font, dict):
+            continue
+        fid = font.get('id')
+        size = font.get('size')
+        if fid and size is not None:
+            try:
+                cfg[f'font_{fid}'] = int(size)
+            except (ValueError, TypeError):
+                pass
+
+    if 'screen_w' not in cfg or 'screen_h' not in cfg:
+        return None
+
+    return cfg
+
+
+def _load_device_configs(lib_dir):
+    """Scan *lib_dir* for *_base.yaml files and build the device config map."""
+    configs = {}
+    if not os.path.isdir(lib_dir):
+        return configs
+    for fname in sorted(os.listdir(lib_dir)):
+        if not fname.endswith('_base.yaml'):
+            continue
+        device_type = fname[: -len('_base.yaml')]
+        cfg = _parse_base_yaml(os.path.join(lib_dir, fname))
+        if cfg:
+            configs[device_type] = cfg
+        else:
+            print(f"Warning: could not extract device config from {fname}", flush=True)
+    return configs
+
+
+_DEVICE_CONFIG = _load_device_configs(os.path.join(BASE_DIR, 'lib'))
+_DEFAULT_DEVICE = '3248s035'
+if not _DEVICE_CONFIG:
+    raise RuntimeError(
+        f"No *_base.yaml files found in {os.path.join(BASE_DIR, 'lib')} — "
+        "cannot determine device configuration."
+    )
+print(f"  Devices: {list(_DEVICE_CONFIG)}", flush=True)
+
+
+def _regen_images_yaml(filepath, lib_dir, images_dir):
+    """Parse *filepath* (a device YAML), extract the tile_ui config, detect the
+    screen type, regenerate images.yaml with correctly-sized resize targets for
+    that device and write it to *lib_dir*/images.yaml.
+
+    Failures are logged but never bubble up so they never block a compile/install.
+    """
+    try:
+        class _SafeLoader(yaml.SafeLoader):
+            pass
+        def _ignore(loader, tag_suffix, node):
+            return None
+        def _include(loader, node):
+            return loader.construct_scalar(node)
+        _SafeLoader.add_constructor('!include', _include)
+        _SafeLoader.add_multi_constructor('!', _ignore)
+
+        with open(filepath, 'r') as _f:
+            _dev = yaml.load(_f, Loader=_SafeLoader)
+
+        if not isinstance(_dev, dict):
+            return
+
+        # Detect screen type → dimensions
+        _screen_type = None
+        _device_base = (_dev.get('packages') or {}).get('device_base', '')
+        if isinstance(_device_base, str):
+            for _st in _DEVICE_CONFIG:
+                if _st in _device_base:
+                    _screen_type = _st
+                    break
+        _cfg = _DEVICE_CONFIG.get(_screen_type, _DEVICE_CONFIG.get(_DEFAULT_DEVICE, next(iter(_DEVICE_CONFIG.values()))))
+        _sw, _sh = _cfg['screen_w'], _cfg['screen_h']
+
+        # Extract the tile_ui mapping (screens / images / dynamic_entities)
+        _tile_ui = _dev.get('tile_ui')
+        if not _tile_ui or not isinstance(_tile_ui, dict):
+            return
+
+        _yaml_str = yaml.dump(_tile_ui)
+        _result = generate_tiles_api.generate_cpp_from_yaml(
+            _yaml_str,
+            user_lib_dir=lib_dir,
+            images_dir=images_dir,
+            screen_w=_sw,
+            screen_h=_sh,
+        )
+
+        _img_yaml = _result.get('images_yaml', '')
+        _img_path = os.path.join(lib_dir, 'images.yaml')
+        os.makedirs(os.path.dirname(_img_path), exist_ok=True)
+        with open(_img_path, 'w') as _f:
+            _f.write(_img_yaml if _img_yaml else '# no images\n')
+        print(f'[images] Regenerated images.yaml for {_screen_type or "unknown"} '
+              f'({_sw}x{_sh}) from {filepath}', flush=True)
+    except Exception as _e:
+        print(f'[images] Warning: could not regenerate images.yaml: {_e}', flush=True)
+
+
 def _parse_device_yaml(filepath):
     """Parse a YAML device config file and extract device metadata."""
     class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
@@ -879,6 +1036,12 @@ def install_esphome_device():
                     except subprocess.TimeoutExpired:
                         proc.kill()
                 install_processes.pop(session_id, None)
+
+        # Regenerate images.yaml with dimensions matched to this device before compiling.
+        _lib_dir = os.path.join(BASE_DIR, 'lib')
+        if not os.path.exists(_lib_dir):
+            _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
+        _regen_images_yaml(filepath, _lib_dir, os.path.join(_lib_dir, 'images'))
 
         # Start the process immediately — timezone is fetched in the background thread
         process = subprocess.Popen(
@@ -1140,6 +1303,12 @@ def compile_esphome_device():
                               os.path.splitext(os.path.basename(filename))[0]
         except Exception:
             device_name = os.path.splitext(os.path.basename(filename))[0]
+
+        # Regenerate images.yaml with dimensions matched to this device before compiling.
+        _lib_dir_compile = os.path.join(BASE_DIR, 'lib')
+        if not os.path.exists(_lib_dir_compile):
+            _lib_dir_compile = os.path.join(APP_DIR, 'esphome/lib')
+        _regen_images_yaml(filepath, _lib_dir_compile, os.path.join(_lib_dir_compile, 'images'))
 
         # Get timezone
         env = os.environ.copy()
@@ -1439,14 +1608,6 @@ def get_directory_hashes(directory):
             except:
                 pass
     return file_hashes
-
-def get_directory_checksum(directory):
-    hashes = get_directory_hashes(directory)
-    if not hashes:
-        return None
-    # Create a deterministic string from sorted keys and values
-    hash_list = [f"{k}:{v}" for k, v in sorted(hashes.items())]
-    return hashlib.md5("".join(hash_list).encode()).hexdigest()
 
 def get_diff(source_hashes, target_hashes):
     diff = []

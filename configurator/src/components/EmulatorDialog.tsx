@@ -213,18 +213,6 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
               <RefreshCw className="w-3 h-3" />
               Reconnect VNC
             </button>
-            {onStop && (
-              <button
-                onClick={onStop}
-                className="px-2 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded flex items-center gap-1 transition-colors"
-                title="Stop emulator"
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="6" width="12" height="12" />
-                </svg>
-                Stop
-              </button>
-            )}
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -49,6 +49,7 @@ function App() {
   const [isScreensFileOpen, setIsScreensFileOpen] = useState(false);
   const [screensFileMode, setScreensFileMode] = useState<'save' | 'load'>('save');
   const [isEmulatorOpen, setIsEmulatorOpen] = useState(false);
+  const [isEmulatorDevicePickerOpen, setIsEmulatorDevicePickerOpen] = useState(false);
   const [sidebarKey, setSidebarKey] = useState(0);
   const [usbCompileActive, setUsbCompileActive] = useState(false);
 
@@ -210,7 +211,7 @@ function App() {
     }
   }, [emulatorStatus]);
 
-  const handleStartEmulator = async () => {
+  const handleStartEmulator = async (screenType: string) => {
     setIsEmulatorOpen(true);
     
     if (emulatorKeepAliveRef.current) {
@@ -232,7 +233,7 @@ function App() {
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ yaml: yamlConfig })
+        body: JSON.stringify({ yaml: yamlConfig, screen_type: screenType })
       }, newSessionId);  // Pass new session ID
       
       // Check for session limit error
@@ -354,7 +355,7 @@ function App() {
         isGenerating={isGenerating}
         updateAvailable={updateAvailable}
         emulatorStatus={emulatorStatus}
-        onStartEmulator={handleStartEmulator}
+        onStartEmulator={() => setIsEmulatorDevicePickerOpen(true)}
         onStopEmulator={handleStopEmulator}
         onOpenEmulator={() => setIsEmulatorOpen(true)}
       />
@@ -556,6 +557,36 @@ function App() {
         websockifyPort={websockifyPort}
         emulatorSessionId={currentEmulatorSessionIdRef.current}
       />
+
+      {/* Device picker dialog shown before starting the emulator */}
+      {isEmulatorDevicePickerOpen && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6 shadow-xl w-80">
+            <h2 className="text-lg font-semibold text-white mb-2">Select Device</h2>
+            <p className="text-sm text-gray-400 mb-5">Choose which device to emulate:</p>
+            <div className="flex flex-col gap-3">
+              <button
+                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition-colors"
+                onClick={() => { setIsEmulatorDevicePickerOpen(false); handleStartEmulator('2432s028'); }}
+              >
+                CYD 2.8" — 320×240
+              </button>
+              <button
+                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition-colors"
+                onClick={() => { setIsEmulatorDevicePickerOpen(false); handleStartEmulator('3248s035'); }}
+              >
+                CYD 3.5" — 480×320
+              </button>
+              <button
+                className="w-full px-4 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-md text-sm font-medium transition-colors"
+                onClick={() => setIsEmulatorDevicePickerOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <LibMismatchDialog
         isOpen={isMismatchDialogOpen}
