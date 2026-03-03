@@ -10,6 +10,54 @@
 
 set -e
 
+# ---------------------------------------------------------------------------
+# Step 0: Ensure SSL certificates are present so HTTPS downloads work.
+# On Alpine, idf_tools.py download fails silently (no .tmp file created) when
+# CA certificates are missing — the rename of .tmp → final file then throws
+# FileNotFoundError.
+# ---------------------------------------------------------------------------
+echo "=== Updating CA certificates ==="
+apk add --no-cache ca-certificates 2>/dev/null || true
+update-ca-certificates 2>/dev/null || true
+
+# Ensure the PlatformIO dist cache directory exists (idf_tools.py does mkdir
+# itself, but creating it early avoids any race / permission edge cases).
+mkdir -p /root/.platformio/dist
+
+# ---------------------------------------------------------------------------
+# Step 1: Fix esptool installation.
+# PlatformIO downloads tool-esptoolpy as a source tarball and runs
+# `pip install .` inside it.  On Alpine the extracted directory sometimes
+# appears empty (corrupt download or pip metadata issue), causing:
+#   "does not appear to be a Python project, as neither pyproject.toml nor
+#    setup.py are present"
+# Work-around: install esptool at the OS/pip level and symlink it into the
+# PlatformIO tool directory so PlatformIO finds a working esptool binary.
+# ---------------------------------------------------------------------------
+echo "=== Ensuring esptool is available ==="
+if ! python3 -m esptool version >/dev/null 2>&1; then
+    pip3 install --break-system-packages esptool 2>/dev/null || pip3 install esptool 2>/dev/null || true
+fi
+
+# If PlatformIO's esptoolpy package directory exists but is broken, patch it.
+ESPTOOL_PIO_DIR=$(find /root/.platformio/packages -maxdepth 1 -name 'tool-esptoolpy*' -type d 2>/dev/null | head -1)
+if [ -n "$ESPTOOL_PIO_DIR" ]; then
+    ESPTOOL_BIN=$(command -v esptool.py 2>/dev/null || command -v esptool 2>/dev/null)
+    if [ -n "$ESPTOOL_BIN" ]; then
+        # Make sure esptool.py exists in the tool dir so PlatformIO can invoke it
+        if [ ! -f "$ESPTOOL_PIO_DIR/esptool.py" ]; then
+            echo "  Symlinking $ESPTOOL_BIN -> $ESPTOOL_PIO_DIR/esptool.py"
+            ln -sf "$ESPTOOL_BIN" "$ESPTOOL_PIO_DIR/esptool.py"
+        fi
+        echo "  esptool OK: $ESPTOOL_BIN"
+    else
+        echo "  WARNING: esptool not found in PATH after pip install attempt"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 2: Replace Rust wrapper binaries in the xtensa toolchain.
+# ---------------------------------------------------------------------------
 TOOLCHAIN_DIR=$(find /root/.platformio/packages -maxdepth 1 -name 'toolchain-xtensa-esp-elf*' -type d 2>/dev/null | head -1)
 
 if [ -z "$TOOLCHAIN_DIR" ]; then
@@ -133,8 +181,11 @@ done
 
 echo "Replaced $REPLACED Rust wrapper binaries with shell scripts"
 
-# Fix PlatformIO's bundled ninja: it's a glibc binary that deadlocks under gcompat on musl/Alpine.
+# ---------------------------------------------------------------------------
+# Step 3: Fix PlatformIO's bundled ninja.
+# It's a glibc binary that deadlocks under gcompat on musl/Alpine.
 # Replace it with the system ninja (apk install ninja) which is natively compiled.
+# ---------------------------------------------------------------------------
 NINJA_PIO=$(find /root/.platformio/packages/tool-ninja -name 'ninja' -not -name '*.bak' 2>/dev/null | head -1)
 if [ -n "$NINJA_PIO" ]; then
     # Install system ninja if not present

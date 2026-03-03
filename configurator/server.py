@@ -442,20 +442,6 @@ def _stop_session(session_id):
 
         del sessions[session_id]
 
-def _stop_emulator_process():
-    # Legacy function for global stop
-    with sessions_lock:
-        all_sessions = list(sessions.keys())
-    for sid in all_sessions:
-        _stop_session(sid)
-    
-    # Still do the pkill fallback
-    subprocess.run(['pkill', '-f', 'program'])
-    subprocess.run(['pkill', '-f', 'esphome run'])
-    subprocess.run(['pkill', '-f', 'Xvfb'])
-    subprocess.run(['pkill', '-f', 'x11vnc'])
-    subprocess.run(['pkill', '-f', 'websockify'])
-
 @app.route('/api/emulator/stop', methods=['POST'])
 def stop_emulator():
     session_id = get_session_id()
