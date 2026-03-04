@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { 
   ShieldCheck, 
   ShieldAlert, 
@@ -159,9 +160,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             </button>
           )}
 
-          {/* Toolchain log overlay */}
-          {showLog && (
-            <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setShowLog(false)}>
+          {/* Toolchain log overlay — rendered via portal to escape TopBar stacking context */}
+          {showLog && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setShowLog(false)}>
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50 rounded-t-xl">
                   <div className="flex items-center gap-2">
@@ -180,7 +181,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <div ref={logEndRef} />
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
         </div>
       </div>

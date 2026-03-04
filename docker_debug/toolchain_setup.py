@@ -313,6 +313,7 @@ def main() -> None:
     # ── Case 1: already up-to-date ────────────────────────────────────────────
     if stored == expected and has_packages():
         log('Toolchain up-to-date.')
+        set_stored_version(expected)   # ensures SETUP_MARKER is present
         write_progress('ready', 100, 'Toolchain ready.')
         return
 
