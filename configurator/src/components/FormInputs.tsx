@@ -846,10 +846,12 @@ export const ImageManagerPanel = ({
   images,
   onAddImage,
   onDeleteImage,
+  onUpdateImage,
 }: {
   images: Record<string, ImageEntry>;
   onAddImage: (id: string, entry: ImageEntry) => void;
   onDeleteImage: (id: string) => void;
+  onUpdateImage?: (id: string, patch: Partial<ImageEntry>) => void;
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageIds = Object.keys(images || {});
@@ -886,26 +888,47 @@ export const ImageManagerPanel = ({
       )}
       {imageIds.map(id => {
         const entry = images[id];
+        const scale = entry.scale ?? 100;
+        // Filled portion of the slider track (scale range is 10–100 → map to 0–100%)
+        const fillPct = ((scale - 10) / 90) * 100;
+        const trackStyle = {
+          background: `linear-gradient(to right, #3b82f6 ${fillPct}%, #e2e8f0 ${fillPct}%)`,
+        };
         return (
-          <div key={id} className="flex items-center gap-2 p-1.5 border rounded bg-white hover:bg-slate-50">
-            <img
-              src={`data:image/png;base64,${entry.data}`}
-              alt={entry.filename}
-              className="flex-shrink-0 w-10 h-10 object-contain border rounded bg-slate-100"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-[10px] font-bold text-blue-700 truncate">{id}</div>
-              <div className="text-[9px] text-slate-500 truncate" title={entry.filename}>{entry.filename}</div>
-              <div className="text-[9px] text-slate-400">{entry.type || 'RGB565'}</div>
+          <div key={id} className="p-1.5 border rounded bg-white hover:bg-slate-50">
+            <div className="flex items-center gap-2">
+              <img
+                src={`data:image/png;base64,${entry.data}`}
+                alt={entry.filename}
+                className="flex-shrink-0 w-8 h-8 object-contain border rounded bg-slate-100"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-bold text-blue-700 truncate">{id}</div>
+                <div className="text-[9px] text-slate-400">{entry.type || 'RGB565'}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onDeleteImage(id)}
+                className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                title={`Delete ${id}`}
+              >
+                <Trash2 size={12} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => onDeleteImage(id)}
-              className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
-              title={`Delete ${id}`}
-            >
-              <Trash2 size={12} />
-            </button>
+            {/* Scale slider — how much of the tile the image fills (5 px padding always kept) */}
+            <div className="mt-1.5 flex items-center gap-1.5 pl-0.5 pr-1" title="Image size: % of tile area (5 px padding always applied)">
+              <input
+                type="range"
+                min={10}
+                max={100}
+                step={5}
+                value={scale}
+                onChange={e => onUpdateImage?.(id, { scale: Number(e.target.value) })}
+                className="flex-1 h-1.5 rounded-full cursor-pointer"
+                style={trackStyle}
+              />
+              <span className="text-[9px] font-bold text-slate-500 w-7 text-right flex-shrink-0">{scale}%</span>
+            </div>
           </div>
         );
       })}

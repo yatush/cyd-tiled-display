@@ -31,7 +31,8 @@ def validate_tiles_config(
     screens: list[dict],
     available_scripts: dict | None = None,
     available_globals: set | None = None,
-    declared_dynamic_entities: list[str] | None = None
+    declared_dynamic_entities: list[str] | None = None,
+    available_images: set | None = None,
 ) -> None:
     """Validate the complete tiles configuration.
     
@@ -51,6 +52,7 @@ def validate_tiles_config(
     - All referenced scripts are available and have correct types
     - All referenced boolean globals in conditions are available
     - All dynamic_entity references match entries in declared_dynamic_entities (when provided)
+    - All image references in tiles point to a known image ID (when available_images provided)
     
     Args:
         screens: List of screen configurations
@@ -59,6 +61,9 @@ def validate_tiles_config(
         declared_dynamic_entities: Explicit list of valid dynamic entity names from the
             top-level ``dynamic_entities`` key.  When provided every ``dynamic_entity``
             reference found in any tile must be present in this list.
+        available_images: Set of image IDs present in the global images store.  When
+            provided every ``image`` reference inside a tile's ``images`` list is
+            checked against this set.
     
     Raises:
         ValueError: With detailed error messages if validation fails
@@ -253,6 +258,34 @@ def validate_tiles_config(
     # Validate all referenced globals are available
     if available_globals is not None:
         _validate_global_references(screens, available_globals)
+
+    # Validate all image references point to known image IDs
+    if available_images is not None:
+        _validate_image_references(screens, available_images)
+
+
+def _validate_image_references(screens: list[dict], available_images: set) -> None:
+    """Validate that every image reference in every tile's images list exists in
+    the global images store.
+    """
+    for screen in screens:
+        screen_id = screen.get("id", "")
+        for tile in screen.get("tiles", []):
+            tile_type = list(tile.keys())[0]
+            config = tile[tile_type]
+            x = config.get("x", 0)
+            y = config.get("y", 0)
+            for entry in (config.get("images") or []):
+                if not isinstance(entry, dict):
+                    continue
+                img_id = entry.get("image", "")
+                if img_id and img_id not in available_images:
+                    available_list = ", ".join(sorted(available_images)) if available_images else "(none)"
+                    raise ValueError(
+                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                        f"image '{img_id}' is not defined in the images store. "
+                        f"Available images: {available_list}"
+                    )
 
 
 def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[str]) -> None:

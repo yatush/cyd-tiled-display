@@ -129,6 +129,15 @@ function App() {
   const handleAddImage = (id: string, entry: ImageEntry) => {
     setConfig(prev => ({ ...prev, images: { ...(prev.images || {}), [id]: entry } }));
   };
+  const handleUpdateImage = (id: string, patch: Partial<ImageEntry>) => {
+    setConfig(prev => ({
+      ...prev,
+      images: {
+        ...(prev.images || {}),
+        [id]: { ...(prev.images || {})[id], ...patch },
+      },
+    }));
+  };
   const handleDeleteImage = (id: string) => {
     setConfig(prev => {
       // Remove from the images store.
@@ -383,6 +392,7 @@ function App() {
           setIsImagesOpen={setIsImagesOpen}
           onAddImage={handleAddImage}
           onDeleteImage={handleDeleteImage}
+          onUpdateImage={handleUpdateImage}
           isDynamicEntitiesOpen={isDynamicEntitiesOpen}
           setIsDynamicEntitiesOpen={setIsDynamicEntitiesOpen}
           config={config}

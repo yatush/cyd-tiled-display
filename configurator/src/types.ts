@@ -20,6 +20,7 @@ export interface ImageEntry {
   data: string;        // base64-encoded PNG data (no data-URI prefix)
   filename: string;    // original filename, used for the ESPHome file: path
   type?: string;       // 'RGB565' | 'RGBA' | 'GRAYSCALE', default 'RGB565'
+  scale?: number;      // 10–100: percentage of tile area the image fills (default 100, always 5px padding)
 }
 
 export interface Config {

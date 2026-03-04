@@ -13,6 +13,7 @@ interface LeftSidebarProps {
   setIsImagesOpen: (open: boolean) => void;
   onAddImage: (id: string, entry: ImageEntry) => void;
   onDeleteImage: (id: string) => void;
+  onUpdateImage: (id: string, patch: Partial<ImageEntry>) => void;
   isDynamicEntitiesOpen: boolean;
   setIsDynamicEntitiesOpen: (open: boolean) => void;
   config: Config;
@@ -44,6 +45,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   setIsImagesOpen,
   onAddImage,
   onDeleteImage,
+  onUpdateImage,
   isDynamicEntitiesOpen,
   setIsDynamicEntitiesOpen,
   config,
@@ -126,6 +128,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   images={config.images || {}}
                   onAddImage={onAddImage}
                   onDeleteImage={onDeleteImage}
+                  onUpdateImage={onUpdateImage}
                 />
               </div>
             </div>

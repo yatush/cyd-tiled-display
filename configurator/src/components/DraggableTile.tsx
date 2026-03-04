@@ -116,26 +116,41 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       >
         <Trash2 size={12} />
       </button>
+      {/* ── Background image layer (behind all content) ─────────────────── */}
       {(() => {
         const tileAny = tile as any;
-        // ── Images: constrained to middle zone so top label and bottom entity badge remain visible
+        if (!Array.isArray(tileAny.images) || tileAny.images.length === 0) return null;
+        const firstImgId = tileAny.images[0]?.image;
+        const entry = firstImgId ? images[firstImgId] : null;
+        if (!entry) return null;
+        const scale = entry.scale ?? 100;
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{ inset: '5px',
+                     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 0 }}
+          >
+            <img
+              src={`data:image/png;base64,${entry.data}`}
+              alt={entry.filename}
+              className="object-contain"
+              style={{ maxWidth: `${scale}%`, maxHeight: `${scale}%` }}
+            />
+          </div>
+        );
+      })()}
+      {(() => {
+        const tileAny = tile as any;
+        // ── Images: show type badge on top, image is already rendered behind
         if (Array.isArray(tileAny.images) && tileAny.images.length > 0) {
           const firstImgId = tileAny.images[0]?.image;
           const entry = firstImgId ? images[firstImgId] : null;
           return (
             <>
-              {entry && (
-                <img
-                  src={`data:image/png;base64,${entry.data}`}
-                  alt={entry.filename}
-                  className="absolute object-contain pointer-events-none"
-                  style={{ top: '16px', bottom: '20px', left: '5px', right: '5px', width: 'calc(100% - 10px)', height: 'calc(100% - 36px)' }}
-                />
-              )}
               {!entry && firstImgId && (
-                <div className="absolute inset-0 flex items-center justify-center text-[9px] text-slate-400">{firstImgId}</div>
+                <div className="absolute inset-0 flex items-center justify-center text-[9px] text-slate-400 z-10">{firstImgId}</div>
               )}
-              <div className="absolute top-0.5 left-0 right-0 text-center pointer-events-none px-1">
+              <div className="absolute top-0.5 left-0 right-0 text-center pointer-events-none px-1 z-10">
                 <span className="text-[9px] font-bold text-blue-700 bg-white/70 rounded px-0.5 truncate inline-block max-w-full">
                   {tile.type.replace(/_/g, ' ')}
                 </span>
@@ -196,7 +211,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
         </div>
       )}
       {(entityItems.length > 0 || (globalSensor && entityItems.every(e => !e.sensor))) && (
-        <div className="absolute bottom-0.5 left-0.5 pointer-events-none max-w-[calc(100%-8px)] flex flex-col items-start gap-0.5 border border-blue-300 rounded px-1 py-0.5 bg-white/70">
+        <div className="absolute bottom-0.5 left-0.5 pointer-events-none max-w-[calc(100%-8px)] flex flex-col items-start gap-0.5 border border-blue-300 rounded px-1 py-0.5 bg-white/70 z-10">
           {entityItems.map((ei, idx) => {
             const dynamic = dynamicEntities?.includes(ei.name);
             return (

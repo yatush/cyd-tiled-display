@@ -249,7 +249,15 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         # Validate
         try:
             declared_dynamic_entities = config.get("dynamic_entities") or None
-            validate_tiles_config(screens, available_scripts, available_globals, declared_dynamic_entities)
+            images = config.get("images") or {}
+            available_images = set(images.keys()) if images else None
+            validate_tiles_config(
+                screens,
+                available_scripts,
+                available_globals,
+                declared_dynamic_entities,
+                available_images=available_images,
+            )
         except ValueError as e:
             return {"error": str(e), "type": "validation_error"}
 
@@ -264,7 +272,6 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         import os as _os
         from tile_ui.tile_generation import compute_image_variants
 
-        images = config.get("images") or {}
         # Tile padding matches the x_pad / y_pad globals in lib_common.yaml.
         _TILE_PAD = 10
 
@@ -307,14 +314,16 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
             # Formula mirrors the C++ x_rect()/y_rect() helpers in utils.h:
             #   x_rect = (width  - (cols+1)*pad) / cols
             #   y_rect = (height - (rows+1)*pad) / rows
-            # where pad == _TILE_PAD (10 px).  An additional visual margin of
-            # 5% of the larger tile dimension is then removed on each side so
-            # the image sits neatly inside the tile.
+            # where pad == _TILE_PAD (10 px).
+            # The user-controlled scale (10–100) then shrinks the image inside
+            # the tile.  At 100% a fixed 5 px padding is kept on each side;
+            # at lower values the image is proportionally smaller.
             _tile_w = (screen_w - (_cols + 1) * _TILE_PAD) // _cols
             _tile_h = (screen_h - (_rows + 1) * _TILE_PAD) // _rows
-            _img_pad = max(1, int(max(_tile_w, _tile_h) * 0.025))
-            _max_w = max(8, _tile_w - _img_pad * 2)
-            _max_h = max(8, _tile_h - _img_pad * 2)
+            _FIXED_PAD = 5  # px kept on each side at 100% scale
+            _scale = max(0.1, min(1.0, (img_entry.get('scale') or 100) / 100.0))
+            _max_w = max(8, int((_tile_w - _FIXED_PAD * 2) * _scale))
+            _max_h = max(8, int((_tile_h - _FIXED_PAD * 2) * _scale))
 
             # ESPHome 2026.2 removed the RGBA type; alpha images now use
             # type: RGB with transparency: alpha_channel instead.
