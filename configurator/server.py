@@ -1657,9 +1657,21 @@ def toolchain_status():
         return jsonify({'phase': 'ready', 'progress': 100,
                         'message': 'Toolchain ready.', 'fallback': False})
 
-    # toolchain_setup.py hasn't written anything yet — it's just starting
-    return jsonify({'phase': 'starting', 'progress': 0,
-                    'message': 'Toolchain setup starting...', 'fallback': False})
+    # No progress file and no marker — check if the script is still running.
+    # If it is, report 'starting'. If it crashed or never ran, report 'no_toolchain'
+    # so the UI shows the warning rather than silently allowing a broken install.
+    script_running = subprocess.run(
+        ['pgrep', '-f', 'toolchain_setup.py'],
+        capture_output=True
+    ).returncode == 0
+    if script_running:
+        return jsonify({'phase': 'starting', 'progress': 0,
+                        'message': 'Toolchain setup starting...', 'fallback': False})
+
+    return jsonify({'phase': 'no_toolchain', 'progress': 0,
+                    'message': 'Toolchain not initialised. '
+                               'Open the Install dialog to build locally.',
+                    'fallback': False})
 
 
 @app.route('/api/toolchain/log', methods=['GET'])

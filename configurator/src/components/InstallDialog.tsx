@@ -185,7 +185,8 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const showLocalBuildProgress = effectivePhase != null && effectivePhase !== 'ready' && effectivePhase !== 'no_toolchain' && effectivePhase !== 'starting';
   // Toolchain is ready only once we have a confirmed status AND it's not blocking.
   // toolchainChecked guards against the race between dialog open and the fetch response.
-  const isToolchainReady = toolchainChecked && (effectivePhase == null || effectivePhase === 'ready' || effectivePhase === 'starting');
+  const isToolchainReady = toolchainChecked && (effectivePhase == null || effectivePhase === 'ready');
+  const isToolchainStarting = toolchainChecked && effectivePhase === 'starting';
   // ── End toolchain state ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<InstallTab>('ota');
   const [devices, setDevices] = useState<Device[]>([]);
@@ -645,8 +646,18 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
           </div>
         )}
 
-        {/* Content (disabled until toolchain is ready when in no-toolchain state) */}
-        <div className={`flex-1 overflow-hidden flex flex-col min-h-0${!isToolchainReady ? ' opacity-40 pointer-events-none' : ''}`}>
+        {/* Checking spinner — shown briefly while toolchain_setup.py is still starting */}
+          {isToolchainStarting && (
+            <div className="mx-4 mt-4 mb-2 rounded-lg border border-slate-200 bg-slate-50 p-3 flex items-center gap-2 text-slate-500 text-xs">
+              <RefreshCw size={13} className="animate-spin shrink-0" />
+              Checking toolchain status...
+            </div>
+          )}
+
+        {/* Content (disabled until toolchain is ready) */}
+        <div className={`flex-1 overflow-hidden flex flex-col min-h-0${
+          !isToolchainReady ? ' opacity-40 pointer-events-none' : ''
+        }`}>
         {/* USB Flash Tab – always mounted, CSS-hidden when OTA tab is active */}
           <UsbInstallPanel
             onSaveAndInstall={onSaveAndInstall}
