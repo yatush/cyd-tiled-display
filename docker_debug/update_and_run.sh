@@ -40,8 +40,20 @@ if ! docker ps > /dev/null 2>&1; then
     echo " ready!"
 fi
 
+# Parse flags
+BAKE_ARG=""
+for arg in "$@"; do
+    case "$arg" in
+        --bake)
+            BAKE_ARG="--build-arg BAKE_TOOLCHAIN=1"
+            echo "[--bake] Pre-baking toolchain into image (slow build, fully offline runtime)."
+            ;;
+    esac
+done
+
 echo "Building image..."
-docker build -t $IMAGE_NAME ..
+# shellcheck disable=SC2086
+docker build $BAKE_ARG -t $IMAGE_NAME ..
 
 echo "Checking for existing container..."
 if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then

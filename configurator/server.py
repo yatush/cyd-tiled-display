@@ -1637,7 +1637,126 @@ def get_firmware_file(device_name, filename):
     return send_from_directory(build_dir, filename, mimetype='application/octet-stream')
 
 
-@app.route('/api/schema')
+@app.route('/api/toolchain/status')
+def toolchain_status():
+    """
+    Return the current toolchain setup progress so the UI can show a progress bar.
+    Reads from /tmp/toolchain_setup_progress.json (written by toolchain_setup.py).
+    Falls back to ready if the legacy .cyd_setup_done marker is present.
+    """
+    progress_file = '/tmp/toolchain_setup_progress.json'
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file) as f:
+                return jsonify(json.load(f))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Legacy: baked-in toolchain (BAKE_TOOLCHAIN=1) or already-set-up volume
+    if os.path.exists('/root/.platformio/.cyd_setup_done'):
+        return jsonify({'phase': 'ready', 'progress': 100,
+                        'message': 'Toolchain ready.', 'fallback': False})
+
+    # toolchain_setup.py hasn't written anything yet — it's just starting
+    return jsonify({'phase': 'starting', 'progress': 0,
+                    'message': 'Toolchain setup starting...', 'fallback': False})
+
+
+@app.route('/api/toolchain/log', methods=['GET'])
+def toolchain_log():
+    """
+    Return the last N lines of the toolchain setup log.
+    Query param ?lines=N (default 200).
+    """
+    log_path = '/tmp/toolchain_setup.log'
+    try:
+        n = int(request.args.get('lines', 200))
+    except (ValueError, TypeError):
+        n = 200
+    if not os.path.exists(log_path):
+        return '', 200
+    try:
+        result = subprocess.run(['tail', '-n', str(n), log_path], capture_output=True, text=True)
+        return result.stdout, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        return f'Error reading log: {e}', 500
+
+@app.route('/api/toolchain/start_local_build', methods=['POST'])
+def toolchain_start_local_build():
+    """
+    Trigger a local toolchain build (user confirmed via the UI).
+    Launches toolchain_setup.py --force-local in the background.
+    """
+    progress_file = '/tmp/toolchain_setup_progress.json'
+    # Prevent double-start
+    if os.path.exists(progress_file):
+        try:
+            data = json.load(open(progress_file))
+            running_phases = ('downloading', 'extracting', 'fixing', 'building')
+            if data.get('phase') in running_phases:
+                return jsonify({'status': 'already_running', 'phase': data['phase']}), 200
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    setup_script = '/app/toolchain_setup.py'
+    if not os.path.exists(setup_script):
+        return jsonify({'error': 'toolchain_setup.py not found'}), 500
+
+    log_file = open('/tmp/toolchain_setup.log', 'w')
+    proc = subprocess.Popen(
+        ['python3', setup_script, '--force-local'],
+        stdout=log_file,
+        stderr=log_file,
+        stdin=subprocess.DEVNULL,
+    )
+    # Persist PID so the cancel endpoint can kill it
+    with open('/tmp/toolchain_setup.pid', 'w') as f:
+        f.write(str(proc.pid))
+    return jsonify({'status': 'started'})
+
+@app.route('/api/toolchain/cancel', methods=['POST'])
+def toolchain_cancel():
+    """
+    Kill any running toolchain_setup.py process and reset state to no_toolchain.
+    """
+    import signal as _signal
+    killed = False
+    pid_file = '/tmp/toolchain_setup.pid'
+    # Try pid file first
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, _signal.SIGTERM)
+            killed = True
+        except (ValueError, ProcessLookupError, OSError):
+            pass
+        finally:
+            try:
+                os.remove(pid_file)
+            except OSError:
+                pass
+    # Fallback: pkill by script name
+    if not killed:
+        try:
+            subprocess.run(['pkill', '-f', 'toolchain_setup.py'], check=False)
+            killed = True
+        except Exception:
+            pass
+    # Reset progress file to no_toolchain
+    progress_file = '/tmp/toolchain_setup_progress.json'
+    try:
+        import tempfile, json as _json
+        payload = _json.dumps({'phase': 'no_toolchain', 'progress': 0,
+                               'message': 'Build cancelled.', 'fallback': False})
+        tmp = progress_file + '.tmp'
+        with open(tmp, 'w') as f:
+            f.write(payload)
+        os.replace(tmp, progress_file)
+    except Exception:
+        pass
+    return jsonify({'status': 'cancelled', 'killed': killed})
+
 def get_schema():
     schema_path = os.path.join(APP_DIR, 'esphome/external_components/tile_ui/schema.json')
     if os.path.exists(schema_path):

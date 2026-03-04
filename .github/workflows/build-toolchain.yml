@@ -1,0 +1,184 @@
+name: Build Toolchain Cache
+
+# Builds pre-compiled PlatformIO/ESP-IDF toolchain tarballs and publishes them
+# as GitHub Release assets. The app container downloads these at first start,
+# avoiding the slow extraction on RPi4 SD cards on every ESPHome update.
+#
+# Runs weekly (Monday 04:00 UTC) and on manual dispatch.
+# Skips if a release for the current ESPHome version already exists.
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # Every day 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if release already exists'
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ─── 1. Detect latest ESPHome version ──────────────────────────────────────
+  check-version:
+    name: Check ESPHome version
+    runs-on: ubuntu-latest
+    outputs:
+      esphome_version: ${{ steps.version.outputs.version }}
+      needs_build: ${{ steps.check.outputs.needs_build }}
+    steps:
+      - name: Get latest ESPHome version
+        id: version
+        run: |
+          pip install esphome --quiet 2>/dev/null
+          VERSION=$(python3 -c "from importlib.metadata import version; print(version('esphome'))")
+          echo "ESPHome version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if toolchain release already exists
+        id: check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/toolchain-esphome-${{ steps.version.outputs.version }}")
+          echo "Release check HTTP status: $STATUS"
+          if [ "$STATUS" = "200" ] && [ "${{ inputs.force_rebuild }}" != "true" ]; then
+            echo "Release already exists — skipping build."
+            echo "needs_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "needs_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  # ─── 2. Build toolchain for each architecture ──────────────────────────────
+  build:
+    name: Build toolchain (${{ matrix.arch }})
+    needs: check-version
+    if: needs.check-version.outputs.needs_build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-22.04-arm   # Native ARM64 runner — no QEMU needed
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Run the full toolchain setup inside the same Alpine image the app uses.
+      # The 900s timeout fires during the cmake hang on Alpine (known pio issue);
+      # only the toolchain download matters, cmake configuration can be skipped.
+      - name: Build toolchain inside Alpine container
+        run: |
+          docker run --name toolchain-build \
+            -v "$PWD/docker_debug/fix_pio_wrappers.sh:/fix_pio_wrappers.sh:ro" \
+            python:3.11-alpine sh -ec '
+              echo "=== Installing build dependencies ==="
+              apk add --no-cache \
+                g++ gcc musl-dev python3-dev \
+                sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
+                bash git coreutils ca-certificates cmake ninja gcompat \
+                openssl libffi jpeg zlib
+
+              apk add --no-cache --virtual .build-deps \
+                rust cargo openssl-dev libffi-dev jpeg-dev zlib-dev
+
+              echo "=== Installing ESPHome ==="
+              pip3 install --no-cache-dir esphome
+
+              apk del .build-deps
+
+              echo "=== Downloading ESP32 toolchain via ESPHome compile ==="
+              mkdir -p /tmp/esp32_setup
+              printf "esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n" \
+                > /tmp/esp32_setup/dummy.yaml
+              cd /tmp/esp32_setup
+              CMAKE_BUILD_PARALLEL_LEVEL=2 timeout 900s esphome compile dummy.yaml || true
+              cd /
+              rm -rf /tmp/esp32_setup
+
+              echo "=== Fixing PlatformIO wrappers for Alpine/musl ==="
+              chmod +x /fix_pio_wrappers.sh && /fix_pio_wrappers.sh || true
+
+              PIO_CMAKE=$(find /root/.platformio/packages -path "*/tool-cmake/bin/cmake" 2>/dev/null | head -1)
+              if [ -n "$PIO_CMAKE" ]; then
+                mv "$PIO_CMAKE" "${PIO_CMAKE}.orig"
+                printf "#!/bin/sh\nexec /usr/bin/cmake \"\$@\"\n" > "$PIO_CMAKE"
+                chmod +x "$PIO_CMAKE"
+                echo "Replaced cmake wrapper"
+              fi
+
+              PIO_NINJA=$(find /root/.platformio/packages -path "*/tool-ninja/ninja" 2>/dev/null | head -1)
+              if [ -n "$PIO_NINJA" ]; then
+                mv "$PIO_NINJA" "${PIO_NINJA}.orig"
+                printf "#!/bin/sh\nexec /usr/bin/ninja \"\$@\"\n" > "$PIO_NINJA"
+                chmod +x "$PIO_NINJA"
+                echo "Replaced ninja wrapper"
+              fi
+
+              find /root/.platformio -name "*.orig" -delete 2>/dev/null || true
+
+              # Remove the dist cache — not needed at runtime
+              rm -rf /root/.platformio/dist
+
+              echo "=== Toolchain build complete ==="
+              du -sh /root/.platformio/packages/ || true
+            '
+
+      - name: Extract packages from container
+        run: |
+          mkdir -p /tmp/toolchain-export
+          docker cp toolchain-build:/root/.platformio/packages /tmp/toolchain-export/packages
+          docker rm toolchain-build
+
+      - name: Create toolchain tarball
+        run: |
+          cd /tmp/toolchain-export
+          echo "Creating toolchain-${{ matrix.arch }}.tar.xz ..."
+          XZ_OPT="-2" tar -cJf toolchain-${{ matrix.arch }}.tar.xz packages/
+          ls -lh toolchain-${{ matrix.arch }}.tar.xz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-${{ matrix.arch }}
+          path: /tmp/toolchain-export/toolchain-${{ matrix.arch }}.tar.xz
+          retention-days: 1
+
+  # ─── 3. Publish GitHub Release with both tarballs ──────────────────────────
+  create-release:
+    name: Publish release
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/toolchain-artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: toolchain-esphome-${{ needs.check-version.outputs.esphome_version }}
+          name: "Toolchain Cache: ESPHome ${{ needs.check-version.outputs.esphome_version }}"
+          body: |
+            Pre-built PlatformIO/ESP-IDF toolchain for Alpine Linux (musl).
+
+            **ESPHome version:** `${{ needs.check-version.outputs.esphome_version }}`
+            **Architectures:** `amd64`, `arm64`
+
+            These tarballs are downloaded automatically by the CYD Tiled Display add-on
+            on first start (or after an ESPHome version change). A progress bar is shown
+            in the configurator UI during download and extraction.
+          files: |
+            /tmp/toolchain-artifacts/toolchain-amd64/toolchain-amd64.tar.xz
+            /tmp/toolchain-artifacts/toolchain-arm64/toolchain-arm64.tar.xz
+          prerelease: false
+          make_latest: false

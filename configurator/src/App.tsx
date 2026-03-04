@@ -27,6 +27,37 @@ import { ImageEntry } from './types';
 import { generateYaml } from './utils/yamlGenerator';
 
 function App() {
+  // Toolchain status — polled in background so TopBar can show an upgrade badge
+  // and InstallDialog can warn when no toolchain is installed.
+  // null = not yet fetched (no UI shown), string = known phase.
+  const [toolchainPhase, setToolchainPhase]       = useState<string | null>(null);
+  const [toolchainProgress, setToolchainProgress] = useState(0);
+  const [toolchainMessage, setToolchainMessage]   = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      while (!cancelled) {
+        try {
+          const res = await fetch('/api/toolchain/status');
+          if (res.ok) {
+            const data: { phase: string; progress: number; message: string } = await res.json();
+            if (!cancelled) {
+              setToolchainPhase(data.phase);
+              setToolchainProgress(data.progress ?? 0);
+              setToolchainMessage(data.message ?? '');
+            }
+          }
+        } catch {
+          // Server not yet ready — keep previous state
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+    poll();
+    return () => { cancelled = true; };
+  }, []);
+
   // Local UI State
   const [schema, setSchema] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'visual' | 'yaml' | 'output'>('visual');
@@ -381,6 +412,9 @@ function App() {
         onStartEmulator={() => setIsEmulatorDevicePickerOpen(true)}
         onStopEmulator={handleStopEmulator}
         onOpenEmulator={() => setIsEmulatorOpen(true)}
+        toolchainPhase={toolchainPhase ?? undefined}
+        toolchainProgress={toolchainProgress}
+        toolchainMessage={toolchainMessage}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -559,6 +593,8 @@ function App() {
         stayMounted={usbCompileActive || otaInstallActive}
         onCompileActiveChange={setUsbCompileActive}
         onOtaActiveChange={setOtaInstallActive}
+        toolchainPhase={toolchainPhase ?? undefined}
+        onToolchainPhaseChange={setToolchainPhase}
       />
       
       <ScreensFileDialog 

@@ -21,6 +21,9 @@ docker cp ../configurator/run_emulator.sh "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/run_session.sh "${CONTAINER_NAME}:/app/configurator/"
 docker exec $CONTAINER_NAME chmod +x /app/configurator/run_session.sh
 
+echo "Updating toolchain setup script..."
+docker cp toolchain_setup.py "${CONTAINER_NAME}:/app/toolchain_setup.py"
+
 echo "Building frontend..."
 (cd ../configurator && npm run build)
 if [ $? -ne 0 ]; then
@@ -28,10 +31,12 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "Reloading gunicorn..."
+docker exec $CONTAINER_NAME sh -c 'kill -HUP $(pgrep -of "gunicorn.*server:app")' 2>/dev/null || true
+
 echo "Updating frontend build..."
 docker cp ../configurator/dist/. "${CONTAINER_NAME}:/app/configurator/dist/"
 
-# Gunicorn auto-reloads when server.py changes; wait for it
 echo -n "Waiting for server to be ready "
 WAITED=0
 while ! curl -s -o /dev/null -w '' --max-time 2 http://localhost:8080/api/schema 2>/dev/null; do

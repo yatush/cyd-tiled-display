@@ -13,7 +13,8 @@ import {
   RefreshCw,
   FolderOpen,
   Monitor,
-  Square
+  Square,
+  Wrench
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
 
@@ -35,6 +36,10 @@ interface TopBarProps {
   onStartEmulator: () => void;
   onStopEmulator: () => void;
   onOpenEmulator?: () => void;
+  /** Current toolchain setup phase (from /api/toolchain/status) */
+  toolchainPhase?: string;
+  toolchainProgress?: number;
+  toolchainMessage?: string;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -54,8 +59,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   emulatorStatus,
   onStartEmulator,
   onStopEmulator,
-  onOpenEmulator
+  onOpenEmulator,
+  toolchainPhase,
+  toolchainProgress = 0,
+  toolchainMessage,
 }) => {
+  const UPGRADING_PHASES = ['downloading', 'extracting', 'fixing'];
+  const isToolchainUpgrading = toolchainPhase != null && UPGRADING_PHASES.includes(toolchainPhase);
   const getStatusIcon = () => {
     if (haStatus === 'idle') return <Loader2 size={18} className="animate-spin text-slate-400" />;
     if (haStatus === 'error') return <ShieldAlert size={18} className="text-red-500" />;
@@ -100,6 +110,18 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Activity size={16} />
             <span className="text-sm font-bold">{entityCount} Entities</span>
           </div>
+
+          {/* Toolchain background-upgrade badge */}
+          {isToolchainUpgrading && (
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200 text-amber-700"
+              title={toolchainMessage}
+            >
+              <Wrench size={14} className="animate-pulse" />
+              <span className="text-xs font-medium hidden sm:inline">Updating toolchain</span>
+              <span className="text-xs font-mono">{toolchainProgress}%</span>
+            </div>
+          )}
         </div>
       </div>
 

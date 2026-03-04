@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save, Usb } from 'lucide-react';
+import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save, Usb, AlertTriangle, Wrench, CheckCircle } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { UsbInstallPanel } from './UsbInstallPanel';
 
@@ -24,6 +24,10 @@ interface InstallDialogProps {
   onCompileActiveChange?: (active: boolean) => void;
   /** Called when OTA install starts/finishes to control stayMounted from parent */
   onOtaActiveChange?: (active: boolean) => void;
+  /** Current toolchain phase from App-level polling */
+  toolchainPhase?: string;
+  /** Called to update toolchain phase in App state after local build starts */
+  onToolchainPhaseChange?: (phase: string) => void;
 }
 
 type InstallStatus = 'idle' | 'loading' | 'saving' | 'installing' | 'success' | 'error' | 'cancelled';
@@ -37,7 +41,147 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   stayMounted,
   onCompileActiveChange,
   onOtaActiveChange,
+  toolchainPhase,
+  onToolchainPhaseChange,
 }) => {
+  // ── Toolchain state ──────────────────────────────────────────────────────
+  // localBuild* tracks the progress of a user-triggered local build.
+  const [localBuildPhase, setLocalBuildPhase]       = useState<string | null>(null);
+  const [localBuildProgress, setLocalBuildProgress] = useState(0);
+  const [localBuildMessage, setLocalBuildMessage]   = useState('');
+  const [buildLogs, setBuildLogs]                   = useState<string>('');
+  // Whether the initial toolchain status fetch has completed for this open.
+  // Until it has, we treat the toolchain as not-yet-known (keep UI disabled).
+  const [toolchainChecked, setToolchainChecked] = useState(false);
+  const localBuildPollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const logPollRef         = useRef<ReturnType<typeof setInterval> | null>(null);
+  const buildLogsEndRef    = useRef<HTMLDivElement>(null);
+
+  // Start polling /api/toolchain/status when a local build is in progress
+  useEffect(() => {
+    if (localBuildPhase === null || localBuildPhase === 'ready') return;
+    if (localBuildPollRef.current) return;
+    localBuildPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch('/api/toolchain/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        setLocalBuildPhase(data.phase);
+        setLocalBuildProgress(data.progress ?? 0);
+        setLocalBuildMessage(data.message ?? '');
+        if (data.phase === 'ready') {
+          clearInterval(localBuildPollRef.current!);
+          localBuildPollRef.current = null;
+          onToolchainPhaseChange?.('ready');
+        }
+      } catch { /* ignore */ }
+    }, 2000);
+    return () => {
+      if (localBuildPollRef.current) {
+        clearInterval(localBuildPollRef.current);
+        localBuildPollRef.current = null;
+      }
+    };
+  }, [localBuildPhase, onToolchainPhaseChange]);
+
+  // Poll log while a local build is running
+  useEffect(() => {
+    const isBuilding = localBuildPhase != null &&
+      localBuildPhase !== 'ready' && localBuildPhase !== 'no_toolchain';
+    if (!isBuilding) {
+      if (logPollRef.current) {
+        clearInterval(logPollRef.current);
+        logPollRef.current = null;
+      }
+      return;
+    }
+    const fetchLog = async () => {
+      try {
+        const res = await fetch('/api/toolchain/log?lines=300');
+        if (res.ok) {
+          const text = await res.text();
+          setBuildLogs(text);
+          // Auto-scroll to bottom
+          buildLogsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+      } catch { /* ignore */ }
+    };
+    fetchLog();
+    logPollRef.current = setInterval(fetchLog, 2000);
+    return () => {
+      if (logPollRef.current) {
+        clearInterval(logPollRef.current);
+        logPollRef.current = null;
+      }
+    };
+  }, [localBuildPhase]);
+
+  // Fetch toolchain status immediately when dialog opens, so we don't have
+  // to wait for the App-level 3-second poll cycle.
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset checked flag so next open re-fetches
+      setToolchainChecked(false);
+      return;
+    }
+    fetch('/api/toolchain/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        setToolchainChecked(true);
+        if (!data) return;
+        const phase: string = data.phase;
+        // Only update if not currently running a local build
+        if (localBuildPhase === null || localBuildPhase === 'no_toolchain') {
+          // Mirror ANY non-idle phase into localBuildPhase so progress/log
+          // UI appears even when the build was started outside this dialog.
+          if (phase !== 'ready' && phase !== 'starting') {
+            setLocalBuildPhase(phase);
+          }
+          onToolchainPhaseChange?.(phase);
+        }
+      })
+      .catch(() => {
+        // On error, assume toolchain is ready so we don't block forever
+        setToolchainChecked(true);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const handleStartLocalBuild = async () => {
+    setLocalBuildPhase('building');
+    setLocalBuildProgress(0);
+    setLocalBuildMessage('Starting local build...');
+    setBuildLogs('');
+    try {
+      await fetch('/api/toolchain/start_local_build', { method: 'POST' });
+    } catch {
+      setLocalBuildMessage('Failed to start build. Check server logs.');
+    }
+  };
+
+  const handleCancelBuild = async () => {
+    try {
+      await fetch('/api/toolchain/cancel', { method: 'POST' });
+    } catch { /* ignore */ }
+    // Stop polls
+    if (localBuildPollRef.current) { clearInterval(localBuildPollRef.current); localBuildPollRef.current = null; }
+    if (logPollRef.current)        { clearInterval(logPollRef.current);        logPollRef.current = null; }
+    setBuildLogs('');
+    setLocalBuildProgress(0);
+    setLocalBuildMessage('');
+    setLocalBuildPhase('no_toolchain');
+    onToolchainPhaseChange?.('no_toolchain');
+  };
+
+  // Effective toolchain phase: prefer local-build tracking when active,
+  // fall back to App-level phase
+  const effectivePhase = localBuildPhase ?? toolchainPhase;
+  const showNoToolchain = effectivePhase === 'no_toolchain';
+  const showLocalBuildProgress = effectivePhase != null && effectivePhase !== 'ready' && effectivePhase !== 'no_toolchain' && effectivePhase !== 'starting';
+  // Toolchain is ready only once we have a confirmed status AND it's not blocking.
+  // toolchainChecked guards against the race between dialog open and the fetch response.
+  const isToolchainReady = toolchainChecked && (effectivePhase == null || effectivePhase === 'ready' || effectivePhase === 'starting');
+  // ── End toolchain state ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<InstallTab>('ota');
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
@@ -430,9 +574,67 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
           </div>
         )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {/* USB Flash Tab – always mounted, CSS-hidden when OTA tab is active */}
+        {/* No-toolchain warning — shown when no ESP32 toolchain is installed */}
+        {showNoToolchain && (
+          <div className="mx-4 mt-4 mb-2 rounded-lg border border-amber-300 bg-amber-50 p-4">
+            <div className="flex gap-3">
+              <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={20} />
+              <div className="flex-1">
+                <p className="font-semibold text-amber-800 text-sm">No ESP32 toolchain installed</p>
+                <p className="text-amber-700 text-xs mt-1 leading-relaxed">
+                  The first compile/install requires building the toolchain locally.
+                  This is a one-time process that takes <strong>10–15 minutes</strong>.
+                  After that, all future installs will be fast.
+                </p>
+                <button
+                  onClick={handleStartLocalBuild}
+                  className="mt-3 flex items-center gap-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                >
+                  <Wrench size={13} />
+                  Build toolchain locally & proceed
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Local build progress */}
+        {showLocalBuildProgress && (
+          <div className="mx-4 mt-4 mb-2 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="flex gap-3">
+              <Wrench className="text-blue-500 shrink-0 mt-0.5 animate-pulse" size={20} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-blue-800 text-sm">Building toolchain locally...</p>
+                  <button
+                    onClick={handleCancelBuild}
+                    className="shrink-0 flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50 transition-colors"
+                  >
+                    <Square size={10} className="fill-red-500" />
+                    Cancel
+                  </button>
+                </div>
+                <p className="text-blue-600 text-xs mt-0.5 truncate">{localBuildMessage}</p>
+                <div className="mt-2 h-2 bg-blue-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                    style={{ width: `${localBuildProgress}%` }}
+                  />
+                </div>
+                <p className="text-blue-500 text-xs mt-1">{localBuildProgress}% — install will start automatically when done</p>
+                {/* Live log */}
+                <div className="mt-3 rounded bg-slate-900 text-green-400 font-mono text-[10px] leading-relaxed p-2 h-40 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap break-all">{buildLogs || 'Waiting for output...'}</pre>
+                  <div ref={buildLogsEndRef} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Content (disabled until toolchain is ready when in no-toolchain state) */}
+        <div className={`flex-1 overflow-hidden flex flex-col min-h-0${!isToolchainReady ? ' opacity-40 pointer-events-none' : ''}`}>
+        {/* USB Flash Tab – always mounted, CSS-hidden when OTA tab is active */}
           <UsbInstallPanel
             onSaveAndInstall={onSaveAndInstall}
             onCompileActiveChange={onCompileActiveChange}

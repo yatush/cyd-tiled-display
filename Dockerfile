@@ -39,51 +39,50 @@ RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
     git clone --depth 1 https://github.com/novnc/websockify /app/novnc/utils/websockify && \
     ln -s /app/novnc/vnc_lite.html /app/novnc/index.html
 
-# Copy fix script — also invoked during image build (pre-bake step below).
-# The ESP32 PlatformIO toolchain is pre-baked into the image at build time.
-# This runs once on GitHub Actions (fast NVMe + network) so the RPi4 (slow SD
-# card) never has to download or extract the toolchain at runtime.
-# The .cyd_setup_done marker is written here so vnc_startup.sh skips the
-# background first-time setup block entirely.
+# ─── Toolchain setup scripts ────────────────────────────────────────────────
+# fix_pio_wrappers.sh: patches PlatformIO's glibc Rust binaries for Alpine/musl.
+# toolchain_setup.py: at container start, downloads the pre-built toolchain
+#   tarball from GitHub Releases (fast) or falls back to a local compile.
 COPY docker_debug/fix_pio_wrappers.sh /app/
+COPY docker_debug/toolchain_setup.py  /app/
 RUN chmod +x /app/fix_pio_wrappers.sh
 
-# ---------------------------------------------------------------------------
-# Pre-bake PlatformIO / ESP-IDF toolchain.
-# esphome compile drives the full package + tool download.  On arm64/musl the
-# PlatformIO-bundled cmake wrapper (a glibc Rust binary) will hang once the
-# downloads finish, so we use a 900 s timeout: downloads complete in the first
-# few minutes, the timeout fires during cmake configuration, and we continue.
-# fix_pio_wrappers.sh and the cmake/ninja replacements below then make
-# subsequent real compiles work correctly.
-# ---------------------------------------------------------------------------
-RUN apk add --no-cache ca-certificates && update-ca-certificates && \
-    mkdir -p /root/.platformio/dist && \
-    mkdir -p /tmp/esp32_setup && \
-    printf 'esphome:\n  name: prebake\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
-        > /tmp/esp32_setup/dummy.yaml && \
-    cd /tmp/esp32_setup && \
-    CMAKE_BUILD_PARALLEL_LEVEL=2 timeout 900s esphome compile dummy.yaml || true && \
-    cd / && rm -rf /tmp/esp32_setup && \
-    # Patch Rust/glibc wrapper binaries with Alpine-compatible shell wrappers. \
-    /app/fix_pio_wrappers.sh || true && \
-    # Replace PlatformIO's cmake binary with the system (musl) cmake wrapper. \
-    PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1) && \
-    if [ -n "$PIO_CMAKE" ]; then \
-        mv "$PIO_CMAKE" "${PIO_CMAKE}.orig" && \
-        printf '#!/bin/sh\nexec /usr/bin/cmake "$@"\n' > "$PIO_CMAKE" && \
-        chmod +x "$PIO_CMAKE"; \
-    fi && \
-    # Replace PlatformIO's ninja binary with the system (musl) ninja wrapper. \
-    PIO_NINJA=$(find /root/.platformio/packages -path '*/tool-ninja/ninja' 2>/dev/null | head -1) && \
-    if [ -n "$PIO_NINJA" ]; then \
-        mv "$PIO_NINJA" "${PIO_NINJA}.orig" && \
-        printf '#!/bin/sh\nexec /usr/bin/ninja "$@"\n' > "$PIO_NINJA" && \
-        chmod +x "$PIO_NINJA"; \
-    fi && \
-    find /root/.platformio -name '*.orig' -delete 2>/dev/null || true && \
-    # Mark setup done so vnc_startup.sh skips the background download phase. \
-    touch /root/.platformio/.cyd_setup_done
+# Write the ESPHome version and GitHub repository into the image so
+# toolchain_setup.py knows which release tarball to download at runtime.
+ARG GITHUB_REPO=yatush/cyd-tiled-display
+RUN python3 -c "from importlib.metadata import version; print(version('esphome'))" > /app/esphome_version.txt && \
+    echo "${GITHUB_REPO}" > /app/github_repo.txt && \
+    echo "ESPHome version baked into image: $(cat /app/esphome_version.txt)"
+
+# ─── Optional: pre-bake toolchain at image build time (local dev only) ───────
+# Default: BAKE_TOOLCHAIN=0 — toolchain is downloaded at container start.
+# Set BAKE_TOOLCHAIN=1 via:  docker build --build-arg BAKE_TOOLCHAIN=1 ...
+# This is used by update_and_run.sh --bake for fully-offline local dev.
+ARG BAKE_TOOLCHAIN=0
+RUN if [ "$BAKE_TOOLCHAIN" = "1" ]; then \
+      echo "Pre-baking PlatformIO toolchain into image (BAKE_TOOLCHAIN=1)..." && \
+      apk add --no-cache ca-certificates && update-ca-certificates && \
+      mkdir -p /tmp/esp32_setup && \
+      printf 'esphome:\n  name: prebake\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
+          > /tmp/esp32_setup/dummy.yaml && \
+      cd /tmp/esp32_setup && \
+      CMAKE_BUILD_PARALLEL_LEVEL=2 timeout 900s esphome compile dummy.yaml || true && \
+      cd / && rm -rf /tmp/esp32_setup && \
+      /app/fix_pio_wrappers.sh || true && \
+      PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1) && \
+      [ -n "$PIO_CMAKE" ] && mv "$PIO_CMAKE" "${PIO_CMAKE}.orig" && \
+        printf '#!/bin/sh\nexec /usr/bin/cmake "$@"\n' > "$PIO_CMAKE" && chmod +x "$PIO_CMAKE" || true && \
+      PIO_NINJA=$(find /root/.platformio/packages -path '*/tool-ninja/ninja' 2>/dev/null | head -1) && \
+      [ -n "$PIO_NINJA" ] && mv "$PIO_NINJA" "${PIO_NINJA}.orig" && \
+        printf '#!/bin/sh\nexec /usr/bin/ninja "$@"\n' > "$PIO_NINJA" && chmod +x "$PIO_NINJA" || true && \
+      find /root/.platformio -name '*.orig' -delete 2>/dev/null || true && \
+      ESPHOME_VER=$(cat /app/esphome_version.txt) && \
+      echo "$ESPHOME_VER" > /root/.platformio/.cyd_esphome_version && \
+      touch /root/.platformio/.cyd_setup_done && \
+      echo "Toolchain pre-bake complete."; \
+    else \
+      echo "Skipping toolchain pre-bake (BAKE_TOOLCHAIN=0). Will download at container start."; \
+    fi
 
 # Copy built frontend
 COPY --from=build-frontend /app/dist /app/configurator/dist

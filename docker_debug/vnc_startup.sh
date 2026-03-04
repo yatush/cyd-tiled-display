@@ -102,71 +102,45 @@ echo "VNC environment ready"
 echo "Testing nginx configuration..."
 nginx -t -c /tmp/nginx.conf || (echo "Nginx config test failed!" && cat /tmp/nginx.conf && exit 1)
 
-# ---- First-time PlatformIO + ESP32 toolchain setup (runs in background) --------
-# The toolchain is NOT baked into the image — it lives in the cyd_pio_packages volume
-# (/root/.platformio).  On first container start the volume is empty so we download
-# everything here and leave a marker so subsequent starts skip this block.
-PIO_SETUP_MARKER="/root/.platformio/.cyd_setup_done"
-if [ ! -f "$PIO_SETUP_MARKER" ]; then
-    echo "PlatformIO toolchain not found — running first-time setup in background."
-    echo "The emulator will be available once setup completes (~5-10 min)."
-    (
-        set +e
-        LOG=/tmp/pio_setup.log
-        echo "[PIO SETUP] Starting at $(date)" > "$LOG"
-
-        # Phase 1: trigger PlatformIO to download all ESP32 packages
-        mkdir -p /tmp/esp32_setup
-        printf 'esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n' \
-            > /tmp/esp32_setup/dummy.yaml
-        echo "[PIO SETUP] Downloading ESP32 toolchain (Phase 1)…" >> "$LOG"
-        timeout 900s esphome compile /tmp/esp32_setup/dummy.yaml >> "$LOG" 2>&1 || true
-
-        # Phase 2: fix PlatformIO binaries for Alpine/musl compatibility
-        echo "[PIO SETUP] Fixing wrappers (Phase 2)…" >> "$LOG"
-        /app/fix_pio_wrappers.sh >> "$LOG" 2>&1 || true
-
-        PIO_CMAKE=$(find /root/.platformio/packages -path '*/tool-cmake/bin/cmake' 2>/dev/null | head -1)
-        if [ -n "$PIO_CMAKE" ]; then
-            mv "$PIO_CMAKE" "${PIO_CMAKE}.orig"
-            printf '#!/bin/sh\nexec /usr/bin/cmake "$@"\n' > "$PIO_CMAKE"
-            chmod +x "$PIO_CMAKE"
-            echo "[PIO SETUP] Replaced cmake wrapper" >> "$LOG"
-        fi
-
-        PIO_NINJA=$(find /root/.platformio/packages -path '*/tool-ninja/ninja' 2>/dev/null | head -1)
-        if [ -n "$PIO_NINJA" ]; then
-            mv "$PIO_NINJA" "${PIO_NINJA}.orig"
-            printf '#!/bin/sh\nexec /usr/bin/ninja "$@"\n' > "$PIO_NINJA"
-            chmod +x "$PIO_NINJA"
-            echo "[PIO SETUP] Replaced ninja wrapper" >> "$LOG"
-        fi
-
-        # Remove the orig binaries now that wrappers are in place
-        find /root/.platformio -name '*.orig' -delete 2>/dev/null
-
-        rm -rf /tmp/esp32_setup
-
-        touch "$PIO_SETUP_MARKER"
-        echo "[PIO SETUP] Done at $(date)" >> "$LOG"
-        echo "PlatformIO setup complete."
-    ) &
-else
-    echo "PlatformIO toolchain already set up (marker present)."
-fi
-# ---- End PlatformIO setup --------------------------------------------------------
+# ---- Toolchain setup (runs in background) ---------------------------------------
+# toolchain_setup.py checks whether the pre-built toolchain already matches the
+# ESPHome version baked into this image.  If not, it:
+#   1. Downloads the pre-built tarball from GitHub Releases (fast, with UI progress)
+#   2. Falls back to a local compile if the release isn't available yet
+# Progress is written to /tmp/toolchain_setup_progress.json and exposed to the
+# React UI via /api/toolchain/status so users see a real-time progress bar.
+echo "Starting toolchain setup (background)..."
+python3 /app/toolchain_setup.py > /tmp/toolchain_setup.log 2>&1 &
+# ---- End toolchain setup --------------------------------------------------------
 
 # ---- Emulator pre-compilation (runs once per image deployment) ------------------
-# Runs independently of the PIO setup marker so it still fires when the toolchain
-# is pre-baked into the image.  Uses its own marker inside /app/esphome/ which is
-# reset whenever a new image is pulled (writable-layer is discarded on update).
+# Waits for the toolchain setup to finish (marker written by toolchain_setup.py),
+# then pre-compiles the emulator binary in the background.
+# Uses its own marker inside /app/esphome/ which is reset whenever a new image
+# is pulled (writable layer is discarded on update), ensuring it always runs
+# at least once after a fresh pull, even when the toolchain volume is warm.
 EMULATOR_MARKER="/app/esphome/.emulator_prebuilt"
+SETUP_MARKER="/root/.platformio/.cyd_setup_done"
 if [ ! -f "$EMULATOR_MARKER" ]; then
     echo "Pre-compiling emulator in background (first start after image update)…"
     (
         set +e
         LOG=/tmp/emulator_precompile.log
         echo "[EMULATOR] Starting at $(date)" > "$LOG"
+
+        # Wait for toolchain setup to complete (max 30 minutes)
+        echo "[EMULATOR] Waiting for toolchain setup to complete..." >> "$LOG"
+        WAIT=0
+        while [ ! -f "$SETUP_MARKER" ] && [ $WAIT -lt 1800 ]; do
+            sleep 10
+            WAIT=$((WAIT + 10))
+        done
+        if [ ! -f "$SETUP_MARKER" ]; then
+            echo "[EMULATOR] Toolchain setup timed out — skipping emulator pre-compile." >> "$LOG"
+            exit 1
+        fi
+        echo "[EMULATOR] Toolchain ready after ${WAIT}s. Starting emulator compile." >> "$LOG"
+
         # Ensure images.yaml placeholder exists so the !include in lib_common.yaml resolves.
         touch /app/esphome/lib/images.yaml
         [ -s /app/esphome/lib/images.yaml ] || printf '{}\n' > /app/esphome/lib/images.yaml
