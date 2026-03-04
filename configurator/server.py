@@ -1073,16 +1073,46 @@ def install_esphome_device():
         _install_images_dir = os.path.join(BASE_DIR, 'images')
         _regen_images_yaml(filepath, _lib_dir, _install_images_dir)
 
+        # Determine OTA target address so we can pass --device and avoid the
+        # interactive "choose upload method" prompt that appears when a USB serial
+        # device is also present in the container (e.g. a Zigbee dongle).
+        _ota_address = None
+        try:
+            class _IL(yaml.SafeLoader):
+                pass
+            _IL.add_constructor('!include', lambda l, n: l.construct_scalar(n))
+            _IL.add_multi_constructor('!', lambda l, s, n: None)
+            with open(filepath, 'r') as _yf:
+                _ydata = yaml.load(_yf, Loader=_IL)
+            if isinstance(_ydata, dict):
+                # Prefer explicit wifi.use_address; fall back to <device_name>.local
+                _wifi = _ydata.get('wifi') or {}
+                _ota_address = _wifi.get('use_address') if isinstance(_wifi, dict) else None
+                if not _ota_address:
+                    _name = ((_ydata.get('substitutions') or {}).get('device_name') or
+                             (_ydata.get('esphome') or {}).get('name'))
+                    if _name:
+                        _ota_address = f'{_name}.local'
+        except Exception as _e:
+            print(f"[install] Could not determine OTA address: {_e}", flush=True)
+
+        # Build the esphome command.  Always pass --device <address> so ESPHome
+        # never falls through to the interactive chooser (EOFError on stdin).
+        _esphome_cmd = ['esphome', 'run', filename]
+        if _ota_address:
+            _esphome_cmd += ['--device', _ota_address]
+            print(f"[install] OTA target: {_ota_address}", flush=True)
+        else:
+            print("[install] WARNING: could not determine OTA address — ESPHome may prompt interactively", flush=True)
+
         # Start the process immediately — timezone is fetched in the background thread
         _install_env = os.environ.copy()
         _install_env['PYTHONUNBUFFERED'] = '1'
-        # No --device flag: ESPHome reads wifi.use_address from the YAML config automatically.
-        # Passing '--device OTA' was wrong — ESPHome treated "OTA" as a literal hostname to
-        # connect to, compiled successfully, then silently failed to upload.
         process = subprocess.Popen(
-            ['esphome', 'run', filename],
+            _esphome_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,   # prevent interactive prompts from blocking
             cwd=BASE_DIR,
             text=True,
             bufsize=1,
