@@ -111,6 +111,30 @@ nginx -t -c /tmp/nginx.conf || (echo "Nginx config test failed!" && cat /tmp/ngi
 # React UI via /api/toolchain/status so users see a real-time progress bar.
 echo "Starting toolchain setup (background)..."
 python3 /app/toolchain_setup.py > /tmp/toolchain_setup.log 2>&1 &
+
+# ---- Toolchain update watchdog --------------------------------------------------
+# Checks for a new ESPHome release every 6 hours while the container is running.
+# If a newer pre-built tarball is available it downloads it in the background,
+# showing the amber badge in the TopBar just like startup does.
+# Skips the check if toolchain_setup.py is already running.
+(
+  # Wait for the initial setup to finish before starting the watchdog loop.
+  WATCHDOG_MARKER="/root/.platformio/.cyd_setup_done"
+  WAIT=0
+  while [ ! -f "$WATCHDOG_MARKER" ] && [ $WAIT -lt 1800 ]; do
+    sleep 10; WAIT=$((WAIT + 10))
+  done
+  while true; do
+    sleep 21600  # 6 hours
+    # Skip if a toolchain_setup.py is already running (e.g. user triggered local build)
+    if pgrep -f "toolchain_setup.py" > /dev/null 2>&1; then
+      continue
+    fi
+    echo "[watchdog] Checking for toolchain update..." >> /tmp/toolchain_setup.log
+    python3 /app/toolchain_setup.py >> /tmp/toolchain_setup.log 2>&1
+  done
+) &
+# ---- End toolchain update watchdog ----------------------------------------------
 # ---- End toolchain setup --------------------------------------------------------
 
 # ---- Emulator pre-compilation (runs once per image deployment) ------------------

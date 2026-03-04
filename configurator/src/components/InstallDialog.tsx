@@ -50,6 +50,8 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const [localBuildProgress, setLocalBuildProgress] = useState(0);
   const [localBuildMessage, setLocalBuildMessage]   = useState('');
   const [buildLogs, setBuildLogs]                   = useState<string>('');
+  const [buildEsphomeVersion, setBuildEsphomeVersion] = useState<string>('');
+  const [buildSource, setBuildSource]               = useState<string>('');
   // Whether the initial toolchain status fetch has completed for this open.
   // Until it has, we treat the toolchain as not-yet-known (keep UI disabled).
   const [toolchainChecked, setToolchainChecked] = useState(false);
@@ -69,7 +71,9 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         setLocalBuildPhase(data.phase);
         setLocalBuildProgress(data.progress ?? 0);
         setLocalBuildMessage(data.message ?? '');
+        if (data.esphome_version) setBuildEsphomeVersion(data.esphome_version);
         if (data.phase === 'ready') {
+          setBuildSource(data.fallback ? 'Built locally' : 'Downloaded pre-built release');
           clearInterval(localBuildPollRef.current!);
           localBuildPollRef.current = null;
           onToolchainPhaseChange?.('ready');
@@ -169,6 +173,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     setBuildLogs('');
     setLocalBuildProgress(0);
     setLocalBuildMessage('');
+    setBuildSource('');
     setLocalBuildPhase('no_toolchain');
     onToolchainPhaseChange?.('no_toolchain');
   };
@@ -605,7 +610,15 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
               <Wrench className="text-blue-500 shrink-0 mt-0.5 animate-pulse" size={20} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold text-blue-800 text-sm">Building toolchain locally...</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="font-semibold text-blue-800 text-sm shrink-0">Building toolchain locally...</p>
+                    {buildEsphomeVersion && (
+                      <span className="text-blue-500 text-xs font-mono shrink-0">ESPHome {buildEsphomeVersion}</span>
+                    )}
+                    {buildSource && (
+                      <span className="text-blue-400 text-xs shrink-0">· {buildSource}</span>
+                    )}
+                  </div>
                   <button
                     onClick={handleCancelBuild}
                     className="shrink-0 flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50 transition-colors"

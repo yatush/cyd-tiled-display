@@ -51,11 +51,19 @@ DUMMY_YAML_DIR      = '/tmp/esp32_setup'
 def write_progress(phase: str, progress: int, message: str,
                    fallback: bool = False, error: str | None = None) -> None:
     """Atomically write progress JSON so the UI always reads a complete file."""
+    # Read the baked-in ESPHome version once per write (cheap file read).
+    esphome_version = ''
+    try:
+        with open(ESPHOME_VER_FILE) as f:
+            esphome_version = f.read().strip()
+    except OSError:
+        pass
     data: dict = {
-        'phase':    phase,
-        'progress': progress,
-        'message':  message,
-        'fallback': fallback,
+        'phase':           phase,
+        'progress':        progress,
+        'message':         message,
+        'fallback':        fallback,
+        'esphome_version': esphome_version,
     }
     if error:
         data['error'] = error
