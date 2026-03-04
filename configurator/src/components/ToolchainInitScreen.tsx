@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../utils/api';
 import { AlertTriangle, CheckCircle, Download, Settings, Wrench } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ export function ToolchainInitScreen({ onReady }: ToolchainInitScreenProps) {
     async function poll() {
       while (!cancelled) {
         try {
-          const res = await fetch('/api/toolchain/status');
+          const res = await apiFetch('/toolchain/status');
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data: ToolchainStatus = await res.json();
 

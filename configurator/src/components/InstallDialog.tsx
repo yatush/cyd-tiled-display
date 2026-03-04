@@ -65,7 +65,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     if (localBuildPollRef.current) return;
     localBuildPollRef.current = setInterval(async () => {
       try {
-        const res = await fetch('/api/toolchain/status');
+        const res = await apiFetch('/toolchain/status');
         if (!res.ok) return;
         const data = await res.json();
         setLocalBuildPhase(data.phase);
@@ -101,7 +101,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     }
     const fetchLog = async () => {
       try {
-        const res = await fetch('/api/toolchain/log?lines=300');
+        const res = await apiFetch('/toolchain/log?lines=300');
         if (res.ok) {
           const text = await res.text();
           setBuildLogs(text);
@@ -128,7 +128,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
       setToolchainChecked(false);
       return;
     }
-    fetch('/api/toolchain/status')
+    apiFetch('/toolchain/status')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         setToolchainChecked(true);
@@ -157,7 +157,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     setLocalBuildMessage('Starting local build...');
     setBuildLogs('');
     try {
-      await fetch('/api/toolchain/start_local_build', { method: 'POST' });
+      await apiFetch('/toolchain/start_local_build', { method: 'POST' });
     } catch {
       setLocalBuildMessage('Failed to start build. Check server logs.');
     }
@@ -165,7 +165,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
 
   const handleCancelBuild = async () => {
     try {
-      await fetch('/api/toolchain/cancel', { method: 'POST' });
+      await apiFetch('/toolchain/cancel', { method: 'POST' });
     } catch { /* ignore */ }
     // Stop polls
     if (localBuildPollRef.current) { clearInterval(localBuildPollRef.current); localBuildPollRef.current = null; }

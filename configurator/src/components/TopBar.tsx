@@ -20,6 +20,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
+import { apiFetch } from '../utils/api';
 
 interface TopBarProps {
   haStatus: HaStatus;
@@ -79,7 +80,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     if (!showLog) return;
     const fetchLog = async () => {
       try {
-        const res = await fetch('/api/toolchain/log?lines=400');
+        const res = await apiFetch('/toolchain/log?lines=400');
         if (res.ok) { const t = await res.text(); setLogContent(t); }
       } catch { /* ignore */ }
     };

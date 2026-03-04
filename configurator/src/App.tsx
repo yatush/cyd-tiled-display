@@ -39,7 +39,7 @@ function App() {
     async function poll() {
       while (!cancelled) {
         try {
-          const res = await fetch('/api/toolchain/status');
+          const res = await apiFetch('/toolchain/status');
           if (res.ok) {
             const data: { phase: string; progress: number; message: string } = await res.json();
             if (!cancelled) {
