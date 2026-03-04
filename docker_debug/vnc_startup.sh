@@ -102,6 +102,27 @@ echo "VNC environment ready"
 echo "Testing nginx configuration..."
 nginx -t -c /tmp/nginx.conf || (echo "Nginx config test failed!" && cat /tmp/nginx.conf && exit 1)
 
+# ---- Persist PlatformIO directory across addon updates ----------------------
+# In the HA addon, /data is a persistent volume (map: data:rw) but
+# /root/.platformio is ephemeral and wiped on every addon update.
+# We redirect it to /data/.platformio via symlink so the downloaded toolchain
+# survives upgrades without re-downloading.
+# Only done in HA addon mode (detected via $SUPERVISOR_TOKEN injected by the
+# HA supervisor). In plain Docker (update_and_run.sh) the named volume is
+# already mounted directly at /root/.platformio so no redirect is needed.
+if [ -n "$SUPERVISOR_TOKEN" ] && [ ! -L /root/.platformio ]; then
+    mkdir -p /data
+    if [ -d /root/.platformio ]; then
+        # Carry over any toolchain baked into the image (BAKE_TOOLCHAIN=1)
+        cp -a /root/.platformio/. /data/.platformio/ 2>/dev/null || true
+        rm -rf /root/.platformio
+    fi
+    mkdir -p /data/.platformio
+    ln -sf /data/.platformio /root/.platformio
+    echo "Linked /root/.platformio → /data/.platformio (HA persistent storage)"
+fi
+# ---- End PlatformIO persistence ----------------------------------------------
+
 # ---- Toolchain setup (runs in background) ---------------------------------------
 # toolchain_setup.py checks whether the pre-built toolchain already matches the
 # ESPHome version baked into this image.  If not, it:

@@ -18,6 +18,7 @@ panel_icon: mdi:grid
 panel_title: "CYD Configurator"
 map:
   - config:rw
+  - data:rw
 options:
   ha_url: "http://supervisor/core"
 schema:
