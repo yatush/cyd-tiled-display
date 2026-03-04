@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, 
   ShieldAlert, 
@@ -14,7 +15,9 @@ import {
   FolderOpen,
   Monitor,
   Square,
-  Wrench
+  Wrench,
+  X,
+  ChevronDown
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
 
@@ -66,6 +69,28 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const UPGRADING_PHASES = ['downloading', 'extracting', 'fixing'];
   const isToolchainUpgrading = toolchainPhase != null && UPGRADING_PHASES.includes(toolchainPhase);
+  const showToolchainIcon = isToolchainUpgrading || toolchainPhase === 'no_toolchain' || toolchainPhase === 'building';
+
+  const [showLog, setShowLog]     = useState(false);
+  const [logContent, setLogContent] = useState('');
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showLog) return;
+    const fetchLog = async () => {
+      try {
+        const res = await fetch('/api/toolchain/log?lines=400');
+        if (res.ok) { const t = await res.text(); setLogContent(t); }
+      } catch { /* ignore */ }
+    };
+    fetchLog();
+    const id = setInterval(fetchLog, 2000);
+    return () => clearInterval(id);
+  }, [showLog]);
+
+  useEffect(() => {
+    if (showLog) logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logContent, showLog]);
   const getStatusIcon = () => {
     if (haStatus === 'idle') return <Loader2 size={18} className="animate-spin text-slate-400" />;
     if (haStatus === 'error') return <ShieldAlert size={18} className="text-red-500" />;
@@ -111,15 +136,49 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="text-sm font-bold">{entityCount} Entities</span>
           </div>
 
-          {/* Toolchain background-upgrade badge */}
-          {isToolchainUpgrading && (
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200 text-amber-700"
-              title={toolchainMessage}
+          {/* Toolchain badge — clickable to show log */}
+          {showToolchainIcon && (
+            <button
+              onClick={() => setShowLog(true)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+                isToolchainUpgrading
+                  ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                  : toolchainPhase === 'building'
+                  ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                  : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
+              }`}
+              title="Click to view toolchain log"
             >
-              <Wrench size={14} className="animate-pulse" />
-              <span className="text-xs font-medium hidden sm:inline">Updating toolchain</span>
-              <span className="text-xs font-mono">{toolchainProgress}%</span>
+              <Wrench size={13} className={isToolchainUpgrading || toolchainPhase === 'building' ? 'animate-pulse' : ''} />
+              <span className="hidden sm:inline">
+                {isToolchainUpgrading ? 'Updating toolchain' : toolchainPhase === 'building' ? 'Building toolchain' : 'Toolchain needed'}
+              </span>
+              {isToolchainUpgrading && <span className="font-mono">{toolchainProgress}%</span>}
+              <ChevronDown size={11} className="opacity-60" />
+            </button>
+          )}
+
+          {/* Toolchain log overlay */}
+          {showLog && (
+            <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setShowLog(false)}>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50 rounded-t-xl">
+                  <div className="flex items-center gap-2">
+                    <Wrench size={16} className="text-slate-500" />
+                    <span className="font-semibold text-slate-700 text-sm">Toolchain Setup Log</span>
+                    {toolchainMessage && <span className="text-slate-400 text-xs">— {toolchainMessage}</span>}
+                  </div>
+                  <button onClick={() => setShowLog(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto bg-slate-900 rounded-b-xl p-3">
+                  <pre className="text-green-400 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all">
+                    {logContent || 'No log output yet — toolchain_setup.py has not written anything.'}
+                  </pre>
+                  <div ref={logEndRef} />
+                </div>
+              </div>
             </div>
           )}
         </div>
