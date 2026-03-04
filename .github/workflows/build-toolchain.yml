@@ -132,13 +132,14 @@ jobs:
         run: |
           mkdir -p /tmp/toolchain-export
           docker cp toolchain-build:/root/.platformio/packages /tmp/toolchain-export/packages
+          docker cp toolchain-build:/root/.platformio/platforms /tmp/toolchain-export/platforms 2>/dev/null || echo "No platforms dir — skipping"
           docker rm toolchain-build
 
       - name: Create toolchain tarball
         run: |
           cd /tmp/toolchain-export
           echo "Creating toolchain-${{ matrix.arch }}.tar.xz ..."
-          XZ_OPT="-2" tar -cJf toolchain-${{ matrix.arch }}.tar.xz packages/
+          XZ_OPT="-2" tar -cJf toolchain-${{ matrix.arch }}.tar.xz packages/ $([ -d platforms ] && echo platforms/)
           ls -lh toolchain-${{ matrix.arch }}.tar.xz
 
       - name: Upload artifact

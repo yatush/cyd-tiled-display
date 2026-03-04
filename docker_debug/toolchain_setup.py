@@ -194,8 +194,9 @@ def download_toolchain(version: str, arch: str, background: bool = False) -> str
 def extract_toolchain(tarball_path: str, background: bool = False) -> None:
     """
     Extract the toolchain tarball into PIO_DIR.
-    The tarball is expected to have paths like  packages/<tool>/...
-    so extracting to PIO_DIR places files at /root/.platformio/packages/...
+    The tarball contains paths like  packages/<tool>/...  and  platforms/<plat>/...
+    Extracting to PIO_DIR places them at /root/.platformio/packages/... and
+    /root/.platformio/platforms/... respectively.
     """
     label = 'Updating toolchain' if background else 'Extracting toolchain'
     write_progress('extracting', 61, f'{label}: extracting files...')
