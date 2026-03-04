@@ -330,11 +330,21 @@ def main() -> None:
         log('Background update complete.')
 
     except FileNotFoundError as e:
-        # Release not published yet — keep old toolchain working.
-        # The daily build-toolchain.yml will publish it soon.
-        log(f'Pre-built release not available yet: {e}. Keeping existing toolchain.')
-        write_progress('ready', 100,
-                       'Toolchain ready (update pending — new release not yet available)')
+        # Release not published yet.
+        # If the setup marker exists the existing toolchain is fully functional —
+        # keep it working silently. If the marker is missing the packages were
+        # downloaded ad-hoc by PlatformIO (old behaviour) and are not reliable,
+        # so surface no_toolchain so the user can trigger a proper local build.
+        log(f'Pre-built release not available yet: {e}.')
+        if os.path.exists(SETUP_MARKER):
+            log('Setup marker present — keeping existing toolchain.')
+            write_progress('ready', 100,
+                           'Toolchain ready (update pending — new release not yet available)')
+        else:
+            log('No setup marker — packages were ad-hoc, prompting user to build locally.')
+            write_progress('no_toolchain', 0,
+                           'Toolchain not initialised. '
+                           'First compile will build locally (~10–15 min).')
 
     except Exception as e:
         log(f'Background download failed: {e}. Keeping existing toolchain.')
