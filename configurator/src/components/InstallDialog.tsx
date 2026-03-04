@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save, Usb, AlertTriangle, Wrench, CheckCircle } from 'lucide-react';
+import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save, Usb, AlertTriangle, Wrench, CheckCircle, Download } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { UsbInstallPanel } from './UsbInstallPanel';
 
@@ -181,6 +181,12 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   // Effective toolchain phase: prefer local-build tracking when active,
   // fall back to App-level phase
   const effectivePhase = localBuildPhase ?? toolchainPhase;
+  const effectivePhaseLabel =
+    effectivePhase === 'downloading' ? 'Downloading toolchain...' :
+    effectivePhase === 'extracting'  ? 'Installing toolchain...'  :
+    effectivePhase === 'fixing'      ? 'Configuring toolchain...' :
+    effectivePhase === 'building'    ? 'Building toolchain locally...' :
+                                       'Setting up toolchain...';
   const showNoToolchain = effectivePhase === 'no_toolchain';
   const showLocalBuildProgress = effectivePhase != null && effectivePhase !== 'ready' && effectivePhase !== 'no_toolchain' && effectivePhase !== 'starting';
   // Toolchain is ready only once we have a confirmed status AND it's not blocking.
@@ -608,11 +614,13 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         {showLocalBuildProgress && (
           <div className="mx-4 mt-4 mb-2 rounded-lg border border-blue-200 bg-blue-50 p-4">
             <div className="flex gap-3">
-              <Wrench className="text-blue-500 shrink-0 mt-0.5 animate-pulse" size={20} />
+              {effectivePhase === 'downloading'
+                ? <Download className="text-blue-500 shrink-0 mt-0.5 animate-pulse" size={20} />
+                : <Wrench className="text-blue-500 shrink-0 mt-0.5 animate-pulse" size={20} />}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <p className="font-semibold text-blue-800 text-sm shrink-0">Building toolchain locally...</p>
+                    <p className="font-semibold text-blue-800 text-sm shrink-0">{effectivePhaseLabel}</p>
                     {buildEsphomeVersion && (
                       <span className="text-blue-500 text-xs font-mono shrink-0">ESPHome {buildEsphomeVersion}</span>
                     )}
