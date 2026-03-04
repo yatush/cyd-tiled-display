@@ -319,11 +319,31 @@ def main() -> None:
 
     # ── Case 3: no packages at all (fresh install) ────────────────────────────
     if not has_packages():
-        log('No toolchain installed. Waiting for user confirmation.')
-        write_progress('no_toolchain', 0,
-                       'No toolchain installed. '
-                       'First compile will build locally (~10–15 min).')
-        # Return immediately — local build is user-triggered via the UI.
+        log('No toolchain installed. Trying to download pre-built release...')
+        tmp_path = None
+        try:
+            tmp_path = download_toolchain(expected, arch, background=False)
+            extract_toolchain(tmp_path, background=False)
+            fix_wrappers()
+            set_stored_version(expected)
+            write_progress('ready', 100, 'Toolchain installed successfully.')
+            log('Fresh install from pre-built release complete.')
+        except FileNotFoundError as e:
+            log(f'Pre-built release not available: {e}. Waiting for user confirmation.')
+            write_progress('no_toolchain', 0,
+                           'No toolchain installed. '
+                           'First compile will build locally (~10–15 min).')
+        except Exception as e:
+            log(f'Download failed: {e}. Waiting for user confirmation.')
+            write_progress('no_toolchain', 0,
+                           'Toolchain download failed. '
+                           'First compile will build locally (~10–15 min).')
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
         return
 
     # ── Case 2: newer version available, old packages still usable ───────────

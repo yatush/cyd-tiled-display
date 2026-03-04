@@ -45,6 +45,8 @@ interface TopBarProps {
   toolchainPhase?: string;
   toolchainProgress?: number;
   toolchainMessage?: string;
+  /** Open the Install dialog (used by the no_toolchain overlay CTA) */
+  onOpenInstall?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -68,6 +70,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   toolchainPhase,
   toolchainProgress = 0,
   toolchainMessage,
+  onOpenInstall,
 }) => {
   const UPGRADING_PHASES = ['downloading', 'extracting', 'fixing'];
   const isToolchainUpgrading = toolchainPhase != null && UPGRADING_PHASES.includes(toolchainPhase);
@@ -165,14 +168,25 @@ export const TopBar: React.FC<TopBarProps> = ({
             <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setShowLog(false)}>
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50 rounded-t-xl">
-                  <div className="flex items-center gap-2">
-                    <Wrench size={16} className="text-slate-500" />
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Wrench size={16} className="text-slate-500 flex-shrink-0" />
                     <span className="font-semibold text-slate-700 text-sm">Toolchain Setup Log</span>
-                    {toolchainMessage && <span className="text-slate-400 text-xs">— {toolchainMessage}</span>}
+                    {toolchainMessage && <span className="text-slate-400 text-xs truncate">— {toolchainMessage}</span>}
                   </div>
-                  <button onClick={() => setShowLog(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
-                    <X size={16} />
-                  </button>
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                    {toolchainPhase === 'no_toolchain' && onOpenInstall && (
+                      <button
+                        onClick={() => { setShowLog(false); onOpenInstall(); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                      >
+                        <Wrench size={13} />
+                        Build locally
+                      </button>
+                    )}
+                    <button onClick={() => setShowLog(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto bg-slate-900 rounded-b-xl p-3">
                   <pre className="text-green-400 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all">

@@ -415,6 +415,7 @@ function App() {
         toolchainPhase={toolchainPhase ?? undefined}
         toolchainProgress={toolchainProgress}
         toolchainMessage={toolchainMessage}
+        onOpenInstall={() => setIsInstallDeviceOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
