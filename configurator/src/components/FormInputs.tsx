@@ -779,7 +779,7 @@ export const ImageSelectInput = ({
   };
 
   return (
-    <div className="relative mb-2" ref={containerRef}>
+    <div className="relative" ref={containerRef}>
       {label && <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>}
 
       {/* Trigger button */}
@@ -804,18 +804,6 @@ export const ImageSelectInput = ({
           <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
         </svg>
       </button>
-
-      {/* Clear button (shown when a value is selected) */}
-      {value && (
-        <button
-          type="button"
-          title="Clear"
-          onClick={() => { onChange(''); setOpen(false); }}
-          className="mt-0.5 flex items-center gap-1 text-[10px] text-red-400 hover:text-red-600"
-        >
-          <Trash2 size={10} /> clear
-        </button>
-      )}
 
       {/* Dropdown panel */}
       {open && (
@@ -956,7 +944,6 @@ export const ImageManagerPanel = ({
 
 // ---- ImagesListInput --------------------------------------------------------
 // Unified list of images, each with an optional condition and optional animation.
-// Value: Array<{ image: string; condition?: any; animation?: { direction: string; duration: number; extra_images?: string[] } }>
 // Entries are evaluated in order; first matching condition wins.
 // An entry without a condition is an unconditional fallback.
 
@@ -968,16 +955,43 @@ const ANIM_DIRECTIONS = [
   { value: 'down_up',    label: '↑ Bottom to Top' },
 ] as const;
 
+// Animation step: direction + duration + optional images list.
+// Step 0 uses 'extra_images' (cycled after the root image).
+// Steps 1+ use 'images' (standalone list; if empty, root image is used).
+type AnimStep = { direction: string; duration: number; extra_images?: string[]; images?: string[] };
+// Animation config: either flat single-step or multi-step with 'steps' array.
+type AnimConfig = { direction: string; duration: number; extra_images?: string[] }
+               | { steps: AnimStep[] };
+
+function toSteps(anim: AnimConfig): AnimStep[] {
+  if ('steps' in anim && Array.isArray(anim.steps)) return anim.steps;
+  const { direction, duration, extra_images } = anim as any;
+  return [{ direction: direction ?? 'left_right', duration: duration ?? 3, extra_images }];
+}
+function fromSteps(steps: AnimStep[]): AnimConfig {
+  if (steps.length === 1) {
+    const { direction, duration, extra_images } = steps[0];
+    const r: any = { direction, duration };
+    if (extra_images?.filter(Boolean).length) r.extra_images = extra_images.filter(Boolean);
+    return r;
+  }
+  // Preserve steps as-is (including empty image slots for in-progress pickers).
+  // Empty strings are stripped when the YAML is generated.
+  return { steps };
+}
+
+type ImageRow = { image: string; condition?: any; animation?: AnimConfig };
+
 export const ImagesListInput = ({
   value,
   onChange,
   images,
 }: {
-  value: Array<{ image: string; condition?: any; animation?: { direction: string; duration: number; extra_images?: string[] } }>;
-  onChange: (v: Array<{ image: string; condition?: any; animation?: { direction: string; duration: number; extra_images?: string[] } }>) => void;
+  value: ImageRow[];
+  onChange: (v: ImageRow[]) => void;
   images: Record<string, ImageEntry>;
 }) => {
-  const rows = Array.isArray(value) ? value : [];
+  const rows: ImageRow[] = Array.isArray(value) ? value : [];
 
   const updateRow = (idx: number, patch: Partial<typeof rows[0]>) => {
     onChange(rows.map((r, i) => i === idx ? { ...r, ...patch } : r));
@@ -1003,15 +1017,104 @@ export const ImagesListInput = ({
     }
   };
 
-  const toggleAnimCondition = (idx: number, checked: boolean) => {
-    const row = rows[idx];
-    if (!row.animation) return;
-    if (checked) {
-      updateRow(idx, { animation: { ...row.animation, condition: '' } });
-    } else {
-      const { condition: _c, ...restAnim } = row.animation;
-      onChange(rows.map((r, i) => i === idx ? { ...r, animation: restAnim } : r));
-    }
+  // Render an editable images sub-list (for extra_images or step images).
+  const renderStepImgList = (
+    imgs: string[],
+    onChangeImgs: (list: string[]) => void,
+    label: string,
+    hint?: string,
+  ) => (
+    <div>
+      <label className="block text-[10px] text-slate-500 uppercase mb-0.5">
+        {label}{hint && <span className="normal-case font-normal ml-1 text-slate-400">{hint}</span>}
+      </label>
+      <div className="space-y-1">
+        {imgs.map((img, eidx) => (
+          <div key={eidx} className="flex items-center gap-1">
+            <div className="flex-1 min-w-0">
+              <ImageSelectInput
+                value={img}
+                onChange={v => { const next = [...imgs]; next[eidx] = v; onChangeImgs(next); }}
+                images={images}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => onChangeImgs(imgs.filter((_, i) => i !== eidx))}
+              className="text-red-400 hover:text-red-600 p-0.5 rounded"
+              title="Remove"
+            ><Trash2 size={12} /></button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChangeImgs([...imgs, ''])}
+          className="w-full text-xs text-blue-500 border border-dashed border-blue-200 rounded py-0.5 hover:bg-blue-50 flex items-center justify-center gap-1"
+        ><Plus size={10} /> Add image</button>
+      </div>
+    </div>
+  );
+
+  // Render one animation step's controls.
+  const renderStep = (step: AnimStep, si: number, steps: AnimStep[], updateSteps: (s: AnimStep[]) => void) => {
+    const updateStep = (patch: Partial<AnimStep>) =>
+      updateSteps(steps.map((s, i) => i === si ? { ...s, ...patch } : s));
+    const isMulti = steps.length > 1;
+    return (
+      <div key={si} className={isMulti ? "border border-slate-100 rounded p-2 space-y-1.5" : "space-y-1.5"}>
+        {isMulti && (
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[10px] text-blue-500 uppercase font-semibold">Step {si + 1}</span>
+            <button
+              type="button"
+              onClick={() => updateSteps(steps.filter((_, i) => i !== si))}
+              className="text-red-400 hover:text-red-600 p-0.5 rounded"
+              title="Remove step"
+            ><Trash2 size={12} /></button>
+          </div>
+        )}
+        <div>
+          <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Direction</label>
+          <select
+            value={step.direction}
+            onChange={e => updateStep({ direction: e.target.value })}
+            className="w-full border rounded p-1 text-xs bg-white"
+          >
+            {ANIM_DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Duration (seconds)</label>
+          <input
+            type="number" min={0.5} step={0.5} value={step.duration}
+            onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) updateStep({ duration: v }); }}
+            className="w-full border rounded p-1 text-xs"
+          />
+        </div>
+        {si === 0
+          ? renderStepImgList(
+              step.extra_images || [],
+              list => updateStep({ extra_images: list.length ? list : undefined }),
+              'Cycle through images',
+            )
+          : (() => {
+              const hasImages = (step.images ?? []).some(Boolean);
+              return (
+                <>
+                  {renderStepImgList(
+                    step.images?.length ? step.images : [''],
+                    list => updateStep({ images: list.length ? list : [''] }),
+                    'Images',
+                  )}
+                  {!hasImages && (
+                    <p className="text-[10px] text-red-500 mt-0.5">At least one image is required</p>
+                  )}
+                </>
+              );
+            })()
+        }
+      </div>
+    );
   };
 
   return (
@@ -1019,8 +1122,6 @@ export const ImagesListInput = ({
       {rows.map((row, idx) => {
         const hasCondition = 'condition' in row;
         const hasAnimation = !!row.animation;
-        const animDir = row.animation?.direction || 'left_right';
-        const animDuration = row.animation?.duration ?? 3;
         return (
           <div key={idx} className="border rounded p-2 bg-white">
             <div className="flex items-center justify-between mb-1">
@@ -1034,11 +1135,13 @@ export const ImagesListInput = ({
                 <Trash2 size={12} />
               </button>
             </div>
-            <ImageSelectInput
-              value={row.image}
-              onChange={v => updateRow(idx, { image: v })}
-              images={images}
-            />
+            <div className="mb-2">
+              <ImageSelectInput
+                value={row.image}
+                onChange={v => updateRow(idx, { image: v })}
+                images={images}
+              />
+            </div>
 
             {/* Image-selection condition */}
             <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none mt-1">
@@ -1066,79 +1169,21 @@ export const ImagesListInput = ({
               />
               Animate
             </label>
-            {hasAnimation && (
-              <div className="mt-1 pl-2 border-l-2 border-blue-100 space-y-1.5">
-                <div>
-                  <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Direction</label>
-                  <select
-                    value={animDir}
-                    onChange={e => updateRow(idx, { animation: { ...row.animation!, direction: e.target.value, duration: animDuration } })}
-                    className="w-full border rounded p-1 text-xs bg-white"
-                  >
-                    {ANIM_DIRECTIONS.map(d => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
-                    ))}
-                  </select>
+            {hasAnimation && (() => {
+              const steps = toSteps(row.animation!);
+              const updateSteps = (newSteps: AnimStep[]) =>
+                updateRow(idx, { animation: newSteps.length ? fromSteps(newSteps) : undefined });
+              return (
+                <div className="mt-1 pl-2 border-l-2 border-blue-100 space-y-2">
+                  {steps.map((step, si) => renderStep(step, si, steps, updateSteps))}
+                  <button
+                    type="button"
+                    onClick={() => updateSteps([...steps, { direction: 'left_right', duration: 3 }])}
+                    className="w-full text-xs text-purple-500 border border-dashed border-purple-200 rounded py-0.5 hover:bg-purple-50 flex items-center justify-center gap-1"
+                  ><Plus size={10} /> Add step</button>
                 </div>
-                <div>
-                  <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Duration (seconds)</label>
-                  <input
-                    type="number"
-                    min={0.5}
-                    step={0.5}
-                    value={animDuration}
-                    onChange={e => {
-                      const v = parseFloat(e.target.value);
-                      if (!isNaN(v) && v > 0) {
-                        updateRow(idx, { animation: { ...row.animation!, direction: animDir, duration: v } });
-                      }
-                    }}
-                    className="w-full border rounded p-1 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Cycle through images</label>
-                  <div className="space-y-1">
-                    {(row.animation!.extra_images || []).map((img, eidx) => (
-                      <div key={eidx} className="flex items-center gap-1">
-                        <div className="flex-1">
-                          <ImageSelectInput
-                            value={img}
-                            onChange={v => {
-                              const extras = [...(row.animation!.extra_images || [])];
-                              extras[eidx] = v;
-                              updateRow(idx, { animation: { ...row.animation!, extra_images: extras } });
-                            }}
-                            images={images}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const extras = (row.animation!.extra_images || []).filter((_, i) => i !== eidx);
-                            updateRow(idx, { animation: { ...row.animation!, extra_images: extras.length ? extras : undefined } });
-                          }}
-                          className="text-red-400 hover:text-red-600 p-0.5 rounded"
-                          title="Remove"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const extras = [...(row.animation!.extra_images || []), ''];
-                        updateRow(idx, { animation: { ...row.animation!, extra_images: extras } });
-                      }}
-                      className="w-full text-xs text-blue-500 border border-dashed border-blue-200 rounded py-0.5 hover:bg-blue-50 flex items-center justify-center gap-1"
-                    >
-                      <Plus size={10} /> Add image
-                    </button>
-                  </div>
-                </div>
-                </div>
-            )}
+              );
+            })()}
           </div>
         );
       })}

@@ -74,7 +74,7 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        self.assertIn('new MovePageTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3) { id(arrow).execute(arg0, arg1, arg2, arg3); } }, &id(screen2))', cpp)
+        self.assertIn('new MovePageTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(arrow).execute(arg0, arg1, arg2, arg3, arg4); } }, &id(screen2))', cpp)
         
     def test_move_page_tile_dynamic(self):
         config = {
@@ -101,12 +101,12 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3) { id(btn).execute(arg0, arg1, arg2, arg3); } }, []() { id(press_cb).execute(); })', cpp)
+        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(btn).execute(arg0, arg1, arg2, arg3, arg4); } }, []() { id(press_cb).execute(); })', cpp)
         
         # With on_release
         config["function"]["on_release"] = "release_cb"
         cpp = generate_tile_cpp(config)
-        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3) { id(btn).execute(arg0, arg1, arg2, arg3); } }, []() { id(press_cb).execute(); }, []() { id(release_cb).execute(); })', cpp)
+        self.assertIn('new FunctionTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(btn).execute(arg0, arg1, arg2, arg3, arg4); } }, []() { id(press_cb).execute(); }, []() { id(release_cb).execute(); })', cpp)
 
     def test_toggle_entity_tile(self):
         config = {
@@ -243,6 +243,69 @@ class TestImageAnimation(unittest.TestCase):
 
     def test_fast_refresh_set_when_animated(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'left_right', 'duration': 3}}])
+        self.assertIn('setRequiresFastRefreshFunc', cpp)
+        self.assertIn('return true', cpp)
+
+    # ---- multi-step animation tests ----------------------------------------
+
+    def test_multi_step_two_steps_root_image(self):
+        """Two steps, both using the root image (step 2 has no images override)."""
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'steps': [
+                {'direction': 'left_right', 'duration': 3},
+                {'direction': 'up_down', 'duration': 2},
+            ]
+        }}])
+        # total = 5000ms; lambda required for time dispatch
+        self.assertIn('[=]', cpp)
+        self.assertIn('millis() % 5000U', cpp)
+        self.assertIn('if (_t < 3000U)', cpp)
+        self.assertIn('make_image_draw(&id(img_a), ImageDirection::left_right, 3000U, 5000U, 0U)', cpp)
+        self.assertIn('else', cpp)
+        self.assertIn('make_image_draw(&id(img_a), ImageDirection::up_down, 2000U, 5000U, 3000U)', cpp)
+
+    def test_multi_step_step2_standalone_images(self):
+        """Step 2 has its own standalone images list (no root prepended)."""
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'steps': [
+                {'direction': 'left_right', 'duration': 3, 'extra_images': ['img_b']},
+                {'direction': 'none', 'duration': 4, 'images': ['img_c', 'img_d']},
+            ]
+        }}])
+        self.assertIn('millis() % 7000U', cpp)
+        self.assertIn('make_image_draw({&id(img_a), &id(img_b)}, ImageDirection::left_right, 3000U, 7000U, 0U)', cpp)
+        self.assertIn('make_image_draw({&id(img_c), &id(img_d)}, 4000U, 7000U, 3000U)', cpp)
+
+    def test_multi_step_three_steps_dispatch(self):
+        """Three steps produce correct if/else-if/else time dispatch."""
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'steps': [
+                {'direction': 'left_right', 'duration': 2},
+                {'direction': 'up_down', 'duration': 3},
+                {'direction': 'right_left', 'duration': 1},
+            ]
+        }}])
+        self.assertIn('millis() % 6000U', cpp)
+        self.assertIn('if (_t < 2000U)', cpp)
+        self.assertIn('else if (_t < 5000U)', cpp)
+
+    def test_single_step_in_steps_array_is_bare_expr(self):
+        """A steps array with exactly one entry behaves identically to single-step."""
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'steps': [{'direction': 'left_right', 'duration': 3}]
+        }}])
+        self.assertIn('make_image_draw(&id(img_a), ImageDirection::left_right, 3000U)', cpp)
+        self.assertNotIn('[=]', cpp)
+        self.assertNotIn('millis() % ', cpp)
+
+    def test_multi_step_fast_refresh(self):
+        """Multi-step animation still sets the fast refresh callback."""
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'steps': [
+                {'direction': 'left_right', 'duration': 2},
+                {'direction': 'up_down', 'duration': 2},
+            ]
+        }}])
         self.assertIn('setRequiresFastRefreshFunc', cpp)
         self.assertIn('return true', cpp)
 

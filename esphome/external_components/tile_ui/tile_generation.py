@@ -51,9 +51,17 @@ def compute_image_variants(screens: list) -> dict:
                             img_sizes.setdefault(entry['image'], set()).add((rows, cols))
                         anim = entry.get('animation')
                         if isinstance(anim, dict):
-                            for extra in (anim.get('extra_images') or []):
-                                if extra:
-                                    img_sizes.setdefault(extra, set()).add((rows, cols))
+                            steps = anim.get('steps')
+                            if steps and isinstance(steps, list):
+                                for i, step in enumerate(steps):
+                                    key = 'extra_images' if i == 0 else 'images'
+                                    for img in (step.get(key) or []):
+                                        if img:
+                                            img_sizes.setdefault(img, set()).add((rows, cols))
+                            else:
+                                for extra in (anim.get('extra_images') or []):
+                                    if extra:
+                                        img_sizes.setdefault(extra, set()).add((rows, cols))
 
     variant_id: dict = {}  # (img_id, rows, cols) -> variant_id
     for iid, sizes in img_sizes.items():
@@ -94,15 +102,31 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                         if ne.get('image'):
                             ne['image'] = variant_id.get((ne['image'], rows, cols), ne['image'])
                         anim = ne.get('animation')
-                        if isinstance(anim, dict) and anim.get('extra_images'):
-                            ne['animation'] = {
-                                **anim,
-                                'extra_images': [
-                                    variant_id.get((img, rows, cols), img)
-                                    if isinstance(img, str) else img
-                                    for img in anim['extra_images']
-                                ],
-                            }
+                        if isinstance(anim, dict):
+                            steps = anim.get('steps')
+                            if steps and isinstance(steps, list):
+                                new_steps = []
+                                for i, step in enumerate(steps):
+                                    key = 'extra_images' if i == 0 else 'images'
+                                    imgs = step.get(key)
+                                    if imgs:
+                                        new_steps.append({**step, key: [
+                                            variant_id.get((img, rows, cols), img)
+                                            if isinstance(img, str) else img
+                                            for img in imgs
+                                        ]})
+                                    else:
+                                        new_steps.append(step)
+                                ne['animation'] = {**anim, 'steps': new_steps}
+                            elif anim.get('extra_images'):
+                                ne['animation'] = {
+                                    **anim,
+                                    'extra_images': [
+                                        variant_id.get((img, rows, cols), img)
+                                        if isinstance(img, str) else img
+                                        for img in anim['extra_images']
+                                    ],
+                                }
                         new_entries.append(ne)
                     tdata['images'] = new_entries
     return result
@@ -159,18 +183,24 @@ def _get_animation_fast_refresh(config: dict):
 
 def _build_image_lambda(config: dict, expected_params: list) -> str | None:
     """
-    Return a C++ expression that can be used as a single draw-funcs list entry.
+    Return a C++ expression for use as a single draw-funcs list entry.
 
-    For the no-condition case this is a bare make_image_draw(...) call wrapped in
-    braces: ``{ make_image_draw(...) }``
+    For a single, unconditional, single-step entry this is a bare
+    ``make_image_draw(...)`` call; the caller wraps it in ``{ }`` to form a
+    valid DrawImageFunc initialiser list.
 
-    For the conditional case (multiple images selected by run-time condition) a
-    thin lambda is still required to evaluate the condition, but each branch body
-    is a single ``make_image_draw(...)(arg0,arg1,arg2,arg3,entities)`` call
-    rather than inline millis()/image_slot logic.
+    For multi-step or conditional entries a lambda is returned instead.
+
+    animation formats supported:
+      Single-step (legacy):  { direction, duration, extra_images? }
+      Multi-step:            { steps: [{ direction, duration, extra_images? }   <- step 0
+                                       { direction, duration, images? }          <- steps 1+
+                                       ...] }
+    For step 0: root image + extra_images are cycled together.
+    For steps 1+: 'images' list is used standalone; if omitted, root image is used alone.
 
     Each entry in 'images':
-      { image: <id>, condition?: <expr>, animation?: { direction, duration, extra_images? } }
+      { image: <id>, condition?: <expr>, animation?: <above> }
     """
     images = config.get("images")
     if not images or not isinstance(images, list):
@@ -185,6 +215,8 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         return None
 
     sig = _build_lambda_sig(expected_params)
+    n_params = len(expected_params)
+    args_cpp = ", ".join(f"arg{i}" for i in range(n_params))
     param_types = [p_type for (_, p_type) in expected_params]
 
     has_vec = 'string[]' in param_types
@@ -196,43 +228,112 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
 
     has_any_img_condition = any(e.get("condition") for e in valid_entries)
 
-    _DIRECTION_ENUM = {"left_right": "ImageDirection::left_right", "right_left": "ImageDirection::right_left", "up_down": "ImageDirection::up_down", "down_up": "ImageDirection::down_up"}
+    _DIRECTION_ENUM = {
+        "left_right": "ImageDirection::left_right",
+        "right_left": "ImageDirection::right_left",
+        "up_down": "ImageDirection::up_down",
+        "down_up": "ImageDirection::down_up",
+    }
 
-    def _make_draw_call(entry: dict) -> str:
-        """Return a make_image_draw(...) expression for this entry."""
-        img_id = entry["image"]
-        animation = entry.get("animation") if isinstance(entry, dict) else None
-        if not animation or not isinstance(animation, dict):
-            return f"make_image_draw(&id({img_id}))"
-        direction = animation.get("direction", "left_right")
-        duration_ms = int(float(animation.get("duration", 3)) * 1000)
-        extra_images = list(animation.get("extra_images") or [])
-        all_images = [img_id] + extra_images
+    def _make_draw_call_step(step: dict, root_img_id: str, is_first: bool,
+                              total_ms: int = None, step_start_ms: int = None) -> str:
+        """Return a make_image_draw(...) expression for one animation step."""
+        direction = step.get("direction", "left_right")
+        duration_ms = int(float(step.get("duration", 3)) * 1000)
+        if is_first:
+            extra = list(step.get("extra_images") or [])
+            all_images = [root_img_id] + extra
+        else:
+            imgs = list(step.get("images") or [])
+            all_images = imgs if imgs else [root_img_id]
         n = len(all_images)
+        aligned = total_ms is not None
         if n > 1:
             imgs_cpp = "{" + ", ".join(f"&id({img})" for img in all_images) + "}"
             if direction == "none":
+                if aligned:
+                    return f"make_image_draw({imgs_cpp}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
                 return f"make_image_draw({imgs_cpp}, {duration_ms}U)"
+            dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
+            if aligned:
+                return f"make_image_draw({imgs_cpp}, {dir_enum}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
+            return f"make_image_draw({imgs_cpp}, {dir_enum}, {duration_ms}U)"
+        img = all_images[0]
+        if direction == "none":
+            return f"make_image_draw(&id({img}))"
+        dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
+        if aligned:
+            return f"make_image_draw(&id({img}), {dir_enum}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
+        return f"make_image_draw(&id({img}), {dir_enum}, {duration_ms}U)"
+
+    def _get_steps(entry: dict) -> list:
+        """Return the list of animation steps (always at least 1 element if animated)."""
+        animation = entry.get("animation") if isinstance(entry, dict) else None
+        if not animation or not isinstance(animation, dict):
+            return []
+        steps = animation.get("steps")
+        if steps and isinstance(steps, list) and len(steps) > 0:
+            return steps
+        return [animation]  # single-step: treat the animation dict itself as the one step
+
+    def _make_draw_call(entry: dict) -> str:
+        """Bare make_image_draw(...) expression using the first (or only) step."""
+        img_id = entry["image"]
+        steps = _get_steps(entry)
+        if not steps:
+            return f"make_image_draw(&id({img_id}))"
+        return _make_draw_call_step(steps[0], img_id, True)
+
+    def _entry_dispatch_lines(entry: dict) -> list[str]:
+        """
+        C++ statement lines that perform the full draw for this entry.
+        Single-step entries produce one line; multi-step produce a time-dispatch block.
+        """
+        img_id = entry["image"]
+        steps = _get_steps(entry)
+        if len(steps) <= 1:
+            return [f"{_make_draw_call(entry)}({args_cpp});"]
+        total_ms = sum(int(float(s.get("duration", 3)) * 1000) for s in steps)
+        lines: list[str] = [f"uint32_t _t = millis() % {total_ms}U;"]
+        cumulative = 0
+        kw = "if"
+        for i, step in enumerate(steps):
+            step_start = cumulative
+            cumulative += int(float(step.get("duration", 3)) * 1000)
+            call = _make_draw_call_step(step, img_id, i == 0, total_ms, step_start)
+            if i == len(steps) - 1:
+                lines.append("else")
             else:
-                dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
-                return f"make_image_draw({imgs_cpp}, {dir_enum}, {duration_ms}U)"
-        else:
-            if direction == "none":
-                return f"make_image_draw(&id({img_id}))"
-            else:
-                dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
-                return f"make_image_draw(&id({img_id}), {dir_enum}, {duration_ms}U)"
+                lines.append(f"{kw} (_t < {cumulative}U)")
+                kw = "else if"
+            lines.append(f"  {call}({args_cpp});")
+        return lines
 
     # -----------------------------------------------------------------------
-    # Simple path: single entry with no image-selection condition
+    # Simple path: single entry, no condition
     # -----------------------------------------------------------------------
     if not has_any_img_condition and len(valid_entries) == 1:
-        return _make_draw_call(valid_entries[0])
+        entry = valid_entries[0]
+        if len(_get_steps(entry)) <= 1:
+            return _make_draw_call(entry)  # bare expr; caller wraps in { }
+        # Multi-step requires a lambda so the time dispatch runs each call
+        body = "\n".join(f"  {l}" for l in _entry_dispatch_lines(entry))
+        return f"[=]({sig}) {{\n{body}\n}}"
 
     # -----------------------------------------------------------------------
-    # Conditional path: if/else-if chain selecting the right make_image_draw
-    # A thin lambda is needed to evaluate the run-time condition.
+    # Conditional path: if/else-if chain selecting the right entry at runtime
     # -----------------------------------------------------------------------
+    def _emit_branch_lines(entry: dict, kw_line: str) -> list[str]:
+        dispatch = _entry_dispatch_lines(entry)
+        if len(dispatch) == 1:
+            return [kw_line, f"    {dispatch[0]}"]
+        # Multi-statement block — wrap in braces so _t is scoped
+        lines = [f"{kw_line} {{"]
+        for l in dispatch:
+            lines.append(f"    {l}")
+        lines.append("  }")
+        return lines
+
     branches: list[tuple[str, str, dict]] = []
     keyword = "if"
     fallback_entry = None
@@ -253,13 +354,14 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
 
     body_lines = [entities_binding]
     for kw, expr, entry in branches:
-        body_lines.append(f"  {kw} ({expr})")
-        body_lines.append(f"    {_make_draw_call(entry)}(arg0, arg1, arg2, arg3, entities);")
+        body_lines.extend(_emit_branch_lines(entry, f"  {kw} ({expr})"))
 
     if fallback_entry:
-        body_lines.append("  else" if branches else "")
-        indent = "    " if branches else "  "
-        body_lines.append(f"{indent}{_make_draw_call(fallback_entry)}(arg0, arg1, arg2, arg3, entities);")
+        if branches:
+            body_lines.extend(_emit_branch_lines(fallback_entry, "  else"))
+        else:
+            for l in _entry_dispatch_lines(fallback_entry):
+                body_lines.append(f"  {l}")
 
     return f"[=]({sig}) {{\n" + "\n".join(filter(None, body_lines)) + "\n}"
 
@@ -406,7 +508,7 @@ def generate_title_tile(config, available_scripts, screen_id=None):
 def generate_move_page_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a move page tile."""
     # MovePageTile display: int, int, string, Color, font
-    _display_params = [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int')]
+    _display_params = [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), ('entities', 'string[]')]
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, _display_params)
     display_cpp = _override_display_with_image(display_cpp, config, _display_params)
     
@@ -432,7 +534,7 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
 
 def generate_function_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a function tile."""
-    _display_params = [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int')]
+    _display_params = [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), ('entities', 'string[]')]
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, _display_params)
     display_cpp = _override_display_with_image(display_cpp, config, _display_params)
     

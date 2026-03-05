@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 
 import esphome.config_validation as cv
-from voluptuous import PREVENT_EXTRA, Required, Optional, Schema, All
+from voluptuous import PREVENT_EXTRA, Required, Optional, Schema, All, Any as Vol_Any
 
 # Load schema.json
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.json")
@@ -198,12 +198,34 @@ def get_validator(field_type: str, object_fields: list = None):
         return value
 
     if field_type == 'images_list':
-        # List of {image: str, condition?: str|dict, animation?: {direction, duration, extra_images?}}
-        animation_schema = Schema({
+        # List of {image: str, condition?: str|dict, animation?: single-step or multi-step}
+        animation_step_schema = Schema({
             Required('direction'): _valid_anim_direction,
             Required('duration'): _positive_number,
             Optional('extra_images'): All(list, [non_empty_string]),
+            Optional('images'): All(list, [non_empty_string]),
         }, extra=PREVENT_EXTRA)
+
+        def _validate_steps(steps):
+            for i, step in enumerate(steps):
+                if i > 0:
+                    imgs = step.get('images') or []
+                    if not imgs:
+                        raise cv.Invalid(f"Animation step {i + 1} must have at least one image in 'images'")
+            return steps
+
+        animation_schema = Vol_Any(
+            # single-step (legacy / default)
+            Schema({
+                Required('direction'): _valid_anim_direction,
+                Required('duration'): _positive_number,
+                Optional('extra_images'): All(list, [non_empty_string]),
+            }, extra=PREVENT_EXTRA),
+            # multi-step
+            Schema({
+                Required('steps'): All(list, [animation_step_schema], _validate_steps),
+            }, extra=PREVENT_EXTRA),
+        )
         return All(
             list,
             [Schema({

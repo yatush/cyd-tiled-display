@@ -463,6 +463,35 @@ script:
           }
           id(disp).image(_x, _y, id(image_slot));
 
+  # Like draw_image_anim but takes an explicit frac (0.0–1.0) instead of computing it from millis().
+  # Used by multi-step animations so each step starts exactly from frac=0.
+  - id: draw_image_anim_frac
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      frac: float
+      direction: int
+    then:
+      - lambda: |-
+          if (id(image_slot) == nullptr) return;
+          int _iw = (int)id(image_slot)->get_width();
+          int _ih = (int)id(image_slot)->get_height();
+          int _x, _y;
+          if (direction <= 1) {
+            int _range = std::max(0, (x_end - x_start) - _iw - 10);
+            _x = (direction == 0) ? x_start + 5 + (int)(frac * _range)
+                                   : x_end - _iw - 5 - (int)(frac * _range);
+            _y = (y_start + y_end - _ih) / 2;
+          } else {
+            int _range = std::max(0, (y_end - y_start) - _ih - 10);
+            _x = (x_start + x_end - _iw) / 2;
+            _y = (direction == 2) ? y_start + 5 + (int)(frac * _range)
+                                   : y_end - _ih - 5 - (int)(frac * _range);
+          }
+          id(disp).image(_x, _y, id(image_slot));
+
   - id: tile_blinds_down
     parameters:
       x_start: int

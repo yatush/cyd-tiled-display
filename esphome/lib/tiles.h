@@ -299,7 +299,7 @@ class MovePageTile : public Tile {
 public:
   MovePageTile(
       int x, int y,
-      std::vector<std::function<void(int, int, int, int)>>
+      std::vector<DrawImageFunc>
           draw_funcs,
       esphome::display::DisplayPage* target_display_page)
       : Tile(x, y), draw_funcs_(draw_funcs), target_display_page_(target_display_page) {}
@@ -341,12 +341,12 @@ protected:
   void customDraw() override {
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect());
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), std::vector<std::string>{});
   }
 
 private:
   // Vector of functions to draw the tile.
-  std::vector<std::function<void(int, int, int, int)>> draw_funcs_;
+  std::vector<DrawImageFunc> draw_funcs_;
   // Pointer to the target display page to navigate to.
   esphome::display::DisplayPage* target_display_page_;
   // Vector of dynamic entities associated with the tile.
@@ -358,7 +358,7 @@ class FunctionTile : public Tile {
 public:
   FunctionTile(
       int x, int y,
-      std::vector<std::function<void(int, int, int, int)>>
+      std::vector<DrawImageFunc>
           draw_funcs,
       std::function<void()> on_press,
       std::function<void()> on_release = nullptr)
@@ -380,12 +380,12 @@ protected:
   void customDraw() override {
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect());
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), std::vector<std::string>{});
   }
 
 private:
   // Vector of functions to draw the tile.
-  std::vector<std::function<void(int, int, int, int)>> draw_funcs_;
+  std::vector<DrawImageFunc> draw_funcs_;
   // Pointer to the script to execute when the tile is pressed.
   std::function<void()> on_press_;
   // Pointer to the script to execute when the tile is released.

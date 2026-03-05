@@ -875,3 +875,15 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
             img = entry.get('image')
             if not img or not isinstance(img, str) or not img.strip():
                 raise ValueError(f"{context}: Field '{field_name}' item {idx} must have a non-empty 'image' key")
+            # Validate multi-step animation: each step after step 0 must have images
+            anim = entry.get('animation')
+            if isinstance(anim, dict) and 'steps' in anim:
+                for si, step in enumerate(anim['steps']):
+                    if si == 0:
+                        continue
+                    imgs = step.get('images') if isinstance(step, dict) else None
+                    if not imgs:
+                        raise ValueError(
+                            f"{context}: Field '{field_name}' item {idx} animation step {si + 1} "
+                            f"must have at least one image in 'images'"
+                        )
