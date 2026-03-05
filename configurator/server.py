@@ -1844,6 +1844,9 @@ def get_diff(source_hashes, target_hashes):
     all_files = set(source_hashes.keys()) | set(target_hashes.keys())
     
     for f in sorted(all_files):
+        # Ignore test files — they are dev-only and not deployed to HA
+        if f.startswith('tests/') or f.startswith('tests\\'):
+            continue
         if f not in source_hashes:
             # Ignore PNG files that exist only in the target (they are generated artifacts)
             if f.endswith('.png'):
