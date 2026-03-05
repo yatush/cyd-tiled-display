@@ -31,7 +31,15 @@ screens:
           x: 0
           y: 0
           # tile-specific configuration
+
+images:               # optional — maintained automatically by the Configurator
+  img_my_photo:       # unique ID you reference from tiles
+    filename: my_photo.png
+    type: RGB565      # RGB565 (default) or RGBA (for alpha-transparent PNGs)
+    scale: 80         # 10–100 — percentage of the tile area the image fills
 ```
+
+> **Note:** The `images:` dictionary at the top level is managed automatically by the Configurator's **Images** panel in the left sidebar. You do not need to edit it by hand.
 
 ### Screen Properties
 
@@ -95,6 +103,7 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
           size: TileFonts::MEDIUM
     ```
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
+- **images**: (Optional) See [Images](#images)
 
 ### 2. HA Action Tile (Entity Control)
 
@@ -141,6 +150,7 @@ Displays entity state and performs an action (typically toggle) when pressed.
 - **requires_fast_refresh**: (Optional) Condition (see [Conditions](#conditions) section) determining if fast refresh is needed
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
+- **images**: (Optional) See [Images](#images)
 
 ### 3. Move Page Tile (Navigation)
 
@@ -174,6 +184,7 @@ Navigates to another screen when pressed.
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
+- **images**: (Optional) See [Images](#images)
 
 ### 4. Function Tile (Script Execution)
 
@@ -205,6 +216,7 @@ Calls a script/function when pressed.
   - **Function Arguments**: No parameters passed to the script
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
+- **images**: (Optional) See [Images](#images)
 
 > **Note**: At least one of `on_press` or `on_release` must be specified.
 
@@ -241,6 +253,7 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 - **initially_chosen**: (Optional, default: false) Whether this is the initially selected option
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
+- **images**: (Optional) See [Images](#images)
 
 ### 6. Cycle Entity Tile (Entity Cycling)
 
@@ -283,6 +296,7 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 - **reset_on_leave**: (Optional, default: false) Reset to first option when leaving screen
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
+- **images**: (Optional) See [Images](#images)
 
 ## Entity Formats
 
@@ -405,6 +419,89 @@ dynamic_entry:
 - **dynamic_entry**: (Optional)
   - **dynamic_entity**: *(Required)* Identifier key for the dynamic entity
   - **value**: *(Required)* Entity ID to set for this key. Can be a **comma-separated list** of entities.
+
+### Images
+
+Display one or more images on a tile. Images are uploaded via the Configurator's **Images** section in the left sidebar, where they receive a unique ID (e.g., `img_kitchen`). When `images:` is set on a tile it **replaces** the `display:` scripts — the tile renders the image instead. Tiles with animated images automatically get `requires_fast_refresh` enabled.
+
+#### Static image
+
+```yaml
+- ha_action:
+    x: 0
+    y: 0
+    entities: [light.kitchen]
+    perform: [action_lights]
+    images:
+      - image: img_kitchen
+```
+
+#### Conditional images
+
+Entries are evaluated in order; the first one whose `condition` script returns `true` (or that has no condition) is rendered.
+
+```yaml
+images:
+  - image: img_on
+    condition: light_on_fn   # show when light is on
+  - image: img_off           # fallback — no condition needed
+```
+
+#### Animated image (slide transition)
+
+```yaml
+images:
+  - image: img_a
+    animation:
+      direction: left_right  # none | left_right | right_left | up_down | down_up
+      duration: 0.5          # seconds per cycle step
+      extra_images: [img_b]  # additional images to animate through (optional)
+```
+
+#### Multi-step animation
+
+Define multiple animation phases, each with its own direction, speed, and image set. Step 0 is the entry step for the root image (and its `extra_images`). Steps 1+ each require an `images:` list.
+
+```yaml
+images:
+  - image: img_a
+    animation:
+      steps:
+        - direction: left_right  # step 0: img_a (and extra_images) enter from left
+          duration: 0.5
+          extra_images: [img_b]
+        - direction: up_down     # step 1: img_c enters from top
+          duration: 0.3
+          images: [img_c]        # required for steps 1+
+```
+
+**`images:` field properties:**
+- **image**: *(Required)* ID of an image defined in the global `images:` dictionary.
+- **condition**: (Optional) Condition script (see [Conditions](#conditions)) that must return `true` for this entry to be rendered.
+- **animation**: (Optional) Animate a slide transition between images.
+  - **direction**: *(Required)* Slide direction — `none`, `left_right`, `right_left`, `up_down`, `down_up`.
+  - **duration**: *(Required)* Positive number — seconds per animation step.
+  - **extra_images**: (Optional, single-step only) Additional images to animate through alongside the root image.
+  - **steps**: (Optional, multi-step) List of animation steps. Step 0 may include `extra_images`; steps 1+ must include `images`.
+
+#### Scale
+
+The `scale` property on each entry in the global `images:` dictionary (10–100, default `100`) controls what fraction of the tile area the image occupies. A minimum 5 px padding is always preserved on each side. Scale is set per-image in the Configurator's Images sidebar, not per-tile-reference.
+
+#### `lib/images.yaml`
+
+This file is auto-generated by the Configurator every time you save or compile. It contains ESPHome `image:` declarations with `resize:` values computed from tile dimensions. **Do not edit it manually.**
+
+```yaml
+# Example generated content
+image:
+  - file: images/kitchen.png
+    id: img_kitchen
+    resize: 120x88
+    type: RGB565
+```
+
+When the same image is used across screens with different grid layouts, the system automatically creates separate size-specific variants (e.g., `img_kitchen_r2c2`, `img_kitchen_r3c4`). This is transparent — your YAML always uses the original ID.
 
 ## Conditions
 
