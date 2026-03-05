@@ -140,5 +140,71 @@ class TestApplyImageVariants(unittest.TestCase):
         self.assertEqual(result[0]["tiles"][0]["ha_action"]["images"][0]["image"], "img_a")
 
 
+class TestExtraImagesVariants(unittest.TestCase):
+    """Tests that extra_images inside animation are tracked and substituted."""
+
+    def _screen_with_extra(self, sid, rows, cols, main_img, extra_imgs):
+        return {"id": sid, "rows": rows, "cols": cols, "tiles": [{
+            "ha_action": {"x": 0, "y": 0, "images": [{
+                "image": main_img,
+                "animation": {"direction": "left_right", "duration": 3, "extra_images": extra_imgs},
+            }]}
+        }]}
+
+    def test_extra_images_collected_for_variants(self):
+        """extra_images inside animation are included in variant computation."""
+        screens = [
+            self._screen_with_extra("p1", 2, 2, "img_a", ["img_b"]),
+            self._screen_with_extra("p2", 3, 3, "img_a", ["img_b"]),
+        ]
+        vmap = compute_image_variants(screens)
+        # Both img_a and img_b appear on two layouts → get suffixes
+        self.assertIn(("img_a", 2, 2), vmap)
+        self.assertIn(("img_a", 3, 3), vmap)
+        self.assertIn(("img_b", 2, 2), vmap)
+        self.assertIn(("img_b", 3, 3), vmap)
+        self.assertEqual(vmap[("img_b", 2, 2)], "img_b_r2c2")
+        self.assertEqual(vmap[("img_b", 3, 3)], "img_b_r3c3")
+
+    def test_extra_images_single_layout_no_suffix(self):
+        """extra_images on a single layout keep their original IDs."""
+        screens = [self._screen_with_extra("p1", 2, 2, "img_a", ["img_b", "img_c"])]
+        vmap = compute_image_variants(screens)
+        self.assertEqual(vmap.get(("img_b", 2, 2)), "img_b")
+        self.assertEqual(vmap.get(("img_c", 2, 2)), "img_c")
+
+    def test_apply_substitutes_extra_images(self):
+        """apply_image_variants rewrites extra_images with variant IDs."""
+        screens = [
+            self._screen_with_extra("p1", 2, 2, "img_a", ["img_b"]),
+            self._screen_with_extra("p2", 3, 3, "img_a", ["img_b"]),
+        ]
+        vmap = compute_image_variants(screens)
+        result = apply_image_variants(screens, vmap)
+        anim_p1 = result[0]["tiles"][0]["ha_action"]["images"][0]["animation"]
+        anim_p2 = result[1]["tiles"][0]["ha_action"]["images"][0]["animation"]
+        self.assertEqual(anim_p1["extra_images"], ["img_b_r2c2"])
+        self.assertEqual(anim_p2["extra_images"], ["img_b_r3c3"])
+
+    def test_apply_preserves_extra_images_single_layout(self):
+        """Single-layout extra_images are kept with original IDs after apply."""
+        screens = [self._screen_with_extra("p1", 2, 2, "img_a", ["img_b"])]
+        vmap = compute_image_variants(screens)
+        result = apply_image_variants(screens, vmap)
+        anim = result[0]["tiles"][0]["ha_action"]["images"][0]["animation"]
+        self.assertEqual(anim["extra_images"], ["img_b"])
+
+    def test_apply_does_not_mutate_originals(self):
+        """Original screens are not mutated when extra_images are substituted."""
+        screens = [
+            self._screen_with_extra("p1", 2, 2, "img_a", ["img_b"]),
+            self._screen_with_extra("p2", 3, 3, "img_a", ["img_b"]),
+        ]
+        vmap = compute_image_variants(screens)
+        apply_image_variants(screens, vmap)
+        orig_anim = screens[0]["tiles"][0]["ha_action"]["images"][0]["animation"]
+        self.assertEqual(orig_anim["extra_images"], ["img_b"])  # unchanged
+
+
 if __name__ == "__main__":
     unittest.main()

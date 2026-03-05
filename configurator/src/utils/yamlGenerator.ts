@@ -67,15 +67,20 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
         // Transform condition logic inside images entries
         if (Array.isArray(tile.images)) {
             tile.images = tile.images.map((entry: any) => {
-                if (entry && entry.condition != null && entry.condition !== '') {
-                    return { ...entry, condition: transformConditionLogic(entry.condition) };
+                if (!entry) return entry;
+                let result = { ...entry };
+
+                // Transform image-selection condition
+                if (result.condition != null && result.condition !== '') {
+                    result.condition = transformConditionLogic(result.condition);
+                } else if ('condition' in result && (result.condition == null || result.condition === '')) {
+                    const { condition: _c, ...rest } = result;
+                    result = rest;
                 }
-                // No condition key or empty — strip it from output
-                if (entry && 'condition' in entry && (entry.condition == null || entry.condition === '')) {
-                    const { condition: _c, ...rest } = entry;
-                    return rest;
-                }
-                return entry;
+
+
+
+                return result;
             });
         }
 

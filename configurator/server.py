@@ -1769,6 +1769,7 @@ def toolchain_cancel():
         pass
     return jsonify({'status': 'cancelled', 'killed': killed})
 
+@app.route('/api/schema', methods=['GET'])
 def get_schema():
     schema_path = os.path.join(APP_DIR, 'esphome/external_components/tile_ui/schema.json')
     if os.path.exists(schema_path):

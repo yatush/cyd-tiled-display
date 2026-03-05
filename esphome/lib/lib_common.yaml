@@ -93,6 +93,10 @@ globals:
     type: std::map<std::string, esphome::homeassistant::HomeassistantTextSensor* >
   - id: entities_map
     type: std::map<const std::string*, std::set<const std::string*>>
+  - id: image_slot
+    type: esphome::image::Image*
+    initial_value: "nullptr"
+    # Internal slot used to pass an image to draw_image_* scripts. Do not modify manually.
 
 # This is now standard RGB
 color:
@@ -412,6 +416,53 @@ script:
             PerformHaAction(blind, up ? STOP_COVER : OPEN_COVER);
           }
  
+  # ---------------------------------------------------------------------------
+  # Image drawing helpers — called from generated tile display lambdas.
+  # The lambda sets id(image_slot) then calls the appropriate script.
+  # ---------------------------------------------------------------------------
+
+  - id: draw_image_static
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+    then:
+      - lambda: |-
+          if (id(image_slot) == nullptr) return;
+          int _iw = (int)id(image_slot)->get_width();
+          int _ih = (int)id(image_slot)->get_height();
+          id(disp).image((x_start + x_end - _iw) / 2, (y_start + y_end - _ih) / 2, id(image_slot));
+
+  # direction: 0=left_right  1=right_left  2=up_down  3=down_up
+  - id: draw_image_anim
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      duration_ms: int
+      direction: int
+    then:
+      - lambda: |-
+          if (id(image_slot) == nullptr) return;
+          int _iw = (int)id(image_slot)->get_width();
+          int _ih = (int)id(image_slot)->get_height();
+          float _frac = fmodf(millis() / (float)duration_ms, 1.0f);
+          int _x, _y;
+          if (direction <= 1) {
+            int _range = std::max(0, (x_end - x_start) - _iw - 10);
+            _x = (direction == 0) ? x_start + 5 + (int)(_frac * _range)
+                                   : x_end - _iw - 5 - (int)(_frac * _range);
+            _y = (y_start + y_end - _ih) / 2;
+          } else {
+            int _range = std::max(0, (y_end - y_start) - _ih - 10);
+            _x = (x_start + x_end - _iw) / 2;
+            _y = (direction == 2) ? y_start + 5 + (int)(_frac * _range)
+                                   : y_end - _ih - 5 - (int)(_frac * _range);
+          }
+          id(disp).image(_x, _y, id(image_slot));
+
   - id: tile_blinds_down
     parameters:
       x_start: int

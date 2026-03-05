@@ -186,13 +186,30 @@ def get_validator(field_type: str, object_fields: list = None):
         )
     if field_type == 'condition_logic':
         return cv.Any(dict, non_empty_string)
+    def _valid_anim_direction(value):
+        valid = ('none', 'left_right', 'right_left', 'up_down', 'down_up')
+        if value not in valid:
+            raise cv.Invalid(f"animation direction must be one of {valid}, got '{value}'")
+        return value
+
+    def _positive_number(value):
+        if not isinstance(value, (int, float)) or value <= 0:
+            raise cv.Invalid(f"duration must be a positive number, got {value}")
+        return value
+
     if field_type == 'images_list':
-        # List of {image: str, condition?: str|dict}
+        # List of {image: str, condition?: str|dict, animation?: {direction, duration, extra_images?}}
+        animation_schema = Schema({
+            Required('direction'): _valid_anim_direction,
+            Required('duration'): _positive_number,
+            Optional('extra_images'): All(list, [non_empty_string]),
+        }, extra=PREVENT_EXTRA)
         return All(
             list,
             [Schema({
                 Required('image'): non_empty_string,
                 Optional('condition'): cv.Any(dict, non_empty_string, str),
+                Optional('animation'): animation_schema,
             }, extra=PREVENT_EXTRA)]
         )
     if field_type in ('image_select', 'state_image_map'):

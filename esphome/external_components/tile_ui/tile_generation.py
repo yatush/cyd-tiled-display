@@ -1,4 +1,4 @@
-﻿"""Tile generation functions - converts YAML tile configs to C++ code."""
+"""Tile generation functions - converts YAML tile configs to C++ code."""
 import copy
 from typing import Any
 
@@ -46,8 +46,14 @@ def compute_image_variants(screens: list) -> dict:
                 if not isinstance(tdata, dict):
                     continue
                 for entry in (tdata.get('images') or []):
-                    if isinstance(entry, dict) and entry.get('image'):
-                        img_sizes.setdefault(entry['image'], set()).add((rows, cols))
+                    if isinstance(entry, dict):
+                        if entry.get('image'):
+                            img_sizes.setdefault(entry['image'], set()).add((rows, cols))
+                        anim = entry.get('animation')
+                        if isinstance(anim, dict):
+                            for extra in (anim.get('extra_images') or []):
+                                if extra:
+                                    img_sizes.setdefault(extra, set()).add((rows, cols))
 
     variant_id: dict = {}  # (img_id, rows, cols) -> variant_id
     for iid, sizes in img_sizes.items():
@@ -79,11 +85,26 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                     continue
                 timages = tdata.get('images')
                 if isinstance(timages, list):
-                    tdata['images'] = [
-                        {**e, 'image': variant_id.get((e['image'], rows, cols), e['image'])}
-                        if isinstance(e, dict) and e.get('image') else e
-                        for e in timages
-                    ]
+                    new_entries = []
+                    for e in timages:
+                        if not isinstance(e, dict):
+                            new_entries.append(e)
+                            continue
+                        ne = dict(e)
+                        if ne.get('image'):
+                            ne['image'] = variant_id.get((ne['image'], rows, cols), ne['image'])
+                        anim = ne.get('animation')
+                        if isinstance(anim, dict) and anim.get('extra_images'):
+                            ne['animation'] = {
+                                **anim,
+                                'extra_images': [
+                                    variant_id.get((img, rows, cols), img)
+                                    if isinstance(img, str) else img
+                                    for img in anim['extra_images']
+                                ],
+                            }
+                        new_entries.append(ne)
+                    tdata['images'] = new_entries
     return result
 
 # ---------------------------------------------------------------------------
@@ -111,98 +132,150 @@ def _build_lambda_sig(expected_params) -> str:
     return ", ".join(args)
 
 
-def _build_image_lambda(config: dict, expected_params: list) -> str | None:
+def _get_animation_fast_refresh(config: dict):
     """
-    Return a raw C++ lambda string that draws an image (or condition-based image)
-    centred within the tile bounds.  Returns None when 'images' is absent.
+    Derive a requires_fast_refresh value from animation settings in the images list.
 
-    'images' (list): each entry is {image: <img_id>, condition?: <condition_expr>}.
-        Entries are evaluated in order; first matching condition wins.
-        An entry without 'condition' is an unconditional fallback (drawn always,
-        treated as the final 'else' clause).
+    Returns:
+      None – no animation entries
+      True – at least one animation entry (always fast-refresh)
     """
     images = config.get("images")
     if not images or not isinstance(images, list):
-        # Legacy single-image fallback (old 'image' key)
+        return None
+
+    has_animation = False
+
+    for entry in images:
+        if not isinstance(entry, dict):
+            continue
+        animation = entry.get("animation")
+        if animation and isinstance(animation, dict):
+            has_animation = True
+            break
+
+    return True if has_animation else None
+
+
+def _build_image_lambda(config: dict, expected_params: list) -> str | None:
+    """
+    Return a C++ lambda that sets id(image_slot) and calls one of the
+    draw_image_* YAML scripts defined in lib_common.yaml.
+
+    Each entry in 'images':
+      { image: <id>, condition?: <expr>, animation?: { direction, duration } }
+    """
+    images = config.get("images")
+    if not images or not isinstance(images, list):
         legacy_image = config.get("image")
         if legacy_image:
             images = [{"image": legacy_image}]
         else:
             return None
 
-    # Filter out entries missing an image id
-    valid_entries = [e for e in images if e.get("image")]
+    valid_entries = [e for e in images if isinstance(e, dict) and e.get("image")]
     if not valid_entries:
         return None
 
     sig = _build_lambda_sig(expected_params)
     param_types = [p_type for (_, p_type) in expected_params]
 
-    # Determine how to bind 'entities' so condition scripts can call execute(entities).
     has_vec = 'string[]' in param_types
     if has_vec:
         vec_idx = param_types.index('string[]')
-        entities_binding = f"const std::vector<std::string>& entities = arg{vec_idx};"
+        entities_binding = f"  const std::vector<std::string>& entities = arg{vec_idx};"
     else:
-        entities_binding = "const std::vector<std::string> entities{};"
+        entities_binding = "  const std::vector<std::string> entities{};"
 
-    draw_snippet = (
-        "  if (_img != nullptr) {\n"
-        "    int _iw = (int)_img->get_width();\n"
-        "    int _ih = (int)_img->get_height();\n"
-        "    id(disp).image((arg0 + arg1 - _iw) / 2, (arg2 + arg3 - _ih) / 2, _img);\n"
-        "  }"
-    )
+    has_any_img_condition = any(e.get("condition") for e in valid_entries)
+    needs_entities = has_any_img_condition
 
-    has_any_condition = any(e.get("condition") for e in valid_entries)
+    def _draw_lines(entry: dict, indent: str) -> list[str]:
+        """Lines that set image_slot and call the right draw script."""
+        img_id = entry["image"]
+        animation = entry.get("animation") if isinstance(entry, dict) else None
+        if not animation or not isinstance(animation, dict):
+            return [
+                f"{indent}id(image_slot) = &id({img_id});",
+                f"{indent}id(draw_image_static).execute(arg0, arg1, arg2, arg3);",
+            ]
+        _DIRECTION_INT = {"left_right": 0, "right_left": 1, "up_down": 2, "down_up": 3}
+        direction = animation.get("direction", "left_right")
+        duration_ms = int(float(animation.get("duration", 3)) * 1000)
+        extra_images = list(animation.get("extra_images") or [])
+        all_images = [img_id] + extra_images
+        n = len(all_images)
+        if n > 1:
+            per_ms = duration_ms // n
+            lines = [f"{indent}{{"]  # open block
+            lines.append(f"{indent}  uint32_t _per_ms = {per_ms}U;")
+            lines.append(f"{indent}  int _idx = (int)((millis() / _per_ms) % {n}U);")
+            for i, img in enumerate(all_images[:-1]):
+                kw = "if" if i == 0 else "else if"
+                lines.append(f"{indent}  {kw} (_idx == {i}) id(image_slot) = &id({img});")
+            lines.append(f"{indent}  else id(image_slot) = &id({all_images[-1]});")
+            if direction == "none":
+                lines.append(f"{indent}  id(draw_image_static).execute(arg0, arg1, arg2, arg3);")
+            else:
+                dir_int = _DIRECTION_INT.get(direction, 0)
+                lines.append(f"{indent}  id(draw_image_anim).execute(arg0, arg1, arg2, arg3, {duration_ms}, {dir_int});")
+            lines.append(f"{indent}}}")
+        else:
+            lines = [f"{indent}id(image_slot) = &id({img_id});"]
+            if direction == "none":
+                lines.append(f"{indent}id(draw_image_static).execute(arg0, arg1, arg2, arg3);")
+            else:
+                dir_int = _DIRECTION_INT.get(direction, 0)
+                lines.append(f"{indent}id(draw_image_anim).execute(arg0, arg1, arg2, arg3, {duration_ms}, {dir_int});")
+        return lines
 
     # -----------------------------------------------------------------------
-    # Single unconditional entry — optimised static draw
+    # Simple path: single entry with no image-selection condition
     # -----------------------------------------------------------------------
-    if not has_any_condition and len(valid_entries) == 1:
-        img_id = valid_entries[0]["image"]
-        body = (
-            f"  auto& _img = id({img_id});\n"
-            f"  int _iw = (int)_img.get_width();\n"
-            f"  int _ih = (int)_img.get_height();\n"
-            f"  id(disp).image((arg0 + arg1 - _iw) / 2, (arg2 + arg3 - _ih) / 2, &_img);"
-        )
-        return f"[=]({sig}) {{\n{body}\n}}"
+    if not has_any_img_condition and len(valid_entries) == 1:
+        body_lines = []
+        if needs_entities:
+            body_lines.append(entities_binding)
+        body_lines.extend(_draw_lines(valid_entries[0], "  "))
+        return f"[=]({sig}) {{\n" + "\n".join(body_lines) + "\n}"
 
     # -----------------------------------------------------------------------
-    # if / else-if chain; first unconditional entry becomes the final else
+    # if / else-if chain for image selection
     # -----------------------------------------------------------------------
-    cond_parts = []
+    branches: list[tuple[str, str, dict]] = []
     keyword = "if"
-    fallback_img = None
+    fallback_entry = None
 
     for entry in valid_entries:
-        img_id = entry["image"]
         cond_expr = entry.get("condition")
         if not cond_expr:
-            # First unconditional entry = catch-all else
-            fallback_img = img_id
+            fallback_entry = entry
             break
         expr = build_expression(cond_expr)
         if not expr:
             continue
-        cond_parts.append(f"  {keyword} ({expr}) {{ _img = &id({img_id}); }}")
+        branches.append((keyword, expr, entry))
         keyword = "else if"
 
-    if not cond_parts and fallback_img is None:
+    if not branches and fallback_entry is None:
         return None
 
     body_lines = []
-    if has_any_condition:
-        body_lines.append(f"  {entities_binding}")
-    body_lines.append("  esphome::image::Image* _img = nullptr;")
-    body_lines.extend(cond_parts)
-    if fallback_img:
-        body_lines.append(f"  else {{ _img = &id({fallback_img}); }}")
-    body_lines.append(draw_snippet)
+    if needs_entities:
+        body_lines.append(entities_binding)
 
-    body = "\n".join(body_lines)
-    return f"[=]({sig}) {{\n{body}\n}}"
+    for kw, expr, entry in branches:
+        body_lines.append(f"  {kw} ({expr}) {{")
+        body_lines.extend(_draw_lines(entry, "    "))
+        body_lines.append("  }")
+
+    if fallback_entry:
+        body_lines.append("  else {" if branches else "")
+        body_lines.extend(_draw_lines(fallback_entry, "    " if branches else "  "))
+        if branches:
+            body_lines.append("  }")
+
+    return f"[=]({sig}) {{\n" + "\n".join(filter(None, body_lines)) + "\n}"
 
 
 def _override_display_with_image(display_cpp: str, config: dict, expected_params: list) -> str:
@@ -258,7 +331,10 @@ def generate_action_tile(config, available_scripts, screen_id=None):
     perform = config.get("perform", [])
     location_perform = config.get("location_perform", [])
     display_page = config.get("display_page_if_no_entity", None)
-    requires_fast_refresh = config.get("requires_fast_refresh", None)
+    requires_fast_refresh = (
+        config["requires_fast_refresh"] if "requires_fast_refresh" in config
+        else _get_animation_fast_refresh(config)
+    )
     
     if display_page:
         has_dynamic_entity = False
@@ -323,7 +399,10 @@ def generate_title_tile(config, available_scripts, screen_id=None):
     entities_config = config.get("entities", "")
     entity_values = format_entity_value(entities_config)
     entity_cpp = format_entity_cpp(entity_values)
-    requires_fast_refresh = config.get("requires_fast_refresh", None)
+    requires_fast_refresh = (
+        config["requires_fast_refresh"] if "requires_fast_refresh" in config
+        else _get_animation_fast_refresh(config)
+    )
     
     tile_cpp = f'new TitleTile({x}, {y}, {display_cpp}, {entity_cpp})'
     

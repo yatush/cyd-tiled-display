@@ -171,5 +171,85 @@ class TestTileGeneration(unittest.TestCase):
         cpp = generate_tile_cpp(config)
         self.assertIn('->setActivationVar("state", {"on", "off"})', cpp)
 
+class TestImageAnimation(unittest.TestCase):
+    """Tests for animation in image tiles (direction=none, extra_images, etc.)"""
+
+    def setUp(self):
+        self.scripts = {'act': {'parameters': {'entities': 'string[]'}}}
+        self.base = {'x': 0, 'y': 0, 'entities': [{'entity': 'e1'}], 'perform': ['act']}
+
+    def _generate(self, images):
+        from tile_ui.tile_generation import generate_action_tile
+        config = {**self.base, 'images': images}
+        return generate_action_tile(config, self.scripts, 's')
+
+    def test_no_animation_uses_static(self):
+        cpp = self._generate([{'image': 'img_a'}])
+        self.assertIn('id(image_slot) = &id(img_a)', cpp)
+        self.assertIn('id(draw_image_static).execute(arg0, arg1, arg2, arg3)', cpp)
+        self.assertNotIn('draw_image_anim', cpp)
+
+    def test_direction_none_single_image(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'none', 'duration': 3}}])
+        self.assertIn('id(image_slot) = &id(img_a)', cpp)
+        self.assertIn('id(draw_image_static).execute(arg0, arg1, arg2, arg3)', cpp)
+        self.assertNotIn('draw_image_anim', cpp)
+        self.assertNotIn('_idx', cpp)
+
+    def test_direction_set_calls_anim(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'left_right', 'duration': 3}}])
+        self.assertIn('id(draw_image_anim).execute(arg0, arg1, arg2, arg3, 3000, 0)', cpp)
+        self.assertNotIn('draw_image_static', cpp)
+
+    def test_direction_right_left_integer(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'right_left', 'duration': 2}}])
+        self.assertIn(', 2000, 1)', cpp)
+
+    def test_direction_up_down_integer(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'up_down', 'duration': 1}}])
+        self.assertIn(', 1000, 2)', cpp)
+
+    def test_direction_down_up_integer(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'down_up', 'duration': 1}}])
+        self.assertIn(', 1000, 3)', cpp)
+
+    def test_extra_images_none_direction_cycles_static(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'direction': 'none', 'duration': 6, 'extra_images': ['img_b', 'img_c']
+        }}])
+        # per_ms = 6000 // 3 = 2000
+        self.assertIn('uint32_t _per_ms = 2000U', cpp)
+        self.assertIn('(millis() / _per_ms) % 3U', cpp)
+        self.assertIn('if (_idx == 0) id(image_slot) = &id(img_a)', cpp)
+        self.assertIn('else if (_idx == 1) id(image_slot) = &id(img_b)', cpp)
+        self.assertIn('else id(image_slot) = &id(img_c)', cpp)
+        self.assertIn('draw_image_static', cpp)
+        self.assertNotIn('draw_image_anim', cpp)
+
+    def test_extra_images_directional_cycles_animated(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'direction': 'left_right', 'duration': 6, 'extra_images': ['img_b', 'img_c']
+        }}])
+        self.assertIn('uint32_t _per_ms = 2000U', cpp)
+        self.assertIn('(millis() / _per_ms) % 3U', cpp)
+        # draw_image_anim called with total duration_ms (6000), not per_ms — one movement cycle total
+        self.assertIn('id(draw_image_anim).execute(arg0, arg1, arg2, arg3, 6000, 0)', cpp)
+        self.assertNotIn(', 2000, 0)', cpp)
+
+    def test_extra_images_two_images(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'direction': 'left_right', 'duration': 4, 'extra_images': ['img_b']
+        }}])
+        # per_ms = 4000 // 2 = 2000
+        self.assertIn('uint32_t _per_ms = 2000U', cpp)
+        self.assertIn('(millis() / _per_ms) % 2U', cpp)
+        self.assertIn('if (_idx == 0) id(image_slot) = &id(img_a)', cpp)
+        self.assertIn('else id(image_slot) = &id(img_b)', cpp)
+
+    def test_fast_refresh_set_when_animated(self):
+        cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'left_right', 'duration': 3}}])
+        self.assertIn('setRequiresFastRefreshFunc', cpp)
+        self.assertIn('return true', cpp)
+
 if __name__ == '__main__':
     unittest.main()

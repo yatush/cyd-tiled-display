@@ -945,23 +945,31 @@ export const ImageManagerPanel = ({
 };
 
 // ---- ImagesListInput --------------------------------------------------------
-// Unified list of images, each with an optional condition.
-// Value: Array<{ image: string; condition?: any }>
+// Unified list of images, each with an optional condition and optional animation.
+// Value: Array<{ image: string; condition?: any; animation?: { direction: string; duration: number; extra_images?: string[] } }>
 // Entries are evaluated in order; first matching condition wins.
 // An entry without a condition is an unconditional fallback.
+
+const ANIM_DIRECTIONS = [
+  { value: 'none',       label: '○ None (static swap)' },
+  { value: 'left_right', label: '→ Left to Right' },
+  { value: 'right_left', label: '← Right to Left' },
+  { value: 'up_down',    label: '↓ Top to Bottom' },
+  { value: 'down_up',    label: '↑ Bottom to Top' },
+] as const;
 
 export const ImagesListInput = ({
   value,
   onChange,
   images,
 }: {
-  value: Array<{ image: string; condition?: any }>;
-  onChange: (v: Array<{ image: string; condition?: any }>) => void;
+  value: Array<{ image: string; condition?: any; animation?: { direction: string; duration: number; extra_images?: string[] } }>;
+  onChange: (v: Array<{ image: string; condition?: any; animation?: { direction: string; duration: number; extra_images?: string[] } }>) => void;
   images: Record<string, ImageEntry>;
 }) => {
   const rows = Array.isArray(value) ? value : [];
 
-  const updateRow = (idx: number, patch: Partial<{ image: string; condition?: any }>) => {
+  const updateRow = (idx: number, patch: Partial<typeof rows[0]>) => {
     onChange(rows.map((r, i) => i === idx ? { ...r, ...patch } : r));
   };
 
@@ -971,9 +979,28 @@ export const ImagesListInput = ({
     if (checked) {
       updateRow(idx, { condition: '' });
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { condition: _c, ...rest } = rows[idx];
       onChange(rows.map((r, i) => i === idx ? rest : r));
+    }
+  };
+
+  const toggleAnimation = (idx: number, checked: boolean) => {
+    if (checked) {
+      updateRow(idx, { animation: { direction: 'left_right', duration: 3 } });
+    } else {
+      const { animation: _a, ...rest } = rows[idx];
+      onChange(rows.map((r, i) => i === idx ? rest : r));
+    }
+  };
+
+  const toggleAnimCondition = (idx: number, checked: boolean) => {
+    const row = rows[idx];
+    if (!row.animation) return;
+    if (checked) {
+      updateRow(idx, { animation: { ...row.animation, condition: '' } });
+    } else {
+      const { condition: _c, ...restAnim } = row.animation;
+      onChange(rows.map((r, i) => i === idx ? { ...r, animation: restAnim } : r));
     }
   };
 
@@ -981,6 +1008,9 @@ export const ImagesListInput = ({
     <div className="space-y-2">
       {rows.map((row, idx) => {
         const hasCondition = 'condition' in row;
+        const hasAnimation = !!row.animation;
+        const animDir = row.animation?.direction || 'left_right';
+        const animDuration = row.animation?.duration ?? 3;
         return (
           <div key={idx} className="border rounded p-2 bg-white">
             <div className="flex items-center justify-between mb-1">
@@ -999,6 +1029,8 @@ export const ImagesListInput = ({
               onChange={v => updateRow(idx, { image: v })}
               images={images}
             />
+
+            {/* Image-selection condition */}
             <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none mt-1">
               <input
                 type="checkbox"
@@ -1012,6 +1044,90 @@ export const ImagesListInput = ({
               <div className="mt-1">
                 <ConditionBuilder value={row.condition} onChange={v => updateRow(idx, { condition: v })} />
               </div>
+            )}
+
+            {/* Animation */}
+            <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none mt-2">
+              <input
+                type="checkbox"
+                checked={hasAnimation}
+                onChange={e => toggleAnimation(idx, e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Animate
+            </label>
+            {hasAnimation && (
+              <div className="mt-1 pl-2 border-l-2 border-blue-100 space-y-1.5">
+                <div>
+                  <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Direction</label>
+                  <select
+                    value={animDir}
+                    onChange={e => updateRow(idx, { animation: { ...row.animation!, direction: e.target.value, duration: animDuration } })}
+                    className="w-full border rounded p-1 text-xs bg-white"
+                  >
+                    {ANIM_DIRECTIONS.map(d => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Duration (seconds)</label>
+                  <input
+                    type="number"
+                    min={0.5}
+                    step={0.5}
+                    value={animDuration}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v > 0) {
+                        updateRow(idx, { animation: { ...row.animation!, direction: animDir, duration: v } });
+                      }
+                    }}
+                    className="w-full border rounded p-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Cycle through images</label>
+                  <div className="space-y-1">
+                    {(row.animation!.extra_images || []).map((img, eidx) => (
+                      <div key={eidx} className="flex items-center gap-1">
+                        <div className="flex-1">
+                          <ImageSelectInput
+                            value={img}
+                            onChange={v => {
+                              const extras = [...(row.animation!.extra_images || [])];
+                              extras[eidx] = v;
+                              updateRow(idx, { animation: { ...row.animation!, extra_images: extras } });
+                            }}
+                            images={images}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const extras = (row.animation!.extra_images || []).filter((_, i) => i !== eidx);
+                            updateRow(idx, { animation: { ...row.animation!, extra_images: extras.length ? extras : undefined } });
+                          }}
+                          className="text-red-400 hover:text-red-600 p-0.5 rounded"
+                          title="Remove"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const extras = [...(row.animation!.extra_images || []), ''];
+                        updateRow(idx, { animation: { ...row.animation!, extra_images: extras } });
+                      }}
+                      className="w-full text-xs text-blue-500 border border-dashed border-blue-200 rounded py-0.5 hover:bg-blue-50 flex items-center justify-center gap-1"
+                    >
+                      <Plus size={10} /> Add image
+                    </button>
+                  </div>
+                </div>
+                </div>
             )}
           </div>
         );

@@ -65,10 +65,17 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
             // Transform condition logic in images entries back to internal format
             if (Array.isArray(props.images)) {
                 props.images = props.images.map((entry: any) => {
-                    if (entry && entry.condition != null) {
-                        return { ...entry, condition: transformConditionLogicReverse(entry.condition) };
+                    if (!entry) return entry;
+                    let result = { ...entry };
+
+                    // Reverse-transform image-selection condition
+                    if (result.condition != null) {
+                        result.condition = transformConditionLogicReverse(result.condition);
                     }
-                    return entry;
+
+
+
+                    return result;
                 });
             }
 

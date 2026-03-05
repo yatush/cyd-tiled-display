@@ -243,6 +243,8 @@ def build_expression(expression_config, context=None):
 
 def build_fast_refresh_lambda(requires_fast_refresh, context=None):
     """Build C++ lambda for setRequiresFastRefreshFunc."""
+    if requires_fast_refresh is True:
+        return "[](std::vector<std::string>) -> bool { return true; }"
     expression = build_expression(requires_fast_refresh, context)
     if expression:
          return f"[](std::vector<std::string> entities) -> bool {{ return {expression}; }}"
