@@ -1843,9 +1843,15 @@ def get_diff(source_hashes, target_hashes):
     diff = []
     all_files = set(source_hashes.keys()) | set(target_hashes.keys())
     
+    # Generated/temp files that should never appear in the diff
+    _IGNORED_FILES = {'test_device_tiles.yaml'}
+
     for f in sorted(all_files):
         # Ignore test files — they are dev-only and not deployed to HA
         if f.startswith('tests/') or f.startswith('tests\\'):
+            continue
+        # Ignore generated artifacts
+        if os.path.basename(f) in _IGNORED_FILES:
             continue
         if f not in source_hashes:
             # Ignore PNG files that exist only in the target (they are generated artifacts)

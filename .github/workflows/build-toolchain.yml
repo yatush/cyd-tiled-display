@@ -160,6 +160,9 @@ jobs:
                 -s font_text_big_bold 40 -s font_text_small 18 \
                 compile lib/emulator.yaml || true
 
+              # clean up the temporary tiles file written by prepare_precache.py
+              rm -f /app/esphome/lib/test_device_tiles.yaml
+
               # marker consumed by toolchain_setup.py to skip local warming
               touch /root/.platformio/.ccache/.cyd_warmed
               ccache --show-stats || true

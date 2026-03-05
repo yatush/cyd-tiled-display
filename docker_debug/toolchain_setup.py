@@ -352,10 +352,15 @@ def maybe_warm_cache() -> None:
     _compile('480\u00d7320 (3248s035)', 97,
              480, 320, 32, 60, 80, 100, 30, 30, 40, 18)
 
-    # Step 4 — restore images.yaml to empty placeholder.
+    # Step 4 — restore images.yaml to empty placeholder and remove the
+    #           temporary test_device_tiles.yaml.
     try:
         with open(os.path.join(ESPHOME_DIR, 'lib', 'images.yaml'), 'w') as f:
             f.write('# no images\n')
+    except OSError:
+        pass
+    try:
+        os.remove(os.path.join(ESPHOME_DIR, 'lib', 'test_device_tiles.yaml'))
     except OSError:
         pass
 
