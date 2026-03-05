@@ -133,6 +133,23 @@ fi
 echo "Starting toolchain setup (background)..."
 python3 /app/toolchain_setup.py > /tmp/toolchain_setup.log 2>&1 &
 
+# ---- Gunicorn watchdog ----------------------------------------------------------
+# If Gunicorn is OOM-killed (e.g. during first-time emulator cache warming on
+# a memory-constrained device), this loop restarts it automatically.
+(
+  sleep 20  # let gunicorn start before we start watching it
+  while true; do
+    sleep 15
+    if ! pgrep -f 'gunicorn.*server:app' > /dev/null 2>&1; then
+      echo "[gunicorn-watchdog] Gunicorn is not running — restarting..."
+      gunicorn -w 1 --threads 4 --timeout 300 -b 127.0.0.1:8099 \
+        --chdir /app/configurator --error-logfile - server:app \
+        >> /tmp/gunicorn_restart.log 2>&1 &
+    fi
+  done
+) &
+# ---- End Gunicorn watchdog -------------------------------------------------------
+
 # ---- Toolchain update watchdog --------------------------------------------------
 # Checks for a new ESPHome release every 6 hours while the container is running.
 # If a newer pre-built tarball is available it downloads it in the background,

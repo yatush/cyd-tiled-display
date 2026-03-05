@@ -48,7 +48,10 @@ DUMMY_YAML_DIR      = '/tmp/esp32_setup'
 
 # Cache-warming paths (emulator pre-compile)
 _SCRIPT_DIR         = os.path.dirname(os.path.abspath(__file__))
-EMULATOR_MARKER     = '/app/esphome/.emulator_prebuilt'
+# Stored inside PIO_DIR so it survives HA addon updates via the
+# /root/.platformio → /data/.platformio symlink created in vnc_startup.sh.
+# The file contains the ESPHome version string so we re-warm after upgrades.
+EMULATOR_MARKER     = os.path.join(PIO_DIR, '.emulator_prebuilt')
 ESPHOME_DIR         = '/app/esphome'
 PREPARE_PRECACHE    = os.path.join(_SCRIPT_DIR, 'prepare_precache.py')
 
@@ -228,7 +231,11 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
     # emulator as already pre-compiled so maybe_warm_cache() nops.
     warmed = os.path.join(PIO_DIR, '.ccache', '.cyd_warmed')
     if os.path.exists(warmed):
-        open(EMULATOR_MARKER, 'w').close()
+        try:
+            with open(EMULATOR_MARKER, 'w') as _f:
+                _f.write(get_expected_version())
+        except OSError:
+            open(EMULATOR_MARKER, 'w').close()
         log('Tarball includes pre-warmed ccache — emulator marker set.')
 
 
@@ -276,20 +283,28 @@ def fix_wrappers() -> None:
 def maybe_warm_cache() -> None:
     """Pre-compile the emulator for both screen sizes to warm the ccache.
 
-    Skipped when the marker already exists — warming was done for this image.
-    Failures are non-fatal: a warning is logged and the marker is not written,
-    so the next startup will retry.
+    Skipped when the marker already exists with the current ESPHome version.
+    Re-runs automatically when ESPHome is upgraded.
+    Failures are non-fatal: the marker is not written, so the next startup retries.
     """
+    expected = get_expected_version()
     if os.path.exists(EMULATOR_MARKER):
-        log('Emulator cache already warm — skipping.')
-        return
+        try:
+            stored_ver = open(EMULATOR_MARKER).read().strip()
+        except OSError:
+            stored_ver = ''
+        if stored_ver == expected:
+            log('Emulator cache already warm — skipping.')
+            return
+        log(f'ESPHome version changed ({stored_ver!r} → {expected!r}) — re-warming.')
 
     log('Warming emulator cache...')
 
     env = os.environ.copy()
     env['CCACHE_DIR']                 = f'{PIO_DIR}/.ccache'
     env['CCACHE_MAXSIZE']             = '2G'
-    env['CMAKE_BUILD_PARALLEL_LEVEL'] = str(os.cpu_count() or 2)
+    # Cap at 2 to avoid OOM-killing Gunicorn on memory-constrained devices (RPi4).
+    env['CMAKE_BUILD_PARALLEL_LEVEL'] = '2'
     os.makedirs(env['CCACHE_DIR'], exist_ok=True)
     ccache_bin = '/usr/local/lib/ccache'
     if os.path.isdir(ccache_bin):
@@ -344,7 +359,11 @@ def maybe_warm_cache() -> None:
     except OSError:
         pass
 
-    open(EMULATOR_MARKER, 'w').close()
+    try:
+        with open(EMULATOR_MARKER, 'w') as f:
+            f.write(expected)
+    except OSError:
+        open(EMULATOR_MARKER, 'w').close()
     log('Cache warming complete.')
 
 
