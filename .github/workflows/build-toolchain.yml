@@ -75,6 +75,9 @@ jobs:
         run: |
           docker run --name toolchain-build \
             -v "$PWD/docker_debug/fix_pio_wrappers.sh:/fix_pio_wrappers.sh:ro" \
+            -v "$PWD/esphome:/app/esphome" \
+            -v "$PWD/configurator/generate_tiles_api.py:/app/configurator/generate_tiles_api.py:ro" \
+            -v "$PWD/docker_debug/prepare_precache.py:/app/prepare_precache.py:ro" \
             python:3.11-alpine sh -ec '
               echo "=== Installing build dependencies ==="
               apk add --no-cache \
@@ -124,6 +127,44 @@ jobs:
               # Remove the dist cache — not needed at runtime
               rm -rf /root/.platformio/dist
 
+              echo "=== Installing ccache ==="
+              apk add --no-cache ccache
+              mkdir -p /usr/local/lib/ccache
+              for name in gcc g++ cc c++; do
+                ln -sf /usr/bin/ccache /usr/local/lib/ccache/$name
+              done
+
+              echo "=== Pre-compiling emulator to warm ccache ==="
+              export CCACHE_DIR=/root/.platformio/.ccache
+              export CCACHE_MAXSIZE=2G
+              export PATH="/usr/local/lib/ccache:$PATH"
+              export CMAKE_BUILD_PARALLEL_LEVEL=2
+              mkdir -p /app/configurator
+
+              python3 /app/prepare_precache.py || true
+
+              cd /app/esphome
+              esphome \
+                -s tiles_file test_device_tiles.yaml \
+                -s screen_w 320 -s screen_h 240 \
+                -s font_tiny 24 -s font_small 40 -s font_medium 60 -s font_big 80 \
+                -s font_text_regular 20 -s font_text_bold 20 \
+                -s font_text_big_bold 30 -s font_text_small 12 \
+                compile lib/emulator.yaml || true
+
+              esphome \
+                -s tiles_file test_device_tiles.yaml \
+                -s screen_w 480 -s screen_h 320 \
+                -s font_tiny 32 -s font_small 60 -s font_medium 80 -s font_big 100 \
+                -s font_text_regular 30 -s font_text_bold 30 \
+                -s font_text_big_bold 40 -s font_text_small 18 \
+                compile lib/emulator.yaml || true
+
+              # marker consumed by toolchain_setup.py to skip local warming
+              touch /root/.platformio/.ccache/.cyd_warmed
+              ccache --show-stats || true
+              du -sh /root/.platformio/.ccache/ || true
+
               echo "=== Toolchain build complete ==="
               du -sh /root/.platformio/packages/ || true
             '
@@ -133,13 +174,17 @@ jobs:
           mkdir -p /tmp/toolchain-export
           docker cp toolchain-build:/root/.platformio/packages /tmp/toolchain-export/packages
           docker cp toolchain-build:/root/.platformio/platforms /tmp/toolchain-export/platforms 2>/dev/null || echo "No platforms dir — skipping"
+          docker cp toolchain-build:/root/.platformio/.ccache  /tmp/toolchain-export/.ccache  2>/dev/null || echo "No .ccache dir — skipping"
           docker rm toolchain-build
 
       - name: Create toolchain tarball
         run: |
           cd /tmp/toolchain-export
           echo "Creating toolchain-${{ matrix.arch }}.tar.xz ..."
-          XZ_OPT="-2" tar -cJf toolchain-${{ matrix.arch }}.tar.xz packages/ $([ -d platforms ] && echo platforms/)
+          DIRS="packages/"
+          [ -d platforms ] && DIRS="$DIRS platforms/"
+          [ -d .ccache ]   && DIRS="$DIRS .ccache/"
+          XZ_OPT="-2" tar -cJf toolchain-${{ matrix.arch }}.tar.xz $DIRS
           ls -lh toolchain-${{ matrix.arch }}.tar.xz
 
       - name: Upload artifact

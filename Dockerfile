@@ -17,7 +17,13 @@ WORKDIR /app
 RUN apk add --no-cache g++ gcc musl-dev python3-dev \
     sdl2-dev sdl2_image-dev sdl2_ttf-dev linux-headers \
     xvfb x11vnc fluxbox bash git coreutils nginx procps net-tools \
-    gcompat cmake ninja && \
+    gcompat cmake ninja ccache && \
+    # Create transparent ccache symlinks so every gcc/g++ invocation is cached
+    mkdir -p /usr/local/lib/ccache && \
+    ln -sf /usr/bin/ccache /usr/local/lib/ccache/gcc && \
+    ln -sf /usr/bin/ccache /usr/local/lib/ccache/g++ && \
+    ln -sf /usr/bin/ccache /usr/local/lib/ccache/cc && \
+    ln -sf /usr/bin/ccache /usr/local/lib/ccache/c++ && \
     # Remove large sanitizer/profiling static libraries — not needed for ESP32 compilation
     find /usr/lib /usr/local/lib -maxdepth 2 \( \
         -name 'libtsan.a' -o -name 'libasan.a' -o -name 'libubsan.a' -o \
@@ -43,8 +49,9 @@ RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
 # fix_pio_wrappers.sh: patches PlatformIO's glibc Rust binaries for Alpine/musl.
 # toolchain_setup.py: at container start, downloads the pre-built toolchain
 #   tarball from GitHub Releases (fast) or falls back to a local compile.
-COPY docker_debug/fix_pio_wrappers.sh /app/
-COPY docker_debug/toolchain_setup.py  /app/
+COPY docker_debug/fix_pio_wrappers.sh  /app/
+COPY docker_debug/toolchain_setup.py   /app/
+COPY docker_debug/prepare_precache.py  /app/
 RUN chmod +x /app/fix_pio_wrappers.sh
 
 # Write the ESPHome version and GitHub repository into the image so

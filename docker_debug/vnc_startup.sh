@@ -158,43 +158,4 @@ python3 /app/toolchain_setup.py > /tmp/toolchain_setup.log 2>&1 &
 # ---- End toolchain update watchdog ----------------------------------------------
 # ---- End toolchain setup --------------------------------------------------------
 
-# ---- Emulator pre-compilation (runs once per image deployment) ------------------
-# Waits for the toolchain setup to finish (marker written by toolchain_setup.py),
-# then pre-compiles the emulator binary in the background.
-# Uses its own marker inside /app/esphome/ which is reset whenever a new image
-# is pulled (writable layer is discarded on update), ensuring it always runs
-# at least once after a fresh pull, even when the toolchain volume is warm.
-EMULATOR_MARKER="/app/esphome/.emulator_prebuilt"
-SETUP_MARKER="/root/.platformio/.cyd_setup_done"
-if [ ! -f "$EMULATOR_MARKER" ]; then
-    echo "Pre-compiling emulator in background (first start after image update)…"
-    (
-        set +e
-        LOG=/tmp/emulator_precompile.log
-        echo "[EMULATOR] Starting at $(date)" > "$LOG"
-
-        # Wait for toolchain setup to complete (max 30 minutes)
-        echo "[EMULATOR] Waiting for toolchain setup to complete..." >> "$LOG"
-        WAIT=0
-        while [ ! -f "$SETUP_MARKER" ] && [ $WAIT -lt 1800 ]; do
-            sleep 10
-            WAIT=$((WAIT + 10))
-        done
-        if [ ! -f "$SETUP_MARKER" ]; then
-            echo "[EMULATOR] Toolchain setup timed out — skipping emulator pre-compile." >> "$LOG"
-            exit 1
-        fi
-        echo "[EMULATOR] Toolchain ready after ${WAIT}s. Starting emulator compile." >> "$LOG"
-
-        # Ensure images.yaml placeholder exists so the !include in lib_common.yaml resolves.
-        touch /app/esphome/lib/images.yaml
-        [ -s /app/esphome/lib/images.yaml ] || printf '{}\n' > /app/esphome/lib/images.yaml
-        cd /app/esphome && CMAKE_BUILD_PARALLEL_LEVEL=2 esphome compile lib/emulator.yaml >> "$LOG" 2>&1 || true
-        touch "$EMULATOR_MARKER"
-        echo "[EMULATOR] Done at $(date)" >> "$LOG"
-        echo "Emulator pre-compilation complete."
-    ) &
-fi
-# ---- End emulator pre-compilation -----------------------------------------------
-
 exec "$@"

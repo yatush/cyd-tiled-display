@@ -4,6 +4,10 @@ esphome/external_components/tile_ui/tests/__pycache__*
 server.log
 __pycache__*
 
+# Generated at runtime by prepare_precache.py / generate_tiles_api
+esphome/lib/test_device_tiles.yaml
+esphome/lib/images/
+
 # Configurator
 configurator/node_modules/
 configurator/dist/

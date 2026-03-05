@@ -46,6 +46,12 @@ FIX_WRAPPERS_SCRIPT = '/app/fix_pio_wrappers.sh'
 PIO_SETUP_LOG       = '/tmp/pio_setup.log'
 DUMMY_YAML_DIR      = '/tmp/esp32_setup'
 
+# Cache-warming paths (emulator pre-compile)
+_SCRIPT_DIR         = os.path.dirname(os.path.abspath(__file__))
+EMULATOR_MARKER     = '/app/esphome/.emulator_prebuilt'
+ESPHOME_DIR         = '/app/esphome'
+PREPARE_PRECACHE    = os.path.join(_SCRIPT_DIR, 'prepare_precache.py')
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def write_progress(phase: str, progress: int, message: str,
@@ -218,6 +224,13 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
 
     log('Extraction complete.')
 
+    # If the tarball shipped a pre-warmed ccache (built in CI), mark the
+    # emulator as already pre-compiled so maybe_warm_cache() nops.
+    warmed = os.path.join(PIO_DIR, '.ccache', '.cyd_warmed')
+    if os.path.exists(warmed):
+        open(EMULATOR_MARKER, 'w').close()
+        log('Tarball includes pre-warmed ccache — emulator marker set.')
+
 
 # ─── Fix-wrappers phase ──────────────────────────────────────────────────────
 
@@ -256,6 +269,83 @@ def fix_wrappers() -> None:
             pass
 
     log('Wrapper fix complete.')
+
+
+# ─── Cache warming ───────────────────────────────────────────────────────────
+
+def maybe_warm_cache() -> None:
+    """Pre-compile the emulator for both screen sizes to warm the ccache.
+
+    Skipped when the marker already exists — warming was done for this image.
+    Failures are non-fatal: a warning is logged and the marker is not written,
+    so the next startup will retry.
+    """
+    if os.path.exists(EMULATOR_MARKER):
+        log('Emulator cache already warm — skipping.')
+        return
+
+    log('Warming emulator cache...')
+
+    env = os.environ.copy()
+    env['CCACHE_DIR']                 = f'{PIO_DIR}/.ccache'
+    env['CCACHE_MAXSIZE']             = '2G'
+    env['CMAKE_BUILD_PARALLEL_LEVEL'] = str(os.cpu_count() or 2)
+    os.makedirs(env['CCACHE_DIR'], exist_ok=True)
+    ccache_bin = '/usr/local/lib/ccache'
+    if os.path.isdir(ccache_bin):
+        env['PATH'] = f'{ccache_bin}:{env.get("PATH", "")}'
+
+    # Step 1 — generate test_device_tiles.yaml + images.yaml + PNG files.
+    write_progress('warming', 91, 'Warming cache: preparing assets...')
+    if os.path.exists(PREPARE_PRECACHE):
+        with open(PIO_SETUP_LOG, 'a') as logf:
+            subprocess.run(['python3', PREPARE_PRECACHE],
+                           stdout=logf, stderr=logf, check=False)
+    else:
+        log(f'WARNING: prepare_precache.py not found at {PREPARE_PRECACHE}')
+
+    def _compile(label: str, progress: int, screen_w: int, screen_h: int,
+                 font_tiny: int, font_small: int, font_medium: int, font_big: int,
+                 font_text_regular: int, font_text_bold: int,
+                 font_text_big_bold: int, font_text_small: int) -> None:
+        write_progress('warming', progress, f'Warming cache: {label}...')
+        with open(PIO_SETUP_LOG, 'a') as logf:
+            subprocess.run(
+                ['esphome',
+                 '-s', 'tiles_file',       'test_device_tiles.yaml',
+                 '-s', 'screen_w',         str(screen_w),
+                 '-s', 'screen_h',         str(screen_h),
+                 '-s', 'font_tiny',        str(font_tiny),
+                 '-s', 'font_small',       str(font_small),
+                 '-s', 'font_medium',      str(font_medium),
+                 '-s', 'font_big',         str(font_big),
+                 '-s', 'font_text_regular',  str(font_text_regular),
+                 '-s', 'font_text_bold',     str(font_text_bold),
+                 '-s', 'font_text_big_bold', str(font_text_big_bold),
+                 '-s', 'font_text_small',    str(font_text_small),
+                 'compile', 'lib/emulator.yaml'],
+                cwd=ESPHOME_DIR, env=env,
+                stdout=logf, stderr=logf, check=False,
+            )
+
+    # Step 2 — 320×240 (2432s028).  Done first so 480×320 seeded build is last.
+    _compile('320\u00d7240 (2432s028)', 93,
+             320, 240, 24, 40, 60, 80, 20, 20, 30, 12)
+
+    # Step 3 — 480×320 (3248s035, same as emulator.yaml defaults).  Done last
+    # so its build output seeds the per-session copy in run_session.sh.
+    _compile('480\u00d7320 (3248s035)', 97,
+             480, 320, 32, 60, 80, 100, 30, 30, 40, 18)
+
+    # Step 4 — restore images.yaml to empty placeholder.
+    try:
+        with open(os.path.join(ESPHOME_DIR, 'lib', 'images.yaml'), 'w') as f:
+            f.write('# no images\n')
+    except OSError:
+        pass
+
+    open(EMULATOR_MARKER, 'w').close()
+    log('Cache warming complete.')
 
 
 # ─── Local-build fallback ────────────────────────────────────────────────────
@@ -307,6 +397,7 @@ def main() -> None:
     if force_local:
         build_toolchain_locally('User requested local build')
         set_stored_version(expected)
+        maybe_warm_cache()
         write_progress('ready', 100, 'Toolchain ready.', fallback=True)
         log('Setup complete (local build).')
         return
@@ -315,6 +406,7 @@ def main() -> None:
     if stored == expected and has_packages():
         log('Toolchain up-to-date.')
         set_stored_version(expected)   # ensures SETUP_MARKER is present
+        maybe_warm_cache()
         write_progress('ready', 100, 'Toolchain ready.')
         return
 
@@ -327,6 +419,7 @@ def main() -> None:
             extract_toolchain(tmp_path, background=False)
             fix_wrappers()
             set_stored_version(expected)
+            maybe_warm_cache()
             write_progress('ready', 100, 'Toolchain installed successfully.')
             log('Fresh install from pre-built release complete.')
         except FileNotFoundError as e:
@@ -356,6 +449,7 @@ def main() -> None:
         extract_toolchain(tmp_path, background=True)
         fix_wrappers()
         set_stored_version(expected)
+        maybe_warm_cache()
         write_progress('ready', 100, 'Toolchain updated successfully.')
         log('Background update complete.')
 
@@ -368,6 +462,7 @@ def main() -> None:
         log(f'Pre-built release not available yet: {e}.')
         if os.path.exists(SETUP_MARKER):
             log('Setup marker present — keeping existing toolchain.')
+            maybe_warm_cache()
             write_progress('ready', 100,
                            'Toolchain ready (update pending — new release not yet available)')
         else:
@@ -378,6 +473,7 @@ def main() -> None:
 
     except Exception as e:
         log(f'Background download failed: {e}. Keeping existing toolchain.')
+        maybe_warm_cache()
         write_progress('ready', 100,
                        'Toolchain ready (update failed; using previous version)')
 

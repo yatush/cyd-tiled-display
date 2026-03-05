@@ -82,6 +82,14 @@ echo "Starting ESPHome Emulator for session $SESSION_ID..."
 export PLATFORMIO_CACHEDIR="/tmp/pio_cache"
 mkdir -p "$PLATFORMIO_CACHEDIR"
 
+# Enable ccache so unchanged translation units are served from cache on every
+# recompile (tile config changes only touch screens.h / main.cpp, not the
+# hundreds of ESPHome framework files).
+export CCACHE_DIR="/root/.platformio/.ccache"
+export CCACHE_MAXSIZE="2G"
+mkdir -p "$CCACHE_DIR"
+export PATH="/usr/local/lib/ccache:$PATH"
+
 # Create a session-specific build directory by copying from the pre-compiled cache
 # This allows concurrent sessions without conflicts, while reusing compiled objects
 SESSION_ESPHOME="/tmp/esphome_sessions/$SESSION_ID/.esphome"
@@ -101,6 +109,9 @@ fi
 
 # Point ESPHome to the session-specific build directory
 export ESPHOME_DATA_DIR="$SESSION_ESPHOME"
+
+# Use all available cores; ccache makes each unchanged .o a near-instant cache hit.
+export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc)
 
 # Use the same device name as the pre-compiled build to maximize cache reuse
 stdbuf -oL -eL esphome \

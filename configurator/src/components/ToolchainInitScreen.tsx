@@ -10,6 +10,7 @@ type ToolchainPhase =
   | 'extracting'
   | 'fixing'
   | 'building'
+  | 'warming'
   | 'ready'
   | 'error';
 
@@ -29,6 +30,7 @@ const PHASE_ICON: Record<ToolchainPhase, React.ReactNode> = {
   extracting:  <Settings  className="w-8 h-8 animate-spin text-blue-400" />,
   fixing:      <Wrench    className="w-8 h-8 animate-pulse text-blue-400" />,
   building:    <Settings  className="w-8 h-8 animate-spin text-amber-400" />,
+  warming:     <Wrench    className="w-8 h-8 animate-spin text-blue-400" />,
   ready:       <CheckCircle className="w-8 h-8 text-green-400" />,
   error:       <AlertTriangle className="w-8 h-8 text-red-400" />,
 };
@@ -39,6 +41,7 @@ const PHASE_TITLE: Record<ToolchainPhase, string> = {
   extracting:  'Extracting toolchain',
   fixing:      'Configuring toolchain',
   building:    'Building toolchain locally',
+  warming:     'Warming emulator cache',
   ready:       'Toolchain ready',
   error:       'Toolchain setup failed',
 };
