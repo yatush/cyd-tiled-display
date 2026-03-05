@@ -752,6 +752,7 @@ export const ImageSelectInput = ({
   images: Record<string, ImageEntry>;
 }) => {
   const [open, setOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageIds = Object.keys(images || {});
   const selected = value && images?.[value] ? images[value] : null;
@@ -768,14 +769,23 @@ export const ImageSelectInput = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const handleToggle = () => {
+    if (!open && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setDropUp(spaceBelow < 280);
+    }
+    setOpen(o => !o);
+  };
+
   return (
-    <div className="mb-2" ref={containerRef}>
+    <div className="relative mb-2" ref={containerRef}>
       {label && <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>}
 
       {/* Trigger button */}
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={handleToggle}
         className="w-full flex items-center gap-2 border rounded p-1 bg-white hover:bg-slate-50 text-sm text-left min-w-0"
       >
         {selected ? (
@@ -809,7 +819,7 @@ export const ImageSelectInput = ({
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute z-50 mt-1 bg-white border rounded shadow-lg p-2 w-56 max-h-64 overflow-y-auto">
+        <div className={`absolute z-50 bg-white border rounded shadow-lg p-2 w-56 max-h-64 overflow-y-auto ${dropUp ? 'bottom-full mb-1' : 'mt-1'}`}>
           {imageIds.length === 0 ? (
             <p className="text-xs text-slate-400 text-center py-2">No images uploaded yet</p>
           ) : (
