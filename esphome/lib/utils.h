@@ -616,4 +616,48 @@ std::pair<int, int> measure(BaseFont& font, const char* str) {
     return id(script_output); \
 }(script))
 
+// ---------------------------------------------------------------------------
+// Image draw helpers
+// ---------------------------------------------------------------------------
+// DrawImageFunc — the type expected by HAActionTile's draw_funcs vector.
+using DrawImageFunc = std::function<void(int, int, int, int, std::vector<std::string>)>;
+
+enum class ImageDirection { left_right = 0, right_left = 1, up_down = 2, down_up = 3 };
+
+// make_image_draw — returns a DrawImageFunc that draws a single static image.
+inline DrawImageFunc make_image_draw(esphome::image::Image* image) {
+  return [image](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+    id(image_slot) = image;
+    id(draw_image_static).execute(x0, x1, y0, y1);
+  };
+}
+
+// make_image_draw — animated (single image, directional sweep).
+inline DrawImageFunc make_image_draw(esphome::image::Image* image, ImageDirection direction, uint32_t duration_ms) {
+  return [image, direction, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+    id(image_slot) = image;
+    id(draw_image_anim).execute(x0, x1, y0, y1, (int)duration_ms, (int)direction);
+  };
+}
+
+// make_image_draw — cycling through multiple images, static display.
+//   duration_ms: total cycle time; per-image time = duration_ms / n
+inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, uint32_t duration_ms) {
+  return [images, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string> s) {
+    uint32_t n = (uint32_t)images.size();
+    if (n == 0) return;
+    make_image_draw(images[(millis() / (duration_ms / n)) % n])(x0, x1, y0, y1, s);
+  };
+}
+
+// make_image_draw — cycling through multiple images, animated sweep.
+//   duration_ms: total cycle time; per-image time = duration_ms / n
+inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, ImageDirection direction, uint32_t duration_ms) {
+  return [images, direction, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string> s) {
+    uint32_t n = (uint32_t)images.size();
+    if (n == 0) return;
+    make_image_draw(images[(millis() / (duration_ms / n)) % n], direction, duration_ms)(x0, x1, y0, y1, s);
+  };
+}
+
 #endif // UTILS_H_

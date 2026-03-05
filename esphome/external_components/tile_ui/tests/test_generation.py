@@ -185,66 +185,61 @@ class TestImageAnimation(unittest.TestCase):
 
     def test_no_animation_uses_static(self):
         cpp = self._generate([{'image': 'img_a'}])
-        self.assertIn('id(image_slot) = &id(img_a)', cpp)
-        self.assertIn('id(draw_image_static).execute(arg0, arg1, arg2, arg3)', cpp)
+        self.assertIn('make_image_draw(&id(img_a))', cpp)
         self.assertNotIn('draw_image_anim', cpp)
+        self.assertNotIn('draw_image_static', cpp)
+        self.assertNotIn('image_slot', cpp)
 
     def test_direction_none_single_image(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'none', 'duration': 3}}])
-        self.assertIn('id(image_slot) = &id(img_a)', cpp)
-        self.assertIn('id(draw_image_static).execute(arg0, arg1, arg2, arg3)', cpp)
+        self.assertIn('make_image_draw(&id(img_a))', cpp)
         self.assertNotIn('draw_image_anim', cpp)
+        self.assertNotIn('draw_image_static', cpp)
         self.assertNotIn('_idx', cpp)
 
     def test_direction_set_calls_anim(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'left_right', 'duration': 3}}])
-        self.assertIn('id(draw_image_anim).execute(arg0, arg1, arg2, arg3, 3000, 0)', cpp)
+        self.assertIn('make_image_draw(&id(img_a), ImageDirection::left_right, 3000U)', cpp)
+        self.assertNotIn('draw_image_anim', cpp)
         self.assertNotIn('draw_image_static', cpp)
 
-    def test_direction_right_left_integer(self):
+    def test_direction_right_left_enum(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'right_left', 'duration': 2}}])
-        self.assertIn(', 2000, 1)', cpp)
+        self.assertIn('make_image_draw(&id(img_a), ImageDirection::right_left, 2000U)', cpp)
 
-    def test_direction_up_down_integer(self):
+    def test_direction_up_down_enum(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'up_down', 'duration': 1}}])
-        self.assertIn(', 1000, 2)', cpp)
+        self.assertIn('make_image_draw(&id(img_a), ImageDirection::up_down, 1000U)', cpp)
 
-    def test_direction_down_up_integer(self):
+    def test_direction_down_up_enum(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'down_up', 'duration': 1}}])
-        self.assertIn(', 1000, 3)', cpp)
+        self.assertIn('make_image_draw(&id(img_a), ImageDirection::down_up, 1000U)', cpp)
 
     def test_extra_images_none_direction_cycles_static(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {
             'direction': 'none', 'duration': 6, 'extra_images': ['img_b', 'img_c']
         }}])
-        # per_ms = 6000 // 3 = 2000
-        self.assertIn('uint32_t _per_ms = 2000U', cpp)
-        self.assertIn('(millis() / _per_ms) % 3U', cpp)
-        self.assertIn('if (_idx == 0) id(image_slot) = &id(img_a)', cpp)
-        self.assertIn('else if (_idx == 1) id(image_slot) = &id(img_b)', cpp)
-        self.assertIn('else id(image_slot) = &id(img_c)', cpp)
-        self.assertIn('draw_image_static', cpp)
+        # per_ms = 6000 // 3 = 2000, direction none → no direction/duration args
+        self.assertIn('make_image_draw({&id(img_a), &id(img_b), &id(img_c)}, 6000U)', cpp)
+        self.assertNotIn('_per_ms', cpp)
         self.assertNotIn('draw_image_anim', cpp)
+        self.assertNotIn('draw_image_static', cpp)
 
     def test_extra_images_directional_cycles_animated(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {
             'direction': 'left_right', 'duration': 6, 'extra_images': ['img_b', 'img_c']
         }}])
-        self.assertIn('uint32_t _per_ms = 2000U', cpp)
-        self.assertIn('(millis() / _per_ms) % 3U', cpp)
-        # draw_image_anim called with total duration_ms (6000), not per_ms — one movement cycle total
-        self.assertIn('id(draw_image_anim).execute(arg0, arg1, arg2, arg3, 6000, 0)', cpp)
-        self.assertNotIn(', 2000, 0)', cpp)
+        # per_ms = 6000 // 3 = 2000, total duration_ms = 6000
+        self.assertIn('make_image_draw({&id(img_a), &id(img_b), &id(img_c)}, ImageDirection::left_right, 6000U)', cpp)
+        self.assertNotIn('_per_ms', cpp)
 
     def test_extra_images_two_images(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {
             'direction': 'left_right', 'duration': 4, 'extra_images': ['img_b']
         }}])
-        # per_ms = 4000 // 2 = 2000
-        self.assertIn('uint32_t _per_ms = 2000U', cpp)
-        self.assertIn('(millis() / _per_ms) % 2U', cpp)
-        self.assertIn('if (_idx == 0) id(image_slot) = &id(img_a)', cpp)
-        self.assertIn('else id(image_slot) = &id(img_b)', cpp)
+        # per_ms = 4000 // 2 = 2000, total duration_ms = 4000
+        self.assertIn('make_image_draw({&id(img_a), &id(img_b)}, ImageDirection::left_right, 4000U)', cpp)
+        self.assertNotIn('_per_ms', cpp)
 
     def test_fast_refresh_set_when_animated(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'direction': 'left_right', 'duration': 3}}])

@@ -159,11 +159,18 @@ def _get_animation_fast_refresh(config: dict):
 
 def _build_image_lambda(config: dict, expected_params: list) -> str | None:
     """
-    Return a C++ lambda that sets id(image_slot) and calls one of the
-    draw_image_* YAML scripts defined in lib_common.yaml.
+    Return a C++ expression that can be used as a single draw-funcs list entry.
+
+    For the no-condition case this is a bare make_image_draw(...) call wrapped in
+    braces: ``{ make_image_draw(...) }``
+
+    For the conditional case (multiple images selected by run-time condition) a
+    thin lambda is still required to evaluate the condition, but each branch body
+    is a single ``make_image_draw(...)(arg0,arg1,arg2,arg3,entities)`` call
+    rather than inline millis()/image_slot logic.
 
     Each entry in 'images':
-      { image: <id>, condition?: <expr>, animation?: { direction, duration } }
+      { image: <id>, condition?: <expr>, animation?: { direction, duration, extra_images? } }
     """
     images = config.get("images")
     if not images or not isinstance(images, list):
@@ -188,59 +195,43 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         entities_binding = "  const std::vector<std::string> entities{};"
 
     has_any_img_condition = any(e.get("condition") for e in valid_entries)
-    needs_entities = has_any_img_condition
 
-    def _draw_lines(entry: dict, indent: str) -> list[str]:
-        """Lines that set image_slot and call the right draw script."""
+    _DIRECTION_ENUM = {"left_right": "ImageDirection::left_right", "right_left": "ImageDirection::right_left", "up_down": "ImageDirection::up_down", "down_up": "ImageDirection::down_up"}
+
+    def _make_draw_call(entry: dict) -> str:
+        """Return a make_image_draw(...) expression for this entry."""
         img_id = entry["image"]
         animation = entry.get("animation") if isinstance(entry, dict) else None
         if not animation or not isinstance(animation, dict):
-            return [
-                f"{indent}id(image_slot) = &id({img_id});",
-                f"{indent}id(draw_image_static).execute(arg0, arg1, arg2, arg3);",
-            ]
-        _DIRECTION_INT = {"left_right": 0, "right_left": 1, "up_down": 2, "down_up": 3}
+            return f"make_image_draw(&id({img_id}))"
         direction = animation.get("direction", "left_right")
         duration_ms = int(float(animation.get("duration", 3)) * 1000)
         extra_images = list(animation.get("extra_images") or [])
         all_images = [img_id] + extra_images
         n = len(all_images)
         if n > 1:
-            per_ms = duration_ms // n
-            lines = [f"{indent}{{"]  # open block
-            lines.append(f"{indent}  uint32_t _per_ms = {per_ms}U;")
-            lines.append(f"{indent}  int _idx = (int)((millis() / _per_ms) % {n}U);")
-            for i, img in enumerate(all_images[:-1]):
-                kw = "if" if i == 0 else "else if"
-                lines.append(f"{indent}  {kw} (_idx == {i}) id(image_slot) = &id({img});")
-            lines.append(f"{indent}  else id(image_slot) = &id({all_images[-1]});")
+            imgs_cpp = "{" + ", ".join(f"&id({img})" for img in all_images) + "}"
             if direction == "none":
-                lines.append(f"{indent}  id(draw_image_static).execute(arg0, arg1, arg2, arg3);")
+                return f"make_image_draw({imgs_cpp}, {duration_ms}U)"
             else:
-                dir_int = _DIRECTION_INT.get(direction, 0)
-                lines.append(f"{indent}  id(draw_image_anim).execute(arg0, arg1, arg2, arg3, {duration_ms}, {dir_int});")
-            lines.append(f"{indent}}}")
+                dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
+                return f"make_image_draw({imgs_cpp}, {dir_enum}, {duration_ms}U)"
         else:
-            lines = [f"{indent}id(image_slot) = &id({img_id});"]
             if direction == "none":
-                lines.append(f"{indent}id(draw_image_static).execute(arg0, arg1, arg2, arg3);")
+                return f"make_image_draw(&id({img_id}))"
             else:
-                dir_int = _DIRECTION_INT.get(direction, 0)
-                lines.append(f"{indent}id(draw_image_anim).execute(arg0, arg1, arg2, arg3, {duration_ms}, {dir_int});")
-        return lines
+                dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
+                return f"make_image_draw(&id({img_id}), {dir_enum}, {duration_ms}U)"
 
     # -----------------------------------------------------------------------
     # Simple path: single entry with no image-selection condition
     # -----------------------------------------------------------------------
     if not has_any_img_condition and len(valid_entries) == 1:
-        body_lines = []
-        if needs_entities:
-            body_lines.append(entities_binding)
-        body_lines.extend(_draw_lines(valid_entries[0], "  "))
-        return f"[=]({sig}) {{\n" + "\n".join(body_lines) + "\n}"
+        return _make_draw_call(valid_entries[0])
 
     # -----------------------------------------------------------------------
-    # if / else-if chain for image selection
+    # Conditional path: if/else-if chain selecting the right make_image_draw
+    # A thin lambda is needed to evaluate the run-time condition.
     # -----------------------------------------------------------------------
     branches: list[tuple[str, str, dict]] = []
     keyword = "if"
@@ -260,20 +251,15 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
     if not branches and fallback_entry is None:
         return None
 
-    body_lines = []
-    if needs_entities:
-        body_lines.append(entities_binding)
-
+    body_lines = [entities_binding]
     for kw, expr, entry in branches:
-        body_lines.append(f"  {kw} ({expr}) {{")
-        body_lines.extend(_draw_lines(entry, "    "))
-        body_lines.append("  }")
+        body_lines.append(f"  {kw} ({expr})")
+        body_lines.append(f"    {_make_draw_call(entry)}(arg0, arg1, arg2, arg3, entities);")
 
     if fallback_entry:
-        body_lines.append("  else {" if branches else "")
-        body_lines.extend(_draw_lines(fallback_entry, "    " if branches else "  "))
-        if branches:
-            body_lines.append("  }")
+        body_lines.append("  else" if branches else "")
+        indent = "    " if branches else "  "
+        body_lines.append(f"{indent}{_make_draw_call(fallback_entry)}(arg0, arg1, arg2, arg3, entities);")
 
     return f"[=]({sig}) {{\n" + "\n".join(filter(None, body_lines)) + "\n}"
 
