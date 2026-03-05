@@ -72,7 +72,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   toolchainMessage,
   onOpenInstall,
 }) => {
-  const UPGRADING_PHASES = ['downloading', 'extracting', 'fixing'];
+  const UPGRADING_PHASES = ['downloading', 'extracting', 'fixing', 'warming'];
   const isToolchainUpgrading = toolchainPhase != null && UPGRADING_PHASES.includes(toolchainPhase);
   const showToolchainIcon = isToolchainUpgrading || toolchainPhase === 'no_toolchain' || toolchainPhase === 'building';
 
@@ -156,7 +156,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             >
               <Wrench size={13} className={isToolchainUpgrading || toolchainPhase === 'building' ? 'animate-pulse' : ''} />
               <span className="hidden sm:inline">
-                {isToolchainUpgrading ? 'Updating toolchain' : toolchainPhase === 'building' ? 'Building toolchain' : 'Toolchain needed'}
+                {isToolchainUpgrading
+                  ? (toolchainPhase === 'warming' ? 'Warming cache' : 'Updating toolchain')
+                  : toolchainPhase === 'building' ? 'Building toolchain' : 'Toolchain needed'}
               </span>
               {isToolchainUpgrading && <span className="font-mono">{toolchainProgress}%</span>}
               <ChevronDown size={11} className="opacity-60" />
