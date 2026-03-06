@@ -622,8 +622,6 @@ std::pair<int, int> measure(BaseFont& font, const char* str) {
 // DrawImageFunc — the type expected by HAActionTile's draw_funcs vector.
 using DrawImageFunc = std::function<void(int, int, int, int, std::vector<std::string>)>;
 
-enum class ImageDirection { left_right = 0, right_left = 1, up_down = 2, down_up = 3 };
-
 // make_image_draw — returns a DrawImageFunc that draws a single static image.
 inline DrawImageFunc make_image_draw(esphome::image::Image* image) {
   return [image](int x0, int x1, int y0, int y1, std::vector<std::string>) {
@@ -632,11 +630,12 @@ inline DrawImageFunc make_image_draw(esphome::image::Image* image) {
   };
 }
 
-// make_image_draw — animated (single image, directional sweep).
-inline DrawImageFunc make_image_draw(esphome::image::Image* image, ImageDirection direction, uint32_t duration_ms) {
-  return [image, direction, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+// make_image_draw — animated (single image, positional sweep).
+//   from_x/y, to_x/y: fractions [0,1] of tile dimensions for image start/end position.
+inline DrawImageFunc make_image_draw(esphome::image::Image* image, float from_x, float from_y, float to_x, float to_y, uint32_t duration_ms) {
+  return [image, from_x, from_y, to_x, to_y, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
     id(image_slot) = image;
-    id(draw_image_anim).execute(x0, x1, y0, y1, (int)duration_ms, (int)direction);
+    id(draw_image_anim).execute(x0, x1, y0, y1, (int)duration_ms, from_x, from_y, to_x, to_y);
   };
 }
 
@@ -651,35 +650,31 @@ inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images,
 }
 
 // make_image_draw — cycling through multiple images, animated sweep.
-//   duration_ms: total cycle time. ONE continuous sweep across the full range;
-//   the image shown changes at each 1/n boundary, but the position uses the
-//   shared _frac so all images together form a single uninterrupted sweep.
-inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, ImageDirection direction, uint32_t duration_ms) {
-  return [images, direction, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+//   duration_ms: total cycle time. ONE continuous sweep; image shown changes at
+//   each 1/n boundary but position uses shared _frac for an uninterrupted sweep.
+inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, float from_x, float from_y, float to_x, float to_y, uint32_t duration_ms) {
+  return [images, from_x, from_y, to_x, to_y, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
     uint32_t n = (uint32_t)images.size();
     if (n == 0) return;
     float _frac = fmodf(millis() / (float)duration_ms, 1.0f);
     uint32_t _idx = (uint32_t)(_frac * n) % n;
     id(image_slot) = images[_idx];
-    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, (int)direction);
+    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, from_x, from_y, to_x, to_y);
   };
 }
 
 // ---------------------------------------------------------------------------
 // Cycle-aligned overloads — used for multi-step animations.
-// These compute _frac from (millis() % total_ms - step_start_ms) / step_dur_ms
-// so each step always starts at frac=0 and ends at frac=1, regardless of
-// whether step durations are equal.
 // ---------------------------------------------------------------------------
 
 // Animated single image, cycle-aligned.
-inline DrawImageFunc make_image_draw(esphome::image::Image* image, ImageDirection direction, uint32_t step_dur_ms, uint32_t total_ms, uint32_t step_start_ms) {
-  return [image, direction, step_dur_ms, total_ms, step_start_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+inline DrawImageFunc make_image_draw(esphome::image::Image* image, float from_x, float from_y, float to_x, float to_y, uint32_t step_dur_ms, uint32_t total_ms, uint32_t step_start_ms) {
+  return [image, from_x, from_y, to_x, to_y, step_dur_ms, total_ms, step_start_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
     uint32_t _ct = millis() % total_ms;
     float _frac = (_ct >= step_start_ms) ? (_ct - step_start_ms) / (float)step_dur_ms : 0.0f;
     if (_frac > 1.0f) _frac = 1.0f;
     id(image_slot) = image;
-    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, (int)direction);
+    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, from_x, from_y, to_x, to_y);
   };
 }
 
@@ -696,17 +691,16 @@ inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images,
 }
 
 // Cycling animated images, cycle-aligned.
-inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, ImageDirection direction, uint32_t step_dur_ms, uint32_t total_ms, uint32_t step_start_ms) {
-  return [images, direction, step_dur_ms, total_ms, step_start_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, float from_x, float from_y, float to_x, float to_y, uint32_t step_dur_ms, uint32_t total_ms, uint32_t step_start_ms) {
+  return [images, from_x, from_y, to_x, to_y, step_dur_ms, total_ms, step_start_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
     uint32_t n = (uint32_t)images.size();
     if (n == 0) return;
     uint32_t _ct = millis() % total_ms;
     float _frac = (_ct >= step_start_ms) ? (_ct - step_start_ms) / (float)step_dur_ms : 0.0f;
     if (_frac > 1.0f) _frac = 1.0f;
     uint32_t _idx = (uint32_t)(_frac * n) % n;
-    // Use step-global _frac for position — one continuous sweep for all images in this step.
     id(image_slot) = images[_idx];
-    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, (int)direction);
+    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, from_x, from_y, to_x, to_y);
   };
 }
 

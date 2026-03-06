@@ -449,37 +449,53 @@ images:
 
 #### Animated image (slide transition)
 
+Animation is defined by a **start position** (`from`) and an **end position** (`to`), each one of nine named points on the tile:
+
+```
+top_left    top_middle    top_right
+center_left center_middle center_right
+bottom_left bottom_middle bottom_right
+```
+
+The image slides from `from` toward `to`. When both positions are the same (`center_middle` → `center_middle`) there is no motion — the image simply swaps (or cycles) without a directional sweep.
+
 ```yaml
 images:
   - image: img_a
     animation:
-      direction: left_right  # none | left_right | right_left | up_down | down_up
-      duration: 0.5          # seconds per cycle step
-      extra_images: [img_b]  # additional images to animate through (optional)
+      from: center_left    # image enters from the left edge
+      to: center_right     # and sweeps toward the right edge
+      duration: 0.5        # seconds per cycle step
+      extra_images: [img_b]  # additional images to cycle through (optional)
 ```
+
+The direction used internally is derived from the horizontal and vertical components of the `from`→`to` vector. Horizontal movement takes priority when both axes have equal magnitude (e.g. `top_left`→`bottom_right` → left-to-right sweep).
 
 #### Multi-step animation
 
-Define multiple animation phases, each with its own direction, speed, and image set. Step 0 is the entry step for the root image (and its `extra_images`). Steps 1+ each require an `images:` list.
+Define multiple animation phases, each with its own `from`/`to`, speed, and image set. Step 0 is the entry step for the root image (and its `extra_images`). Steps 1+ each require an `images:` list.
 
 ```yaml
 images:
   - image: img_a
     animation:
       steps:
-        - direction: left_right  # step 0: img_a (and extra_images) enter from left
+        - from: center_left    # step 0: img_a (and extra_images) sweep left→right
+          to: center_right
           duration: 0.5
           extra_images: [img_b]
-        - direction: up_down     # step 1: img_c enters from top
+        - from: top_middle     # step 1: img_c sweeps top→bottom
+          to: bottom_middle
           duration: 0.3
-          images: [img_c]        # required for steps 1+
+          images: [img_c]      # required for steps 1+
 ```
 
 **`images:` field properties:**
 - **image**: *(Required)* ID of an image defined in the global `images:` dictionary.
 - **condition**: (Optional) Condition script (see [Conditions](#conditions)) that must return `true` for this entry to be rendered.
 - **animation**: (Optional) Animate a slide transition between images.
-  - **direction**: *(Required)* Slide direction — `none`, `left_right`, `right_left`, `up_down`, `down_up`.
+  - **from**: *(Required)* Start position — one of the nine named points above. Default: `center_middle`.
+  - **to**: *(Required)* End position — one of the nine named points above. Default: `center_middle`.
   - **duration**: *(Required)* Positive number — seconds per animation step.
   - **extra_images**: (Optional, single-step only) Additional images to animate through alongside the root image.
   - **steps**: (Optional, multi-step) List of animation steps. Step 0 may include `extra_images`; steps 1+ must include `images`.

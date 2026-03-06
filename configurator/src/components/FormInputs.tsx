@@ -947,31 +947,66 @@ export const ImageManagerPanel = ({
 // Entries are evaluated in order; first matching condition wins.
 // An entry without a condition is an unconditional fallback.
 
-const ANIM_DIRECTIONS = [
-  { value: 'none',       label: '○ None (static swap)' },
-  { value: 'left_right', label: '→ Left to Right' },
-  { value: 'right_left', label: '← Right to Left' },
-  { value: 'up_down',    label: '↓ Top to Bottom' },
-  { value: 'down_up',    label: '↑ Bottom to Top' },
+// 3×3 position grid for animation from/to selection.
+// Positions are encoded as "{row}_{col}" e.g. "top_left", "center_middle".
+const ANIM_POSITIONS = [
+  ['top_left',    'top_middle',    'top_right'   ],
+  ['center_left', 'center_middle', 'center_right'],
+  ['bottom_left', 'bottom_middle', 'bottom_right'],
 ] as const;
 
-// Animation step: direction + duration + optional images list.
+// Visual glyphs for each grid cell (row-major order).
+const ANIM_POS_GLYPHS: Record<string, string> = {
+  top_left: '•', top_middle: '•', top_right: '•',
+  center_left: '•', center_middle: '•', center_right: '•',
+  bottom_left: '•', bottom_middle: '•', bottom_right: '•',
+};
+
+/** Compact 3×3 position picker. */
+const PositionPicker = ({
+  value,
+  onChange,
+  label,
+}: { value: string; onChange: (v: string) => void; label: string }) => (
+  <div>
+    <label className="block text-[10px] text-slate-500 uppercase mb-0.5">{label}</label>
+    <div className="inline-grid grid-cols-3 gap-0.5">
+      {ANIM_POSITIONS.flat().map(pos => (
+        <button
+          key={pos}
+          type="button"
+          title={pos.replace('_', ' ')}
+          onClick={() => onChange(pos)}
+          className={`w-7 h-7 text-sm rounded border transition-colors ${
+            value === pos
+              ? 'bg-blue-500 border-blue-600 text-white'
+              : 'bg-white border-slate-200 text-slate-500 hover:bg-blue-50 hover:border-blue-300'
+          }`}
+        >
+          {ANIM_POS_GLYPHS[pos]}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+// Animation step: from/to positions + duration + optional images list.
 // Step 0 uses 'extra_images' (cycled after the root image).
 // Steps 1+ use 'images' (standalone list; if empty, root image is used).
-type AnimStep = { direction: string; duration: number; extra_images?: string[]; images?: string[] };
+type AnimStep = { from: string; to: string; duration: number; extra_images?: string[]; images?: string[] };
 // Animation config: either flat single-step or multi-step with 'steps' array.
-type AnimConfig = { direction: string; duration: number; extra_images?: string[] }
+type AnimConfig = { from: string; to: string; duration: number; extra_images?: string[] }
                | { steps: AnimStep[] };
 
 function toSteps(anim: AnimConfig): AnimStep[] {
   if ('steps' in anim && Array.isArray(anim.steps)) return anim.steps;
-  const { direction, duration, extra_images } = anim as any;
-  return [{ direction: direction ?? 'left_right', duration: duration ?? 3, extra_images }];
+  const { from, to, duration, extra_images } = anim as any;
+  return [{ from: from ?? 'center_middle', to: to ?? 'center_middle', duration: duration ?? 3, extra_images }];
 }
 function fromSteps(steps: AnimStep[]): AnimConfig {
   if (steps.length === 1) {
-    const { direction, duration, extra_images } = steps[0];
-    const r: any = { direction, duration };
+    const { from, to, duration, extra_images } = steps[0];
+    const r: any = { from, to, duration };
     if (extra_images?.filter(Boolean).length) r.extra_images = extra_images.filter(Boolean);
     return r;
   }
@@ -1010,7 +1045,7 @@ export const ImagesListInput = ({
 
   const toggleAnimation = (idx: number, checked: boolean) => {
     if (checked) {
-      updateRow(idx, { animation: { direction: 'left_right', duration: 3 } });
+      updateRow(idx, { animation: { from: 'center_middle', to: 'center_middle', duration: 3 } });
     } else {
       const { animation: _a, ...rest } = rows[idx];
       onChange(rows.map((r, i) => i === idx ? rest : r));
@@ -1073,15 +1108,18 @@ export const ImagesListInput = ({
             ><Trash2 size={12} /></button>
           </div>
         )}
-        <div>
-          <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Direction</label>
-          <select
-            value={step.direction}
-            onChange={e => updateStep({ direction: e.target.value })}
-            className="w-full border rounded p-1 text-xs bg-white"
-          >
-            {ANIM_DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-          </select>
+        <div className="flex gap-3 items-start">
+          <PositionPicker
+            value={step.from ?? 'center_middle'}
+            onChange={v => updateStep({ from: v })}
+            label="From"
+          />
+          <div className="flex items-center self-center pt-4 text-slate-400 text-lg">→</div>
+          <PositionPicker
+            value={step.to ?? 'center_middle'}
+            onChange={v => updateStep({ to: v })}
+            label="To"
+          />
         </div>
         <div>
           <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Duration (seconds)</label>
@@ -1178,7 +1216,7 @@ export const ImagesListInput = ({
                   {steps.map((step, si) => renderStep(step, si, steps, updateSteps))}
                   <button
                     type="button"
-                    onClick={() => updateSteps([...steps, { direction: 'left_right', duration: 3 }])}
+                    onClick={() => updateSteps([...steps, { from: 'center_middle', to: 'center_middle', duration: 3 }])}
                     className="w-full text-xs text-purple-500 border border-dashed border-purple-200 rounded py-0.5 hover:bg-purple-50 flex items-center justify-center gap-1"
                   ><Plus size={10} /> Add step</button>
                 </div>

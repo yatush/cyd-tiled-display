@@ -43,6 +43,7 @@ __all__ = [
     "tile_schema",
     "screen_schema",
     "screens_list_schema",
+    "get_validator",
 ]
 
 
@@ -186,7 +187,19 @@ def get_validator(field_type: str, object_fields: list = None):
         )
     if field_type == 'condition_logic':
         return cv.Any(dict, non_empty_string)
+    VALID_ANIM_POSITIONS = (
+        'top_left', 'top_middle', 'top_right',
+        'center_left', 'center_middle', 'center_right',
+        'bottom_left', 'bottom_middle', 'bottom_right',
+    )
+
+    def _valid_anim_position(value):
+        if value not in VALID_ANIM_POSITIONS:
+            raise cv.Invalid(f"animation position must be one of {VALID_ANIM_POSITIONS}, got '{value}'")
+        return value
+
     def _valid_anim_direction(value):
+        """Legacy direction field — accepted for backward-compat with old YAML files."""
         valid = ('none', 'left_right', 'right_left', 'up_down', 'down_up')
         if value not in valid:
             raise cv.Invalid(f"animation direction must be one of {valid}, got '{value}'")
@@ -199,12 +212,21 @@ def get_validator(field_type: str, object_fields: list = None):
 
     if field_type == 'images_list':
         # List of {image: str, condition?: str|dict, animation?: single-step or multi-step}
-        animation_step_schema = Schema({
+        # Animation step accepts the new from/to positions OR the legacy direction field.
+        _new_step = Schema({
+            Optional('from', default='center_middle'): _valid_anim_position,
+            Optional('to', default='center_middle'): _valid_anim_position,
+            Required('duration'): _positive_number,
+            Optional('extra_images'): All(list, [non_empty_string]),
+            Optional('images'): All(list, [non_empty_string]),
+        }, extra=PREVENT_EXTRA)
+        _legacy_step = Schema({
             Required('direction'): _valid_anim_direction,
             Required('duration'): _positive_number,
             Optional('extra_images'): All(list, [non_empty_string]),
             Optional('images'): All(list, [non_empty_string]),
         }, extra=PREVENT_EXTRA)
+        animation_step_schema = Vol_Any(_new_step, _legacy_step)
 
         def _validate_steps(steps):
             for i, step in enumerate(steps):
@@ -214,13 +236,22 @@ def get_validator(field_type: str, object_fields: list = None):
                         raise cv.Invalid(f"Animation step {i + 1} must have at least one image in 'images'")
             return steps
 
+        _new_single = Schema({
+            Optional('from', default='center_middle'): _valid_anim_position,
+            Optional('to', default='center_middle'): _valid_anim_position,
+            Required('duration'): _positive_number,
+            Optional('extra_images'): All(list, [non_empty_string]),
+        }, extra=PREVENT_EXTRA)
+        _legacy_single = Schema({
+            Required('direction'): _valid_anim_direction,
+            Required('duration'): _positive_number,
+            Optional('extra_images'): All(list, [non_empty_string]),
+        }, extra=PREVENT_EXTRA)
         animation_schema = Vol_Any(
-            # single-step (legacy / default)
-            Schema({
-                Required('direction'): _valid_anim_direction,
-                Required('duration'): _positive_number,
-                Optional('extra_images'): All(list, [non_empty_string]),
-            }, extra=PREVENT_EXTRA),
+            # single-step new format
+            _new_single,
+            # single-step legacy format
+            _legacy_single,
             # multi-step
             Schema({
                 Required('steps'): All(list, [animation_step_schema], _validate_steps),

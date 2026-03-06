@@ -228,17 +228,42 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
 
     has_any_img_condition = any(e.get("condition") for e in valid_entries)
 
-    _DIRECTION_ENUM = {
-        "left_right": "ImageDirection::left_right",
-        "right_left": "ImageDirection::right_left",
-        "up_down": "ImageDirection::up_down",
-        "down_up": "ImageDirection::down_up",
+    # Position → (x_frac, y_frac) within the tile.
+    # x_frac: left=0.0, middle=0.5, right=1.0
+    # y_frac: top=0.0,  center=0.5, bottom=1.0
+    _POS_X_FRAC = {'left': 0.0, 'middle': 0.5, 'right': 1.0}
+    _POS_Y_FRAC = {'top': 0.0, 'center': 0.5, 'bottom': 1.0}
+
+    # Legacy direction → (from_x, from_y, to_x, to_y) fracs.
+    _LEGACY_DIR_POS = {
+        'left_right': (0.0, 0.5, 1.0, 0.5),
+        'right_left': (1.0, 0.5, 0.0, 0.5),
+        'up_down':    (0.5, 0.0, 0.5, 1.0),
+        'down_up':    (0.5, 1.0, 0.5, 0.0),
     }
+
+    def _step_positions(step: dict):
+        """Return (from_x, from_y, to_x, to_y) fracs, or None for static (no motion)."""
+        if 'direction' in step:
+            d = step['direction']
+            if d == 'none':
+                return None
+            return _LEGACY_DIR_POS.get(d)
+        from_pos = step.get('from', 'center_middle')
+        to_pos   = step.get('to',   'center_middle')
+        fx = _POS_X_FRAC[from_pos.split('_', 1)[1]]
+        fy = _POS_Y_FRAC[from_pos.split('_')[0]]
+        tx = _POS_X_FRAC[to_pos.split('_', 1)[1]]
+        ty = _POS_Y_FRAC[to_pos.split('_')[0]]
+        # Both fracs at center (0.5, 0.5) → use default static overload (no position args)
+        if fx == 0.5 and fy == 0.5 and tx == 0.5 and ty == 0.5:
+            return None
+        return (fx, fy, tx, ty)
 
     def _make_draw_call_step(step: dict, root_img_id: str, is_first: bool,
                               total_ms: int = None, step_start_ms: int = None) -> str:
         """Return a make_image_draw(...) expression for one animation step."""
-        direction = step.get("direction", "left_right")
+        positions = _step_positions(step)
         duration_ms = int(float(step.get("duration", 3)) * 1000)
         if is_first:
             extra = list(step.get("extra_images") or [])
@@ -250,21 +275,23 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         aligned = total_ms is not None
         if n > 1:
             imgs_cpp = "{" + ", ".join(f"&id({img})" for img in all_images) + "}"
-            if direction == "none":
+            if positions is None:
                 if aligned:
                     return f"make_image_draw({imgs_cpp}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
                 return f"make_image_draw({imgs_cpp}, {duration_ms}U)"
-            dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
+            fx, fy, tx, ty = positions
+            pos_args = f"{fx:.1f}f, {fy:.1f}f, {tx:.1f}f, {ty:.1f}f"
             if aligned:
-                return f"make_image_draw({imgs_cpp}, {dir_enum}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
-            return f"make_image_draw({imgs_cpp}, {dir_enum}, {duration_ms}U)"
+                return f"make_image_draw({imgs_cpp}, {pos_args}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
+            return f"make_image_draw({imgs_cpp}, {pos_args}, {duration_ms}U)"
         img = all_images[0]
-        if direction == "none":
+        if positions is None:
             return f"make_image_draw(&id({img}))"
-        dir_enum = _DIRECTION_ENUM.get(direction, "ImageDirection::left_right")
+        fx, fy, tx, ty = positions
+        pos_args = f"{fx:.1f}f, {fy:.1f}f, {tx:.1f}f, {ty:.1f}f"
         if aligned:
-            return f"make_image_draw(&id({img}), {dir_enum}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
-        return f"make_image_draw(&id({img}), {dir_enum}, {duration_ms}U)"
+            return f"make_image_draw(&id({img}), {pos_args}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
+        return f"make_image_draw(&id({img}), {pos_args}, {duration_ms}U)"
 
     def _get_steps(entry: dict) -> list:
         """Return the list of animation steps (always at least 1 element if animated)."""

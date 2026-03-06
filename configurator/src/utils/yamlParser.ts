@@ -1,6 +1,32 @@
 import yaml from 'js-yaml';
 import { Config, Page, Tile } from '../types';
 
+/** Map legacy 'direction' string to from/to position pair. */
+const _DIRECTION_TO_FROM_TO: Record<string, { from: string; to: string }> = {
+    none:       { from: 'center_middle', to: 'center_middle' },
+    left_right: { from: 'center_left',   to: 'center_right'  },
+    right_left: { from: 'center_right',  to: 'center_left'   },
+    up_down:    { from: 'top_middle',    to: 'bottom_middle' },
+    down_up:    { from: 'bottom_middle', to: 'top_middle'    },
+};
+
+/** Migrate an animation object (or step within it) from legacy direction → from/to. */
+function _migrateStep(step: any): any {
+    if (!step || typeof step !== 'object' || !('direction' in step)) return step;
+    const { direction, ...rest } = step;
+    const { from, to } = _DIRECTION_TO_FROM_TO[direction] ?? { from: 'center_middle', to: 'center_middle' };
+    return { from, to, ...rest };
+}
+
+/** Migrate a full animation config (single-step or multi-step) from legacy to from/to. */
+function _migrateAnimation(anim: any): any {
+    if (!anim || typeof anim !== 'object') return anim;
+    if (Array.isArray(anim.steps)) {
+        return { steps: anim.steps.map(_migrateStep) };
+    }
+    return _migrateStep(anim);
+}
+
 const transformConditionLogicReverse = (value: any): any => {
     if (typeof value === 'string') return value;
     if (typeof value === 'object' && value !== null) {
@@ -73,7 +99,10 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
                         result.condition = transformConditionLogicReverse(result.condition);
                     }
 
-
+                    // Migrate legacy 'direction' field to from/to positions.
+                    if (result.animation && typeof result.animation === 'object') {
+                        result.animation = _migrateAnimation(result.animation);
+                    }
 
                     return result;
                 });

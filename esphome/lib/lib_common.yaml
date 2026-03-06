@@ -434,7 +434,7 @@ script:
           int _ih = (int)id(image_slot)->get_height();
           id(disp).image((x_start + x_end - _iw) / 2, (y_start + y_end - _ih) / 2, id(image_slot));
 
-  # direction: 0=left_right  1=right_left  2=up_down  3=down_up
+  # from/to fracs: 0.0=start edge, 0.5=center, 1.0=end edge (relative to tile minus image size)
   - id: draw_image_anim
     parameters:
       x_start: int
@@ -442,25 +442,18 @@ script:
       y_start: int
       y_end: int
       duration_ms: int
-      direction: int
+      from_x_frac: float
+      from_y_frac: float
+      to_x_frac: float
+      to_y_frac: float
     then:
       - lambda: |-
           if (id(image_slot) == nullptr) return;
           int _iw = (int)id(image_slot)->get_width();
           int _ih = (int)id(image_slot)->get_height();
           float _frac = fmodf(millis() / (float)duration_ms, 1.0f);
-          int _x, _y;
-          if (direction <= 1) {
-            int _range = std::max(0, (x_end - x_start) - _iw - 10);
-            _x = (direction == 0) ? x_start + 5 + (int)(_frac * _range)
-                                   : x_end - _iw - 5 - (int)(_frac * _range);
-            _y = (y_start + y_end - _ih) / 2;
-          } else {
-            int _range = std::max(0, (y_end - y_start) - _ih - 10);
-            _x = (x_start + x_end - _iw) / 2;
-            _y = (direction == 2) ? y_start + 5 + (int)(_frac * _range)
-                                   : y_end - _ih - 5 - (int)(_frac * _range);
-          }
+          int _x = x_start + (int)((from_x_frac + _frac * (to_x_frac - from_x_frac)) * (x_end - x_start - _iw));
+          int _y = y_start + (int)((from_y_frac + _frac * (to_y_frac - from_y_frac)) * (y_end - y_start - _ih));
           id(disp).image(_x, _y, id(image_slot));
 
   # Like draw_image_anim but takes an explicit frac (0.0–1.0) instead of computing it from millis().
@@ -472,24 +465,17 @@ script:
       y_start: int
       y_end: int
       frac: float
-      direction: int
+      from_x_frac: float
+      from_y_frac: float
+      to_x_frac: float
+      to_y_frac: float
     then:
       - lambda: |-
           if (id(image_slot) == nullptr) return;
           int _iw = (int)id(image_slot)->get_width();
           int _ih = (int)id(image_slot)->get_height();
-          int _x, _y;
-          if (direction <= 1) {
-            int _range = std::max(0, (x_end - x_start) - _iw - 10);
-            _x = (direction == 0) ? x_start + 5 + (int)(frac * _range)
-                                   : x_end - _iw - 5 - (int)(frac * _range);
-            _y = (y_start + y_end - _ih) / 2;
-          } else {
-            int _range = std::max(0, (y_end - y_start) - _ih - 10);
-            _x = (x_start + x_end - _iw) / 2;
-            _y = (direction == 2) ? y_start + 5 + (int)(frac * _range)
-                                   : y_end - _ih - 5 - (int)(frac * _range);
-          }
+          int _x = x_start + (int)((from_x_frac + frac * (to_x_frac - from_x_frac)) * (x_end - x_start - _iw));
+          int _y = y_start + (int)((from_y_frac + frac * (to_y_frac - from_y_frac)) * (y_end - y_start - _ih));
           id(disp).image(_x, _y, id(image_slot));
 
   - id: tile_blinds_down

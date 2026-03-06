@@ -31,10 +31,37 @@ fi
 
 mkdir -p "$DOCKER_DATA_ROOT"
 
-# Start dockerd if not running
+# ---------------------------------------------------------------------------
+# Ensure containerd is running BEFORE starting/checking dockerd.
+# In this dev-container environment dockerd is sometimes started at boot before
+# containerd, which causes "connection refused" errors when `docker run` is
+# attempted even though `docker ps` succeeds.
+# ---------------------------------------------------------------------------
+STARTED_CONTAINERD=false
+if ! sudo test -S /run/containerd/containerd.sock 2>/dev/null; then
+    echo "Starting containerd..."
+    sudo mkdir -p /run/containerd
+    sudo containerd > /tmp/containerd.log 2>&1 &
+    echo -n "Waiting for containerd "
+    until sudo test -S /run/containerd/containerd.sock 2>/dev/null; do echo -n "."; sleep 1; done
+    echo " ready!"
+    STARTED_CONTAINERD=true
+fi
+
+# Start dockerd if not running.
+# If we just started containerd and dockerd is already running, restart dockerd
+# so it can establish a fresh connection to containerd.
 if ! docker ps > /dev/null 2>&1; then
     echo "Starting Docker daemon (using data-root: $DOCKER_DATA_ROOT)..."
-    sudo dockerd > /tmp/dockerd.log 2>&1 &
+    sudo dockerd --dns 168.63.129.16 > /tmp/dockerd.log 2>&1 &
+    echo -n "Waiting for Docker "
+    until docker ps > /dev/null 2>&1; do echo -n "."; sleep 1; done
+    echo " ready!"
+elif [ "$STARTED_CONTAINERD" = true ]; then
+    echo "Restarting dockerd to connect to the newly started containerd..."
+    sudo kill "$(pgrep -x dockerd | head -1)" 2>/dev/null
+    sleep 2
+    sudo dockerd --dns 168.63.129.16 > /tmp/dockerd.log 2>&1 &
     echo -n "Waiting for Docker "
     until docker ps > /dev/null 2>&1; do echo -n "."; sleep 1; done
     echo " ready!"
