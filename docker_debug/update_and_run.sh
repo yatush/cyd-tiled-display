@@ -32,39 +32,50 @@ fi
 mkdir -p "$DOCKER_DATA_ROOT"
 
 # ---------------------------------------------------------------------------
-# Ensure containerd is running BEFORE starting/checking dockerd.
-# In this dev-container environment dockerd is sometimes started at boot before
-# containerd, which causes "connection refused" errors when `docker run` is
-# attempted even though `docker ps` succeeds.
+# Ensure containerd and dockerd are running and properly connected.
+#
+# We check actual processes (not socket files, which can be stale leftovers)
+# and restart dockerd any time containerd had to be started, so dockerd always
+# holds a live connection to containerd before we attempt `docker run`.
 # ---------------------------------------------------------------------------
-STARTED_CONTAINERD=false
-if ! sudo test -S /run/containerd/containerd.sock 2>/dev/null; then
+
+_start_containerd() {
     echo "Starting containerd..."
     sudo mkdir -p /run/containerd
     sudo containerd > /tmp/containerd.log 2>&1 &
     echo -n "Waiting for containerd "
-    until sudo test -S /run/containerd/containerd.sock 2>/dev/null; do echo -n "."; sleep 1; done
+    until pgrep -x containerd > /dev/null && sudo test -S /run/containerd/containerd.sock; do
+        echo -n "."; sleep 1;
+    done
     echo " ready!"
-    STARTED_CONTAINERD=true
-fi
+}
 
-# Start dockerd if not running.
-# If we just started containerd and dockerd is already running, restart dockerd
-# so it can establish a fresh connection to containerd.
-if ! docker ps > /dev/null 2>&1; then
+_start_dockerd() {
     echo "Starting Docker daemon (using data-root: $DOCKER_DATA_ROOT)..."
     sudo dockerd --dns 168.63.129.16 > /tmp/dockerd.log 2>&1 &
     echo -n "Waiting for Docker "
     until docker ps > /dev/null 2>&1; do echo -n "."; sleep 1; done
     echo " ready!"
-elif [ "$STARTED_CONTAINERD" = true ]; then
+}
+
+_restart_dockerd() {
     echo "Restarting dockerd to connect to the newly started containerd..."
     sudo kill "$(pgrep -x dockerd | head -1)" 2>/dev/null
     sleep 2
-    sudo dockerd --dns 168.63.129.16 > /tmp/dockerd.log 2>&1 &
-    echo -n "Waiting for Docker "
-    until docker ps > /dev/null 2>&1; do echo -n "."; sleep 1; done
-    echo " ready!"
+    _start_dockerd
+}
+
+STARTED_CONTAINERD=false
+if ! pgrep -x containerd > /dev/null; then
+    _start_containerd
+    STARTED_CONTAINERD=true
+fi
+
+if ! docker ps > /dev/null 2>&1; then
+    _start_dockerd
+elif [ "$STARTED_CONTAINERD" = true ]; then
+    # dockerd was running before containerd — restart it so it connects properly
+    _restart_dockerd
 fi
 
 # Parse flags
@@ -92,14 +103,35 @@ echo "Starting container..."
 # Mount volumes:
 #   cyd_esphome_build: preserves the pre-compiled .esphome build cache across container restarts
 #   cyd_pio_cache: caches PlatformIO downloaded packages
-docker run -d --name $CONTAINER_NAME \
-  -v "$(pwd)/vnc_startup.sh:/app/vnc_startup.sh" \
-  -v "$(pwd)/nginx.conf:/etc/nginx/nginx.conf" \
-  -v "cyd_esphome_build:/app/esphome/lib/.esphome" \
-  -v "cyd_pio_cache:/tmp/pio_cache" \
-  -v "cyd_pio_packages:/root/.platformio" \
-  -p 6080:6080 -p 8080:8080 -p 8099:8099 -p 5900:5900 \
-  $IMAGE_NAME
+_docker_run() {
+    docker run -d --name $CONTAINER_NAME \
+      -v "$(pwd)/vnc_startup.sh:/app/vnc_startup.sh" \
+      -v "$(pwd)/nginx.conf:/etc/nginx/nginx.conf" \
+      -v "cyd_esphome_build:/app/esphome/lib/.esphome" \
+      -v "cyd_pio_cache:/tmp/pio_cache" \
+      -v "cyd_pio_packages:/root/.platformio" \
+      -p 6080:6080 -p 8080:8080 -p 8099:8099 -p 5900:5900 \
+      $IMAGE_NAME
+}
+
+_docker_run
+DOCKER_RUN_EXIT=$?
+# If docker run failed with a containerd connection error, recover and retry once.
+if [ $DOCKER_RUN_EXIT -ne 0 ]; then
+    if grep -q "containerd" /tmp/dockerd.log 2>/dev/null || \
+       docker logs $CONTAINER_NAME 2>&1 | grep -q "containerd" || \
+       ! pgrep -x containerd > /dev/null; then
+        echo "Detected containerd issue — recovering..."
+        docker rm -f $CONTAINER_NAME 2>/dev/null || true
+        _start_containerd
+        _restart_dockerd
+        echo "Retrying container start..."
+        _docker_run
+    else
+        echo "ERROR: docker run failed (exit $DOCKER_RUN_EXIT). See above for details."
+        exit 1
+    fi
+fi
 
 echo "Container started."
 
