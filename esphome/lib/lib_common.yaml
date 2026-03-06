@@ -452,8 +452,8 @@ script:
           int _iw = (int)id(image_slot)->get_width();
           int _ih = (int)id(image_slot)->get_height();
           float _frac = fmodf(millis() / (float)duration_ms, 1.0f);
-          int _x = x_start + (int)((from_x_frac + _frac * (to_x_frac - from_x_frac)) * (x_end - x_start - _iw));
-          int _y = y_start + (int)((from_y_frac + _frac * (to_y_frac - from_y_frac)) * (y_end - y_start - _ih));
+          int _x = (x_start + IMAGE_DRAW_PAD) + (int)((from_x_frac + _frac * (to_x_frac - from_x_frac)) * std::max(0, x_end - x_start - _iw - 2*IMAGE_DRAW_PAD));
+          int _y = (y_start + IMAGE_DRAW_PAD) + (int)((from_y_frac + _frac * (to_y_frac - from_y_frac)) * std::max(0, y_end - y_start - _ih - 2*IMAGE_DRAW_PAD));
           id(disp).image(_x, _y, id(image_slot));
 
   # Like draw_image_anim but takes an explicit frac (0.0–1.0) instead of computing it from millis().
@@ -474,8 +474,8 @@ script:
           if (id(image_slot) == nullptr) return;
           int _iw = (int)id(image_slot)->get_width();
           int _ih = (int)id(image_slot)->get_height();
-          int _x = x_start + (int)((from_x_frac + frac * (to_x_frac - from_x_frac)) * (x_end - x_start - _iw));
-          int _y = y_start + (int)((from_y_frac + frac * (to_y_frac - from_y_frac)) * (y_end - y_start - _ih));
+          int _x = (x_start + IMAGE_DRAW_PAD) + (int)((from_x_frac + frac * (to_x_frac - from_x_frac)) * std::max(0, x_end - x_start - _iw - 2*IMAGE_DRAW_PAD));
+          int _y = (y_start + IMAGE_DRAW_PAD) + (int)((from_y_frac + frac * (to_y_frac - from_y_frac)) * std::max(0, y_end - y_start - _ih - 2*IMAGE_DRAW_PAD));
           id(disp).image(_x, _y, id(image_slot));
 
   - id: tile_blinds_down

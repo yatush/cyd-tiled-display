@@ -619,6 +619,10 @@ std::pair<int, int> measure(BaseFont& font, const char* str) {
 // ---------------------------------------------------------------------------
 // Image draw helpers
 // ---------------------------------------------------------------------------
+// Padding (px) kept between a drawn image and the tile edge on every side.
+// Must match _FIXED_PAD in configurator/generate_tiles_api.py.
+constexpr int IMAGE_DRAW_PAD = 5;
+
 // DrawImageFunc — the type expected by HAActionTile's draw_funcs vector.
 using DrawImageFunc = std::function<void(int, int, int, int, std::vector<std::string>)>;
 
