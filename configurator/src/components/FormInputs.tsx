@@ -968,7 +968,8 @@ const FractionalPositionPicker = ({
   value,
   onChange,
   label,
-}: { value: AnimPos; onChange: (v: AnimPos) => void; label: string }) => {
+  ghostPoint,
+}: { value: AnimPos; onChange: (v: AnimPos) => void; label: string; ghostPoint?: AnimPos }) => {
   const [x, y] = value;
   const CELL = 5; // px per cell (~50% of original)
   const SIZE = CELL * (FRAC_STEPS - 1); // total canvas size
@@ -1018,6 +1019,22 @@ const FractionalPositionPicker = ({
             </React.Fragment>
           );
         })}
+        {/* Ghost point: previous step's "to" position */}
+        {ghostPoint && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: `${ghostPoint[0] * 100}%`,
+              top: `${ghostPoint[1] * 100}%`,
+              transform: 'translate(-50%, -50%)',
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: '#94a3b8',
+              border: '1.5px solid #64748b',
+            }}
+          />
+        )}
         {/* Selected point indicator — use % to align exactly with the % grid lines */}
         <div
           className="absolute pointer-events-none"
@@ -1182,6 +1199,7 @@ export const ImagesListInput = ({
             value={normalizePos(step.from ?? DEFAULT_ANIM_POS)}
             onChange={v => updateStep({ from: v })}
             label="From"
+            ghostPoint={si > 0 ? normalizePos(steps[si - 1].to ?? DEFAULT_ANIM_POS) : undefined}
           />
           <div className="flex items-center self-center pt-4 text-slate-400 text-lg">→</div>
           <FractionalPositionPicker
