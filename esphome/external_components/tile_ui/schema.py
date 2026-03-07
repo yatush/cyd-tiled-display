@@ -194,9 +194,20 @@ def get_validator(field_type: str, object_fields: list = None):
     )
 
     def _valid_anim_position(value):
-        if value not in VALID_ANIM_POSITIONS:
-            raise cv.Invalid(f"animation position must be one of {VALID_ANIM_POSITIONS}, got '{value}'")
-        return value
+        # Accept named string positions (legacy)
+        if isinstance(value, str):
+            if value not in VALID_ANIM_POSITIONS:
+                raise cv.Invalid(f"animation position must be one of {VALID_ANIM_POSITIONS}, got '{value}'")
+            return value
+        # Accept [x, y] fractional list
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            x, y = value
+            if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+                raise cv.Invalid(f"animation position [x, y] must contain numbers, got {value!r}")
+            if not (0.0 <= float(x) <= 1.0) or not (0.0 <= float(y) <= 1.0):
+                raise cv.Invalid(f"animation position [x, y] values must be in 0.0–1.0, got {value!r}")
+            return [float(x), float(y)]
+        raise cv.Invalid(f"animation position must be a named string or [x, y] list, got {value!r}")
 
     def _valid_anim_direction(value):
         """Legacy direction field — accepted for backward-compat with old YAML files."""

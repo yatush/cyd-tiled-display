@@ -249,12 +249,19 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
             if d == 'none':
                 return None
             return _LEGACY_DIR_POS.get(d)
+
+        def _resolve_pos(pos, default='center_middle'):
+            """Convert a position (named string or [x,y] list) to (x_frac, y_frac)."""
+            if isinstance(pos, (list, tuple)) and len(pos) == 2:
+                return (float(pos[0]), float(pos[1]))
+            # Named string
+            p = pos if isinstance(pos, str) else default
+            return (_POS_X_FRAC[p.split('_', 1)[1]], _POS_Y_FRAC[p.split('_')[0]])
+
         from_pos = step.get('from', 'center_middle')
         to_pos   = step.get('to',   'center_middle')
-        fx = _POS_X_FRAC[from_pos.split('_', 1)[1]]
-        fy = _POS_Y_FRAC[from_pos.split('_')[0]]
-        tx = _POS_X_FRAC[to_pos.split('_', 1)[1]]
-        ty = _POS_Y_FRAC[to_pos.split('_')[0]]
+        fx, fy = _resolve_pos(from_pos)
+        tx, ty = _resolve_pos(to_pos)
         # Both fracs at center (0.5, 0.5) → use default static overload (no position args)
         if fx == 0.5 and fy == 0.5 and tx == 0.5 and ty == 0.5:
             return None
@@ -342,67 +349,51 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
     if not has_any_img_condition and len(valid_entries) == 1:
         entry = valid_entries[0]
         if len(_get_steps(entry)) <= 1:
-            return _make_draw_call(entry)  # bare expr; caller wraps in { }
+            return [_make_draw_call(entry)]  # bare expr; caller wraps in { }
         # Multi-step requires a lambda so the time dispatch runs each call
         body = "\n".join(f"  {l}" for l in _entry_dispatch_lines(entry))
-        return f"[=]({sig}) {{\n{body}\n}}"
+        return [f"[=]({sig}) {{\n{body}\n}}"]
 
     # -----------------------------------------------------------------------
-    # Conditional path: if/else-if chain selecting the right entry at runtime
+    # All-layers path: one lambda per entry — ALL whose conditions are true
+    # are rendered, bottom to top in list order.
+    # An entry without a condition is always drawn (acts as a base layer).
     # -----------------------------------------------------------------------
-    def _emit_branch_lines(entry: dict, kw_line: str) -> list[str]:
-        dispatch = _entry_dispatch_lines(entry)
-        if len(dispatch) == 1:
-            return [kw_line, f"    {dispatch[0]}"]
-        # Multi-statement block — wrap in braces so _t is scoped
-        lines = [f"{kw_line} {{"]
-        for l in dispatch:
-            lines.append(f"    {l}")
-        lines.append("  }")
-        return lines
-
-    branches: list[tuple[str, str, dict]] = []
-    keyword = "if"
-    fallback_entry = None
-
+    results: list[str] = []
     for entry in valid_entries:
         cond_expr = entry.get("condition")
-        if not cond_expr:
-            fallback_entry = entry
-            break
-        expr = build_expression(cond_expr)
-        if not expr:
-            continue
-        branches.append((keyword, expr, entry))
-        keyword = "else if"
-
-    if not branches and fallback_entry is None:
-        return None
-
-    body_lines = [entities_binding]
-    for kw, expr, entry in branches:
-        body_lines.extend(_emit_branch_lines(entry, f"  {kw} ({expr})"))
-
-    if fallback_entry:
-        if branches:
-            body_lines.extend(_emit_branch_lines(fallback_entry, "  else"))
+        dispatch = _entry_dispatch_lines(entry)
+        body_lines = [entities_binding]
+        if cond_expr:
+            expr = build_expression(cond_expr)
+            if not expr:
+                continue
+            # Wrap draw calls in an if-guard for this entry's condition
+            if len(dispatch) == 1:
+                body_lines += [f"  if ({expr})", f"    {dispatch[0]}"]
+            else:
+                body_lines.append(f"  if ({expr}) {{")
+                body_lines += [f"    {l}" for l in dispatch]
+                body_lines.append("  }")
         else:
-            for l in _entry_dispatch_lines(fallback_entry):
-                body_lines.append(f"  {l}")
+            # Unconditional — always draw
+            body_lines += [f"  {l}" for l in dispatch]
+        results.append(f"[=]({sig}) {{\n" + "\n".join(filter(None, body_lines)) + "\n}")
 
-    return f"[=]({sig}) {{\n" + "\n".join(filter(None, body_lines)) + "\n}"
+    return results if results else None
 
 
 def _override_display_with_image(display_cpp: str, config: dict, expected_params: list) -> str:
     """
-    If config has 'image' or 'state_images', replace the display list entirely
-    with the image draw lambda (ignoring any 'display' scripts).
-    Otherwise return the original display_cpp unchanged.
+    If config has 'image' or 'images', replace the display list with one
+    DrawImageFunc per images entry.  All entries whose conditions are true
+    are rendered in order (first = bottom layer, last = top layer).
+    Returns the original display_cpp unchanged if no images are configured.
     """
-    lam = _build_image_lambda(config, expected_params)
-    if not lam:
+    lams = _build_image_lambda(config, expected_params)
+    if not lams:
         return display_cpp
-    return f"{{ {lam} }}"
+    return "{ " + ", ".join(lams) + " }"
 
 
 # Keep old name as alias so any external callers aren't broken

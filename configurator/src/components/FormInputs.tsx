@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Plus, Upload } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { HaEntity, ImageEntry } from '../types';
@@ -944,64 +944,133 @@ export const ImageManagerPanel = ({
 
 // ---- ImagesListInput --------------------------------------------------------
 // Unified list of images, each with an optional condition and optional animation.
-// Entries are evaluated in order; first matching condition wins.
-// An entry without a condition is an unconditional fallback.
+// All entries whose condition is true are rendered, in order (first = bottom layer, last = top layer).
+// An entry without a condition is always drawn.
 
-// 3×3 position grid for animation from/to selection.
-// Positions are encoded as "{row}_{col}" e.g. "top_left", "center_middle".
-const ANIM_POSITIONS = [
-  ['top_left',    'top_middle',    'top_right'   ],
-  ['center_left', 'center_middle', 'center_right'],
-  ['bottom_left', 'bottom_middle', 'bottom_right'],
-] as const;
+// Fractional position grid for animation from/to selection.
+// Positions are encoded as [x, y] where x and y are fractions of 1 in 0.05 steps.
+// Top-left is [0, 0], bottom-right is [1, 1].
 
-// Visual glyphs for each grid cell (row-major order).
-const ANIM_POS_GLYPHS: Record<string, string> = {
-  top_left: '•', top_middle: '•', top_right: '•',
-  center_left: '•', center_middle: '•', center_right: '•',
-  bottom_left: '•', bottom_middle: '•', bottom_right: '•',
-};
+const FRAC_STEPS = 21; // 0.00 to 1.00 in 0.05 increments
+const FRAC_STEP = 0.05;
 
-/** Compact 3×3 position picker. */
-const PositionPicker = ({
+type AnimPos = [number, number]; // [x, y]
+
+const DEFAULT_ANIM_POS: AnimPos = [0.5, 0.5];
+
+function fracSnap(v: number): number {
+  return Math.round(Math.round(v / FRAC_STEP) * FRAC_STEP * 100) / 100;
+}
+
+/** Interactive fractional position picker: 21×21 grid (0.00–1.00 in 0.05 steps).
+ *  Click a cell to move the indicator. Selected value shown below. */
+const FractionalPositionPicker = ({
   value,
   onChange,
   label,
-}: { value: string; onChange: (v: string) => void; label: string }) => (
-  <div>
-    <label className="block text-[10px] text-slate-500 uppercase mb-0.5">{label}</label>
-    <div className="inline-grid grid-cols-3 gap-0.5">
-      {ANIM_POSITIONS.flat().map(pos => (
-        <button
-          key={pos}
-          type="button"
-          title={pos.replace('_', ' ')}
-          onClick={() => onChange(pos)}
-          className={`w-7 h-7 text-sm rounded border transition-colors ${
-            value === pos
-              ? 'bg-blue-500 border-blue-600 text-white'
-              : 'bg-white border-slate-200 text-slate-500 hover:bg-blue-50 hover:border-blue-300'
-          }`}
-        >
-          {ANIM_POS_GLYPHS[pos]}
-        </button>
-      ))}
+}: { value: AnimPos; onChange: (v: AnimPos) => void; label: string }) => {
+  const [x, y] = value;
+  const CELL = 5; // px per cell (~50% of original)
+  const SIZE = CELL * (FRAC_STEPS - 1); // total canvas size
+
+  return (
+    <div className="select-none">
+      <label className="block text-[10px] text-slate-500 uppercase mb-1">{label}</label>
+      {/* Grid area — tabIndex makes it focusable for keyboard control */}
+      <div
+        tabIndex={0}
+        className="relative border border-slate-300 rounded bg-white cursor-crosshair outline-none focus:ring-2 focus:ring-blue-400"
+        style={{ width: SIZE + 1, height: SIZE + 1 }}
+        onClick={e => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const px = e.clientX - rect.left;
+          const py = e.clientY - rect.top;
+          // Snap to nearest 0.05 grid line (cell center) rather than raw pixel position
+          const nx = fracSnap(Math.max(0, Math.min(1, px / SIZE)));
+          const ny = fracSnap(Math.max(0, Math.min(1, py / SIZE)));
+          onChange([nx, ny]);
+        }}
+        onKeyDown={e => {
+          const ARROW_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+          if (!ARROW_KEYS.includes(e.key)) return;
+          e.preventDefault();
+          const [cx, cy] = value;
+          if (e.key === 'ArrowLeft')  onChange([fracSnap(Math.max(0, cx - FRAC_STEP)), cy]);
+          if (e.key === 'ArrowRight') onChange([fracSnap(Math.min(1, cx + FRAC_STEP)), cy]);
+          if (e.key === 'ArrowUp')    onChange([cx, fracSnap(Math.max(0, cy - FRAC_STEP))]);
+          if (e.key === 'ArrowDown')  onChange([cx, fracSnap(Math.min(1, cy + FRAC_STEP))]);
+        }}
+      >
+        {/* Grid lines */}
+        {Array.from({ length: FRAC_STEPS }).map((_, i) => {
+          const pct = (i / (FRAC_STEPS - 1)) * 100;
+          const isMajor = i % 2 === 0; // every 0.10
+          return (
+            <React.Fragment key={i}>
+              <div
+                className="absolute top-0 bottom-0 pointer-events-none"
+                style={{ left: `${pct}%`, width: 1, background: isMajor ? '#cbd5e1' : '#f1f5f9' }}
+              />
+              <div
+                className="absolute left-0 right-0 pointer-events-none"
+                style={{ top: `${pct}%`, height: 1, background: isMajor ? '#cbd5e1' : '#f1f5f9' }}
+              />
+            </React.Fragment>
+          );
+        })}
+        {/* Selected point indicator — use % to align exactly with the % grid lines */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: `${x * 100}%`,
+            top: `${y * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: '#3b82f6',
+            border: '1.5px solid #1d4ed8',
+            boxShadow: '0 0 0 1.5px #bfdbfe',
+          }}
+        />
+      </div>
+      {/* Value readout */}
+      <div className="mt-1 text-[10px] text-slate-600 font-mono text-center">
+        ({x.toFixed(2)}, {y.toFixed(2)})
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Animation step: from/to positions + duration + optional images list.
 // Step 0 uses 'extra_images' (cycled after the root image).
 // Steps 1+ use 'images' (standalone list; if empty, root image is used).
-type AnimStep = { from: string; to: string; duration: number; extra_images?: string[]; images?: string[] };
+// from/to are [x, y] fractions (0.0–1.0 in 0.05 steps), top-left=[0,0] bottom-right=[1,1].
+type AnimStep = { from: AnimPos; to: AnimPos; duration: number; extra_images?: string[]; images?: string[] };
 // Animation config: either flat single-step or multi-step with 'steps' array.
-type AnimConfig = { from: string; to: string; duration: number; extra_images?: string[] }
+type AnimConfig = { from: AnimPos; to: AnimPos; duration: number; extra_images?: string[] }
                | { steps: AnimStep[] };
 
+/** Normalize a from/to position value from either legacy string or [x,y] array form to AnimPos. */
+function normalizePos(pos: any): AnimPos {
+  if (Array.isArray(pos) && pos.length === 2 && typeof pos[0] === 'number') {
+    return [fracSnap(pos[0]), fracSnap(pos[1])];
+  }
+  // Legacy named string positions → [x, y]
+  const NAMED: Record<string, AnimPos> = {
+    top_left: [0, 0], top_middle: [0.5, 0], top_right: [1, 0],
+    center_left: [0, 0.5], center_middle: [0.5, 0.5], center_right: [1, 0.5],
+    bottom_left: [0, 1], bottom_middle: [0.5, 1], bottom_right: [1, 1],
+  };
+  return NAMED[pos as string] ?? DEFAULT_ANIM_POS;
+}
+
 function toSteps(anim: AnimConfig): AnimStep[] {
-  if ('steps' in anim && Array.isArray(anim.steps)) return anim.steps;
+  if ('steps' in anim && Array.isArray(anim.steps)) {
+    return anim.steps.map(s => ({ ...s, from: normalizePos(s.from), to: normalizePos(s.to) }));
+  }
   const { from, to, duration, extra_images } = anim as any;
-  return [{ from: from ?? 'center_middle', to: to ?? 'center_middle', duration: duration ?? 3, extra_images }];
+  return [{ from: normalizePos(from ?? DEFAULT_ANIM_POS), to: normalizePos(to ?? DEFAULT_ANIM_POS), duration: duration ?? 3, extra_images }];
 }
 function fromSteps(steps: AnimStep[]): AnimConfig {
   if (steps.length === 1) {
@@ -1045,7 +1114,7 @@ export const ImagesListInput = ({
 
   const toggleAnimation = (idx: number, checked: boolean) => {
     if (checked) {
-      updateRow(idx, { animation: { from: 'center_middle', to: 'center_middle', duration: 3 } });
+      updateRow(idx, { animation: { from: DEFAULT_ANIM_POS, to: DEFAULT_ANIM_POS, duration: 3 } });
     } else {
       const { animation: _a, ...rest } = rows[idx];
       onChange(rows.map((r, i) => i === idx ? rest : r));
@@ -1108,15 +1177,15 @@ export const ImagesListInput = ({
             ><Trash2 size={12} /></button>
           </div>
         )}
-        <div className="flex gap-3 items-start">
-          <PositionPicker
-            value={step.from ?? 'center_middle'}
+        <div className="flex gap-4 items-start flex-wrap">
+          <FractionalPositionPicker
+            value={normalizePos(step.from ?? DEFAULT_ANIM_POS)}
             onChange={v => updateStep({ from: v })}
             label="From"
           />
           <div className="flex items-center self-center pt-4 text-slate-400 text-lg">→</div>
-          <PositionPicker
-            value={step.to ?? 'center_middle'}
+          <FractionalPositionPicker
+            value={normalizePos(step.to ?? DEFAULT_ANIM_POS)}
             onChange={v => updateStep({ to: v })}
             label="To"
           />
@@ -1216,7 +1285,7 @@ export const ImagesListInput = ({
                   {steps.map((step, si) => renderStep(step, si, steps, updateSteps))}
                   <button
                     type="button"
-                    onClick={() => updateSteps([...steps, { from: 'center_middle', to: 'center_middle', duration: 3 }])}
+                    onClick={() => updateSteps([...steps, { from: DEFAULT_ANIM_POS, to: DEFAULT_ANIM_POS, duration: 3 }])}
                     className="w-full text-xs text-purple-500 border border-dashed border-purple-200 rounded py-0.5 hover:bg-purple-50 flex items-center justify-center gap-1"
                   ><Plus size={10} /> Add step</button>
                 </div>

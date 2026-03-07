@@ -2,20 +2,41 @@ import yaml from 'js-yaml';
 import { Config, Page, Tile } from '../types';
 
 /** Map legacy 'direction' string to from/to position pair. */
-const _DIRECTION_TO_FROM_TO: Record<string, { from: string; to: string }> = {
-    none:       { from: 'center_middle', to: 'center_middle' },
-    left_right: { from: 'center_left',   to: 'center_right'  },
-    right_left: { from: 'center_right',  to: 'center_left'   },
-    up_down:    { from: 'top_middle',    to: 'bottom_middle' },
-    down_up:    { from: 'bottom_middle', to: 'top_middle'    },
+const _DIRECTION_TO_FROM_TO: Record<string, { from: [number,number]; to: [number,number] }> = {
+    none:       { from: [0.5, 0.5], to: [0.5, 0.5] },
+    left_right: { from: [0.0, 0.5], to: [1.0, 0.5] },
+    right_left: { from: [1.0, 0.5], to: [0.0, 0.5] },
+    up_down:    { from: [0.5, 0.0], to: [0.5, 1.0] },
+    down_up:    { from: [0.5, 1.0], to: [0.5, 0.0] },
 };
 
-/** Migrate an animation object (or step within it) from legacy direction → from/to. */
+/** Named position string → [x, y] fraction tuple. */
+const _NAMED_POSITIONS: Record<string, [number, number]> = {
+    top_left:      [0.0, 0.0], top_middle:    [0.5, 0.0], top_right:     [1.0, 0.0],
+    center_left:   [0.0, 0.5], center_middle: [0.5, 0.5], center_right:  [1.0, 0.5],
+    bottom_left:   [0.0, 1.0], bottom_middle: [0.5, 1.0], bottom_right:  [1.0, 1.0],
+};
+
+function _normalizePos(pos: any): [number, number] {
+    if (Array.isArray(pos) && pos.length === 2 && typeof pos[0] === 'number') return [pos[0], pos[1]];
+    if (typeof pos === 'string' && _NAMED_POSITIONS[pos]) return _NAMED_POSITIONS[pos];
+    return [0.5, 0.5]; // default to center
+}
+
+/** Migrate an animation object (or step within it) from legacy direction → from/to, and normalize positions to [x,y]. */
 function _migrateStep(step: any): any {
-    if (!step || typeof step !== 'object' || !('direction' in step)) return step;
-    const { direction, ...rest } = step;
-    const { from, to } = _DIRECTION_TO_FROM_TO[direction] ?? { from: 'center_middle', to: 'center_middle' };
-    return { from, to, ...rest };
+    if (!step || typeof step !== 'object') return step;
+    if ('direction' in step) {
+        const { direction, ...rest } = step;
+        const { from, to } = _DIRECTION_TO_FROM_TO[direction] ?? { from: [0.5, 0.5] as [number,number], to: [0.5, 0.5] as [number,number] };
+        return { from, to, ...rest };
+    }
+    // Normalize string/array positions
+    return {
+        ...step,
+        from: _normalizePos(step.from),
+        to:   _normalizePos(step.to),
+    };
 }
 
 /** Migrate a full animation config (single-step or multi-step) from legacy to from/to. */
