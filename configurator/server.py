@@ -1806,6 +1806,14 @@ def update_lib():
             # Ensure parent directory exists
             os.makedirs(os.path.dirname(target_ui), exist_ok=True)
             shutil.copytree(source_ui, target_ui, ignore=shutil.ignore_patterns('.*'))
+
+        # Seed default device YAML files if they don't already exist.
+        # We never overwrite them — the user may have customised their copy.
+        for fname in _DEFAULT_DEVICE_YAMLS:
+            src = os.path.join(APP_DIR, 'esphome', fname)
+            dst = os.path.join(BASE_DIR, fname)
+            if os.path.exists(src) and not os.path.exists(dst):
+                shutil.copy2(src, dst)
         
         return jsonify({"success": True})
     except Exception as e:
@@ -1838,6 +1846,9 @@ def get_directory_hashes(directory):
             except:
                 pass
     return file_hashes
+
+# Device YAML files (shipped with the addon) that should be tracked in diffs and synced on update.
+_DEFAULT_DEVICE_YAMLS = ['test_device.yaml']
 
 def get_diff(source_hashes, target_hashes):
     diff = []
@@ -1890,9 +1901,30 @@ def check_lib_status():
         source_ui_hashes = get_directory_hashes(source_ui)
         target_ui_hashes = get_directory_hashes(target_ui)
         ui_diff = get_diff(source_ui_hashes, target_ui_hashes)
-        
+
+        # For device yamls: flag if missing or modified vs the shipped version,
+        # but never complain about extra yamls the user added themselves.
+        def _md5_file(path):
+            try:
+                with open(path, 'rb') as _f:
+                    return hashlib.md5(_f.read()).hexdigest()
+            except Exception:
+                return None
+
+        device_diff = []
+        for fname in _DEFAULT_DEVICE_YAMLS:
+            src_hash = _md5_file(os.path.join(APP_DIR, 'esphome', fname))
+            if src_hash is None:
+                continue  # source doesn't exist, nothing to check
+            dst_hash = _md5_file(os.path.join(BASE_DIR, fname))
+            if dst_hash is None:
+                device_diff.append(f"{fname} (Missing in target)")
+            elif src_hash != dst_hash:
+                device_diff.append(f"{fname} (Modified)")
+
         lib_synced = len(lib_diff) == 0
         ui_synced = len(ui_diff) == 0
+        device_synced = len(device_diff) == 0
         
         details = []
         if not lib_synced:
@@ -1901,11 +1933,14 @@ def check_lib_status():
         if not ui_synced:
             details.append("UI Component files:")
             details.extend([f"  - {d}" for d in ui_diff])
+        if not device_synced:
+            details.append("Device files:")
+            details.extend([f"  - {d}" for d in device_diff])
 
         return jsonify({
             "lib_synced": lib_synced,
             "ui_synced": ui_synced,
-            "synced": lib_synced and ui_synced,
+            "synced": lib_synced and ui_synced and device_synced,
             "details": details
         })
     except Exception as e:
