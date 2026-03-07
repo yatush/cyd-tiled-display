@@ -53,7 +53,9 @@ const transformConditionLogicReverse = (value: any): any => {
     if (typeof value === 'object' && value !== null) {
         if (value.operator && value.conditions) {
             const op = value.operator.toUpperCase();
-            const conditions = value.conditions.map(transformConditionLogicReverse);
+            // conditions may be a plain string (single condition) or an array
+            const rawConditions = Array.isArray(value.conditions) ? value.conditions : [value.conditions];
+            const conditions = rawConditions.map(transformConditionLogicReverse);
             if (op === 'OR') return { or: conditions };
             if (op === 'AND') return { and: conditions };
             if (op === 'NOT') return { not: conditions[0] };
