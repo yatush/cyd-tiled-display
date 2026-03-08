@@ -279,7 +279,7 @@ def _validate_image_references(screens: list[dict], available_images: set) -> No
                 if not isinstance(entry, dict):
                     continue
                 img_id = entry.get("image", "")
-                if img_id and img_id not in available_images:
+                if img_id and img_id != 'none' and img_id not in available_images:
                     available_list = ", ".join(sorted(available_images)) if available_images else "(none)"
                     raise ValueError(
                         f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "

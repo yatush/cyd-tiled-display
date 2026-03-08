@@ -47,7 +47,7 @@ def compute_image_variants(screens: list) -> dict:
                     continue
                 for entry in (tdata.get('images') or []):
                     if isinstance(entry, dict):
-                        if entry.get('image'):
+                        if entry.get('image') and entry['image'] != 'none':
                             img_sizes.setdefault(entry['image'], set()).add((rows, cols))
                         anim = entry.get('animation')
                         if isinstance(anim, dict):
@@ -56,11 +56,11 @@ def compute_image_variants(screens: list) -> dict:
                                 for i, step in enumerate(steps):
                                     key = 'extra_images' if i == 0 else 'images'
                                     for img in (step.get(key) or []):
-                                        if img:
+                                        if img and img != 'none':
                                             img_sizes.setdefault(img, set()).add((rows, cols))
                             else:
                                 for extra in (anim.get('extra_images') or []):
-                                    if extra:
+                                    if extra and extra != 'none':
                                         img_sizes.setdefault(extra, set()).add((rows, cols))
 
     variant_id: dict = {}  # (img_id, rows, cols) -> variant_id
@@ -99,7 +99,7 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                             new_entries.append(e)
                             continue
                         ne = dict(e)
-                        if ne.get('image'):
+                        if ne.get('image') and ne['image'] != 'none':
                             ne['image'] = variant_id.get((ne['image'], rows, cols), ne['image'])
                         anim = ne.get('animation')
                         if isinstance(anim, dict):
@@ -112,7 +112,7 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                                     if imgs:
                                         new_steps.append({**step, key: [
                                             variant_id.get((img, rows, cols), img)
-                                            if isinstance(img, str) else img
+                                            if isinstance(img, str) and img != 'none' else img
                                             for img in imgs
                                         ]})
                                     else:
@@ -123,7 +123,7 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                                     **anim,
                                     'extra_images': [
                                         variant_id.get((img, rows, cols), img)
-                                        if isinstance(img, str) else img
+                                        if isinstance(img, str) and img != 'none' else img
                                         for img in anim['extra_images']
                                     ],
                                 }
@@ -226,8 +226,6 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
     else:
         entities_binding = "  const std::vector<std::string> entities{};"
 
-    has_any_img_condition = any(e.get("condition") for e in valid_entries)
-
     # Position → (x_frac, y_frac) within the tile.
     # x_frac: left=0.0, middle=0.5, right=1.0
     # y_frac: top=0.0,  center=0.5, bottom=1.0
@@ -268,16 +266,18 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         return (fx, fy, tx, ty)
 
     def _make_draw_call_step(step: dict, root_img_id: str, is_first: bool,
-                              total_ms: int = None, step_start_ms: int = None) -> str:
-        """Return a make_image_draw(...) expression for one animation step."""
+                              total_ms: int = None, step_start_ms: int = None) -> str | None:
+        """Return a make_image_draw(...) expression for one animation step, or None for no-op."""
         positions = _step_positions(step)
         duration_ms = int(float(step.get("duration", 3)) * 1000)
         if is_first:
-            extra = list(step.get("extra_images") or [])
+            extra = [img for img in (step.get("extra_images") or []) if img]
             all_images = [root_img_id] + extra
         else:
-            imgs = list(step.get("images") or [])
+            imgs = [img for img in (step.get("images") or []) if img]
             all_images = imgs if imgs else [root_img_id]
+        if not all_images:
+            return None
         n = len(all_images)
         aligned = total_ms is not None
         if n > 1:
@@ -310,8 +310,8 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
             return steps
         return [animation]  # single-step: treat the animation dict itself as the one step
 
-    def _make_draw_call(entry: dict) -> str:
-        """Bare make_image_draw(...) expression using the first (or only) step."""
+    def _make_draw_call(entry: dict) -> str | None:
+        """Bare make_image_draw(...) expression using the first (or only) step, or None for no-op."""
         img_id = entry["image"]
         steps = _get_steps(entry)
         if not steps:
@@ -326,7 +326,10 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         img_id = entry["image"]
         steps = _get_steps(entry)
         if len(steps) <= 1:
-            return [f"{_make_draw_call(entry)}({args_cpp});"]
+            call = _make_draw_call(entry)
+            if call is None:
+                return []
+            return [f"{call}({args_cpp});"]
         total_ms = sum(int(float(s.get("duration", 3)) * 1000) for s in steps)
         lines: list[str] = [f"uint32_t _t = millis() % {total_ms}U;"]
         cumulative = 0
@@ -340,24 +343,59 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
             else:
                 lines.append(f"{kw} (_t < {cumulative}U)")
                 kw = "else if"
-            lines.append(f"  {call}({args_cpp});")
+            if call is None:
+                lines.append("  ; /* none */")
+            else:
+                lines.append(f"  {call}({args_cpp});")
         return lines
 
+    # Normalize 'none' sentinel to the built-in transparent image so it draws
+    # a 1×1 transparent pixel (effectively invisible) instead of crashing.
+    def _norm_img(img_id: str) -> str:
+        return 'none_transparent' if img_id == 'none' else img_id
+
+    def _normalize_entry(e: dict) -> dict:
+        e = dict(e)
+        if 'image' in e:
+            e['image'] = _norm_img(e['image'])
+        anim = e.get('animation')
+        if isinstance(anim, dict):
+            anim = dict(anim)
+            steps = anim.get('steps')
+            if steps and isinstance(steps, list):
+                new_steps = []
+                for i, step in enumerate(steps):
+                    step = dict(step)
+                    key = 'extra_images' if i == 0 else 'images'
+                    if step.get(key):
+                        step[key] = [_norm_img(img) for img in step[key]]
+                    new_steps.append(step)
+                anim['steps'] = new_steps
+            elif anim.get('extra_images'):
+                anim['extra_images'] = [_norm_img(img) for img in anim['extra_images']]
+            e['animation'] = anim
+        return e
+
+    valid_entries = [_normalize_entry(e) for e in valid_entries]
+    has_any_condition = any(e.get("condition") for e in valid_entries)
+
     # -----------------------------------------------------------------------
-    # Simple path: single entry, no condition
+    # Simple path: single entry, no conditions.
     # -----------------------------------------------------------------------
-    if not has_any_img_condition and len(valid_entries) == 1:
+    if not has_any_condition and len(valid_entries) == 1:
         entry = valid_entries[0]
         if len(_get_steps(entry)) <= 1:
-            return [_make_draw_call(entry)]  # bare expr; caller wraps in { }
+            call = _make_draw_call(entry)
+            if call is None:
+                return []
+            return [call]  # bare expr; caller wraps in { }
         # Multi-step requires a lambda so the time dispatch runs each call
         body = "\n".join(f"  {l}" for l in _entry_dispatch_lines(entry))
         return [f"[=]({sig}) {{\n{body}\n}}"]
 
     # -----------------------------------------------------------------------
-    # All-layers path: one lambda per entry — ALL whose conditions are true
-    # are rendered, bottom to top in list order.
-    # An entry without a condition is always drawn (acts as a base layer).
+    # All-layers path: one lambda per entry.
+    # ALL entries whose conditions are true are rendered (bottom to top).
     # -----------------------------------------------------------------------
     results: list[str] = []
     for entry in valid_entries:
@@ -368,7 +406,6 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
             expr = build_expression(cond_expr)
             if not expr:
                 continue
-            # Wrap draw calls in an if-guard for this entry's condition
             if len(dispatch) == 1:
                 body_lines += [f"  if ({expr})", f"    {dispatch[0]}"]
             else:
@@ -376,11 +413,10 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
                 body_lines += [f"    {l}" for l in dispatch]
                 body_lines.append("  }")
         else:
-            # Unconditional — always draw
             body_lines += [f"  {l}" for l in dispatch]
         results.append(f"[=]({sig}) {{\n" + "\n".join(filter(None, body_lines)) + "\n}")
 
-    return results if results else None
+    return results or []
 
 
 def _override_display_with_image(display_cpp: str, config: dict, expected_params: list) -> str:
@@ -391,7 +427,7 @@ def _override_display_with_image(display_cpp: str, config: dict, expected_params
     Returns the original display_cpp unchanged if no images are configured.
     """
     lams = _build_image_lambda(config, expected_params)
-    if not lams:
+    if lams is None:
         return display_cpp
     return "{ " + ", ".join(lams) + " }"
 

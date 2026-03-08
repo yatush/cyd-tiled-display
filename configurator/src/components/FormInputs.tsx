@@ -755,7 +755,8 @@ export const ImageSelectInput = ({
   const [dropUp, setDropUp] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageIds = Object.keys(images || {});
-  const selected = value && images?.[value] ? images[value] : null;
+  const isNone = value === 'none';
+  const selected = !isNone && value && images?.[value] ? images[value] : null;
 
   // Close on outside click
   useEffect(() => {
@@ -788,7 +789,12 @@ export const ImageSelectInput = ({
         onClick={handleToggle}
         className="w-full flex items-center gap-2 border rounded p-1 bg-white hover:bg-slate-50 text-sm text-left min-w-0"
       >
-        {selected ? (
+        {isNone ? (
+          <>
+            <span className="flex-shrink-0 h-8 w-8 flex items-center justify-center rounded bg-slate-100 text-slate-400 text-xs font-mono">∅</span>
+            <span className="truncate flex-1 text-slate-500 italic">none</span>
+          </>
+        ) : selected ? (
           <>
             <img
               src={`data:image/png;base64,${selected.data}`}
@@ -808,6 +814,16 @@ export const ImageSelectInput = ({
       {/* Dropdown panel */}
       {open && (
         <div className={`absolute z-50 bg-white border rounded shadow-lg p-2 w-56 max-h-64 overflow-y-auto ${dropUp ? 'bottom-full mb-1' : 'mt-1'}`}>
+          {/* Always-available "none" option */}
+          <button
+            type="button"
+            onClick={() => { onChange('none'); setOpen(false); }}
+            className={`flex items-center gap-2 w-full px-2 py-1 rounded border mb-2 text-left hover:bg-blue-50 hover:border-blue-300 transition-colors ${value === 'none' ? 'border-blue-400 bg-blue-50' : 'border-slate-200'}`}
+            title="none — no image (e.g. for animations that don't start from the first frame)"
+          >
+            <span className="h-8 w-8 flex items-center justify-center rounded bg-slate-100 text-slate-400 text-xs font-mono flex-shrink-0">∅</span>
+            <span className="text-xs text-slate-500 italic">none</span>
+          </button>
           {imageIds.length === 0 ? (
             <p className="text-xs text-slate-400 text-center py-2">No images uploaded yet</p>
           ) : (

@@ -173,6 +173,19 @@ except ImportError as e:
     print(json.dumps({"error": f"Failed to import tile_ui: {e}"}))
     sys.exit(1)
 
+
+def _make_1px_transparent_png() -> bytes:
+    """Return the bytes of a minimal 1×1 RGBA transparent PNG (no external deps)."""
+    import struct, zlib
+    def _chunk(tag: bytes, data: bytes) -> bytes:
+        c = tag + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    ihdr = _chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0))
+    idat = _chunk(b'IDAT', zlib.compress(b'\x00\x00\x00\x00\x00'))  # filter + RGBA(0,0,0,0)
+    iend = _chunk(b'IEND', b'')
+    return b'\x89PNG\r\n\x1a\n' + ihdr + idat + iend
+
+
 def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, screen_w=320, screen_h=240):
     try:
         if not input_data:
@@ -289,6 +302,26 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         image_declarations = []
         _written_pngs: set = set()  # track which source PNGs have been written
 
+        # Always write the built-in 1×1 transparent image used when 'none' is selected.
+        _NONE_PNG_NAME = 'none_transparent.png'
+        if images_dir:
+            _os.makedirs(images_dir, exist_ok=True)
+            try:
+                with open(_os.path.join(images_dir, _NONE_PNG_NAME), 'wb') as _f:
+                    _f.write(_make_1px_transparent_png())
+            except Exception as _e:
+                print(f"Warning: failed to write none_transparent.png: {_e}")
+
+        # The none_transparent declaration is always included so ESPHome can compile
+        # configs that reference it even when no user images have been uploaded.
+        _none_decl = (
+            f"  - file: images/{_NONE_PNG_NAME}\n"
+            f"    id: none_transparent\n"
+            f"    resize: 8x8\n"
+            f"    type: RGB\n"
+            f"    transparency: alpha_channel"
+        )
+
         for (_iid, _rows, _cols), _vid in sorted(_variant_id.items()):
             img_entry = images.get(_iid)
             if not isinstance(img_entry, dict):
@@ -339,8 +372,7 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
                 f"{type_lines}"
             )
 
-        if image_declarations:
-            images_yaml = "image:\n" + "\n".join(image_declarations) + "\n"
+        images_yaml = "image:\n" + "\n".join([_none_decl] + image_declarations) + "\n"
 
         return {
             "success": True,
