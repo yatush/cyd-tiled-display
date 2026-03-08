@@ -7,7 +7,7 @@ from tile_ui.tile_generation import compute_image_variants, apply_image_variants
 def _screen(sid, rows, cols, *image_ids):
     """Build a minimal screen dict with ha_action tiles that each reference one image."""
     tiles = [
-        {"ha_action": {"x": i, "y": 0, "images": [{"image": img_id}]}}
+        {"ha_action": {"x": i, "y": 0, "display_assets": [{"image": img_id}]}}
         for i, img_id in enumerate(image_ids)
     ]
     return {"id": sid, "rows": rows, "cols": cols, "tiles": tiles}
@@ -48,7 +48,7 @@ class TestComputeImageVariants(unittest.TestCase):
     def test_default_rows_cols(self):
         """Screens without explicit rows/cols default to 2×2."""
         screens = [{"id": "s", "tiles": [
-            {"ha_action": {"x": 0, "y": 0, "images": [{"image": "img_x"}]}}
+            {"ha_action": {"x": 0, "y": 0, "display_assets": [{"image": "img_x"}]}}
         ]}]
         vmap = compute_image_variants(screens)
         self.assertIn(("img_x", 2, 2), vmap)
@@ -67,7 +67,7 @@ class TestComputeImageVariants(unittest.TestCase):
     def test_ignores_entries_without_image_key(self):
         """Tiles with images list entries lacking an 'image' key are ignored."""
         screens = [{"id": "s", "rows": 2, "cols": 2, "tiles": [
-            {"ha_action": {"x": 0, "y": 0, "images": [{"condition": "some.entity"}]}}
+            {"ha_action": {"x": 0, "y": 0, "display_assets": [{"condition": "some.entity"}]}}
         ]}]
         self.assertEqual(compute_image_variants(screens), {})
 
@@ -77,10 +77,10 @@ class TestApplyImageVariants(unittest.TestCase):
     def _base_screens(self):
         return [
             {"id": "p1", "rows": 2, "cols": 2, "tiles": [
-                {"ha_action": {"x": 0, "y": 0, "images": [{"image": "img_a"}]}}
+                {"ha_action": {"x": 0, "y": 0, "display_assets": [{"image": "img_a"}]}}
             ]},
             {"id": "p2", "rows": 3, "cols": 4, "tiles": [
-                {"ha_action": {"x": 0, "y": 0, "images": [{"image": "img_a"}]}}
+                {"ha_action": {"x": 0, "y": 0, "display_assets": [{"image": "img_a"}]}}
             ]},
         ]
 
@@ -90,29 +90,29 @@ class TestApplyImageVariants(unittest.TestCase):
         vmap = compute_image_variants(screens)
         result = apply_image_variants(screens, vmap)
         # Original unchanged
-        self.assertEqual(screens[0]["tiles"][0]["ha_action"]["images"][0]["image"], "img_a")
+        self.assertEqual(screens[0]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_a")
         # Copy changed
-        self.assertEqual(result[0]["tiles"][0]["ha_action"]["images"][0]["image"], "img_a_r2c2")
-        self.assertEqual(result[1]["tiles"][0]["ha_action"]["images"][0]["image"], "img_a_r3c4")
+        self.assertEqual(result[0]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_a_r2c2")
+        self.assertEqual(result[1]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_a_r3c4")
 
     def test_single_layout_id_unchanged(self):
         screens = [_screen("s", 2, 2, "img_cat")]
         vmap = compute_image_variants(screens)
         result = apply_image_variants(screens, vmap)
         # No suffix because only one layout
-        self.assertEqual(result[0]["tiles"][0]["ha_action"]["images"][0]["image"], "img_cat")
+        self.assertEqual(result[0]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_cat")
 
     def test_entries_without_image_key_preserved(self):
-        """Non-image entries in the images list must pass through unchanged."""
+        """Non-image entries in the display_assets list must pass through unchanged."""
         screens = [{"id": "s", "rows": 2, "cols": 2, "tiles": [
-            {"ha_action": {"x": 0, "y": 0, "images": [
+            {"ha_action": {"x": 0, "y": 0, "display_assets": [
                 {"image": "img_a"},
                 {"condition": "sensor.open"},   # no 'image' key
             ]}}
         ]}]
         vmap = compute_image_variants(screens)
         result = apply_image_variants(screens, vmap)
-        images = result[0]["tiles"][0]["ha_action"]["images"]
+        images = result[0]["tiles"][0]["ha_action"]["display_assets"]
         self.assertEqual(images[0]["image"], "img_a")
         self.assertNotIn("image", images[1])  # untouched
 
@@ -120,7 +120,7 @@ class TestApplyImageVariants(unittest.TestCase):
         """Conditional entries that DO have 'image' are also substituted."""
         screens = [
             {"id": "p1", "rows": 2, "cols": 2, "tiles": [
-                {"ha_action": {"x": 0, "y": 0, "images": [
+                {"ha_action": {"x": 0, "y": 0, "display_assets": [
                     {"image": "img_a", "condition": "sensor.on"},
                 ]}}
             ]},
@@ -129,15 +129,15 @@ class TestApplyImageVariants(unittest.TestCase):
         vmap = compute_image_variants(screens)
         result = apply_image_variants(screens, vmap)
         # Both layouts differ → variant IDs used
-        self.assertEqual(result[0]["tiles"][0]["ha_action"]["images"][0]["image"], "img_a_r2c2")
-        self.assertEqual(result[0]["tiles"][0]["ha_action"]["images"][0]["condition"], "sensor.on")
+        self.assertEqual(result[0]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_a_r2c2")
+        self.assertEqual(result[0]["tiles"][0]["ha_action"]["display_assets"][0]["condition"], "sensor.on")
 
     def test_empty_variant_map(self):
         """Empty variant map → returned screens are structurally equal to originals."""
         screens = [_screen("s", 2, 2, "img_a")]
         result = apply_image_variants(screens, {})
         # Image key not in empty map → falls back to original id
-        self.assertEqual(result[0]["tiles"][0]["ha_action"]["images"][0]["image"], "img_a")
+        self.assertEqual(result[0]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_a")
 
 
 if __name__ == "__main__":

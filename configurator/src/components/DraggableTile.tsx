@@ -119,8 +119,8 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       {/* ── Background image/icon layer (behind all content) ──────────── */}
       {(() => {
         const tileAny = tile as any;
-        if (!Array.isArray(tileAny.images) || tileAny.images.length === 0) return null;
-        const firstEntry = tileAny.images[0];
+        if (!Array.isArray(tileAny.display_assets) || tileAny.display_assets.length === 0) return null;
+        const firstEntry = tileAny.display_assets[0];
         // Icon entry
         if (firstEntry?.icon) {
           let iconVal = firstEntry.icon;
@@ -158,8 +158,8 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       {(() => {
         const tileAny = tile as any;
         // ── Images/icons: show type badge on top, content is already rendered behind
-        if (Array.isArray(tileAny.images) && tileAny.images.length > 0) {
-          const firstEntry = tileAny.images[0];
+        if (Array.isArray(tileAny.display_assets) && tileAny.display_assets.length > 0) {
+          const firstEntry = tileAny.display_assets[0];
           const firstImgId = firstEntry?.image;
           const entry = firstImgId ? images[firstImgId] : null;
           return (

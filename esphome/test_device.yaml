@@ -38,7 +38,7 @@ tile_ui:
         - ha_action:
             entities:
               - entity: light.p1s_01p00a3b2200275_chamber_light
-            images:
+            display_assets:
               - image: img__Pngtree_unicorn_cartoon_clipart_vector_15852197
                 animation:
                   steps:

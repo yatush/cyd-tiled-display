@@ -180,13 +180,13 @@ function App() {
       const newPages = prev.pages.map(page => ({
         ...page,
         tiles: page.tiles.map(tile => {
-          if (!Array.isArray(tile.images)) return tile;
-          const cleaned = tile.images.map((entry: { image: string;[k: string]: any }) =>
+          if (!Array.isArray(tile.display_assets)) return tile;
+          const cleaned = tile.display_assets.map((entry: { image: string;[k: string]: any }) =>
             entry.image === id ? { ...entry, image: '' } : entry
           );
           // Only update the tile if something actually changed.
-          const changed = cleaned.some((e, i) => e.image !== tile.images[i].image);
-          return changed ? { ...tile, images: cleaned } : tile;
+          const changed = cleaned.some((e, i) => e.image !== tile.display_assets[i].image);
+          return changed ? { ...tile, display_assets: cleaned } : tile;
         }),
       }));
 

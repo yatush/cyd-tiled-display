@@ -62,7 +62,7 @@ def validate_tiles_config(
             top-level ``dynamic_entities`` key.  When provided every ``dynamic_entity``
             reference found in any tile must be present in this list.
         available_images: Set of image IDs present in the global images store.  When
-            provided every ``image`` reference inside a tile's ``images`` list is
+            provided every ``image`` reference inside a tile's ``display_assets`` list is
             checked against this set.
     
     Raises:
@@ -265,7 +265,7 @@ def validate_tiles_config(
 
 
 def _validate_image_references(screens: list[dict], available_images: set) -> None:
-    """Validate that every image reference in every tile's images list exists in
+    """Validate that every image reference in every tile's display_assets list exists in
     the global images store.  Icon entries (with 'icon' key) are skipped since
     they do not reference the image store.
     """
@@ -276,7 +276,7 @@ def _validate_image_references(screens: list[dict], available_images: set) -> No
             config = tile[tile_type]
             x = config.get("x", 0)
             y = config.get("y", 0)
-            for entry in (config.get("images") or []):
+            for entry in (config.get("display_assets") or []):
                 if not isinstance(entry, dict):
                     continue
                 # Skip icon entries — they don't reference image store IDs
@@ -742,16 +742,16 @@ def validate_tile_schema(tile_type: str, tile_config: dict, screen_id: str) -> N
         elif not field.get('optional', False):
             raise ValueError(f"{context} missing required field: '{name}'")
 
-    # Cross-field: exactly one of 'display' or 'images' must be present
+    # Cross-field: exactly one of 'display' or 'display_assets' must be present
     has_display = bool(tile_config.get('display'))
-    has_images = bool(tile_config.get('images'))
+    has_images = bool(tile_config.get('display_assets'))
     if has_display and has_images:
         raise ValueError(
-            f"{context}: Cannot have both 'display' scripts and 'images'. Use one or the other."
+            f"{context}: Cannot have both 'display' scripts and 'display_assets'. Use one or the other."
         )
     if not has_display and not has_images:
         raise ValueError(
-            f"{context}: Must have either 'display' scripts or 'images'."
+            f"{context}: Must have either 'display' scripts or 'display_assets'."
         )
 
 
@@ -868,7 +868,7 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
     elif field_type == 'condition_logic':
         _validate_condition_expression(value, f"{context} field '{field_name}'")
 
-    elif field_type == 'images_list':
+    elif field_type == 'assets_list':
         if not isinstance(value, list):
             raise ValueError(f"{context}: Field '{field_name}' must be a list")
         if not value:

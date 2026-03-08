@@ -64,12 +64,12 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
             tile.requires_fast_refresh = transformConditionLogic(tile.requires_fast_refresh);
         }
 
-        // Remove deprecated legacy fields that are superseded by the 'images' list.
+        // Remove deprecated legacy fields that are superseded by the 'display_assets' list.
         delete tile.state_images;
 
-        // Transform condition logic inside images entries
-        if (Array.isArray(tile.images)) {
-            tile.images = tile.images.map((entry: any) => {
+        // Transform condition logic inside display_assets entries
+        if (Array.isArray(tile.display_assets)) {
+            tile.display_assets = tile.display_assets.map((entry: any) => {
                 if (!entry) return entry;
                 let result = { ...entry };
 

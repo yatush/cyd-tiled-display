@@ -123,7 +123,7 @@ class TestValidation(unittest.TestCase):
             "tiles": [{
                 "ha_action": {
                     "x": 0, "y": 0,
-                    "images": [{"icon": ""}],
+                    "display_assets": [{"icon": ""}],
                 }
             }]
         }]
@@ -139,11 +139,11 @@ class TestValidation(unittest.TestCase):
             "tiles": [{
                 "ha_action": {
                     "x": 0, "y": 0,
-                    "images": [{
+                    "display_assets": [{
                         "icon": "\\Ue000",
                         "animation": {"steps": [
-                            {"from": "center_left", "to": "center_right", "duration": 2},
-                            {"from": "top_middle", "to": "bottom_middle", "duration": 2, "icon": ""},
+                            {"from": [0.0, 0.5], "to": [1.0, 0.5], "duration": 2},
+                            {"from": [0.5, 0.0], "to": [0.5, 1.0], "duration": 2, "icon": ""},
                         ]},
                     }],
                 }

@@ -22,7 +22,7 @@
         { "key": "value", "label": "Value", "type": "ha_entity_list" }
       ]
     },
-    { "name": "images", "type": "images_list", "label": "Images", "optional": true }
+    { "name": "display_assets", "type": "assets_list", "label": "Display Assets", "optional": true }
   ],
   "types": [
     {

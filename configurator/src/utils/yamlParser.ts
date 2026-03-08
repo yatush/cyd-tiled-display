@@ -10,16 +10,8 @@ const _DIRECTION_TO_FROM_TO: Record<string, { from: [number,number]; to: [number
     down_up:    { from: [0.5, 1.0], to: [0.5, 0.0] },
 };
 
-/** Named position string → [x, y] fraction tuple. */
-const _NAMED_POSITIONS: Record<string, [number, number]> = {
-    top_left:      [0.0, 0.0], top_middle:    [0.5, 0.0], top_right:     [1.0, 0.0],
-    center_left:   [0.0, 0.5], center_middle: [0.5, 0.5], center_right:  [1.0, 0.5],
-    bottom_left:   [0.0, 1.0], bottom_middle: [0.5, 1.0], bottom_right:  [1.0, 1.0],
-};
-
 function _normalizePos(pos: any): [number, number] {
     if (Array.isArray(pos) && pos.length === 2 && typeof pos[0] === 'number') return [pos[0], pos[1]];
-    if (typeof pos === 'string' && _NAMED_POSITIONS[pos]) return _NAMED_POSITIONS[pos];
     return [0.5, 0.5]; // default to center
 }
 
@@ -127,9 +119,9 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
                 props.requires_fast_refresh = transformConditionLogicReverse(props.requires_fast_refresh);
             }
 
-            // Transform condition logic in images entries back to internal format
-            if (Array.isArray(props.images)) {
-                props.images = props.images.map((entry: any) => {
+            // Transform condition logic in display_assets entries back to internal format
+            if (Array.isArray(props.display_assets)) {
+                props.display_assets = props.display_assets.map((entry: any) => {
                     if (!entry) return entry;
                     let result = { ...entry };
 

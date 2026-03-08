@@ -241,16 +241,16 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
               <div className="space-y-4">
                 {schema?.common?.filter((f: any) => f.name !== 'x' && f.name !== 'y' && f.name !== 'x_span' && f.name !== 'y_span').map((field: any) => {
            if (field.type === 'display_list') {
-             const hasImages = Array.isArray(selectedTile.images) && selectedTile.images.length > 0;
+             const hasImages = Array.isArray(selectedTile.display_assets) && selectedTile.display_assets.length > 0;
              const hasDisplayScripts = Array.isArray(selectedTile[field.name]) && selectedTile[field.name].length > 0;
-             // Find the images field definition from the schema
-             const imagesField = schema?.common?.find((f: any) => f.type === 'images_list');
+             // Find the display_assets field definition from the schema
+             const imagesField = schema?.common?.find((f: any) => f.type === 'assets_list');
              const imagesEnabled = imagesField && selectedTile[imagesField.name] !== undefined;
              return (
                 <div key={field.name} className="space-y-2">
                   {hasImages && hasDisplayScripts && (
                     <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-1">
-                      ⚠ Display scripts are ignored when Images are set. Remove images or clear display scripts.
+                      ⚠ Display scripts are ignored when Display Assets are set. Remove display assets or clear display scripts.
                     </div>
                   )}
                   <DisplayListInput
@@ -417,7 +417,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                     />
                 );
            }
-           if (field.type === 'images_list') {
+           if (field.type === 'assets_list') {
                 // Rendered inline inside the display_list block above — skip here
                 return null;
                 const isEnabled = selectedTile[field.name] !== undefined;

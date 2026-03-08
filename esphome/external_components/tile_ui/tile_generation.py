@@ -45,7 +45,7 @@ def compute_image_variants(screens: list) -> dict:
             for _tname, tdata in tile_obj.items():
                 if not isinstance(tdata, dict):
                     continue
-                for entry in (tdata.get('images') or []):
+                for entry in (tdata.get('display_assets') or []):
                     if isinstance(entry, dict):
                         if entry.get('image') and entry['image'] != 'none':
                             img_sizes.setdefault(entry['image'], set()).add((rows, cols))
@@ -84,7 +84,7 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
             for _tname, tdata in tile_obj.items():
                 if not isinstance(tdata, dict):
                     continue
-                timages = tdata.get('images')
+                timages = tdata.get('display_assets')
                 if isinstance(timages, list):
                     new_entries = []
                     for e in timages:
@@ -105,7 +105,7 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                                 new_steps.append(s)
                             ne['animation'] = {**anim, 'steps': new_steps}
                         new_entries.append(ne)
-                    tdata['images'] = new_entries
+                    tdata['display_assets'] = new_entries
     return result
 
 # ---------------------------------------------------------------------------
@@ -135,13 +135,13 @@ def _build_lambda_sig(expected_params) -> str:
 
 def _get_animation_fast_refresh(config: dict):
     """
-    Derive a requires_fast_refresh value from animation settings in the images list.
+    Derive a requires_fast_refresh value from animation settings in the display_assets list.
 
     Returns:
       None – no animation entries
       True – at least one animation entry (always fast-refresh)
     """
-    images = config.get("images")
+    images = config.get("display_assets")
     if not images or not isinstance(images, list):
         return None
 
@@ -169,17 +169,17 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
     For multi-step or conditional entries a lambda is returned instead.
 
     animation formats supported:
-      Single-step (legacy):  { direction, duration, extra_images? }
+      Single-step (legacy):  { direction, duration }
       Multi-step:            { steps: [{ direction, duration }   <- step 0
                                        { direction, duration }   <- steps 1+
                                        ...] }
     Each step draws the entry's root image (or step-level icon override).
     Use multiple steps instead of image cycling within a single step.
 
-    Each entry in 'images':
+    Each entry in 'display_assets':
       { image: <id>, condition?: <expr>, animation?: <above> }
     """
-    images = config.get("images")
+    images = config.get("display_assets")
     if not images or not isinstance(images, list):
         legacy_image = config.get("image")
         if legacy_image:
@@ -203,12 +203,6 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
     else:
         entities_binding = "  const std::vector<std::string> entities{};"
 
-    # Position → (x_frac, y_frac) within the tile.
-    # x_frac: left=0.0, middle=0.5, right=1.0
-    # y_frac: top=0.0,  center=0.5, bottom=1.0
-    _POS_X_FRAC = {'left': 0.0, 'middle': 0.5, 'right': 1.0}
-    _POS_Y_FRAC = {'top': 0.0, 'center': 0.5, 'bottom': 1.0}
-
     # Legacy direction → (from_x, from_y, to_x, to_y) fracs.
     _LEGACY_DIR_POS = {
         'left_right': (0.0, 0.5, 1.0, 0.5),
@@ -225,19 +219,17 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
                 return None
             return _LEGACY_DIR_POS.get(d)
 
-        def _resolve_pos(pos, default='center_middle'):
-            """Convert a position (named string or [x,y] list) to (x_frac, y_frac)."""
+        def _resolve_pos(pos) -> tuple:
+            """Convert an [x, y] position list to (x_frac, y_frac)."""
             if isinstance(pos, (list, tuple)) and len(pos) == 2:
                 return (float(pos[0]), float(pos[1]))
-            # Named string
-            p = pos if isinstance(pos, str) else default
-            return (_POS_X_FRAC[p.split('_', 1)[1]], _POS_Y_FRAC[p.split('_')[0]])
+            return (0.5, 0.5)  # fallback to center
 
-        from_pos = step.get('from', 'center_middle')
-        to_pos   = step.get('to',   'center_middle')
+        from_pos = step.get('from', [0.5, 0.5])
+        to_pos   = step.get('to',   [0.5, 0.5])
         fx, fy = _resolve_pos(from_pos)
         tx, ty = _resolve_pos(to_pos)
-        # Both fracs at center (0.5, 0.5) → use default static overload (no position args)
+        # Both fracs at center (0.5, 0.5) → static overload (no position args)
         if fx == 0.5 and fy == 0.5 and tx == 0.5 and ty == 0.5:
             return None
         return (fx, fy, tx, ty)
@@ -457,8 +449,8 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
 
 def _override_display_with_image(display_cpp: str, config: dict, expected_params: list) -> str:
     """
-    If config has 'image' or 'images', replace the display list with one
-    DrawImageFunc per images entry.  All entries whose conditions are true
+    If config has 'image' or 'display_assets', replace the display list with one
+    DrawImageFunc per display_assets entry.  All entries whose conditions are true
     are rendered in order (first = bottom layer, last = top layer).
     Returns the original display_cpp unchanged if no images are configured.
     """

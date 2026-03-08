@@ -146,81 +146,83 @@ class TestSchema(unittest.TestCase):
         with self.assertRaises(Invalid):
             script_item(123)
 
-    # --- images_list animation: from/to positions ---
+    # --- assets_list animation: from/to positions ---
 
-    def _images_validator(self):
-        """Return the images_list validator from get_validator."""
+    def _assets_validator(self):
+        """Return the assets_list validator from get_validator."""
         from tile_ui.schema import get_validator
-        return get_validator('images_list')
+        return get_validator('assets_list')
 
-    def test_images_list_static_entry(self):
-        v = self._images_validator()
+    def test_assets_list_static_entry(self):
+        v = self._assets_validator()
         result = v([{'image': 'img_a'}])
         self.assertEqual(result[0]['image'], 'img_a')
 
-    def test_images_list_from_to_valid_positions(self):
-        v = self._images_validator()
-        result = v([{'image': 'img_a', 'animation': {'from': 'center_left', 'to': 'center_right', 'duration': 3}}])
+    def test_assets_list_from_to_valid_positions(self):
+        v = self._assets_validator()
+        result = v([{'image': 'img_a', 'animation': {'from': [0.0, 0.5], 'to': [1.0, 0.5], 'duration': 3}}])
         anim = result[0]['animation']
-        self.assertEqual(anim['from'], 'center_left')
-        self.assertEqual(anim['to'], 'center_right')
+        self.assertEqual(anim['from'], [0.0, 0.5])
+        self.assertEqual(anim['to'], [1.0, 0.5])
 
-    def test_images_list_from_to_same_position_accepted(self):
-        v = self._images_validator()
-        result = v([{'image': 'img_a', 'animation': {'from': 'center_middle', 'to': 'center_middle', 'duration': 2}}])
-        self.assertEqual(result[0]['animation']['from'], 'center_middle')
+    def test_assets_list_from_to_same_position_accepted(self):
+        v = self._assets_validator()
+        result = v([{'image': 'img_a', 'animation': {'from': [0.5, 0.5], 'to': [0.5, 0.5], 'duration': 2}}])
+        self.assertEqual(result[0]['animation']['from'], [0.5, 0.5])
 
-    def test_images_list_all_nine_positions_accepted(self):
-        v = self._images_validator()
-        positions = [
-            'top_left', 'top_middle', 'top_right',
-            'center_left', 'center_middle', 'center_right',
-            'bottom_left', 'bottom_middle', 'bottom_right',
-        ]
-        for pos in positions:
+    def test_assets_list_corner_positions_accepted(self):
+        v = self._assets_validator()
+        corners = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.5]]
+        for pos in corners:
             result = v([{'image': 'img', 'animation': {'from': pos, 'to': pos, 'duration': 1}}])
             self.assertEqual(result[0]['animation']['from'], pos)
 
-    def test_images_list_invalid_position_rejected(self):
-        v = self._images_validator()
+    def test_assets_list_invalid_position_rejected(self):
+        """A named string position must be rejected."""
+        v = self._assets_validator()
         with self.assertRaises(Exception):
-            v([{'image': 'img_a', 'animation': {'from': 'left_center', 'to': 'center_middle', 'duration': 3}}])
+            v([{'image': 'img_a', 'animation': {'from': 'center_left', 'to': [1.0, 0.5], 'duration': 3}}])
 
-    def test_images_list_legacy_direction_still_accepted(self):
+    def test_assets_list_out_of_range_position_rejected(self):
+        v = self._assets_validator()
+        with self.assertRaises(Exception):
+            v([{'image': 'img_a', 'animation': {'from': [1.5, 0.5], 'to': [0.0, 0.5], 'duration': 3}}])
+
+    def test_assets_list_legacy_direction_still_accepted(self):
         """Legacy 'direction' field in animation is still valid for backward compat."""
-        v = self._images_validator()
+        v = self._assets_validator()
         result = v([{'image': 'img_a', 'animation': {'direction': 'left_right', 'duration': 3}}])
         self.assertEqual(result[0]['animation']['direction'], 'left_right')
 
-    def test_images_list_legacy_direction_invalid_rejected(self):
-        v = self._images_validator()
+    def test_assets_list_legacy_direction_invalid_rejected(self):
+        v = self._assets_validator()
         with self.assertRaises(Exception):
             v([{'image': 'img_a', 'animation': {'direction': 'diagonal', 'duration': 3}}])
 
-    def test_images_list_multi_step_from_to(self):
-        v = self._images_validator()
+    def test_assets_list_multi_step_from_to(self):
+        v = self._assets_validator()
         result = v([{'image': 'img_a', 'animation': {'steps': [
-            {'from': 'center_left', 'to': 'center_right', 'duration': 2},
-            {'from': 'top_middle',  'to': 'bottom_middle', 'duration': 3},
+            {'from': [0.0, 0.5], 'to': [1.0, 0.5], 'duration': 2},
+            {'from': [0.5, 0.0], 'to': [0.5, 1.0], 'duration': 3},
         ]}}])
         steps = result[0]['animation']['steps']
         self.assertEqual(len(steps), 2)
-        self.assertEqual(steps[0]['from'], 'center_left')
-        self.assertEqual(steps[1]['to'], 'bottom_middle')
+        self.assertEqual(steps[0]['from'], [0.0, 0.5])
+        self.assertEqual(steps[1]['to'], [0.5, 1.0])
 
-    def test_images_list_empty_icon_rejected(self):
+    def test_assets_list_empty_icon_rejected(self):
         """An icon entry with an empty string is rejected at schema level."""
-        v = self._images_validator()
+        v = self._assets_validator()
         with self.assertRaises(Exception):
             v([{'icon': ''}])
 
-    def test_images_list_empty_step_icon_rejected(self):
+    def test_assets_list_empty_step_icon_rejected(self):
         """A step with an explicit empty icon is rejected at schema level."""
-        v = self._images_validator()
+        v = self._assets_validator()
         with self.assertRaises(Exception):
             v([{'icon': '\\Ue000', 'animation': {'steps': [
-                {'from': 'center_left', 'to': 'center_right', 'duration': 2},
-                {'from': 'top_middle', 'to': 'bottom_middle', 'duration': 2, 'icon': ''},
+                {'from': [0.0, 0.5], 'to': [1.0, 0.5], 'duration': 2},
+                {'from': [0.5, 0.0], 'to': [0.5, 1.0], 'duration': 2, 'icon': ''},
             ]}}])
 
 if __name__ == '__main__':

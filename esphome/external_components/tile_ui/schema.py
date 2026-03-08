@@ -187,19 +187,9 @@ def get_validator(field_type: str, object_fields: list = None):
         )
     if field_type == 'condition_logic':
         return cv.Any(dict, non_empty_string)
-    VALID_ANIM_POSITIONS = (
-        'top_left', 'top_middle', 'top_right',
-        'center_left', 'center_middle', 'center_right',
-        'bottom_left', 'bottom_middle', 'bottom_right',
-    )
 
     def _valid_anim_position(value):
-        # Accept named string positions (legacy)
-        if isinstance(value, str):
-            if value not in VALID_ANIM_POSITIONS:
-                raise cv.Invalid(f"animation position must be one of {VALID_ANIM_POSITIONS}, got '{value}'")
-            return value
-        # Accept [x, y] fractional list
+        # Only [x, y] fractional lists are accepted; named strings are no longer supported
         if isinstance(value, (list, tuple)) and len(value) == 2:
             x, y = value
             if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
@@ -207,7 +197,7 @@ def get_validator(field_type: str, object_fields: list = None):
             if not (0.0 <= float(x) <= 1.0) or not (0.0 <= float(y) <= 1.0):
                 raise cv.Invalid(f"animation position [x, y] values must be in 0.0–1.0, got {value!r}")
             return [float(x), float(y)]
-        raise cv.Invalid(f"animation position must be a named string or [x, y] list, got {value!r}")
+        raise cv.Invalid(f"animation position must be an [x, y] list with values in 0.0–1.0, got {value!r}")
 
     def _valid_anim_direction(value):
         """Legacy direction field — accepted for backward-compat with old YAML files."""
@@ -221,14 +211,14 @@ def get_validator(field_type: str, object_fields: list = None):
             raise cv.Invalid(f"duration must be a positive number, got {value}")
         return value
 
-    if field_type == 'images_list':
+    if field_type == 'assets_list':
         # List of entries, each being either an image entry or an icon entry.
         # Image entry: {image: str, condition?: str|dict, animation?: ...}
         # Icon entry:  {icon: str, icon_color?: str, icon_size?: str, condition?: str|dict, animation?: ...}
         # Animation step accepts the new from/to positions OR the legacy direction field.
         _new_step = Schema({
-            Optional('from', default='center_middle'): _valid_anim_position,
-            Optional('to', default='center_middle'): _valid_anim_position,
+            Optional('from', default=[0.5, 0.5]): _valid_anim_position,
+            Optional('to', default=[0.5, 0.5]): _valid_anim_position,
             Required('duration'): _positive_number,
             Optional('image'): str,
             Optional('icon'): non_empty_string,
@@ -246,8 +236,8 @@ def get_validator(field_type: str, object_fields: list = None):
         animation_step_schema = Vol_Any(_new_step, _legacy_step)
 
         _new_single = Schema({
-            Optional('from', default='center_middle'): _valid_anim_position,
-            Optional('to', default='center_middle'): _valid_anim_position,
+            Optional('from', default=[0.5, 0.5]): _valid_anim_position,
+            Optional('to', default=[0.5, 0.5]): _valid_anim_position,
             Required('duration'): _positive_number,
         }, extra=PREVENT_EXTRA)
         _legacy_single = Schema({
@@ -279,7 +269,7 @@ def get_validator(field_type: str, object_fields: list = None):
 
         def _validate_image_or_icon_entry(value):
             if not isinstance(value, dict):
-                raise cv.Invalid("Each images list entry must be a mapping")
+                raise cv.Invalid("Each display assets entry must be a mapping")
             has_image = 'image' in value
             has_icon = 'icon' in value
             if has_image and has_icon:

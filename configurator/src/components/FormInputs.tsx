@@ -1083,18 +1083,12 @@ type AnimStep = { from: AnimPos; to: AnimPos; duration: number; image?: string; 
 type AnimConfig = { from: AnimPos; to: AnimPos; duration: number }
                | { steps: AnimStep[] };
 
-/** Normalize a from/to position value from either legacy string or [x,y] array form to AnimPos. */
+/** Normalize a from/to position value from [x,y] array form to AnimPos. */
 function normalizePos(pos: any): AnimPos {
   if (Array.isArray(pos) && pos.length === 2 && typeof pos[0] === 'number') {
     return [fracSnap(pos[0]), fracSnap(pos[1])];
   }
-  // Legacy named string positions → [x, y]
-  const NAMED: Record<string, AnimPos> = {
-    top_left: [0, 0], top_middle: [0.5, 0], top_right: [1, 0],
-    center_left: [0, 0.5], center_middle: [0.5, 0.5], center_right: [1, 0.5],
-    bottom_left: [0, 1], bottom_middle: [0.5, 1], bottom_right: [1, 1],
-  };
-  return NAMED[pos as string] ?? DEFAULT_ANIM_POS;
+  return DEFAULT_ANIM_POS;
 }
 
 function toSteps(anim: AnimConfig): AnimStep[] {

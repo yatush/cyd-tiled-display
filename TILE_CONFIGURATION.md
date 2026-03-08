@@ -103,7 +103,7 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
           size: TileFonts::MEDIUM
     ```
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
-- **images**: (Optional) See [Images](#images)
+- **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 2. HA Action Tile (Entity Control)
 
@@ -150,7 +150,7 @@ Displays entity state and performs an action (typically toggle) when pressed.
 - **requires_fast_refresh**: (Optional) Condition (see [Conditions](#conditions) section) determining if fast refresh is needed
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
-- **images**: (Optional) See [Images](#images)
+- **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 3. Move Page Tile (Navigation)
 
@@ -184,7 +184,7 @@ Navigates to another screen when pressed.
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
-- **images**: (Optional) See [Images](#images)
+- **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 4. Function Tile (Script Execution)
 
@@ -216,7 +216,7 @@ Calls a script/function when pressed.
   - **Function Arguments**: No parameters passed to the script
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
-- **images**: (Optional) See [Images](#images)
+- **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 > **Note**: At least one of `on_press` or `on_release` must be specified.
 
@@ -253,7 +253,7 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 - **initially_chosen**: (Optional, default: false) Whether this is the initially selected option
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
-- **images**: (Optional) See [Images](#images)
+- **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 6. Cycle Entity Tile (Entity Cycling)
 
@@ -296,7 +296,7 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
 - **reset_on_leave**: (Optional, default: false) Reset to first option when leaving screen
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **omit_frame**: (Optional) Whether to hide the tile frame/border
-- **images**: (Optional) See [Images](#images)
+- **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ## Entity Formats
 
@@ -420,9 +420,9 @@ dynamic_entry:
   - **dynamic_entity**: *(Required)* Identifier key for the dynamic entity
   - **value**: *(Required)* Entity ID to set for this key. Can be a **comma-separated list** of entities.
 
-### Images
+### Display Assets
 
-Display one or more images on a tile. Images are uploaded via the Configurator's **Images** section in the left sidebar, where they receive a unique ID (e.g., `img_kitchen`). When `images:` is set on a tile it **replaces** the `display:` scripts — the tile renders the image instead. Tiles with animated images automatically get `requires_fast_refresh` enabled.
+Display one or more images or icons on a tile. Images are uploaded via the Configurator's **Images** section in the left sidebar, where they receive a unique ID (e.g., `img_kitchen`). When `display_assets:` is set on a tile it **replaces** the `display:` scripts — the tile renders the image or icon instead. Tiles with animated display assets automatically get `requires_fast_refresh` enabled.
 
 #### Static image
 
@@ -432,16 +432,16 @@ Display one or more images on a tile. Images are uploaded via the Configurator's
     y: 0
     entities: [light.kitchen]
     perform: [action_lights]
-    images:
+    display_assets:
       - image: img_kitchen
 ```
 
-#### Conditional images
+#### Conditional display assets
 
 Entries are evaluated in order; the first one whose `condition` script returns `true` (or that has no condition) is rendered.
 
 ```yaml
-images:
+display_assets:
   - image: img_on
     condition: light_on_fn   # show when light is on
   - image: img_off           # fallback — no condition needed
@@ -449,56 +449,51 @@ images:
 
 #### Animated image (slide transition)
 
-Animation is defined by a **start position** (`from`) and an **end position** (`to`), each one of nine named points on the tile:
+Animation is defined by a **start position** (`from`) and an **end position** (`to`), each expressed as an `[x, y]` pair where both values are in the range `0.0`–`1.0`:
 
-```
-top_left    top_middle    top_right
-center_left center_middle center_right
-bottom_left bottom_middle bottom_right
-```
+- `x`: `0.0` = left edge, `0.5` = center, `1.0` = right edge
+- `y`: `0.0` = top edge, `0.5` = center, `1.0` = bottom edge
 
-The image slides from `from` toward `to`. When both positions are the same (`center_middle` → `center_middle`) there is no motion — the image simply swaps (or cycles) without a directional sweep.
+The image slides from `from` toward `to`. When both positions are the same, there is no directional sweep — the image is pinned at that point. To show a static image with no motion at all, simply omit the `animation` block.
 
 ```yaml
-images:
+display_assets:
   - image: img_a
     animation:
-      from: center_left    # image enters from the left edge
-      to: center_right     # and sweeps toward the right edge
-      duration: 0.5        # seconds per cycle step
-      extra_images: [img_b]  # additional images to cycle through (optional)
+      from: [0.0, 0.5]   # enter from the left edge, vertically centered
+      to: [1.0, 0.5]     # sweep toward the right edge
+      duration: 0.5      # seconds per animation step
 ```
-
-The direction used internally is derived from the horizontal and vertical components of the `from`→`to` vector. Horizontal movement takes priority when both axes have equal magnitude (e.g. `top_left`→`bottom_right` → left-to-right sweep).
 
 #### Multi-step animation
 
-Define multiple animation phases, each with its own `from`/`to`, speed, and image set. Step 0 is the entry step for the root image (and its `extra_images`). Steps 1+ each require an `images:` list.
+Define multiple animation phases, each with its own `from`/`to` and speed. Each step uses the entry-level image (or icon) by default, but can override it with a per-step `image` field.
 
 ```yaml
-images:
+display_assets:
   - image: img_a
     animation:
       steps:
-        - from: center_left    # step 0: img_a (and extra_images) sweep left→right
-          to: center_right
+        - from: [0.0, 0.5]    # step 0: img_a sweeps left→right
+          to: [1.0, 0.5]
           duration: 0.5
-          extra_images: [img_b]
-        - from: top_middle     # step 1: img_c sweeps top→bottom
-          to: bottom_middle
+        - from: [0.5, 0.0]    # step 1: img_b sweeps top→bottom (image override)
+          to: [0.5, 1.0]
           duration: 0.3
-          images: [img_c]      # required for steps 1+
+          image: img_b         # optional per-step image override
 ```
 
-**`images:` field properties:**
-- **image**: *(Required)* ID of an image defined in the global `images:` dictionary.
+**`display_assets:` field properties:**
+- **image**: *(Required for image entries)* ID of an image defined in the global `images:` dictionary.
+- **icon**: *(Required for icon entries)* Icon glyph string (mutually exclusive with `image`).
+- **icon_color**: (Optional) Color for the icon. Default: `white`.
+- **icon_size**: (Optional) Font size for the icon. Default: `big`.
 - **condition**: (Optional) Condition script (see [Conditions](#conditions)) that must return `true` for this entry to be rendered.
-- **animation**: (Optional) Animate a slide transition between images.
-  - **from**: *(Required)* Start position — one of the nine named points above. Default: `center_middle`.
-  - **to**: *(Required)* End position — one of the nine named points above. Default: `center_middle`.
+- **animation**: (Optional) Animate a slide transition.
+  - **from**: *(Optional)* Start position as `[x, y]` where `x` and `y` are each `0.0`–`1.0`. Default: `[0.5, 0.5]` (center).
+  - **to**: *(Optional)* End position as `[x, y]` where `x` and `y` are each `0.0`–`1.0`. Default: `[0.5, 0.5]` (center).
   - **duration**: *(Required)* Positive number — seconds per animation step.
-  - **extra_images**: (Optional, single-step only) Additional images to animate through alongside the root image.
-  - **steps**: (Optional, multi-step) List of animation steps. Step 0 may include `extra_images`; steps 1+ must include `images`.
+  - **steps**: (Optional, multi-step) List of animation steps. Each step uses the entry-level image/icon by default; override it with a per-step `image` or `icon` field.
 
 #### Scale
 
