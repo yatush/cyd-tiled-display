@@ -1076,9 +1076,7 @@ const FractionalPositionPicker = ({
   );
 };
 
-// Animation step: from/to positions + duration + optional images list.
-// Step 0 uses 'extra_images' (cycled after the root image).
-// Steps 1+ use 'images' (standalone list; if empty, root image is used).
+// Animation step: from/to positions + duration + optional per-step image or icon override.
 // from/to are [x, y] fractions (0.0–1.0 in 0.05 steps), top-left=[0,0] bottom-right=[1,1].
 type AnimStep = { from: AnimPos; to: AnimPos; duration: number; image?: string; icon?: string; icon_color?: string; icon_size?: string; };
 // Animation config: either flat single-step or multi-step with 'steps' array.
@@ -1108,8 +1106,9 @@ function toSteps(anim: AnimConfig): AnimStep[] {
 }
 function fromSteps(steps: AnimStep[]): AnimConfig {
   if (steps.length === 1) {
-    const { from, to, duration, icon, icon_color, icon_size } = steps[0];
+    const { from, to, duration, image, icon, icon_color, icon_size } = steps[0];
     const r: any = { from, to, duration };
+    if (image !== undefined) r.image = image;
     if (icon !== undefined) { r.icon = icon; r.icon_color = icon_color; r.icon_size = icon_size; }
     return r;
   }
