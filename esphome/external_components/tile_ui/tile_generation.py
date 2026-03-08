@@ -49,19 +49,12 @@ def compute_image_variants(screens: list) -> dict:
                     if isinstance(entry, dict):
                         if entry.get('image') and entry['image'] != 'none':
                             img_sizes.setdefault(entry['image'], set()).add((rows, cols))
+                        # Track per-step image overrides
                         anim = entry.get('animation')
-                        if isinstance(anim, dict):
-                            steps = anim.get('steps')
-                            if steps and isinstance(steps, list):
-                                for i, step in enumerate(steps):
-                                    key = 'extra_images' if i == 0 else 'images'
-                                    for img in (step.get(key) or []):
-                                        if img and img != 'none':
-                                            img_sizes.setdefault(img, set()).add((rows, cols))
-                            else:
-                                for extra in (anim.get('extra_images') or []):
-                                    if extra and extra != 'none':
-                                        img_sizes.setdefault(extra, set()).add((rows, cols))
+                        if isinstance(anim, dict) and isinstance(anim.get('steps'), list):
+                            for step in anim['steps']:
+                                if isinstance(step, dict) and step.get('image') and step['image'] != 'none':
+                                    img_sizes.setdefault(step['image'], set()).add((rows, cols))
 
     variant_id: dict = {}  # (img_id, rows, cols) -> variant_id
     for iid, sizes in img_sizes.items():
@@ -101,32 +94,16 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                         ne = dict(e)
                         if ne.get('image') and ne['image'] != 'none':
                             ne['image'] = variant_id.get((ne['image'], rows, cols), ne['image'])
+                        # Substitute per-step image overrides
                         anim = ne.get('animation')
-                        if isinstance(anim, dict):
-                            steps = anim.get('steps')
-                            if steps and isinstance(steps, list):
-                                new_steps = []
-                                for i, step in enumerate(steps):
-                                    key = 'extra_images' if i == 0 else 'images'
-                                    imgs = step.get(key)
-                                    if imgs:
-                                        new_steps.append({**step, key: [
-                                            variant_id.get((img, rows, cols), img)
-                                            if isinstance(img, str) and img != 'none' else img
-                                            for img in imgs
-                                        ]})
-                                    else:
-                                        new_steps.append(step)
-                                ne['animation'] = {**anim, 'steps': new_steps}
-                            elif anim.get('extra_images'):
-                                ne['animation'] = {
-                                    **anim,
-                                    'extra_images': [
-                                        variant_id.get((img, rows, cols), img)
-                                        if isinstance(img, str) and img != 'none' else img
-                                        for img in anim['extra_images']
-                                    ],
-                                }
+                        if isinstance(anim, dict) and isinstance(anim.get('steps'), list):
+                            new_steps = []
+                            for step in anim['steps']:
+                                s = dict(step)
+                                if s.get('image') and s['image'] != 'none':
+                                    s['image'] = variant_id.get((s['image'], rows, cols), s['image'])
+                                new_steps.append(s)
+                            ne['animation'] = {**anim, 'steps': new_steps}
                         new_entries.append(ne)
                     tdata['images'] = new_entries
     return result
@@ -193,11 +170,11 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
 
     animation formats supported:
       Single-step (legacy):  { direction, duration, extra_images? }
-      Multi-step:            { steps: [{ direction, duration, extra_images? }   <- step 0
-                                       { direction, duration, images? }          <- steps 1+
+      Multi-step:            { steps: [{ direction, duration }   <- step 0
+                                       { direction, duration }   <- steps 1+
                                        ...] }
-    For step 0: root image + extra_images are cycled together.
-    For steps 1+: 'images' list is used standalone; if omitted, root image is used alone.
+    Each step draws the entry's root image (or step-level icon override).
+    Use multiple steps instead of image cycling within a single step.
 
     Each entry in 'images':
       { image: <id>, condition?: <expr>, animation?: <above> }
@@ -210,7 +187,7 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         else:
             return None
 
-    valid_entries = [e for e in images if isinstance(e, dict) and e.get("image")]
+    valid_entries = [e for e in images if isinstance(e, dict) and (e.get("image") or e.get("icon"))]
     if not valid_entries:
         return None
 
@@ -265,40 +242,72 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
             return None
         return (fx, fy, tx, ty)
 
-    def _make_draw_call_step(step: dict, root_img_id: str, is_first: bool,
+    # -----------------------------------------------------------------------
+    # Icon formatting helpers
+    # -----------------------------------------------------------------------
+
+    def _icon_to_cpp(icon_val) -> str:
+        """Convert icon value from YAML to a C++ string literal."""
+        if not isinstance(icon_val, str):
+            return '""'
+        val = icon_val
+        # Already a 1-char decoded Unicode (Python YAML may have interpreted \U...)
+        if len(val) == 1 and ord(val) > 127:
+            utf8 = val.encode('utf-8')
+            return '"' + ''.join(f'\\x{b:02x}' for b in utf8) + '"'
+        # Wrapped in double quotes (standard YAML generator output, e.g. '"\U0000F05A"')
+        if val.startswith('"') and val.endswith('"') and len(val) >= 2:
+            return val  # already C++ formatted
+        # Raw backslash-U notation (unlikely but handle it)
+        return f'"{val}"'
+
+    def _icon_color_cpp(val: str) -> str:
+        """Format icon_color as a C++ Color expression."""
+        if not val:
+            return 'id(white)'
+        if val.startswith('Color(') or val.startswith('id('):
+            return val
+        return f'id({val})'
+
+    def _icon_size_cpp(val: str) -> str:
+        """Format icon_size as a C++ BaseFont* expression."""
+        if not val:
+            return '&id(big)'
+        if val.startswith('&id('):
+            return val
+        if val.startswith('id('):
+            return f'&{val}'
+        return f'&id({val})'
+
+    def _make_icon_draw_call_step(step: dict, icon_cpp: str, color_cpp: str, font_cpp: str,
+                                   total_ms: int = None, step_start_ms: int = None) -> str:
+        """Return a make_icon_draw(...) expression for one animation step."""
+        positions = _step_positions(step)
+        duration_ms = int(float(step.get("duration", 3)) * 1000)
+        if positions is None:
+            if total_ms is not None:
+                # static within a multi-step — use the step-aligned static overload
+                return f"make_icon_draw({icon_cpp}, {color_cpp}, {font_cpp})"
+            return f"make_icon_draw({icon_cpp}, {color_cpp}, {font_cpp})"
+        fx, fy, tx, ty = positions
+        pos_args = f"{fx:.1f}f, {fy:.1f}f, {tx:.1f}f, {ty:.1f}f"
+        if total_ms is not None:
+            return f"make_icon_draw({icon_cpp}, {color_cpp}, {font_cpp}, {pos_args}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
+        return f"make_icon_draw({icon_cpp}, {color_cpp}, {font_cpp}, {pos_args}, {duration_ms}U)"
+
+    def _make_draw_call_step(step: dict, img_id: str,
                               total_ms: int = None, step_start_ms: int = None) -> str | None:
         """Return a make_image_draw(...) expression for one animation step, or None for no-op."""
         positions = _step_positions(step)
         duration_ms = int(float(step.get("duration", 3)) * 1000)
-        if is_first:
-            extra = [img for img in (step.get("extra_images") or []) if img]
-            all_images = [root_img_id] + extra
-        else:
-            imgs = [img for img in (step.get("images") or []) if img]
-            all_images = imgs if imgs else [root_img_id]
-        if not all_images:
-            return None
-        n = len(all_images)
         aligned = total_ms is not None
-        if n > 1:
-            imgs_cpp = "{" + ", ".join(f"&id({img})" for img in all_images) + "}"
-            if positions is None:
-                if aligned:
-                    return f"make_image_draw({imgs_cpp}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
-                return f"make_image_draw({imgs_cpp}, {duration_ms}U)"
-            fx, fy, tx, ty = positions
-            pos_args = f"{fx:.1f}f, {fy:.1f}f, {tx:.1f}f, {ty:.1f}f"
-            if aligned:
-                return f"make_image_draw({imgs_cpp}, {pos_args}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
-            return f"make_image_draw({imgs_cpp}, {pos_args}, {duration_ms}U)"
-        img = all_images[0]
         if positions is None:
-            return f"make_image_draw(&id({img}))"
+            return f"make_image_draw(&id({img_id}))"
         fx, fy, tx, ty = positions
         pos_args = f"{fx:.1f}f, {fy:.1f}f, {tx:.1f}f, {ty:.1f}f"
         if aligned:
-            return f"make_image_draw(&id({img}), {pos_args}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
-        return f"make_image_draw(&id({img}), {pos_args}, {duration_ms}U)"
+            return f"make_image_draw(&id({img_id}), {pos_args}, {duration_ms}U, {total_ms}U, {step_start_ms}U)"
+        return f"make_image_draw(&id({img_id}), {pos_args}, {duration_ms}U)"
 
     def _get_steps(entry: dict) -> list:
         """Return the list of animation steps (always at least 1 element if animated)."""
@@ -311,20 +320,62 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         return [animation]  # single-step: treat the animation dict itself as the one step
 
     def _make_draw_call(entry: dict) -> str | None:
-        """Bare make_image_draw(...) expression using the first (or only) step, or None for no-op."""
-        img_id = entry["image"]
+        """Bare draw call expression using the first (or only) step, or None for no-op."""
         steps = _get_steps(entry)
+        step0 = steps[0] if steps else None
+        # Check per-step icon override on step 0 first
+        if step0 is not None and step0.get("icon") is not None:
+            sc = _icon_to_cpp(step0["icon"])
+            scolor = _icon_color_cpp(step0.get("icon_color", ""))
+            sfont = _icon_size_cpp(step0.get("icon_size", ""))
+            return _make_icon_draw_call_step(step0, sc, scolor, sfont)
+        if entry.get("icon"):
+            icon_cpp = _icon_to_cpp(entry["icon"])
+            color_cpp = _icon_color_cpp(entry.get("icon_color", ""))
+            font_cpp = _icon_size_cpp(entry.get("icon_size", ""))
+            if not steps:
+                return f"make_icon_draw({icon_cpp}, {color_cpp}, {font_cpp})"
+            return _make_icon_draw_call_step(steps[0], icon_cpp, color_cpp, font_cpp)
+        img_id = entry["image"]
         if not steps:
             return f"make_image_draw(&id({img_id}))"
-        return _make_draw_call_step(steps[0], img_id, True)
+        return _make_draw_call_step(steps[0], img_id)
 
     def _entry_dispatch_lines(entry: dict) -> list[str]:
         """
         C++ statement lines that perform the full draw for this entry.
         Single-step entries produce one line; multi-step produce a time-dispatch block.
+        Each step may override the entry-level image/icon with its own 'icon' key.
         """
-        img_id = entry["image"]
         steps = _get_steps(entry)
+        is_icon_entry = bool(entry.get("icon") and entry["icon"].strip())
+
+        def _draw_call_for_step(step: dict, step_idx: int,
+                                total_ms: int = None, step_start_ms: int = None) -> str | None:
+            """Return draw call for a specific step.
+            Priority: per-step icon > per-step image > entry-level icon > entry-level image.
+            """
+            step_icon = step.get("icon")
+            step_image = step.get("image")
+            if step_icon is not None and step_icon.strip():
+                # Per-step icon override
+                sc = _icon_to_cpp(step_icon)
+                scolor = _icon_color_cpp(step.get("icon_color", ""))
+                sfont = _icon_size_cpp(step.get("icon_size", ""))
+                return _make_icon_draw_call_step(step, sc, scolor, sfont, total_ms, step_start_ms)
+            elif step_image and step_image.strip():
+                # Per-step image override (takes priority over entry-level icon)
+                return _make_draw_call_step(step, step_image, total_ms, step_start_ms)
+            elif is_icon_entry:
+                # Fall back to entry-level icon
+                ic = _icon_to_cpp(entry["icon"])
+                icolor = _icon_color_cpp(entry.get("icon_color", ""))
+                ifont = _icon_size_cpp(entry.get("icon_size", ""))
+                return _make_icon_draw_call_step(step, ic, icolor, ifont, total_ms, step_start_ms)
+            else:
+                # Image entry: use entry-level image
+                return _make_draw_call_step(step, entry["image"], total_ms, step_start_ms)
+
         if len(steps) <= 1:
             call = _make_draw_call(entry)
             if call is None:
@@ -337,7 +388,7 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         for i, step in enumerate(steps):
             step_start = cumulative
             cumulative += int(float(step.get("duration", 3)) * 1000)
-            call = _make_draw_call_step(step, img_id, i == 0, total_ms, step_start)
+            call = _draw_call_for_step(step, i, total_ms, step_start)
             if i == len(steps) - 1:
                 lines.append("else")
             else:
@@ -356,24 +407,9 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
 
     def _normalize_entry(e: dict) -> dict:
         e = dict(e)
-        if 'image' in e:
+        # Icon entries don't use image IDs — skip image normalization
+        if not e.get("icon") and 'image' in e:
             e['image'] = _norm_img(e['image'])
-        anim = e.get('animation')
-        if isinstance(anim, dict):
-            anim = dict(anim)
-            steps = anim.get('steps')
-            if steps and isinstance(steps, list):
-                new_steps = []
-                for i, step in enumerate(steps):
-                    step = dict(step)
-                    key = 'extra_images' if i == 0 else 'images'
-                    if step.get(key):
-                        step[key] = [_norm_img(img) for img in step[key]]
-                    new_steps.append(step)
-                anim['steps'] = new_steps
-            elif anim.get('extra_images'):
-                anim['extra_images'] = [_norm_img(img) for img in anim['extra_images']]
-            e['animation'] = anim
         return e
 
     valid_entries = [_normalize_entry(e) for e in valid_entries]

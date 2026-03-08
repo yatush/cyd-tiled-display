@@ -81,28 +81,7 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
                     result = rest;
                 }
 
-                // Strip empty image strings from animation step images arrays.
-                if (result.animation && typeof result.animation === 'object') {
-                    const anim = { ...result.animation };
-                    if (Array.isArray(anim.steps)) {
-                        anim.steps = anim.steps.map((step: any, si: number) => {
-                            const s = { ...step };
-                            if (si === 0) {
-                                if (Array.isArray(s.extra_images)) s.extra_images = s.extra_images.filter(Boolean);
-                                if (!s.extra_images?.length) delete s.extra_images;
-                            } else {
-                                if (Array.isArray(s.images)) s.images = s.images.filter(Boolean);
-                                if (!s.images?.length) delete s.images;
-                            }
-                            return s;
-                        });
-                    } else {
-                        // Single-step: strip extra_images empties
-                        if (Array.isArray(anim.extra_images)) anim.extra_images = anim.extra_images.filter(Boolean);
-                        if (!anim.extra_images?.length) delete anim.extra_images;
-                    }
-                    result.animation = anim;
-                }
+
 
                 return result;
             });

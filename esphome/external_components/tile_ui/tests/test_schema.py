@@ -201,12 +201,27 @@ class TestSchema(unittest.TestCase):
         v = self._images_validator()
         result = v([{'image': 'img_a', 'animation': {'steps': [
             {'from': 'center_left', 'to': 'center_right', 'duration': 2},
-            {'from': 'top_middle',  'to': 'bottom_middle', 'duration': 3, 'images': ['img_b']},
+            {'from': 'top_middle',  'to': 'bottom_middle', 'duration': 3},
         ]}}])
         steps = result[0]['animation']['steps']
         self.assertEqual(len(steps), 2)
         self.assertEqual(steps[0]['from'], 'center_left')
         self.assertEqual(steps[1]['to'], 'bottom_middle')
+
+    def test_images_list_empty_icon_rejected(self):
+        """An icon entry with an empty string is rejected at schema level."""
+        v = self._images_validator()
+        with self.assertRaises(Exception):
+            v([{'icon': ''}])
+
+    def test_images_list_empty_step_icon_rejected(self):
+        """A step with an explicit empty icon is rejected at schema level."""
+        v = self._images_validator()
+        with self.assertRaises(Exception):
+            v([{'icon': '\\Ue000', 'animation': {'steps': [
+                {'from': 'center_left', 'to': 'center_right', 'duration': 2},
+                {'from': 'top_middle', 'to': 'bottom_middle', 'duration': 2, 'icon': ''},
+            ]}}])
 
 if __name__ == '__main__':
     unittest.main()

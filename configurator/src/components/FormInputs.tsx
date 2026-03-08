@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Plus, Upload } from 'lucide-react';
+import { Trash2, Plus, Upload, X } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { HaEntity, ImageEntry } from '../types';
+import { IconPicker, ColorPicker } from './Pickers';
 
 export const NumberInput = ({ label, value, onChange, min = 0 }: { label: string, value: number, onChange: (v: number) => void, min?: number }) => (
   <div className="mb-2">
@@ -1079,9 +1080,9 @@ const FractionalPositionPicker = ({
 // Step 0 uses 'extra_images' (cycled after the root image).
 // Steps 1+ use 'images' (standalone list; if empty, root image is used).
 // from/to are [x, y] fractions (0.0–1.0 in 0.05 steps), top-left=[0,0] bottom-right=[1,1].
-type AnimStep = { from: AnimPos; to: AnimPos; duration: number; extra_images?: string[]; images?: string[] };
+type AnimStep = { from: AnimPos; to: AnimPos; duration: number; image?: string; icon?: string; icon_color?: string; icon_size?: string; };
 // Animation config: either flat single-step or multi-step with 'steps' array.
-type AnimConfig = { from: AnimPos; to: AnimPos; duration: number; extra_images?: string[] }
+type AnimConfig = { from: AnimPos; to: AnimPos; duration: number }
                | { steps: AnimStep[] };
 
 /** Normalize a from/to position value from either legacy string or [x,y] array form to AnimPos. */
@@ -1102,22 +1103,28 @@ function toSteps(anim: AnimConfig): AnimStep[] {
   if ('steps' in anim && Array.isArray(anim.steps)) {
     return anim.steps.map(s => ({ ...s, from: normalizePos(s.from), to: normalizePos(s.to) }));
   }
-  const { from, to, duration, extra_images } = anim as any;
-  return [{ from: normalizePos(from ?? DEFAULT_ANIM_POS), to: normalizePos(to ?? DEFAULT_ANIM_POS), duration: duration ?? 3, extra_images }];
+  const { from, to, duration } = anim as any;
+  return [{ from: normalizePos(from ?? DEFAULT_ANIM_POS), to: normalizePos(to ?? DEFAULT_ANIM_POS), duration: duration ?? 3 }];
 }
 function fromSteps(steps: AnimStep[]): AnimConfig {
   if (steps.length === 1) {
-    const { from, to, duration, extra_images } = steps[0];
+    const { from, to, duration, icon, icon_color, icon_size } = steps[0];
     const r: any = { from, to, duration };
-    if (extra_images?.filter(Boolean).length) r.extra_images = extra_images.filter(Boolean);
+    if (icon !== undefined) { r.icon = icon; r.icon_color = icon_color; r.icon_size = icon_size; }
     return r;
   }
-  // Preserve steps as-is (including empty image slots for in-progress pickers).
-  // Empty strings are stripped when the YAML is generated.
   return { steps };
 }
 
-type ImageRow = { image: string; condition?: any; animation?: AnimConfig };
+type ImageRow = {
+  // Exactly one of image or icon should be set
+  image?: string;
+  icon?: string;
+  icon_color?: string;
+  icon_size?: string;
+  condition?: any;
+  animation?: AnimConfig;
+};
 
 export const ImagesListInput = ({
   value,
@@ -1129,6 +1136,22 @@ export const ImagesListInput = ({
   images: Record<string, ImageEntry>;
 }) => {
   const rows: ImageRow[] = Array.isArray(value) ? value : [];
+
+  // Fetch icons, colors, fonts for icon entries
+  const [iconList, setIconList] = useState<{value: string, label: string}[]>([]);
+  const [colorList, setColorList] = useState<{id: string, value: string}[]>([]);
+  const [fontList, setFontList] = useState<string[]>([]);
+
+  useEffect(() => {
+    apiFetch('/scripts').then(async res => {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.icons) setIconList(data.icons);
+        if (data.colors) setColorList(data.colors);
+        if (data.fonts) setFontList(data.fonts);
+      }
+    }).catch(() => {});
+  }, []);
 
   const updateRow = (idx: number, patch: Partial<typeof rows[0]>) => {
     onChange(rows.map((r, i) => i === idx ? { ...r, ...patch } : r));
@@ -1154,60 +1177,53 @@ export const ImagesListInput = ({
     }
   };
 
-  // Render an editable images sub-list (for extra_images or step images).
-  const renderStepImgList = (
-    imgs: string[],
-    onChangeImgs: (list: string[]) => void,
-    label: string,
-    hint?: string,
-  ) => (
-    <div>
-      <label className="block text-[10px] text-slate-500 uppercase mb-0.5">
-        {label}{hint && <span className="normal-case font-normal ml-1 text-slate-400">{hint}</span>}
-      </label>
-      <div className="space-y-1">
-        {imgs.map((img, eidx) => (
-          <div key={eidx} className="flex items-center gap-1">
-            <div className="flex-1 min-w-0">
-              <ImageSelectInput
-                value={img}
-                onChange={v => { const next = [...imgs]; next[eidx] = v; onChangeImgs(next); }}
-                images={images}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => onChangeImgs(imgs.filter((_, i) => i !== eidx))}
-              className="text-red-400 hover:text-red-600 p-0.5 rounded"
-              title="Remove"
-            ><Trash2 size={12} /></button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => onChangeImgs([...imgs, ''])}
-          className="w-full text-xs text-blue-500 border border-dashed border-blue-200 rounded py-0.5 hover:bg-blue-50 flex items-center justify-center gap-1"
-        ><Plus size={10} /> Add image</button>
-      </div>
-    </div>
-  );
-
   // Render one animation step's controls.
+  // Each step independently chooses Image or Icon mode via its own toggle (shown in multi-step).
   const renderStep = (step: AnimStep, si: number, steps: AnimStep[], updateSteps: (s: AnimStep[]) => void) => {
     const updateStep = (patch: Partial<AnimStep>) =>
       updateSteps(steps.map((s, i) => i === si ? { ...s, ...patch } : s));
     const isMulti = steps.length > 1;
+    const isIconStep = step.icon !== undefined;
+
+    const switchStepToImage = () => {
+      const { icon: _i, icon_color: _c, icon_size: _s, ...rest } = step as any;
+      updateSteps(steps.map((s, i) => i === si ? rest : s));
+    };
+    const switchStepToIcon = () => {
+      const { image: _img, ...rest } = step as any;
+      updateSteps(steps.map((s, i) => i === si ? { ...rest, icon: '', icon_color: 'white', icon_size: 'big' } : s));
+    };
+
     return (
       <div key={si} className={isMulti ? "border border-slate-100 rounded p-2 space-y-1.5" : "space-y-1.5"}>
         {isMulti && (
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-blue-500 uppercase font-semibold">Step {si + 1}</span>
-            <button
-              type="button"
-              onClick={() => updateSteps(steps.filter((_, i) => i !== si))}
-              className="text-red-400 hover:text-red-600 p-0.5 rounded"
-              title="Remove step"
-            ><Trash2 size={12} /></button>
+            <div className="flex items-center gap-1">
+              {/* Per-step Image/Icon toggle — only for steps 1+ (step 0 inherits from the row toggle) */}
+              {si > 0 && (
+                <div className="flex rounded border border-slate-200 overflow-hidden text-[9px]">
+                  <button
+                    type="button"
+                    onClick={switchStepToImage}
+                    className={`px-1.5 py-0.5 ${!isIconStep ? 'bg-blue-500 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                    title="Use image for this step"
+                  >Image</button>
+                  <button
+                    type="button"
+                    onClick={switchStepToIcon}
+                    className={`px-1.5 py-0.5 ${isIconStep ? 'bg-blue-500 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                    title="Use icon for this step"
+                  >Icon</button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => updateSteps(steps.filter((_, i) => i !== si))}
+                className="text-red-400 hover:text-red-600 p-0.5 rounded"
+                title="Remove step"
+              ><Trash2 size={12} /></button>
+            </div>
           </div>
         )}
         <div className="flex gap-4 items-start flex-wrap">
@@ -1232,28 +1248,61 @@ export const ImagesListInput = ({
             className="w-full border rounded p-1 text-xs"
           />
         </div>
-        {si === 0
-          ? renderStepImgList(
-              step.extra_images || [],
-              list => updateStep({ extra_images: list.length ? list : undefined }),
-              'Cycle through images',
-            )
-          : (() => {
-              const hasImages = (step.images ?? []).some(Boolean);
-              return (
-                <>
-                  {renderStepImgList(
-                    step.images?.length ? step.images : [''],
-                    list => updateStep({ images: list.length ? list : [''] }),
-                    'Images',
-                  )}
-                  {!hasImages && (
-                    <p className="text-[10px] text-red-500 mt-0.5">At least one image is required</p>
-                  )}
-                </>
-              );
-            })()
-        }
+        {/* Per-step image override (steps 1+ only) */}
+        {!isIconStep && si > 0 && (
+          <div>
+            <div className="flex items-center gap-1 mb-0.5">
+              <label className="block text-[10px] text-slate-500 uppercase">Image</label>
+              <span className="text-[9px] text-slate-400">(overrides row image)</span>
+              {step.image && (
+                <button
+                  type="button"
+                  onClick={() => { const { image: _i, ...rest } = step as any; updateSteps(steps.map((s, i) => i === si ? rest : s)); }}
+                  className="ml-auto text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                  title="Clear — inherit row image"
+                ><X size={10} /></button>
+              )}
+            </div>
+            <ImageSelectInput
+              value={step.image ?? ''}
+              onChange={v => updateStep({ image: v })}
+              images={images}
+            />
+          </div>
+        )}
+        {/* Per-step icon UI */}
+        {isIconStep && (
+          <div className="space-y-1">
+            <label className="block text-[10px] text-slate-500 uppercase">Icon</label>
+            <IconPicker
+              value={step.icon ?? ''}
+              onChange={v => updateStep({ icon: v })}
+              icons={iconList}
+            />
+            <div className="flex gap-2">
+              <div className="flex-1 min-w-0">
+                <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Color</label>
+                <ColorPicker
+                  value={step.icon_color ?? 'white'}
+                  onChange={v => updateStep({ icon_color: v })}
+                  colors={colorList}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Size</label>
+                <select
+                  value={step.icon_size ?? 'big'}
+                  onChange={e => updateStep({ icon_size: e.target.value })}
+                  className="w-full border rounded p-1 text-xs bg-white"
+                >
+                  {fontList.length === 0 && <option value="big">big</option>}
+                  {fontList.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   };
@@ -1263,28 +1312,94 @@ export const ImagesListInput = ({
       {rows.map((row, idx) => {
         const hasCondition = 'condition' in row;
         const hasAnimation = !!row.animation;
+        const isIconRow = row.icon !== undefined;
+
+        const switchToImage = () => {
+          const { icon: _i, icon_color: _c, icon_size: _s, ...rest } = row as any;
+          onChange(rows.map((r, i) => i === idx ? { ...rest, image: '' } : r));
+        };
+        const switchToIcon = () => {
+          const { image: _m, ...rest } = row as any;
+          onChange(rows.map((r, i) => i === idx ? { ...rest, icon: '', icon_color: 'white', icon_size: 'big' } : r));
+        };
+
         return (
           <div key={idx} className="border rounded p-2 bg-white">
+            {/* Row header: label + Image/Icon toggle + remove */}
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-slate-500 uppercase font-medium">Image {idx + 1}</span>
-              <button
-                type="button"
-                onClick={() => removeRow(idx)}
-                className="text-red-400 hover:text-red-600 p-0.5 rounded"
-                title="Remove"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
-            <div className="mb-2">
-              <ImageSelectInput
-                value={row.image}
-                onChange={v => updateRow(idx, { image: v })}
-                images={images}
-              />
+              <span className="text-[10px] text-slate-500 uppercase font-medium">Layer {idx + 1}</span>
+              <div className="flex items-center gap-1">
+                {/* Image / Icon toggle */}
+                <div className="flex rounded border border-slate-200 overflow-hidden text-[9px]">
+                  <button
+                    type="button"
+                    onClick={switchToImage}
+                    className={`px-1.5 py-0.5 ${!isIconRow ? 'bg-blue-500 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                    title="Use image"
+                  >Image</button>
+                  <button
+                    type="button"
+                    onClick={switchToIcon}
+                    className={`px-1.5 py-0.5 ${isIconRow ? 'bg-blue-500 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                    title="Use icon"
+                  >Icon</button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeRow(idx)}
+                  className="text-red-400 hover:text-red-600 p-0.5 rounded"
+                  title="Remove"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
             </div>
 
-            {/* Image-selection condition */}
+            {/* Image selector */}
+            {!isIconRow && (
+              <div className="mb-2">
+                <ImageSelectInput
+                  value={row.image ?? ''}
+                  onChange={v => updateRow(idx, { image: v })}
+                  images={images}
+                />
+              </div>
+            )}
+
+            {/* Icon selector */}
+            {isIconRow && (
+              <div className="mb-2 space-y-1">
+                <label className="block text-[10px] text-slate-500 uppercase">Icon</label>
+                <IconPicker
+                  value={row.icon ?? ''}
+                  onChange={v => updateRow(idx, { icon: v })}
+                  icons={iconList}
+                />
+                <div className="flex gap-2">
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Color</label>
+                    <ColorPicker
+                      value={row.icon_color ?? 'white'}
+                      onChange={v => updateRow(idx, { icon_color: v })}
+                      colors={colorList}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-[10px] text-slate-500 uppercase mb-0.5">Size</label>
+                    <select
+                      value={row.icon_size ?? 'big'}
+                      onChange={e => updateRow(idx, { icon_size: e.target.value })}
+                      className="w-full border rounded p-1 text-xs bg-white"
+                    >
+                      {fontList.length === 0 && <option value="big">big</option>}
+                      {fontList.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Condition */}
             <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer select-none mt-1">
               <input
                 type="checkbox"
@@ -1319,7 +1434,21 @@ export const ImagesListInput = ({
                   {steps.map((step, si) => renderStep(step, si, steps, updateSteps))}
                   <button
                     type="button"
-                    onClick={() => updateSteps([...steps, { from: DEFAULT_ANIM_POS, to: DEFAULT_ANIM_POS, duration: 3 }])}
+                    onClick={() => {
+                      // For icon rows: materialize entry-level icon into any un-configured steps,
+                      // and default the new step to icon mode as well.
+                      const iconDefaults = isIconRow
+                        ? { icon: row.icon ?? '', icon_color: row.icon_color ?? 'white', icon_size: row.icon_size ?? 'big' }
+                        : {};
+                      const normalizedSteps = isIconRow
+                        ? steps.map(s =>
+                            s.icon === undefined
+                              ? { ...s, ...iconDefaults }
+                              : s
+                          )
+                        : steps;
+                      updateSteps([...normalizedSteps, { from: DEFAULT_ANIM_POS, to: DEFAULT_ANIM_POS, duration: 3, ...iconDefaults }]);
+                    }}
                     className="w-full text-xs text-purple-500 border border-dashed border-purple-200 rounded py-0.5 hover:bg-purple-50 flex items-center justify-center gap-1"
                   ><Plus size={10} /> Add step</button>
                 </div>
@@ -1333,7 +1462,7 @@ export const ImagesListInput = ({
         onClick={() => onChange([...rows, { image: '' }])}
         className="w-full text-xs text-blue-600 border border-dashed border-blue-300 rounded py-1 hover:bg-blue-50 flex items-center justify-center gap-1"
       >
-        <Plus size={12} /> Add Image
+        <Plus size={12} /> Add Image / Icon
       </button>
     </div>
   );

@@ -116,11 +116,27 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       >
         <Trash2 size={12} />
       </button>
-      {/* ── Background image layer (behind all content) ─────────────────── */}
+      {/* ── Background image/icon layer (behind all content) ──────────── */}
       {(() => {
         const tileAny = tile as any;
         if (!Array.isArray(tileAny.images) || tileAny.images.length === 0) return null;
-        const firstImgId = tileAny.images[0]?.image;
+        const firstEntry = tileAny.images[0];
+        // Icon entry
+        if (firstEntry?.icon) {
+          let iconVal = firstEntry.icon;
+          if (typeof iconVal === 'string' && iconVal.startsWith('"') && iconVal.endsWith('"')) iconVal = iconVal.slice(1, -1);
+          let displayChar = iconVal;
+          if (typeof iconVal === 'string' && iconVal.startsWith('\\U')) {
+            try { displayChar = String.fromCodePoint(parseInt(iconVal.substring(2), 16)); } catch (e) {}
+          }
+          return (
+            <div className="absolute pointer-events-none" style={{ inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 0 }}>
+              <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '28px', lineHeight: 1, opacity: 0.85 }}>{displayChar}</span>
+            </div>
+          );
+        }
+        // Image entry
+        const firstImgId = firstEntry?.image;
         const entry = firstImgId ? images[firstImgId] : null;
         if (!entry) return null;
         const scale = entry.scale ?? 100;
@@ -141,13 +157,14 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       })()}
       {(() => {
         const tileAny = tile as any;
-        // ── Images: show type badge on top, image is already rendered behind
+        // ── Images/icons: show type badge on top, content is already rendered behind
         if (Array.isArray(tileAny.images) && tileAny.images.length > 0) {
-          const firstImgId = tileAny.images[0]?.image;
+          const firstEntry = tileAny.images[0];
+          const firstImgId = firstEntry?.image;
           const entry = firstImgId ? images[firstImgId] : null;
           return (
             <>
-              {!entry && firstImgId && (
+              {!entry && firstImgId && !firstEntry?.icon && (
                 <div className="absolute inset-0 flex items-center justify-center text-[9px] text-slate-400 z-10">{firstImgId}</div>
               )}
               <div className="absolute top-0.5 left-0 right-0 text-center pointer-events-none px-1 z-10">

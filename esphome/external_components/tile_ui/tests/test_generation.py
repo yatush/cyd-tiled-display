@@ -249,30 +249,6 @@ class TestImageAnimation(unittest.TestCase):
         self.assertIn('make_image_draw(&id(img_a))', cpp)
         self.assertNotIn('0.0f', cpp)
 
-    def test_extra_images_same_position_cycles_static(self):
-        cpp = self._generate([{'image': 'img_a', 'animation': {
-            'from': 'center_middle', 'to': 'center_middle', 'duration': 6, 'extra_images': ['img_b', 'img_c']
-        }}])
-        # direction None (same from/to) → static cycling
-        self.assertIn('make_image_draw({&id(img_a), &id(img_b), &id(img_c)}, 6000U)', cpp)
-        self.assertNotIn('_per_ms', cpp)
-        self.assertNotIn('draw_image_anim', cpp)
-        self.assertNotIn('draw_image_static', cpp)
-
-    def test_extra_images_directional_cycles_animated(self):
-        cpp = self._generate([{'image': 'img_a', 'animation': {
-            'from': 'center_left', 'to': 'center_right', 'duration': 6, 'extra_images': ['img_b', 'img_c']
-        }}])
-        self.assertIn('make_image_draw({&id(img_a), &id(img_b), &id(img_c)}, 0.0f, 0.5f, 1.0f, 0.5f, 6000U)', cpp)
-        self.assertNotIn('_per_ms', cpp)
-
-    def test_extra_images_two_images(self):
-        cpp = self._generate([{'image': 'img_a', 'animation': {
-            'from': 'center_left', 'to': 'center_right', 'duration': 4, 'extra_images': ['img_b']
-        }}])
-        self.assertIn('make_image_draw({&id(img_a), &id(img_b)}, 0.0f, 0.5f, 1.0f, 0.5f, 4000U)', cpp)
-        self.assertNotIn('_per_ms', cpp)
-
     def test_fast_refresh_set_when_animated(self):
         cpp = self._generate([{'image': 'img_a', 'animation': {'from': 'center_left', 'to': 'center_right', 'duration': 3}}])
         self.assertIn('setRequiresFastRefreshFunc', cpp)
@@ -297,19 +273,6 @@ class TestImageAnimation(unittest.TestCase):
         self.assertIn('else', cpp)
         # top_middle→bottom_middle: (0.5, 0.0, 0.5, 1.0)
         self.assertIn('make_image_draw(&id(img_a), 0.5f, 0.0f, 0.5f, 1.0f, 2000U, 5000U, 3000U)', cpp)
-
-    def test_multi_step_step2_standalone_images(self):
-        """Step 2 has its own standalone images list (no root prepended)."""
-        cpp = self._generate([{'image': 'img_a', 'animation': {
-            'steps': [
-                {'from': 'center_left', 'to': 'center_right',     'duration': 3, 'extra_images': ['img_b']},
-                {'from': 'center_middle', 'to': 'center_middle',  'duration': 4, 'images': ['img_c', 'img_d']},
-            ]
-        }}])
-        self.assertIn('millis() % 7000U', cpp)
-        # center_left→center_right: (0.0, 0.5, 1.0, 0.5)
-        self.assertIn('make_image_draw({&id(img_a), &id(img_b)}, 0.0f, 0.5f, 1.0f, 0.5f, 3000U, 7000U, 0U)', cpp)
-        self.assertIn('make_image_draw({&id(img_c), &id(img_d)}, 4000U, 7000U, 3000U)', cpp)
 
     def test_multi_step_three_steps_dispatch(self):
         """Three steps produce correct if/else-if/else time dispatch."""
@@ -344,6 +307,34 @@ class TestImageAnimation(unittest.TestCase):
         }}])
         self.assertIn('setRequiresFastRefreshFunc', cpp)
         self.assertIn('return true', cpp)
+
+    def test_multi_step_per_step_image_override(self):
+        """Step 1+ can override the image used via the 'image' field."""
+        cpp = self._generate([{'image': 'img_a', 'animation': {
+            'steps': [
+                {'from': 'center_left', 'to': 'center_right',  'duration': 3},
+                {'from': 'top_middle',  'to': 'bottom_middle', 'duration': 2, 'image': 'img_b'},
+            ]
+        }}])
+        self.assertIn('millis() % 5000U', cpp)
+        # step 0 uses entry image img_a
+        self.assertIn('make_image_draw(&id(img_a), 0.0f, 0.5f, 1.0f, 0.5f, 3000U, 5000U, 0U)', cpp)
+        # step 1 uses override image img_b
+        self.assertIn('make_image_draw(&id(img_b), 0.5f, 0.0f, 0.5f, 1.0f, 2000U, 5000U, 3000U)', cpp)
+
+    def test_icon_entry_step_image_override(self):
+        """For an icon entry, a step with 'image' field uses the image, not the entry icon."""
+        cpp = self._generate([{'icon': '\\Ue000', 'icon_color': 'white', 'icon_size': 'big',
+                               'animation': {'steps': [
+            {'from': 'center_left', 'to': 'center_right',  'duration': 2},
+            {'from': 'top_middle',  'to': 'bottom_middle', 'duration': 3, 'image': 'img_b'},
+            {'from': 'center_right','to': 'center_left',   'duration': 2},
+        ]}}])
+        self.assertIn('millis() % 7000U', cpp)
+        # step 0 and step 2 use the entry icon
+        self.assertIn('make_icon_draw(', cpp)
+        # step 1 uses the image override — must NOT emit make_icon_draw for that step
+        self.assertIn('make_image_draw(&id(img_b), 0.5f, 0.0f, 0.5f, 1.0f, 3000U, 7000U, 2000U)', cpp)
 
 if __name__ == '__main__':
     unittest.main()

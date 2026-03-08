@@ -643,30 +643,6 @@ inline DrawImageFunc make_image_draw(esphome::image::Image* image, float from_x,
   };
 }
 
-// make_image_draw — cycling through multiple images, static display.
-//   duration_ms: total cycle time; per-image time = duration_ms / n
-inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, uint32_t duration_ms) {
-  return [images, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string> s) {
-    uint32_t n = (uint32_t)images.size();
-    if (n == 0) return;
-    make_image_draw(images[(millis() / (duration_ms / n)) % n])(x0, x1, y0, y1, s);
-  };
-}
-
-// make_image_draw — cycling through multiple images, animated sweep.
-//   duration_ms: total cycle time. ONE continuous sweep; image shown changes at
-//   each 1/n boundary but position uses shared _frac for an uninterrupted sweep.
-inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, float from_x, float from_y, float to_x, float to_y, uint32_t duration_ms) {
-  return [images, from_x, from_y, to_x, to_y, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
-    uint32_t n = (uint32_t)images.size();
-    if (n == 0) return;
-    float _frac = fmodf(millis() / (float)duration_ms, 1.0f);
-    uint32_t _idx = (uint32_t)(_frac * n) % n;
-    id(image_slot) = images[_idx];
-    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, from_x, from_y, to_x, to_y);
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Cycle-aligned overloads — used for multi-step animations.
 // ---------------------------------------------------------------------------
@@ -682,29 +658,52 @@ inline DrawImageFunc make_image_draw(esphome::image::Image* image, float from_x,
   };
 }
 
-// Cycling static images, cycle-aligned.
-inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, uint32_t step_dur_ms, uint32_t total_ms, uint32_t step_start_ms) {
-  return [images, step_dur_ms, total_ms, step_start_ms](int x0, int x1, int y0, int y1, std::vector<std::string> s) {
-    uint32_t n = (uint32_t)images.size();
-    if (n == 0) return;
-    uint32_t _ct = millis() % total_ms;
-    float _frac = (_ct >= step_start_ms) ? (_ct - step_start_ms) / (float)step_dur_ms : 0.0f;
-    if (_frac > 1.0f) _frac = 1.0f;
-    make_image_draw(images[(uint32_t)(_frac * n) % n])(x0, x1, y0, y1, s);
+// ---------------------------------------------------------------------------
+// Icon draw helpers (analogous to make_image_draw but for icon/text glyphs).
+// The icon is drawn at CENTER alignment. Positioning matches the image system:
+// from/to fracs: 0.0 = icon at tile start edge (+pad), 0.5 = centered,
+// 1.0 = icon at tile end edge (-pad).  IMAGE_DRAW_PAD is honoured on all sides.
+// ---------------------------------------------------------------------------
+
+// make_icon_draw — static, centered in tile.
+inline DrawImageFunc make_icon_draw(const std::string& icon, Color color, BaseFont* font) {
+  return [icon, color, font](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+    int xc = (x0 + x1) / 2;
+    int yc = (y0 + y1) / 2;
+    id(disp).print(xc, yc, font, mbb(color), TextAlign::CENTER, icon.c_str());
   };
 }
 
-// Cycling animated images, cycle-aligned.
-inline DrawImageFunc make_image_draw(std::vector<esphome::image::Image*> images, float from_x, float from_y, float to_x, float to_y, uint32_t step_dur_ms, uint32_t total_ms, uint32_t step_start_ms) {
-  return [images, from_x, from_y, to_x, to_y, step_dur_ms, total_ms, step_start_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
-    uint32_t n = (uint32_t)images.size();
-    if (n == 0) return;
+// make_icon_draw — animated positional sweep.
+inline DrawImageFunc make_icon_draw(const std::string& icon, Color color, BaseFont* font,
+    float from_x, float from_y, float to_x, float to_y, uint32_t duration_ms) {
+  return [icon, color, font, from_x, from_y, to_x, to_y, duration_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+    int _iw, _x_off, _baseline, _ih;
+    font->measure(icon.c_str(), &_iw, &_x_off, &_baseline, &_ih);
+    float _frac = fmodf(millis() / (float)duration_ms, 1.0f);
+    float fx = from_x + _frac * (to_x - from_x);
+    float fy = from_y + _frac * (to_y - from_y);
+    int xc = (x0 + IMAGE_DRAW_PAD) + _iw/2 + (int)(fx * std::max(0, x1 - x0 - _iw - 2*IMAGE_DRAW_PAD));
+    int yc = (y0 + IMAGE_DRAW_PAD) + _ih/2 + (int)(fy * std::max(0, y1 - y0 - _ih - 2*IMAGE_DRAW_PAD));
+    id(disp).print(xc, yc, font, mbb(color), TextAlign::CENTER, icon.c_str());
+  };
+}
+
+// make_icon_draw — cycle-aligned, for multi-step animations.
+inline DrawImageFunc make_icon_draw(const std::string& icon, Color color, BaseFont* font,
+    float from_x, float from_y, float to_x, float to_y,
+    uint32_t step_dur_ms, uint32_t total_ms, uint32_t step_start_ms) {
+  return [icon, color, font, from_x, from_y, to_x, to_y, step_dur_ms, total_ms, step_start_ms](int x0, int x1, int y0, int y1, std::vector<std::string>) {
+    int _iw, _x_off, _baseline, _ih;
+    font->measure(icon.c_str(), &_iw, &_x_off, &_baseline, &_ih);
     uint32_t _ct = millis() % total_ms;
     float _frac = (_ct >= step_start_ms) ? (_ct - step_start_ms) / (float)step_dur_ms : 0.0f;
     if (_frac > 1.0f) _frac = 1.0f;
-    uint32_t _idx = (uint32_t)(_frac * n) % n;
-    id(image_slot) = images[_idx];
-    id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, from_x, from_y, to_x, to_y);
+    float fx = from_x + _frac * (to_x - from_x);
+    float fy = from_y + _frac * (to_y - from_y);
+    int xc = (x0 + IMAGE_DRAW_PAD) + _iw/2 + (int)(fx * std::max(0, x1 - x0 - _iw - 2*IMAGE_DRAW_PAD));
+    int yc = (y0 + IMAGE_DRAW_PAD) + _ih/2 + (int)(fy * std::max(0, y1 - y0 - _ih - 2*IMAGE_DRAW_PAD));
+    id(disp).print(xc, yc, font, mbb(color), TextAlign::CENTER, icon.c_str());
   };
 }
 

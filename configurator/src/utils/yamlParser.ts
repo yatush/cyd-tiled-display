@@ -23,20 +23,36 @@ function _normalizePos(pos: any): [number, number] {
     return [0.5, 0.5]; // default to center
 }
 
+/** Strip surrounding double-quotes from an icon value added by the YAML generator.
+ * e.g. '"\U0000f05a"' → '\U0000f05a' */
+function _normalizeIconValue(v: any): any {
+    if (typeof v === 'string' && v.startsWith('"') && v.endsWith('"') && v.length > 2) {
+        return v.substring(1, v.length - 1);
+    }
+    return v;
+}
+
 /** Migrate an animation object (or step within it) from legacy direction → from/to, and normalize positions to [x,y]. */
 function _migrateStep(step: any): any {
     if (!step || typeof step !== 'object') return step;
+    let migrated: any;
     if ('direction' in step) {
         const { direction, ...rest } = step;
         const { from, to } = _DIRECTION_TO_FROM_TO[direction] ?? { from: [0.5, 0.5] as [number,number], to: [0.5, 0.5] as [number,number] };
-        return { from, to, ...rest };
+        migrated = { from, to, ...rest };
+    } else {
+        // Normalize string/array positions
+        migrated = {
+            ...step,
+            from: _normalizePos(step.from),
+            to:   _normalizePos(step.to),
+        };
     }
-    // Normalize string/array positions
-    return {
-        ...step,
-        from: _normalizePos(step.from),
-        to:   _normalizePos(step.to),
-    };
+    // Normalize per-step icon value if present
+    if ('icon' in migrated) {
+        migrated.icon = _normalizeIconValue(migrated.icon);
+    }
+    return migrated;
 }
 
 /** Migrate a full animation config (single-step or multi-step) from legacy to from/to. */
@@ -125,6 +141,12 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
                     // Migrate legacy 'direction' field to from/to positions.
                     if (result.animation && typeof result.animation === 'object') {
                         result.animation = _migrateAnimation(result.animation);
+                    }
+
+                    // Normalize icon value: strip surrounding double quotes added by YAML generator
+                    // e.g. '"\U0000f05a"' → '\U0000f05a' (bare escape string for IconPicker)
+                    if ('icon' in result) {
+                        result.icon = _normalizeIconValue(result.icon);
                     }
 
                     return result;

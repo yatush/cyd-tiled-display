@@ -115,5 +115,43 @@ class TestValidation(unittest.TestCase):
             validate_tiles_config([invalid_func])
         self.assertIn("at least one of 'on_press' or 'on_release'", str(cm.exception))
 
+    def test_empty_icon_entry_rejected(self):
+        """An icon entry with an empty string must be rejected by validation."""
+        config = [{
+            "id": "main",
+            "flags": ["BASE"],
+            "tiles": [{
+                "ha_action": {
+                    "x": 0, "y": 0,
+                    "images": [{"icon": ""}],
+                }
+            }]
+        }]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(config)
+        self.assertIn("non-empty", str(cm.exception))
+
+    def test_empty_step_icon_rejected(self):
+        """A step with an empty icon override must be rejected by validation."""
+        config = [{
+            "id": "main",
+            "flags": ["BASE"],
+            "tiles": [{
+                "ha_action": {
+                    "x": 0, "y": 0,
+                    "images": [{
+                        "icon": "\\Ue000",
+                        "animation": {"steps": [
+                            {"from": "center_left", "to": "center_right", "duration": 2},
+                            {"from": "top_middle", "to": "bottom_middle", "duration": 2, "icon": ""},
+                        ]},
+                    }],
+                }
+            }]
+        }]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(config)
+        self.assertIn("non-empty", str(cm.exception))
+
 if __name__ == '__main__':
     unittest.main()

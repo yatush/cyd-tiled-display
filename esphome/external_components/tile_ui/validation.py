@@ -266,7 +266,8 @@ def validate_tiles_config(
 
 def _validate_image_references(screens: list[dict], available_images: set) -> None:
     """Validate that every image reference in every tile's images list exists in
-    the global images store.
+    the global images store.  Icon entries (with 'icon' key) are skipped since
+    they do not reference the image store.
     """
     for screen in screens:
         screen_id = screen.get("id", "")
@@ -277,6 +278,9 @@ def _validate_image_references(screens: list[dict], available_images: set) -> No
             y = config.get("y", 0)
             for entry in (config.get("images") or []):
                 if not isinstance(entry, dict):
+                    continue
+                # Skip icon entries — they don't reference image store IDs
+                if entry.get("icon"):
                     continue
                 img_id = entry.get("image", "")
                 if img_id and img_id != 'none' and img_id not in available_images:
@@ -873,17 +877,18 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
             if not isinstance(entry, dict):
                 raise ValueError(f"{context}: Field '{field_name}' item {idx} must be an object")
             img = entry.get('image')
-            if not img or not isinstance(img, str) or not img.strip():
-                raise ValueError(f"{context}: Field '{field_name}' item {idx} must have a non-empty 'image' key")
-            # Validate multi-step animation: each step after step 0 must have images
+            icon = entry.get('icon')
+            if 'icon' in entry:
+                # Entry declared as icon row — the icon value must be non-empty
+                if not isinstance(icon, str) or not icon.strip():
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} 'icon' must be a non-empty string (select an icon from the picker)")
+            elif not img or not isinstance(img, str) or not img.strip():
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must have a non-empty 'image' or 'icon' key")
+            # Validate per-step icon overrides
             anim = entry.get('animation')
             if isinstance(anim, dict) and 'steps' in anim:
                 for si, step in enumerate(anim['steps']):
-                    if si == 0:
-                        continue
-                    imgs = step.get('images') if isinstance(step, dict) else None
-                    if not imgs:
-                        raise ValueError(
-                            f"{context}: Field '{field_name}' item {idx} animation step {si + 1} "
-                            f"must have at least one image in 'images'"
-                        )
+                    if 'icon' in step:
+                        step_icon = step.get('icon')
+                        if not isinstance(step_icon, str) or not step_icon.strip():
+                            raise ValueError(f"{context}: Field '{field_name}' item {idx} step {si} 'icon' must be a non-empty string")

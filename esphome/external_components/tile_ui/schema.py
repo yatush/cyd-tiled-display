@@ -222,41 +222,37 @@ def get_validator(field_type: str, object_fields: list = None):
         return value
 
     if field_type == 'images_list':
-        # List of {image: str, condition?: str|dict, animation?: single-step or multi-step}
+        # List of entries, each being either an image entry or an icon entry.
+        # Image entry: {image: str, condition?: str|dict, animation?: ...}
+        # Icon entry:  {icon: str, icon_color?: str, icon_size?: str, condition?: str|dict, animation?: ...}
         # Animation step accepts the new from/to positions OR the legacy direction field.
         _new_step = Schema({
             Optional('from', default='center_middle'): _valid_anim_position,
             Optional('to', default='center_middle'): _valid_anim_position,
             Required('duration'): _positive_number,
-            Optional('extra_images'): All(list, [non_empty_string]),
-            Optional('images'): All(list, [non_empty_string]),
+            Optional('image'): str,
+            Optional('icon'): non_empty_string,
+            Optional('icon_color'): non_empty_string,
+            Optional('icon_size'): non_empty_string,
         }, extra=PREVENT_EXTRA)
         _legacy_step = Schema({
             Required('direction'): _valid_anim_direction,
             Required('duration'): _positive_number,
-            Optional('extra_images'): All(list, [non_empty_string]),
-            Optional('images'): All(list, [non_empty_string]),
+            Optional('image'): str,
+            Optional('icon'): non_empty_string,
+            Optional('icon_color'): non_empty_string,
+            Optional('icon_size'): non_empty_string,
         }, extra=PREVENT_EXTRA)
         animation_step_schema = Vol_Any(_new_step, _legacy_step)
-
-        def _validate_steps(steps):
-            for i, step in enumerate(steps):
-                if i > 0:
-                    imgs = step.get('images') or []
-                    if not imgs:
-                        raise cv.Invalid(f"Animation step {i + 1} must have at least one image in 'images'")
-            return steps
 
         _new_single = Schema({
             Optional('from', default='center_middle'): _valid_anim_position,
             Optional('to', default='center_middle'): _valid_anim_position,
             Required('duration'): _positive_number,
-            Optional('extra_images'): All(list, [non_empty_string]),
         }, extra=PREVENT_EXTRA)
         _legacy_single = Schema({
             Required('direction'): _valid_anim_direction,
             Required('duration'): _positive_number,
-            Optional('extra_images'): All(list, [non_empty_string]),
         }, extra=PREVENT_EXTRA)
         animation_schema = Vol_Any(
             # single-step new format
@@ -265,17 +261,36 @@ def get_validator(field_type: str, object_fields: list = None):
             _legacy_single,
             # multi-step
             Schema({
-                Required('steps'): All(list, [animation_step_schema], _validate_steps),
+                Required('steps'): All(list, [animation_step_schema]),
             }, extra=PREVENT_EXTRA),
         )
-        return All(
-            list,
-            [Schema({
-                Required('image'): non_empty_string,
-                Optional('condition'): cv.Any(dict, non_empty_string, str),
-                Optional('animation'): animation_schema,
-            }, extra=PREVENT_EXTRA)]
-        )
+        _image_entry_schema = Schema({
+            Required('image'): non_empty_string,
+            Optional('condition'): cv.Any(dict, non_empty_string, str),
+            Optional('animation'): animation_schema,
+        }, extra=PREVENT_EXTRA)
+        _icon_entry_schema = Schema({
+            Required('icon'): non_empty_string,
+            Optional('icon_color'): non_empty_string,
+            Optional('icon_size'): non_empty_string,
+            Optional('condition'): cv.Any(dict, non_empty_string, str),
+            Optional('animation'): animation_schema,
+        }, extra=PREVENT_EXTRA)
+
+        def _validate_image_or_icon_entry(value):
+            if not isinstance(value, dict):
+                raise cv.Invalid("Each images list entry must be a mapping")
+            has_image = 'image' in value
+            has_icon = 'icon' in value
+            if has_image and has_icon:
+                raise cv.Invalid("An entry cannot have both 'image' and 'icon'")
+            if not has_image and not has_icon:
+                raise cv.Invalid("Each entry must have either 'image' or 'icon'")
+            if has_image:
+                return _image_entry_schema(value)
+            return _icon_entry_schema(value)
+
+        return All(list, [_validate_image_or_icon_entry])
     if field_type in ('image_select', 'state_image_map'):
         # Legacy field types — accept anything for backward compat
         return cv.Any(str, list, dict)
