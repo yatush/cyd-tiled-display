@@ -1807,12 +1807,11 @@ def update_lib():
             os.makedirs(os.path.dirname(target_ui), exist_ok=True)
             shutil.copytree(source_ui, target_ui, ignore=shutil.ignore_patterns('.*'))
 
-        # Seed default device YAML files if they don't already exist.
-        # We never overwrite them — the user may have customised their copy.
+        # Update default device YAML files (overwrite if changed, seed if missing).
         for fname in _DEFAULT_DEVICE_YAMLS:
             src = os.path.join(APP_DIR, 'esphome', fname)
             dst = os.path.join(BASE_DIR, fname)
-            if os.path.exists(src) and not os.path.exists(dst):
+            if os.path.exists(src):
                 shutil.copy2(src, dst)
         
         return jsonify({"success": True})
