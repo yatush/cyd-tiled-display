@@ -94,7 +94,7 @@ globals:
   - id: entities_map
     type: std::map<const std::string*, std::set<const std::string*>>
   - id: image_slot
-    type: esphome::image::Image*
+    type: void*
     initial_value: "nullptr"
     # Internal slot used to pass an image to draw_image_* scripts. Do not modify manually.
 
@@ -393,9 +393,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool up = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_up_fn), entities));
-          uint32_t millis_val = DRAW_ONLY(millis());
-          handle_caching(std::make_pair(x_start, y_start), millis_val, up);
+          bool up = RUN_SCRIPT(id(blinds_moving_up_fn), entities);
+          uint32_t millis_val = millis();
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
           if (up) {
@@ -429,10 +428,13 @@ script:
       y_end: int
     then:
       - lambda: |-
-          if (id(image_slot) == nullptr) return;
-          int _iw = (int)id(image_slot)->get_width();
-          int _ih = (int)id(image_slot)->get_height();
-          id(disp).image((x_start + x_end - _iw) / 2, (y_start + y_end - _ih) / 2, id(image_slot));
+          #ifdef USE_IMAGE
+          auto* _img = reinterpret_cast<esphome::image::Image*>(id(image_slot));
+          if (_img == nullptr) return;
+          int _iw = (int)_img->get_width();
+          int _ih = (int)_img->get_height();
+          id(disp).image((x_start + x_end - _iw) / 2, (y_start + y_end - _ih) / 2, _img);
+          #endif
 
   # from/to fracs: 0.0=start edge, 0.5=center, 1.0=end edge (relative to tile minus image size)
   - id: draw_image_anim
@@ -448,13 +450,16 @@ script:
       to_y_frac: float
     then:
       - lambda: |-
-          if (id(image_slot) == nullptr) return;
-          int _iw = (int)id(image_slot)->get_width();
-          int _ih = (int)id(image_slot)->get_height();
+          #ifdef USE_IMAGE
+          auto* _img = reinterpret_cast<esphome::image::Image*>(id(image_slot));
+          if (_img == nullptr) return;
+          int _iw = (int)_img->get_width();
+          int _ih = (int)_img->get_height();
           float _frac = fmodf(millis() / (float)duration_ms, 1.0f);
           int _x = (x_start + IMAGE_DRAW_PAD) + (int)((from_x_frac + _frac * (to_x_frac - from_x_frac)) * std::max(0, x_end - x_start - _iw - 2*IMAGE_DRAW_PAD));
           int _y = (y_start + IMAGE_DRAW_PAD) + (int)((from_y_frac + _frac * (to_y_frac - from_y_frac)) * std::max(0, y_end - y_start - _ih - 2*IMAGE_DRAW_PAD));
-          id(disp).image(_x, _y, id(image_slot));
+          id(disp).image(_x, _y, _img);
+          #endif
 
   # Like draw_image_anim but takes an explicit frac (0.0–1.0) instead of computing it from millis().
   # Used by multi-step animations so each step starts exactly from frac=0.
@@ -471,12 +476,15 @@ script:
       to_y_frac: float
     then:
       - lambda: |-
-          if (id(image_slot) == nullptr) return;
-          int _iw = (int)id(image_slot)->get_width();
-          int _ih = (int)id(image_slot)->get_height();
+          #ifdef USE_IMAGE
+          auto* _img = reinterpret_cast<esphome::image::Image*>(id(image_slot));
+          if (_img == nullptr) return;
+          int _iw = (int)_img->get_width();
+          int _ih = (int)_img->get_height();
           int _x = (x_start + IMAGE_DRAW_PAD) + (int)((from_x_frac + frac * (to_x_frac - from_x_frac)) * std::max(0, x_end - x_start - _iw - 2*IMAGE_DRAW_PAD));
           int _y = (y_start + IMAGE_DRAW_PAD) + (int)((from_y_frac + frac * (to_y_frac - from_y_frac)) * std::max(0, y_end - y_start - _ih - 2*IMAGE_DRAW_PAD));
-          id(disp).image(_x, _y, id(image_slot));
+          id(disp).image(_x, _y, _img);
+          #endif
 
   - id: tile_blinds_down
     parameters:
@@ -487,9 +495,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool down = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_down_fn), entities));
-          uint32_t millis_val = DRAW_ONLY(millis());
-          handle_caching(std::make_pair(x_start, y_start), millis_val, down);
+          bool down = RUN_SCRIPT(id(blinds_moving_down_fn), entities);
+          uint32_t millis_val = millis();
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
           if (down) {
@@ -565,10 +572,9 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          bool up = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_up_fn), entities));
-          bool down = DRAW_ONLY(RUN_SCRIPT(id(blinds_moving_down_fn), entities));
-          uint32_t millis_val = DRAW_ONLY(millis());
-          handle_caching(std::make_pair(x_start, y_start), millis_val, up, down);
+          bool up = RUN_SCRIPT(id(blinds_moving_up_fn), entities);
+          bool down = RUN_SCRIPT(id(blinds_moving_down_fn), entities);
+          uint32_t millis_val = millis();
           bool one = up != down;
           bool any = up || down;
           bool show_up = !one || up;
@@ -675,9 +681,8 @@ script:
       y_end: int
     then:
       - lambda: |-
-          int brightness = DRAW_ONLY(id(backlight).remote_values.get_brightness() * 100);
-          bool adapt = DRAW_ONLY(id(adaptive_brightness));
-          handle_caching(std::make_pair(x_start, y_start), brightness, adapt);
+          int brightness = id(backlight).remote_values.get_brightness() * 100;
+          bool adapt = id(adaptive_brightness);
           
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
@@ -712,10 +717,8 @@ script:
       y_end: int
     then:
       - lambda: |-
-          int sleep_t = DRAW_ONLY(id(sleep_time));
-          int counter = DRAW_ONLY(((millis() - id(last_activity_ms)) / 1000)); 
-          handle_caching(std::make_pair(x_start, y_start), sleep_t, counter);
-
+          int sleep_t = id(sleep_time);
+          int counter = ((millis() - id(last_activity_ms)) / 1000);
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
 
@@ -740,11 +743,9 @@ script:
       y_end: int
     then:
       - lambda: |-
-          int wakeup_dist = DRAW_ONLY(id(wakeup_distance));
-          bool nan_moving_dist = DRAW_ONLY(isnan(id(moving_distance).state));
-          int moving_dist = DRAW_ONLY(id(moving_distance).state);
-          handle_caching(std::make_pair(x_start, y_start), wakeup_dist, moving_dist, nan_moving_dist);
-
+          int wakeup_dist = id(wakeup_distance);
+          bool nan_moving_dist = isnan(id(moving_distance).state);
+          int moving_dist = id(moving_distance).state;
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
           int y_rect = y_end - y_start;
@@ -825,9 +826,8 @@ script:
       is_on: bool
     then:
       - lambda: |-
-          std::string cur_name = DRAW_ONLY(name);
-          bool cur_is_on = DRAW_ONLY(is_on);
-          handle_caching(std::make_pair(x_start, y_start), cur_is_on, cur_name);
+          std::string cur_name = name;
+          bool cur_is_on = is_on;
           
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
@@ -853,9 +853,8 @@ script:
       is_on: bool
     then:
       - lambda: |-
-          std::string cur_name = DRAW_ONLY(name);
-          bool cur_is_on = DRAW_ONLY(is_on);
-          handle_caching(std::make_pair(x_start, y_start), cur_is_on, cur_name);
+          std::string cur_name = name;
+          bool cur_is_on = is_on;
 
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
@@ -881,10 +880,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          std::vector<std::string> my_entities = DRAW_ONLY(entities);
-          std::string cur_name = DRAW_ONLY(name);
-          handle_caching(std::make_pair(x_start, y_start), cur_name, my_entities);
-
+          std::vector<std::string> my_entities = entities;
+          std::string cur_name = name;
           if (my_entities.empty()) return;
 
           int x_mid = (x_start + x_end) / 2;
@@ -928,9 +925,7 @@ script:
       name: string
     then:
       - lambda: |-
-          std::string cur_name = DRAW_ONLY(name);
-          handle_caching(std::make_pair(x_start, y_start), cur_name);
-
+          std::string cur_name = name;
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
           int x_rect = x_end - x_start;
@@ -1016,9 +1011,8 @@ script:
           if (entities.size() != 2) {
             return;
           }
-          std::string state = DRAW_ONLY(entities[0]);
-          std::string entity = DRAW_ONLY(entities[1]);
-          handle_caching(std::make_pair(x_start, y_start), state, entity);
+          std::string state = entities[0];
+          std::string entity = entities[1];
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
           print(x_mid, y_mid, id(text_big_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());

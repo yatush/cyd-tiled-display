@@ -523,14 +523,8 @@ int y_start(int index) {
   return index * (y_rect() + id(y_pad)) + id(y_pad);
 }
 
-// Black drawing functionality - erase effectively.
-Color mbb(Color value) {
-  if (DrawState::is_delete_mode) { return Color::BLACK; }
-  return value;
-}
-
 void print (int x, int y, BaseFont *font, Color color, TextAlign align, const char *text) {
-  id(disp).print(x, y, font, mbb(color), align, text);
+  id(disp).print(x, y, font, color, align, text);
 }
 
 void print (int x, int y, BaseFont &font, Color color, TextAlign align, const char *text) {
@@ -538,7 +532,7 @@ void print (int x, int y, BaseFont &font, Color color, TextAlign align, const ch
 }
 
 void print (int x, int y, BaseFont *font, Color color, const char *text) {
-  id(disp).print(x, y, font, mbb(color), text);
+  id(disp).print(x, y, font, color, text);
 }
 
 void print (int x, int y, BaseFont &font, Color color, const char *text) {
@@ -546,27 +540,27 @@ void print (int x, int y, BaseFont &font, Color color, const char *text) {
 }
 
 void line (int x1, int y1, int x2, int y2, Color color) {
-  id(disp).line(x1, y1, x2, y2, mbb(color));
+  id(disp).line(x1, y1, x2, y2, color);
 }
 
 void circle (int center_x, int center_y, int radius, Color color) {
-  id(disp).circle(center_x, center_y, radius, mbb(color));
+  id(disp).circle(center_x, center_y, radius, color);
 }
 
 void rectangle (int x1, int y1, int width, int height, Color color) {
-  id(disp).rectangle(x1, y1, width, height, mbb(color));
+  id(disp).rectangle(x1, y1, width, height, color);
 }
 
 void filled_rectangle (int x1, int y1, int width, int height, Color color) {
-  id(disp).filled_rectangle(x1, y1, width, height, mbb(color));
+  id(disp).filled_rectangle(x1, y1, width, height, color);
 }
 
 template<typename... Args>
 void printf(int x, int y, BaseFont *font, Color color, const char *format, Args&&... args) {
   if (sizeof...(args) == 0) {
-    id(disp).print(x, y, font, mbb(color), format);
+    id(disp).print(x, y, font, color, format);
   } else {
-    id(disp).printf(x, y, font, mbb(color), format, std::forward<Args>(args)...);
+    id(disp).printf(x, y, font, color, format, std::forward<Args>(args)...);
   }
 }
 
@@ -578,9 +572,9 @@ void printf(int x, int y, BaseFont &font, Color color, const char *format, Args&
 template<typename... Args>
 void printf(int x, int y, BaseFont *font, Color color, TextAlign align, const char *format, Args&&... args) {
   if (sizeof...(args) == 0) {
-    id(disp).print(x, y, font, mbb(color), align, format);
+    id(disp).print(x, y, font, color, align, format);
   } else {
-    id(disp).printf(x, y, font, mbb(color), align, format, std::forward<Args>(args)...);
+    id(disp).printf(x, y, font, color, align, format, std::forward<Args>(args)...);
   }
 }
 
@@ -590,7 +584,7 @@ void printf(int x, int y, BaseFont &font, Color color, TextAlign align, const ch
 }
 
 void strftime (int x, int y, BaseFont *font, Color color, TextAlign align, const char *format, ESPTime time) {
-  id(disp).strftime(x, y, font, mbb(color), align, format, time);
+  id(disp).strftime(x, y, font, color, align, format, time);
 }
 
 void strftime (int x, int y, BaseFont &font, Color color, TextAlign align, const char *format, ESPTime time) {
@@ -627,6 +621,7 @@ constexpr int IMAGE_DRAW_PAD = 5;
 using DrawImageFunc = std::function<void(int, int, int, int, std::vector<std::string>)>;
 
 // make_image_draw — returns a DrawImageFunc that draws a single static image.
+#ifdef USE_IMAGE
 inline DrawImageFunc make_image_draw(esphome::image::Image* image) {
   return [image](int x0, int x1, int y0, int y1, std::vector<std::string>) {
     id(image_slot) = image;
@@ -657,6 +652,7 @@ inline DrawImageFunc make_image_draw(esphome::image::Image* image, float from_x,
     id(draw_image_anim_frac).execute(x0, x1, y0, y1, _frac, from_x, from_y, to_x, to_y);
   };
 }
+#endif // USE_IMAGE
 
 // ---------------------------------------------------------------------------
 // Icon draw helpers (analogous to make_image_draw but for icon/text glyphs).
@@ -670,7 +666,7 @@ inline DrawImageFunc make_icon_draw(const std::string& icon, Color color, BaseFo
   return [icon, color, font](int x0, int x1, int y0, int y1, std::vector<std::string>) {
     int xc = (x0 + x1) / 2;
     int yc = (y0 + y1) / 2;
-    id(disp).print(xc, yc, font, mbb(color), TextAlign::CENTER, icon.c_str());
+    id(disp).print(xc, yc, font, color, TextAlign::CENTER, icon.c_str());
   };
 }
 
@@ -685,7 +681,7 @@ inline DrawImageFunc make_icon_draw(const std::string& icon, Color color, BaseFo
     float fy = from_y + _frac * (to_y - from_y);
     int xc = (x0 + IMAGE_DRAW_PAD) + _iw/2 + (int)(fx * std::max(0, x1 - x0 - _iw - 2*IMAGE_DRAW_PAD));
     int yc = (y0 + IMAGE_DRAW_PAD) + _ih/2 + (int)(fy * std::max(0, y1 - y0 - _ih - 2*IMAGE_DRAW_PAD));
-    id(disp).print(xc, yc, font, mbb(color), TextAlign::CENTER, icon.c_str());
+    id(disp).print(xc, yc, font, color, TextAlign::CENTER, icon.c_str());
   };
 }
 
@@ -703,7 +699,7 @@ inline DrawImageFunc make_icon_draw(const std::string& icon, Color color, BaseFo
     float fy = from_y + _frac * (to_y - from_y);
     int xc = (x0 + IMAGE_DRAW_PAD) + _iw/2 + (int)(fx * std::max(0, x1 - x0 - _iw - 2*IMAGE_DRAW_PAD));
     int yc = (y0 + IMAGE_DRAW_PAD) + _ih/2 + (int)(fy * std::max(0, y1 - y0 - _ih - 2*IMAGE_DRAW_PAD));
-    id(disp).print(xc, yc, font, mbb(color), TextAlign::CENTER, icon.c_str());
+    id(disp).print(xc, yc, font, color, TextAlign::CENTER, icon.c_str());
   };
 }
 

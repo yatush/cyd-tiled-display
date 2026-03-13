@@ -1,6 +1,10 @@
+external_components:
+  - source:
+      type: local
+      path: external_components
+
 esphome:
   includes:
-    - lib/draw_state.h
     - lib/utils.h
     - lib/tiles.h
     - lib/screens.h

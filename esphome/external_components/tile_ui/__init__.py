@@ -208,9 +208,7 @@ async def to_code(config):
         auto *automation = new esphome::Automation<esphome::display::DisplayPage *, esphome::display::DisplayPage *>(page_change_trigger);
         automation->add_action(new esphome::LambdaAction<esphome::display::DisplayPage *, esphome::display::DisplayPage *>([=](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{
             id(change_page_ms) = millis();
-            if (!id(render_diffs)) {{
-                id(disp).fill(Color::BLACK);
-            }}
+            id(disp).fill(Color::BLACK);
             if (view_ptr != nullptr) {{
                 Screen* screen = view_ptr->getScreen(to);
                 if (screen != nullptr) {{

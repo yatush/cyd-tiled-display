@@ -17,9 +17,8 @@ public:
   // Virtual function to draw the Wi-Fi signal strength and current hour.
   virtual void drawWifiHour() {
     if (this->hasAtt(OMIT_TIME_WIFI)) return;
-    std::string wifi_icon = DRAW_ONLY(id(wifi_iconstring));
-    esphome::ESPTime espt = DRAW_ONLY(id(esptime).now());
-    handle_caching("time", wifi_icon, espt);
+    std::string wifi_icon = id(wifi_iconstring);
+    esphome::ESPTime espt = id(esptime).now();
 
     auto sizes = wifiHourWidth();
     int y = std::get<0>(sizes).second / 2;
@@ -121,19 +120,9 @@ public:
   }
 
   void draw() override {
-    if (id(render_diffs)) {
-      DrawState::is_delete_mode = true;
-      for (Tile* tile : prev_tiles) {
-        tile->draw();
-      }
-      this->drawWifiHour();
-    }
-    prev_tiles.clear();
-    DrawState::is_delete_mode = false;
     for (Tile* tile : this->tiles_) {
       if (tile->checkActivationMaybeToggle()) {
         tile->draw();
-        prev_tiles.push_back(tile);
       }
     }
     this->drawWifiHour();
@@ -167,15 +156,10 @@ public:
     for (Tile* tile : this->tiles_) {
       tile->onScreenLeave();
     }
-    // Clear prev_tiles to prevent drawing old tiles with wrong coordinates on new screen
-    prev_tiles.clear();
   }
-
-  static std::vector<Tile*> prev_tiles;
 
 private:
   // Vector of Tile pointers representing the tiles on this screen.
   std::vector<Tile*> tiles_;
 };
 
-inline std::vector<Tile*> TiledScreen::prev_tiles = {};

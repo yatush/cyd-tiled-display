@@ -15,3 +15,4 @@ configurator/.env
 configurator/.DS_Store
 configurator/__pycache__*
 .env
+esphome/lib/secrets.yaml

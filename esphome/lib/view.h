@@ -22,7 +22,7 @@ public:
     // Decode entities for all screens initially.
     this->decodeEntities();
     View::initialized = true;
-    id(disp).set_auto_clear(!id(render_diffs));
+    id(disp).set_auto_clear(true);
   }
 
   // Returns the currently active screen based on the active DisplayPage.

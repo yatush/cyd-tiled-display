@@ -66,9 +66,6 @@ binary_sensor:
     y_max: 1
 
 globals:
-  - id: render_diffs
-    type: bool
-    initial_value: "false"
   - id: width
     type: int
     initial_value: "${screen_w}"

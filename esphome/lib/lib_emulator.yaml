@@ -1,6 +1,5 @@
 esphome:
   includes:
-    - draw_state.h
     - utils.h
     - tiles.h
     - screens.h
