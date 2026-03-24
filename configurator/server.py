@@ -735,6 +735,11 @@ def _parse_base_yaml(filepath):
                 cfg['screen_h'] = int(str(val).strip('"'))
             except ValueError:
                 pass
+        elif gid == 'tile_border_width' and val is not None:
+            try:
+                cfg['tile_border_width'] = int(str(val).strip('"'))
+            except ValueError:
+                pass
 
     # Font sizes from font list  (id → font_<id>)
     for font in (data.get('font') or []):

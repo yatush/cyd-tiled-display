@@ -32,8 +32,10 @@ RUN apk add --no-cache g++ gcc musl-dev python3-dev \
 
 # We install esphome and all Python deps together to minimize layers
 # Build deps (rust/cargo) are only needed during pip install of cryptography etc.
+# Pass --build-arg ESPHOME_VERSION=X.Y.Z to pin a specific version; omit to install latest.
+ARG ESPHOME_VERSION
 RUN apk add --no-cache --virtual .build-deps rust cargo openssl-dev libffi-dev jpeg-dev zlib-dev \
-    && pip3 install --no-cache-dir esphome aioesphomeapi flask flask-cors requests pyyaml gunicorn websockify \
+    && pip3 install --no-cache-dir esphome${ESPHOME_VERSION:+==$ESPHOME_VERSION} aioesphomeapi flask flask-cors requests pyyaml gunicorn websockify \
     && apk del .build-deps \
     # We must keep some runtime libraries that were previously pulled by dev packages
     && apk add --no-cache openssl libffi jpeg zlib \

@@ -97,17 +97,62 @@ def get_arch() -> str:
 
 
 def get_expected_version() -> str:
-    if os.path.exists(ESPHOME_VER_FILE):
-        v = open(ESPHOME_VER_FILE).read().strip()
-        if v:
-            return v
+    """Return the currently-installed ESPHome version.
+
+    Always queries the live installed package so the version stays accurate
+    even after an in-place pip upgrade done by maybe_upgrade_esphome().
+    Falls back to the baked-in file only when importlib can't find the package.
+    """
     try:
         r = subprocess.run(
             ['python3', '-c', 'from importlib.metadata import version; print(version("esphome"))'],
             capture_output=True, text=True, timeout=30)
-        return r.stdout.strip()
+        v = r.stdout.strip()
+        if v:
+            return v
     except Exception:
-        return 'unknown'
+        pass
+    if os.path.exists(ESPHOME_VER_FILE):
+        v = open(ESPHOME_VER_FILE).read().strip()
+        if v:
+            return v
+    return 'unknown'
+
+
+def maybe_upgrade_esphome() -> None:
+    """Check PyPI for a newer ESPHome release; upgrade in-place if found.
+
+    Called once per toolchain_setup.py invocation (including the 6-hour
+    watchdog) so the container stays current without a Docker image rebuild.
+    Failures are non-fatal — the existing installed version is kept.
+    """
+    try:
+        req = urllib.request.Request(
+            'https://pypi.org/pypi/esphome/json',
+            headers={'User-Agent': 'cyd-tiled-display/toolchain-setup'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            latest = json.load(resp)['info']['version']
+    except Exception as e:
+        log(f'PyPI version check skipped: {e}')
+        return
+
+    installed = get_expected_version()
+    if latest == installed:
+        log(f'ESPHome {installed} is up-to-date.')
+        return
+
+    log(f'ESPHome upgrade available: {installed} → {latest}. Upgrading pip package...')
+    try:
+        subprocess.run(
+            ['pip3', 'install', '--no-cache-dir', f'esphome=={latest}'],
+            check=True, timeout=300)
+        # Update the baked-in file so other processes (e.g. write_progress) also
+        # see the new version immediately.
+        with open(ESPHOME_VER_FILE, 'w') as f:
+            f.write(latest)
+        log(f'ESPHome upgraded to {latest}.')
+    except Exception as e:
+        log(f'ESPHome upgrade failed: {e}. Keeping {installed}.')
 
 
 def get_stored_version() -> str | None:
@@ -407,6 +452,12 @@ def build_toolchain_locally(reason: str) -> None:
 
 def main() -> None:
     force_local = '--force-local' in sys.argv
+
+    # ── Upgrade ESPHome if a newer version is available on PyPI ──────────────
+    # Skipped when the user triggered a local build (version doesn't matter there).
+    if not force_local:
+        maybe_upgrade_esphome()
+
     expected    = get_expected_version()
     stored      = get_stored_version()
     arch        = get_arch()

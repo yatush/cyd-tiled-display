@@ -8,8 +8,20 @@ if (-not (Test-Path "../Dockerfile")) {
     exit 1
 }
 
+Write-Host "Detecting latest ESPHome version from PyPI..."
+$esphomeVersion = python3 -c "import urllib.request,json; d=json.load(urllib.request.urlopen('https://pypi.org/pypi/esphome/json')); print(d['info']['version'])" 2>$null
+if ($esphomeVersion) {
+    Write-Host "ESPHome version: $esphomeVersion"
+} else {
+    Write-Host "Could not detect ESPHome version — installing latest"
+    $esphomeVersion = ""
+}
+
 Write-Host "Building image..."
-docker build -t $imageName ..
+$buildArgs = @("-t", $imageName)
+if ($esphomeVersion) { $buildArgs += @("--build-arg", "ESPHOME_VERSION=$esphomeVersion") }
+$buildArgs += ".."
+docker build @buildArgs
 
 Write-Host "Checking for existing container..."
 $containerExists = docker ps -aq -f "name=^/${containerName}$"

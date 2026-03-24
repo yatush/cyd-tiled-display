@@ -124,8 +124,9 @@ fi
 # ---- End PlatformIO persistence ----------------------------------------------
 
 # ---- Toolchain setup (runs in background) ---------------------------------------
-# toolchain_setup.py checks whether the pre-built toolchain already matches the
-# ESPHome version baked into this image.  If not, it:
+# toolchain_setup.py first checks PyPI for a newer ESPHome release and upgrades
+# pip in-place if one is found, then checks whether the pre-built toolchain
+# matches the (now current) ESPHome version.  If not, it:
 #   1. Downloads the pre-built tarball from GitHub Releases (fast, with UI progress)
 #   2. Falls back to a local compile if the release isn't available yet
 # Progress is written to /tmp/toolchain_setup_progress.json and exposed to the

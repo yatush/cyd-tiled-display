@@ -197,6 +197,9 @@ binary_sensor:
     id: dummy_dont_delete
     entity_id: dummy.entity
     internal: true
+    filters:
+      - delayed_on: 100ms
+      - delayed_off: 100ms
 
   - platform: touchscreen
     name: Dummy2

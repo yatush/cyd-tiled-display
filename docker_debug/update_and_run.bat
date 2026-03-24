@@ -9,8 +9,20 @@ if not exist "..\Dockerfile" (
     exit /b 1
 )
 
+echo Detecting latest ESPHome version from PyPI...
+for /f "tokens=*" %%i in ('python3 -c "import urllib.request,json; d=json.load(urllib.request.urlopen('https://pypi.org/pypi/esphome/json')); print(d['info']['version'])" 2^>nul') do set "ESPHOME_VERSION=%%i"
+if defined ESPHOME_VERSION (
+    echo ESPHome version: %ESPHOME_VERSION%
+) else (
+    echo Could not detect ESPHome version -- installing latest
+)
+
 echo Building image...
-docker build -t %IMAGE_NAME% ..
+if defined ESPHOME_VERSION (
+    docker build --build-arg ESPHOME_VERSION=%ESPHOME_VERSION% -t %IMAGE_NAME% ..
+) else (
+    docker build -t %IMAGE_NAME% ..
+)
 
 echo Checking for existing container...
 set "CONTAINER_ID="

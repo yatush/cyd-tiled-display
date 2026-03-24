@@ -15,6 +15,7 @@ substitutions:
   font_text_bold: "30"
   font_text_big_bold: "40"
   font_text_small: "18"
+  tile_border_width: "2"
 
 packages:
   lib: !include lib_emulator.yaml
@@ -74,7 +75,7 @@ globals:
     initial_value: "${screen_h}"
   - id: tile_border_width
     type: int
-    initial_value: "1"
+    initial_value: "${tile_border_width}"
 
 font:
   # Master glyph list - define ALL Material Icons glyphs once

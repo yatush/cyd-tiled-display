@@ -89,9 +89,19 @@ for arg in "$@"; do
     esac
 done
 
+echo "Detecting latest ESPHome version from PyPI..."
+ESPHOME_VERSION=$(python3 -c "import urllib.request,json; d=json.load(urllib.request.urlopen('https://pypi.org/pypi/esphome/json')); print(d['info']['version'])" 2>/dev/null)
+if [ -n "$ESPHOME_VERSION" ]; then
+    echo "ESPHome version: $ESPHOME_VERSION"
+    ESPHOME_VER_ARG="--build-arg ESPHOME_VERSION=$ESPHOME_VERSION"
+else
+    echo "Could not detect ESPHome version — installing latest"
+    ESPHOME_VER_ARG=""
+fi
+
 echo "Building image..."
 # shellcheck disable=SC2086
-docker build $BAKE_ARG -t $IMAGE_NAME ..
+docker build $BAKE_ARG $ESPHOME_VER_ARG -t $IMAGE_NAME ..
 
 echo "Checking for existing container..."
 if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then

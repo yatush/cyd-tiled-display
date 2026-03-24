@@ -294,7 +294,6 @@ void InitSensor(const std::string& key, const std::string& sensor,
       return;
     }
     auto* bin_sensor = new esphome::homeassistant::HomeassistantBinarySensor();
-    bin_sensor->set_internal(true);
     bin_sensor->set_entity_id(Repository::instance().ptr(sensor)->c_str());
     // Lambda function to update the display when the sensor state changes.
     bin_sensor->add_on_state_callback([](bool x) { id(disp).update(); });
@@ -310,7 +309,6 @@ void InitSensor(const std::string& key, const std::string& sensor,
       return;
     }
     auto* text_sensor = new esphome::homeassistant::HomeassistantTextSensor();
-    text_sensor->set_internal(true);
     text_sensor->set_entity_id(Repository::instance().ptr(sensor)->c_str());
     // Lambda function to update the display when the sensor state changes.
     text_sensor->add_on_state_callback(

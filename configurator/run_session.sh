@@ -21,6 +21,7 @@ FONT_TEXT_REGULAR=${FONT_TEXT_REGULAR:-30}
 FONT_TEXT_BOLD=${FONT_TEXT_BOLD:-30}
 FONT_TEXT_BIG_BOLD=${FONT_TEXT_BIG_BOLD:-40}
 FONT_TEXT_SMALL=${FONT_TEXT_SMALL:-18}
+TILE_BORDER_WIDTH=${TILE_BORDER_WIDTH:-2}
 
 if [ -z "$TILES_FILE" ]; then
     TILES_FILE="user_config.yaml"
@@ -127,4 +128,5 @@ stdbuf -oL -eL esphome \
   -s font_text_bold "$FONT_TEXT_BOLD" \
   -s font_text_big_bold "$FONT_TEXT_BIG_BOLD" \
   -s font_text_small "$FONT_TEXT_SMALL" \
+  -s tile_border_width "$TILE_BORDER_WIDTH" \
   run lib/emulator.yaml
