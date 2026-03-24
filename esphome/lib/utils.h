@@ -547,6 +547,10 @@ void circle (int center_x, int center_y, int radius, Color color) {
   id(disp).circle(center_x, center_y, radius, color);
 }
 
+void filled_circle (int center_x, int center_y, int radius, Color color) {
+  id(disp).filled_circle(center_x, center_y, radius, color);
+}
+
 void rectangle (int x1, int y1, int width, int height, Color color) {
   id(disp).rectangle(x1, y1, width, height, color);
 }
