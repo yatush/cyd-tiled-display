@@ -77,7 +77,7 @@ We provide a Docker-based environment that includes the Configurator, an ESPHome
         ```
 
 3.  **Access the Tools**:
-    *   **Configurator UI**: [http://localhost:8099](http://localhost:8099)
+    *   **Configurator UI**: [http://localhost:8080](http://localhost:8080)
     *   **Emulator View**: [http://localhost:6080/vnc.html](http://localhost:6080/vnc.html) (or access via the "View" button in the Configurator)
 
 ## Option 3: Local Development (Manual)
