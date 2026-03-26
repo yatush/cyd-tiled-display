@@ -81,7 +81,7 @@ def _load_yaml_loose(path: str) -> dict:
     _Loader.add_multi_constructor("!", _ignore)
 
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return yaml.load(f, Loader=_Loader) or {}
     except Exception:
         return {}
@@ -158,7 +158,7 @@ def _declared_ids(images_yaml_path: str) -> set:
     ids = set()
     if not os.path.exists(images_yaml_path):
         return ids
-    with open(images_yaml_path, "r") as f:
+    with open(images_yaml_path, "r", encoding="utf-8") as f:
         for line in f:
             m = re.search(r"^\s+id:\s+(\S+)", line)
             if m:
@@ -278,7 +278,7 @@ def ensure_placeholder_images(device_yaml_path: str) -> "tuple[int, list[str]]":
     # --- read current images.yaml ---
     content = ""
     if os.path.exists(IMAGES_YAML):
-        with open(IMAGES_YAML, "r") as f:
+        with open(IMAGES_YAML, "r", encoding="utf-8") as f:
             content = f.read().rstrip("\n")
 
     if not _images_yaml_has_image_key(content):
@@ -287,7 +287,7 @@ def ensure_placeholder_images(device_yaml_path: str) -> "tuple[int, list[str]]":
 
     updated = content + "\n" + "\n".join(new_decls) + "\n"
     os.makedirs(os.path.dirname(IMAGES_YAML), exist_ok=True)
-    with open(IMAGES_YAML, "w") as f:
+    with open(IMAGES_YAML, "w", encoding="utf-8") as f:
         f.write(updated)
 
     print(f"  [run.py] Updated lib/images.yaml — added {len(new_decls)} declaration(s)")
@@ -310,7 +310,7 @@ def _ensure_none_transparent() -> "str | None":
     if "none_transparent" not in ids:
         existing = ""
         if os.path.exists(IMAGES_YAML):
-            with open(IMAGES_YAML, "r") as f:
+            with open(IMAGES_YAML, "r", encoding="utf-8") as f:
                 existing = f.read().rstrip("\n")
         if not _images_yaml_has_image_key(existing):
             existing = "image:"
@@ -321,7 +321,7 @@ def _ensure_none_transparent() -> "str | None":
             "    type: RGB\n"
             "    transparency: alpha_channel"
         )
-        with open(IMAGES_YAML, "w") as f:
+        with open(IMAGES_YAML, "w", encoding="utf-8") as f:
             f.write(existing + "\n" + decl + "\n")
 
     return png_created
@@ -336,12 +336,12 @@ def _ensure_secrets(device_yaml_path: str):
     # Find which secrets the config actually references
     refs: set[str] = set()
     try:
-        with open(device_yaml_path, "r") as f:
+        with open(device_yaml_path, "r", encoding="utf-8") as f:
             raw = f.read()
         for inc_path in re.findall(r"!include\s+(\S+)", raw):
             full = os.path.join(os.path.dirname(device_yaml_path), inc_path)
             if os.path.exists(full):
-                with open(full, "r") as f:
+                with open(full, "r", encoding="utf-8") as f:
                     raw += f.read()
         refs = set(re.findall(r"!secret\s+(\S+)", raw))
     except Exception:
@@ -351,7 +351,7 @@ def _ensure_secrets(device_yaml_path: str):
         return
 
     lines = [f'{k}: "placeholder"' for k in sorted(refs)]
-    with open(secrets_path, "w") as f:
+    with open(secrets_path, "w", encoding="utf-8") as f:
         f.write("# Auto-generated placeholder secrets — replace with real values\n")
         f.write("\n".join(lines) + "\n")
     print(f"  [run.py] Created placeholder  secrets.yaml ({', '.join(sorted(refs))})")
@@ -400,7 +400,7 @@ def main():
     # --- save original images.yaml so we can restore it after esphome exits ---
     original_images_yaml: "str | None" = None
     if os.path.exists(IMAGES_YAML):
-        with open(IMAGES_YAML, "r") as f:
+        with open(IMAGES_YAML, "r", encoding="utf-8") as f:
             original_images_yaml = f.read()
 
     created_files: list[str] = []
@@ -437,7 +437,7 @@ def main():
             except OSError:
                 pass
         if original_images_yaml is not None:
-            with open(IMAGES_YAML, "w") as f:
+            with open(IMAGES_YAML, "w", encoding="utf-8") as f:
                 f.write(original_images_yaml)
         elif os.path.exists(IMAGES_YAML):
             os.remove(IMAGES_YAML)
