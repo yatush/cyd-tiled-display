@@ -126,6 +126,24 @@ jobs:
               echo "=== Fixing PlatformIO wrappers for Alpine/musl ==="
               chmod +x /fix_pio_wrappers.sh && /fix_pio_wrappers.sh || true
 
+              echo "--- DEBUG: ccache binary location ---"
+              command -v ccache || echo "ccache NOT FOUND in PATH"
+              ccache --version | head -1 || true
+
+              echo "--- DEBUG: sample wrapper script content (xtensa-esp32-elf-gcc) ---"
+              SAMPLE=$(find /root/.platformio/packages -name 'xtensa-esp32-elf-gcc' 2>/dev/null | head -1)
+              if [ -n "$SAMPLE" ]; then
+                echo "Path: $SAMPLE"
+                file "$SAMPLE" || true
+                head -3 "$SAMPLE" || true
+              else
+                echo "xtensa-esp32-elf-gcc not found"
+              fi
+
+              echo "--- DEBUG: ccache size before re-compile ---"
+              du -sh /root/.platformio/.ccache/ 2>/dev/null || echo "(empty)"
+              ccache --show-stats 2>/dev/null || true
+
               PIO_CMAKE=$(find /root/.platformio/packages -path "*/tool-cmake/bin/cmake" 2>/dev/null | head -1)
               if [ -n "$PIO_CMAKE" ]; then
                 mv "$PIO_CMAKE" "${PIO_CMAKE}.orig"
@@ -148,10 +166,7 @@ jobs:
               rm -rf /root/.platformio/dist
 
               echo "=== Re-compiling ESP32 firmware to populate ccache ==="
-              # Now that fix_pio_wrappers.sh has run, xtensa-esp32-elf-gcc is a
-              # shell script that calls xtensa-esp-elf-gcc by NAME (not absolute
-              # path), so the PATH-based ccache shim intercepts every compiler
-              # invocation and populates /root/.platformio/.ccache/.
+              export CCACHE_LOGFILE=/tmp/ccache.log
               mkdir -p /tmp/esp32_cache
               printf "esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n" \
                 > /tmp/esp32_cache/dummy.yaml
@@ -159,6 +174,14 @@ jobs:
               timeout 1800s esphome compile dummy.yaml || true
               cd /
               rm -rf /tmp/esp32_cache
+
+              echo "--- DEBUG: ccache stats after re-compile ---"
+              ccache --show-stats 2>/dev/null || true
+              du -sh /root/.platformio/.ccache/ 2>/dev/null || echo "(empty)"
+
+              echo "--- DEBUG: first 40 lines of ccache log ---"
+              head -40 /tmp/ccache.log 2>/dev/null || echo "(no ccache log — ccache was never invoked)"
+              unset CCACHE_LOGFILE
 
               echo "=== Pre-compiling emulator to warm ccache ==="
               mkdir -p /app/configurator
