@@ -1707,6 +1707,11 @@ def get_firmware_file(device_name, filename):
     return send_from_directory(build_dir, filename, mimetype='application/octet-stream')
 
 
+# Cache for the pgrep result in toolchain_status() fallback — avoids spawning a
+# new subprocess on every poll when neither the progress file nor the setup-done
+# marker exists (e.g. very early in container startup).
+_pgrep_cache: dict = {'ts': 0.0, 'running': False}
+
 @app.route('/api/toolchain/status')
 def toolchain_status():
     """
@@ -1728,13 +1733,17 @@ def toolchain_status():
                         'message': 'Toolchain ready.', 'fallback': False})
 
     # No progress file and no marker — check if the script is still running.
-    # If it is, report 'starting'. If it crashed or never ran, report 'no_toolchain'
-    # so the UI shows the warning rather than silently allowing a broken install.
-    script_running = subprocess.run(
-        ['pgrep', '-f', 'toolchain_setup.py'],
-        capture_output=True
-    ).returncode == 0
-    if script_running:
+    # Cache the pgrep result for 5 s so rapid polls don't spawn a new process.
+    global _pgrep_cache
+    now = time.time()
+    if now - _pgrep_cache['ts'] > 5:
+        _pgrep_cache['running'] = subprocess.run(
+            ['pgrep', '-f', 'toolchain_setup.py'],
+            capture_output=True
+        ).returncode == 0
+        _pgrep_cache['ts'] = now
+
+    if _pgrep_cache['running']:
         return jsonify({'phase': 'starting', 'progress': 0,
                         'message': 'Toolchain setup starting...', 'fallback': False})
 

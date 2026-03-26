@@ -47,6 +47,10 @@ function App() {
               setToolchainProgress(data.progress ?? 0);
               setToolchainMessage(data.message ?? '');
             }
+            // Once ready, no need to hammer the server — check once a minute.
+            const interval = data.phase === 'ready' ? 60_000 : 3_000;
+            await new Promise(r => setTimeout(r, interval));
+            continue;
           }
         } catch {
           // Server not yet ready — keep previous state
