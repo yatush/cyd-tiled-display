@@ -67,7 +67,7 @@ jobs:
             runner: ubuntu-22.04-arm   # Native ARM64 runner — no QEMU needed
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Run the full toolchain setup inside the same Alpine image the app uses.
       # The 900s timeout fires during the cmake hang on Alpine (known pio issue);
@@ -196,7 +196,7 @@ jobs:
           ls -lh toolchain-${{ matrix.arch }}.tar.xz
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: toolchain-${{ matrix.arch }}
           path: /tmp/toolchain-export/toolchain-${{ matrix.arch }}.tar.xz
@@ -210,10 +210,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /tmp/toolchain-artifacts
 
