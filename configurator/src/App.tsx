@@ -296,8 +296,15 @@ function App() {
     const newSessionId = generateNewSessionId();
     currentEmulatorSessionIdRef.current = newSessionId;
 
-    setEmulatorStatus('running');
+    setEmulatorStatus('starting');
     
+    const _closeWithError = (msg: string) => {
+      alert(msg);
+      setEmulatorStatus('stopped');
+      setIsEmulatorOpen(false);
+      emulatorKeepAliveRef.current = null;
+    };
+
     try {
       const yamlConfig = generateYaml(config);
       const res = await apiFetch('/emulator/start', { 
@@ -307,25 +314,16 @@ function App() {
         body: JSON.stringify({ yaml: yamlConfig, screen_type: screenType })
       }, newSessionId);  // Pass new session ID
       
-      // Check for session limit error
-      if (res.status === 429) {
-        const errorData = await res.json();
-        alert(errorData.message || 'Too many emulators are currently running. Please try again later.');
-        setEmulatorStatus('stopped');
-        setIsEmulatorOpen(false);
-        emulatorKeepAliveRef.current = null;
-        return;
-      }
-      
-      // Check for other errors
+      // Check for session limit or other errors — always safe to call res.text()
+      // then parse, so a malformed body doesn't swallow the error silently.
       if (!res.ok) {
-        const errorData = await res.json();
-        alert(errorData.message || 'Failed to start emulator');
-        setEmulatorStatus('error');
-        setIsEmulatorOpen(false);
-        emulatorKeepAliveRef.current = null;
+        let msg = 'Failed to start emulator';
+        try { msg = (await res.json()).message || msg; } catch { /* use default */ }
+        _closeWithError(msg);
         return;
       }
+
+      setEmulatorStatus('running');
       
       const reader = res.body?.getReader();
       if (reader) {
@@ -339,6 +337,11 @@ function App() {
           if (data.websockify_port) {
             setWebsockifyPort(data.websockify_port);
           }
+          // Surface backend error that arrived as a 200 keep-alive stream
+          if (data.status === 'error') {
+            _closeWithError(data.message || 'Emulator failed to start');
+            return;
+          }
         } catch (e) {
           console.error("Failed to parse emulator start response", e);
         }
@@ -351,7 +354,8 @@ function App() {
       }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
-        setEmulatorStatus('error');
+        setEmulatorStatus('stopped');
+        setIsEmulatorOpen(false);
         emulatorKeepAliveRef.current = null;
         console.error(e);
       }
@@ -640,6 +644,7 @@ function App() {
         onStop={handleStopEmulator}
         websockifyPort={websockifyPort}
         emulatorSessionId={currentEmulatorSessionIdRef.current}
+        isStarting={emulatorStatus === 'starting'}
       />
 
       {/* Device picker dialog shown before starting the emulator */}

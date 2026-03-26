@@ -451,6 +451,14 @@ if __name__ == "__main__":
     _images_dir = os.environ.get('CYD_IMAGES_DIR') or None
     _screen_w   = int(os.environ.get('CYD_SCREEN_W', '320'))
     _screen_h   = int(os.environ.get('CYD_SCREEN_H', '240'))
+
+    # Redirect stdout → stderr during generation so any incidental warning
+    # print() calls don't corrupt the JSON result written to stdout.
+    # The caller (server.py _run_generate_subprocess) does json.loads(proc.stdout),
+    # so stdout must contain exactly one JSON object — nothing else.
+    _real_stdout = sys.stdout
+    sys.stdout = sys.stderr
+
     result = generate_cpp_from_yaml(
         input_data,
         user_lib_dir=_lib_dir,
@@ -458,4 +466,6 @@ if __name__ == "__main__":
         screen_w=_screen_w,
         screen_h=_screen_h,
     )
+
+    sys.stdout = _real_stdout
     print(json.dumps(result))

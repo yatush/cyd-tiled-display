@@ -162,13 +162,13 @@ jobs:
 
               echo "=== Re-compiling ESP32 firmware to populate ccache ==="
               export CCACHE_LOGFILE=/tmp/ccache.log
-              mkdir -p /tmp/esp32_cache
-              printf "esphome:\n  name: dummy\nesp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n" \
-                > /tmp/esp32_cache/dummy.yaml
-              cd /tmp/esp32_cache
-              timeout 1800s esphome compile dummy.yaml || true
-              cd /
-              rm -rf /tmp/esp32_cache
+              # Use the comprehensive cachewarm YAML from the repo.  It includes
+              # api/*, binary_sensor/*, button/*, display/*, copy/sensor/*, etc. —
+              # all the ESPHome components that real CYD device builds compile.
+              # These get cached so the first OTA install on the user's device is
+              # fast (cache hit) rather than starting cold.
+              cd /app/esphome
+              timeout 1800s esphome compile esp32_cachewarm.yaml || true
 
               echo "--- DEBUG: ccache stats after re-compile ---"
               ccache --show-stats 2>/dev/null || true

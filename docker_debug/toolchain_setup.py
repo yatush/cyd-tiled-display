@@ -447,12 +447,14 @@ def _cmake_needs_fix() -> bool:
 def maybe_warm_cache() -> None:
     """Pre-compile the emulator for both screen sizes to warm the ccache.
 
-    Skipped when the marker already exists with the current ESPHome version.
-    Re-runs automatically when ESPHome is upgraded.
+    Skipped when the marker already exists with the current ESPHome version
+    AND the seed directory actually exists on disk.
+    Re-runs automatically when ESPHome is upgraded or the seed dir is missing.
     Failures are non-fatal: the marker is not written, so the next startup retries.
     """
     expected = get_expected_version()
-    if os.path.exists(EMULATOR_MARKER):
+    seed_dir = os.path.join(ESPHOME_DIR, 'lib', '.esphome', 'build', 'emulator')
+    if os.path.exists(EMULATOR_MARKER) and os.path.isdir(seed_dir):
         try:
             stored_ver = open(EMULATOR_MARKER).read().strip()
         except OSError:
@@ -461,6 +463,8 @@ def maybe_warm_cache() -> None:
             log('Emulator cache already warm — skipping.')
             return
         log(f'ESPHome version changed ({stored_ver!r} → {expected!r}) — re-warming.')
+    elif os.path.exists(EMULATOR_MARKER) and not os.path.isdir(seed_dir):
+        log('Emulator marker present but seed directory missing — re-warming.')
 
     log('Warming emulator cache...')
 

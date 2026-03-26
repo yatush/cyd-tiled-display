@@ -9,11 +9,13 @@ interface EmulatorDialogProps {
   onStop?: () => void;
   websockifyPort: number | null;
   emulatorSessionId: string | null;
+  /** True while the server is validating/generating (before the session PID exists) */
+  isStarting?: boolean;
 }
 
 const ACTIVITY_TRACKING_INTERVAL = 30000; // Track activity every 30 seconds if user is active
 
-export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose, onStop, websockifyPort, emulatorSessionId }) => {
+export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose, onStop, websockifyPort, emulatorSessionId, isStarting }) => {
   const [logs, setLogs] = useState<string>('');
   const [filterHa, setFilterHa] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -228,7 +230,7 @@ export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose,
                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3 bg-slate-900 z-10">
                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
                  <span className="text-sm font-medium animate-pulse">
-                   {!websockifyPort ? 'Waiting for session...' : !shouldShowIframe ? 'Initializing emulator...' : 'Connecting to VNC...'}
+                   {isStarting ? 'Validating configuration...' : !websockifyPort ? 'Waiting for session...' : !shouldShowIframe ? 'Initializing emulator...' : 'Connecting to VNC...'}
                  </span>
                </div>
              )}

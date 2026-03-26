@@ -1,0 +1,134 @@
+# esp32_cachewarm.yaml
+# Used ONLY by the CI build-toolchain workflow to pre-warm the ccache for all
+# ESPHome components common to CYD device builds.
+# NOT intended for actual hardware — credentials are dummies.
+#
+# Why this exists:
+#   The CI dummy build used to compile a minimal "esp32dev + esp-idf" YAML,
+#   which only warms the ESP-IDF framework layer.  Real CYD device builds also
+#   compile api/*, binary_sensor/*, button/*, display/*, copy/sensor/*, etc.
+#   Those files had cold cache on the user's first OTA install.
+#   This YAML includes all the typical CYD components so those files are
+#   cached in the pre-built tarball and the first real build is fast too.
+
+esphome:
+  name: cachewarm
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+wifi:
+  ssid: "dummy_network"
+  password: "dummy_password_1234"
+
+api:
+  encryption:
+    key: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmo="
+
+ota:
+  - platform: esphome
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+# ---- Sensor components -------------------------------------------------------
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_signal_sensor
+
+  - platform: adc
+    pin: GPIO34
+    id: adc_sensor
+    name: "ADC"
+    update_interval: 5s
+    internal: true
+
+  - platform: copy
+    name: "WiFi Copy"
+    source_id: wifi_signal_sensor
+
+# ---- Binary sensor -----------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pullup: true
+    name: "button"
+    id: cw_button
+
+# ---- Button ------------------------------------------------------------------
+button:
+  - platform: restart
+    name: "Restart"
+
+# ---- Output + light (compiled by typical CYD builds) ------------------------
+output:
+  - platform: ledc
+    pin: GPIO27
+    id: backlight_pwm
+  - platform: ledc
+    id: output_red
+    pin: GPIO4
+    inverted: true
+  - platform: ledc
+    id: output_green
+    pin: GPIO16
+    inverted: true
+  - platform: ledc
+    id: output_blue
+    pin: GPIO17
+    inverted: true
+
+light:
+  - platform: rgb
+    name: "RGB LED"
+    red: output_red
+    green: output_green
+    blue: output_blue
+
+# ---- SPI + ILI9xxx display (same driver family as all CYD boards) -----------
+spi:
+  clk_pin: GPIO14
+  mosi_pin: GPIO13
+  miso_pin: GPIO12
+
+display:
+  - platform: ili9xxx
+    model: ILI9341
+    cs_pin: GPIO15
+    dc_pin: GPIO2
+    reset_pin: GPIO4
+    lambda: |-
+      it.fill(Color(0, 0, 0));
+
+# ---- I²C (XPT2046 touch, LD2410 radar present on CYD boards) ----------------
+i2c:
+  sda: GPIO33
+  scl: GPIO32
+
+# ---- UART (used by ld2410 radar component on 3248s035) ----------------------
+uart:
+  tx_pin: GPIO22
+  rx_pin: GPIO21
+  baud_rate: 256000
+
+# ---- Globals (same set as lib_common.yaml, keeps globals/* compiled) --------
+globals:
+  - id: cw_int
+    type: int
+    initial_value: "0"
+  - id: cw_bool
+    type: bool
+    initial_value: "false"
+  - id: cw_str
+    type: std::string
+    restore_value: no
+    initial_value: '"hello"'
