@@ -22,7 +22,7 @@ import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
 import { apiFetch, generateNewSessionId } from './utils/api';
-import { ImageEntry } from './types';
+import { ImageEntry, ScreenImageEntry } from './types';
 
 import { generateYaml } from './utils/yamlGenerator';
 
@@ -65,6 +65,7 @@ function App() {
   const [isHaSettingsOpen, setIsHaSettingsOpen] = useState(false);
   const [isDynamicEntitiesOpen, setIsDynamicEntitiesOpen] = useState(false);
   const [isImagesOpen, setIsImagesOpen] = useState(false);
+  const [isScreenImagesOpen, setIsScreenImagesOpen] = useState(false);
   const [isAddTileOpen, setIsAddTileOpen] = useState(false);
   const [isPagesOpen, setIsPagesOpen] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -191,6 +192,18 @@ function App() {
       }));
 
       return { ...prev, images: newImages, pages: newPages };
+    });
+  };
+
+  // Screen image management handlers
+  const handleAddScreenImage = (id: string, entry: ScreenImageEntry) => {
+    setConfig(prev => ({ ...prev, screen_images: { ...(prev.screen_images || {}), [id]: entry } }));
+  };
+  const handleDeleteScreenImage = (id: string) => {
+    setConfig(prev => {
+      const s = { ...(prev.screen_images || {}) };
+      delete s[id];
+      return { ...prev, screen_images: s };
     });
   };
 
@@ -428,6 +441,10 @@ function App() {
           onAddImage={handleAddImage}
           onDeleteImage={handleDeleteImage}
           onUpdateImage={handleUpdateImage}
+          isScreenImagesOpen={isScreenImagesOpen}
+          setIsScreenImagesOpen={setIsScreenImagesOpen}
+          onAddScreenImage={handleAddScreenImage}
+          onDeleteScreenImage={handleDeleteScreenImage}
           isDynamicEntitiesOpen={isDynamicEntitiesOpen}
           setIsDynamicEntitiesOpen={setIsDynamicEntitiesOpen}
           config={config}
@@ -500,6 +517,7 @@ function App() {
           onUpdatePage={handleUpdatePage}
           onRenamePage={handleRenamePage}
           setConfig={setConfig}
+          screenImages={config.screen_images || {}}
         />
       </div>
       </div>

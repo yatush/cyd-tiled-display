@@ -1774,6 +1774,126 @@ def toolchain_cancel():
         pass
     return jsonify({'status': 'cancelled', 'killed': killed})
 
+@app.route('/api/toolchain/download_latest', methods=['POST'])
+def toolchain_download_latest():
+    """
+    Check whether the installed toolchain is already the latest build on GitHub.
+
+    The comparison uses the per-build build_id.txt published with each release
+    (format: {esphome_version}-{YYYYMMDD}-run{N}).  This catches re-builds for
+    the same ESPHome version.  Falls back to a version-only comparison for older
+    releases that predate build_id.txt.
+
+    Returns:
+      { status: 'up_to_date', version, build_id }  — nothing to do
+      { status: 'started' }                          — toolchain_setup.py launched
+      { status: 'already_running', phase }           — already in progress
+    """
+    import urllib.request as _urllib_req
+    import urllib.error   as _urllib_err
+
+    packages_dir   = '/root/.platformio/packages'
+    version_file   = '/root/.platformio/.cyd_esphome_version'
+    build_id_file  = '/root/.platformio/.cyd_toolchain_build_id'
+    ver_file       = '/app/esphome_version.txt'
+    repo_file      = '/app/github_repo.txt'
+    progress_file  = '/tmp/toolchain_setup_progress.json'
+
+    # Prevent double-start
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file) as _f:
+                _data = json.load(_f)
+            running_phases = ('downloading', 'extracting', 'fixing', 'building', 'warming')
+            if _data.get('phase') in running_phases:
+                return jsonify({'status': 'already_running', 'phase': _data['phase']}), 200
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Read local state
+    expected_version = None
+    if os.path.exists(ver_file):
+        try:
+            expected_version = open(ver_file).read().strip() or None
+        except OSError:
+            pass
+
+    local_build_id = None
+    if os.path.exists(build_id_file):
+        try:
+            local_build_id = open(build_id_file).read().strip() or None
+        except OSError:
+            pass
+
+    stored_version = None
+    if os.path.exists(version_file):
+        try:
+            stored_version = open(version_file).read().strip() or None
+        except OSError:
+            pass
+
+    has_pkgs = os.path.isdir(packages_dir) and bool(os.listdir(packages_dir))
+
+    # Determine GitHub repo
+    repo = 'yatush/cyd-tiled-display'
+    if os.path.exists(repo_file):
+        try:
+            r = open(repo_file).read().strip()
+            if r:
+                repo = r
+        except OSError:
+            pass
+
+    # Fetch remote build_id.txt (tiny file, fast)
+    remote_build_id = None
+    if expected_version:
+        url = (f'https://github.com/{repo}/releases/download/'
+               f'toolchain-esphome-{expected_version}/build_id.txt')
+        try:
+            req = _urllib_req.Request(
+                url, headers={'User-Agent': 'cyd-tiled-display/server'})
+            with _urllib_req.urlopen(req, timeout=10) as resp:
+                remote_build_id = resp.read().decode().strip() or None
+        except _urllib_err.HTTPError as e:
+            if e.code == 404:
+                # Old release without build_id.txt — fall back to version comparison
+                remote_build_id = None
+            # Other HTTP errors: treat as 'unknown', fall through
+        except Exception:
+            # Network error: treat as 'unknown', fall through
+            pass
+
+    # ── Decision ─────────────────────────────────────────────────────────────
+    # Case A: remote build_id fetched successfully — compare directly
+    if remote_build_id is not None:
+        if remote_build_id == local_build_id:
+            return jsonify({'status': 'up_to_date',
+                            'version': expected_version,
+                            'build_id': remote_build_id})
+        # IDs differ (or no local ID) → fall through to launch
+
+    # Case B: no remote build_id (old release / network error) — version fallback
+    else:
+        if (stored_version and expected_version
+                and stored_version == expected_version and has_pkgs):
+            return jsonify({'status': 'up_to_date', 'version': stored_version})
+
+    # Launch toolchain_setup.py to download the new build
+    setup_script = '/app/toolchain_setup.py'
+    if not os.path.exists(setup_script):
+        return jsonify({'error': 'toolchain_setup.py not found'}), 500
+
+    log_file = open('/tmp/toolchain_setup.log', 'w')
+    proc = subprocess.Popen(
+        ['python3', setup_script],
+        stdout=log_file,
+        stderr=log_file,
+        stdin=subprocess.DEVNULL,
+    )
+    with open('/tmp/toolchain_setup.pid', 'w') as f:
+        f.write(str(proc.pid))
+    return jsonify({'status': 'started'})
+
 @app.route('/api/schema', methods=['GET'])
 def get_schema():
     schema_path = os.path.join(APP_DIR, 'esphome/external_components/tile_ui/schema.json')
@@ -2014,16 +2134,16 @@ def get_scripts():
 
         scripts = doc.get('script', [])
         
-        # Standard colors
+        # Standard colors — Color(r, g, b) in RGB order, value is the matching CSS hex
         colors = [
-            {'id': 'Color(0, 0, 0)', 'value': '#000000'},
+            {'id': 'Color(0, 0, 0)',       'value': '#000000'},
             {'id': 'Color(255, 255, 255)', 'value': '#FFFFFF'},
-            {'id': 'Color(0, 0, 255)', 'value': '#FF0000'},
-            {'id': 'Color(0, 255, 0)', 'value': '#00FF00'},
-            {'id': 'Color(255, 0, 0)', 'value': '#0000FF'},
-            {'id': 'Color(0, 255, 255)', 'value': '#FFFF00'},
-            {'id': 'Color(0, 165, 255)', 'value': '#FFA500'},
-            {'id': 'Color(128, 0, 128)', 'value': '#800080'},
+            {'id': 'Color(255, 0, 0)',     'value': '#FF0000'},
+            {'id': 'Color(0, 255, 0)',     'value': '#00FF00'},
+            {'id': 'Color(0, 0, 255)',     'value': '#0000FF'},
+            {'id': 'Color(255, 255, 0)',   'value': '#FFFF00'},
+            {'id': 'Color(255, 165, 0)',   'value': '#FFA500'},
+            {'id': 'Color(128, 0, 128)',   'value': '#800080'},
         ]
 
         # Add custom colors from lib.yaml

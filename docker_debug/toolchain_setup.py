@@ -47,6 +47,8 @@ FIX_WRAPPERS_SCRIPT = '/app/fix_pio_wrappers.sh'
 PIO_SETUP_LOG       = '/tmp/pio_setup.log'
 DUMMY_YAML_DIR      = '/tmp/esp32_setup'
 
+BUILD_ID_FILE       = f'{PIO_DIR}/.cyd_toolchain_build_id'
+
 # Cache-warming paths (emulator pre-compile)
 _SCRIPT_DIR         = os.path.dirname(os.path.abspath(__file__))
 # Stored inside PIO_DIR so it survives HA addon updates via the
@@ -68,12 +70,20 @@ def write_progress(phase: str, progress: int, message: str,
             esphome_version = f.read().strip()
     except OSError:
         pass
+    build_id = ''
+    try:
+        if os.path.exists(BUILD_ID_FILE):
+            with open(BUILD_ID_FILE) as f:
+                build_id = f.read().strip()
+    except OSError:
+        pass
     data: dict = {
         'phase':           phase,
         'progress':        progress,
         'message':         message,
         'fallback':        fallback,
         'esphome_version': esphome_version,
+        'build_id':        build_id,
     }
     if error:
         data['error'] = error
@@ -167,6 +177,40 @@ def set_stored_version(version: str) -> None:
     with open(VERSION_FILE, 'w') as f:
         f.write(version)
     open(SETUP_MARKER, 'w').close()
+
+
+def get_stored_build_id() -> str | None:
+    if os.path.exists(BUILD_ID_FILE):
+        return open(BUILD_ID_FILE).read().strip() or None
+    return None
+
+
+def set_stored_build_id(build_id: str) -> None:
+    os.makedirs(PIO_DIR, exist_ok=True)
+    with open(BUILD_ID_FILE, 'w') as f:
+        f.write(build_id)
+
+
+def fetch_and_store_build_id(version: str) -> None:
+    """Fetch build_id.txt from the GitHub Release and store it locally.
+
+    Called after a successful toolchain download+extract so the UI can detect
+    whether a newer build is available for the same ESPHome version.
+    Non-fatal: failures are logged but do not affect the toolchain install.
+    """
+    repo = get_github_repo()
+    url = (f'https://github.com/{repo}/releases/download/'
+           f'toolchain-esphome-{version}/build_id.txt')
+    try:
+        req = urllib.request.Request(
+            url, headers={'User-Agent': 'cyd-tiled-display/toolchain-setup'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            build_id = resp.read().decode().strip()
+        if build_id:
+            set_stored_build_id(build_id)
+            log(f'Toolchain build ID stored: {build_id}')
+    except Exception as e:
+        log(f'Could not fetch build_id.txt (non-fatal): {e}')
 
 
 def has_packages() -> bool:
@@ -587,6 +631,9 @@ def main() -> None:
             write_progress('no_toolchain', 0,
                            'Toolchain download failed. '
                            'First compile will build locally (~10–15 min).')
+        else:
+            # Download + extract succeeded — store the build ID for update checks.
+            fetch_and_store_build_id(expected)
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 try:
@@ -604,6 +651,7 @@ def main() -> None:
         extract_toolchain(tmp_path, background=True)
         fix_wrappers()
         set_stored_version(expected)
+        fetch_and_store_build_id(expected)
         maybe_warm_cache()
         write_progress('ready', 100, 'Toolchain updated successfully.')
         log('Background update complete.')

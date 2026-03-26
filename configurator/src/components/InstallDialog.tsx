@@ -51,10 +51,13 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const [localBuildMessage, setLocalBuildMessage]   = useState('');
   const [buildLogs, setBuildLogs]                   = useState<string>('');
   const [buildEsphomeVersion, setBuildEsphomeVersion] = useState<string>('');
+  const [buildId, setBuildId]                         = useState<string>('');
   const [buildSource, setBuildSource]               = useState<string>('');
   // Whether the initial toolchain status fetch has completed for this open.
   // Until it has, we treat the toolchain as not-yet-known (keep UI disabled).
   const [toolchainChecked, setToolchainChecked] = useState(false);
+  // State for the "Update toolchain" button
+  const [downloadBtnState, setDownloadBtnState] = useState<'idle' | 'checking' | 'up_to_date'>('idle');
   const localBuildPollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const logPollRef         = useRef<ReturnType<typeof setInterval> | null>(null);
   const buildLogsEndRef    = useRef<HTMLDivElement>(null);
@@ -72,6 +75,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         setLocalBuildProgress(data.progress ?? 0);
         setLocalBuildMessage(data.message ?? '');
         if (data.esphome_version) setBuildEsphomeVersion(data.esphome_version);
+        if (data.build_id) setBuildId(data.build_id);
         if (data.phase === 'ready') {
           setBuildSource(data.fallback ? 'Built locally' : 'Downloaded pre-built release');
           clearInterval(localBuildPollRef.current!);
@@ -134,6 +138,8 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         setToolchainChecked(true);
         if (!data) return;
         const phase: string = data.phase;
+        if (data.esphome_version) setBuildEsphomeVersion(data.esphome_version);
+        if (data.build_id) setBuildId(data.build_id);
         // Only update if not currently running a local build
         if (localBuildPhase === null || localBuildPhase === 'no_toolchain') {
           // Mirror ANY non-idle phase into localBuildPhase so progress/log
@@ -176,6 +182,30 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     setBuildSource('');
     setLocalBuildPhase('no_toolchain');
     onToolchainPhaseChange?.('no_toolchain');
+  };
+
+  const handleDownloadLatest = async () => {
+    setDownloadBtnState('checking');
+    try {
+      const res = await apiFetch('/toolchain/download_latest', { method: 'POST' });
+      if (!res.ok) { setDownloadBtnState('idle'); return; }
+      const data = await res.json();
+      if (data.status === 'up_to_date') {
+        setDownloadBtnState('up_to_date');
+        setTimeout(() => setDownloadBtnState('idle'), 4000);
+      } else if (data.status === 'started') {
+        setLocalBuildPhase('downloading');
+        setLocalBuildProgress(0);
+        setLocalBuildMessage('Starting toolchain download...');
+        setBuildLogs('');
+        setDownloadBtnState('idle');
+      } else {
+        // already_running or error — let normal polling handle it
+        setDownloadBtnState('idle');
+      }
+    } catch {
+      setDownloadBtnState('idle');
+    }
   };
 
   // Effective toolchain phase: prefer local-build tracking when active,
@@ -661,6 +691,36 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
               Checking toolchain status...
             </div>
           )}
+
+        {/* Toolchain update row — shown when toolchain is ready */}
+        {isToolchainReady && !showLocalBuildProgress && (
+          <div className="mx-4 mt-3 mb-1 flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle size={12} className="text-green-500 shrink-0" />
+              <span>Toolchain ready{buildEsphomeVersion ? ` · ESPHome ${buildEsphomeVersion}` : ''}</span>
+              {buildId && (
+                <span className="font-mono text-[10px] text-slate-400" title="Toolchain build ID">{buildId}</span>
+              )}
+            </div>
+            {downloadBtnState === 'up_to_date' ? (
+              <span className="flex items-center gap-1 text-green-600 font-semibold">
+                <CheckCircle size={11} /> Already up to date
+              </span>
+            ) : (
+              <button
+                onClick={handleDownloadLatest}
+                disabled={downloadBtnState === 'checking'}
+                className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 font-semibold transition-colors disabled:opacity-50"
+              >
+                {downloadBtnState === 'checking' ? (
+                  <><RefreshCw size={11} className="animate-spin" /> Checking...</>
+                ) : (
+                  <><Download size={11} /> Update toolchain</>
+                )}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Content (disabled until toolchain is ready) */}
         <div className={`flex-1 overflow-hidden flex flex-col min-h-0${

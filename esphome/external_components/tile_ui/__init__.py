@@ -10,7 +10,7 @@ from esphome.core import CORE
 from esphome.components.display import DisplayPage
 from .data_collection import load_tiles_yaml, collect_available_scripts, collect_available_globals
 from .tile_generation import generate_tile_cpp
-from .tile_utils import flags_to_cpp
+from .tile_utils import flags_to_cpp, build_expression
 from .schema import screens_list_schema
 
 # Configuration constants
@@ -139,11 +139,47 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
         for tile in tiles:
             tile_cpp = generate_tile_cpp(tile, available_scripts, screen_id)
             lines.append(f"  {tile_cpp}")
-        
+
+        # Build background method chains (drawn before tiles at runtime)
+        bg_chains = []
+        for entry in (screen.get("background") or []):
+            if not isinstance(entry, dict):
+                continue
+            condition = entry.get("condition")
+            has_condition = condition and str(condition).strip()
+            if has_condition:
+                cond_expr = build_expression(condition)
+                cond_lambda = (
+                    f", [](std::vector<std::string> entities) -> bool"
+                    f" {{ return {cond_expr}; }}"
+                )
+            else:
+                cond_lambda = ""
+            if "color" in entry and entry["color"] and entry["color"] != "none":
+                _c = entry['color']
+                # Color(r,g,b) is a C++ constructor — use directly; named globals need id()
+                if _c.startswith('Color('):
+                    bg_chains.append(f"->addBgColor({_c}{cond_lambda})")
+                else:
+                    bg_chains.append(f"->addBgColor(id({_c}){cond_lambda})")
+            elif "image" in entry and entry["image"] and entry["image"] != "none":
+                draw_fn = f"[=]() {{ id(disp).image(0, 0, &id({entry['image']})); }}"
+                bg_chains.append(f"->addBgLambda({draw_fn}{cond_lambda})")
+
+        screen_expr = (
+            f"  new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id})"
+        )
+        if bg_chains:
+            screen_expr = (
+                f"  (new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id}))"
+            )
+            for chain in bg_chains:
+                screen_expr += f"\n  {chain}"
+
         lines.extend([
             "};",
             "view_ptr->addScreen(",
-            f"  new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id})",
+            screen_expr,
             ");",
         ])
         lambdas.append("\n".join(lines))

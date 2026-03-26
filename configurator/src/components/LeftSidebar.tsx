@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Upload, ImageIcon, Copy, Home } from 'lucide-react';
-import { Config, Tile, ImageEntry } from '../types';
-import { DynamicEntitiesEditor, ImageManagerPanel } from './FormInputs';
+import { Config, Tile, ImageEntry, ScreenImageEntry } from '../types';
+import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange } from '../utils/tileUtils';
 import { isAddon } from '../utils/api';
 import { FileExplorer } from './FileExplorer';
@@ -14,6 +14,10 @@ interface LeftSidebarProps {
   onAddImage: (id: string, entry: ImageEntry) => void;
   onDeleteImage: (id: string) => void;
   onUpdateImage: (id: string, patch: Partial<ImageEntry>) => void;
+  isScreenImagesOpen: boolean;
+  setIsScreenImagesOpen: (open: boolean) => void;
+  onAddScreenImage: (id: string, entry: ScreenImageEntry) => void;
+  onDeleteScreenImage: (id: string) => void;
   isDynamicEntitiesOpen: boolean;
   setIsDynamicEntitiesOpen: (open: boolean) => void;
   config: Config;
@@ -46,6 +50,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onAddImage,
   onDeleteImage,
   onUpdateImage,
+  isScreenImagesOpen,
+  setIsScreenImagesOpen,
+  onAddScreenImage,
+  onDeleteScreenImage,
   isDynamicEntitiesOpen,
   setIsDynamicEntitiesOpen,
   config,
@@ -129,6 +137,33 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   onAddImage={onAddImage}
                   onDeleteImage={onDeleteImage}
                   onUpdateImage={onUpdateImage}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Screen Background Images */}
+        <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
+          <div
+            className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
+            onClick={() => setIsScreenImagesOpen(!isScreenImagesOpen)}
+          >
+            <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+              {isScreenImagesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              <ImageIcon size={14} /> Screen Backgrounds
+            </h3>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-1.5 rounded-full">
+              {Object.keys(config.screen_images || {}).length}
+            </span>
+          </div>
+          {isScreenImagesOpen && (
+            <div className="p-3 pt-0 border-t border-slate-100 mt-2">
+              <div className="pt-2">
+                <ScreenImageManagerPanel
+                  images={config.screen_images || {}}
+                  onAddImage={onAddScreenImage}
+                  onDeleteImage={onDeleteScreenImage}
                 />
               </div>
             </div>

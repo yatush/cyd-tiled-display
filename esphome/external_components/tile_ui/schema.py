@@ -423,7 +423,35 @@ def screen_schema(value):
         "tiles": validated_tiles,
         "rows": rows,
         "cols": cols,
+        "background": _validate_screen_background(value.get("background")),
     }
+
+
+def _validate_screen_background(background):
+    """Validate the optional screen-level background list."""
+    if background is None:
+        return None
+    if not isinstance(background, list):
+        raise cv.Invalid("background must be a list")
+    result = []
+    for idx, entry in enumerate(background):
+        if not isinstance(entry, dict):
+            raise cv.Invalid(f"background[{idx}] must be a dict")
+        has_color = "color" in entry
+        has_image = "image" in entry
+        if has_color and has_image:
+            raise cv.Invalid(f"background[{idx}] cannot have both 'color' and 'image'")
+        if not has_color and not has_image:
+            raise cv.Invalid(f"background[{idx}] must have 'color' or 'image'")
+        if has_color and not isinstance(entry["color"], str):
+            raise cv.Invalid(f"background[{idx}].color must be a string")
+        if has_image and not isinstance(entry["image"], str):
+            raise cv.Invalid(f"background[{idx}].image must be a string")
+        condition = entry.get("condition")
+        if condition is not None and not isinstance(condition, (str, dict)):
+            raise cv.Invalid(f"background[{idx}].condition must be a string or dict")
+        result.append({k: v for k, v in entry.items()})
+    return result
 
 
 def screens_list_schema(value):

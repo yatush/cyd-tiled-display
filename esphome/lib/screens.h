@@ -88,6 +88,36 @@ public:
     }
   }
 
+  // Adds an unconditional full-screen color background (drawn before tiles).
+  TiledScreen* addBgColor(Color c) {
+    backgrounds_.push_back({
+      [c]() { id(disp).filled_rectangle(0, 0, id(width), id(height), c); },
+      [](std::vector<std::string>) { return true; }
+    });
+    return this;
+  }
+
+  // Adds a conditional full-screen color background.
+  TiledScreen* addBgColor(Color c, std::function<bool(std::vector<std::string>)> cond) {
+    backgrounds_.push_back({
+      [c]() { id(disp).filled_rectangle(0, 0, id(width), id(height), c); },
+      cond
+    });
+    return this;
+  }
+
+  // Adds an unconditional full-screen background drawn by a custom lambda.
+  TiledScreen* addBgLambda(std::function<void()> draw_fn) {
+    backgrounds_.push_back({draw_fn, [](std::vector<std::string>) { return true; }});
+    return this;
+  }
+
+  // Adds a conditional full-screen background drawn by a custom lambda.
+  TiledScreen* addBgLambda(std::function<void()> draw_fn, std::function<bool(std::vector<std::string>)> cond) {
+    backgrounds_.push_back({draw_fn, cond});
+    return this;
+  }
+
   void onScreenEnter() override {
     for (Tile* tile : tiles_) {
       tile->updateTouchArea();
@@ -120,6 +150,15 @@ public:
   }
 
   void draw() override {
+    // Reverse-cascade: find the topmost background whose condition is true and draw only that.
+    // This prevents lower layers (e.g. an image) from being drawn when a higher layer (e.g.
+    // a solid color) already covers the screen.
+    for (int _bi = (int)this->backgrounds_.size() - 1; _bi >= 0; --_bi) {
+      if (this->backgrounds_[_bi].second({})) {
+        this->backgrounds_[_bi].first();
+        break;
+      }
+    }
     for (Tile* tile : this->tiles_) {
       if (tile->checkActivationMaybeToggle()) {
         tile->draw();
@@ -161,5 +200,8 @@ public:
 private:
   // Vector of Tile pointers representing the tiles on this screen.
   std::vector<Tile*> tiles_;
+  // Background entries: each is a (draw_fn, condition) pair drawn before tiles.
+  using BgEntry = std::pair<std::function<void()>, std::function<bool(std::vector<std::string>)>>;
+  std::vector<BgEntry> backgrounds_;
 };
 

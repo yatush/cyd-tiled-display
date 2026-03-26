@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Layout, Settings2, Plus } from 'lucide-react';
-import { Tile, Config, Page, HaEntity, ImageEntry } from '../types';
+import { Tile, Config, Page, HaEntity, ImageEntry, ScreenBgEntry, ScreenImageEntry } from '../types';
 import { 
   TextInput, 
   Checkbox, 
@@ -11,13 +11,14 @@ import {
   EntityArrayInput, 
   EntityListInput,
   ConditionBuilder,
-  ImagesListInput
+  ImagesListInput,
+  ImageSelectInput
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
 import { ColorPicker } from './Pickers';
 import { apiFetch } from '../utils/api';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig }: { 
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: { 
   selectedTile: Tile | null, 
   onUpdate: (t: Tile) => void, 
   onDelete: () => void,
@@ -27,7 +28,8 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   onUpdatePage: (p: Page) => void,
   onRenamePage: (oldId: string, newId: string) => void,
   haEntities: HaEntity[],
-  setConfig?: (config: Config) => void
+  setConfig?: (config: Config) => void,
+  screenImages?: Record<string, ScreenImageEntry>
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
 
@@ -140,6 +142,148 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Screen Background */}
+      <div>
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Screen Background</label>
+        <div className="bg-slate-50 rounded-lg border border-slate-100 p-3">
+          {(() => {
+            const bgEntries: ScreenBgEntry[] = activePage.background || [];
+            const bgEnabled = bgEntries.length > 0;
+
+            const updateBg = (entries: ScreenBgEntry[]) => {
+              onUpdatePage({ ...activePage, background: entries.length > 0 ? entries : undefined });
+            };
+
+            return (
+              <>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="page-bg-enable"
+                    checked={bgEnabled}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        updateBg([{ color: 'black' }]);
+                      } else {
+                        updateBg([]);
+                      }
+                    }}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor="page-bg-enable" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
+                    Enable background
+                  </label>
+                </div>
+
+                {bgEnabled && (
+                  <div className="pl-4 mt-3 space-y-3">
+                    {bgEntries.map((entry, idx) => {
+                      const isImage = 'image' in entry;
+                      const hasCondition = 'condition' in entry;
+                      return (
+                        <div key={idx} className="space-y-2 pb-2 border-b border-slate-200 last:border-b-0 last:pb-0">
+                          {/* Type + delete row */}
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={isImage ? 'image' : 'color'}
+                              onChange={e => {
+                                const newEntries = bgEntries.map((en, i) => {
+                                  if (i !== idx) return en;
+                                  if (e.target.value === 'image') {
+                                    const { color: _c, ...rest } = en as any;
+                                    return { ...rest, image: '' };
+                                  } else {
+                                    const { image: _img, ...rest } = en as any;
+                                    return { ...rest, color: 'black' };
+                                  }
+                                });
+                                updateBg(newEntries);
+                              }}
+                              className="text-xs border rounded px-1.5 py-1 bg-white flex-shrink-0"
+                            >
+                              <option value="color">Color</option>
+                              <option value="image">Image</option>
+                            </select>
+                            <div className="flex-1 min-w-0">
+                              {isImage ? (
+                                <ImageSelectInput
+                                  value={entry.image || ''}
+                                  onChange={v => {
+                                    const newEntries = bgEntries.map((en, i) => i === idx ? { ...en, image: v } : en);
+                                    updateBg(newEntries);
+                                  }}
+                                  images={(screenImages || {}) as Record<string, ImageEntry>}
+                                />
+                              ) : (
+                                <ColorPicker
+                                  value={(entry as any).color || 'black'}
+                                  onChange={v => {
+                                    const newEntries = bgEntries.map((en, i) => i === idx ? { ...en, color: v } : en);
+                                    updateBg(newEntries);
+                                  }}
+                                  colors={colorList}
+                                />
+                              )}
+                            </div>
+                            <button
+                              onClick={() => updateBg(bgEntries.filter((_, i) => i !== idx))}
+                              className="text-red-400 hover:text-red-600 p-0.5 rounded shrink-0"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+
+                          {/* Only if condition */}
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              id={`bg-cond-${idx}`}
+                              checked={hasCondition}
+                              onChange={ev => {
+                                const newEntries = bgEntries.map((en, i) => {
+                                  if (i !== idx) return en;
+                                  const updated = { ...en };
+                                  if (ev.target.checked) {
+                                    (updated as any).condition = '';
+                                  } else {
+                                    delete (updated as any).condition;
+                                  }
+                                  return updated;
+                                });
+                                updateBg(newEntries);
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label htmlFor={`bg-cond-${idx}`} className="text-[10px] text-slate-500 select-none cursor-pointer">
+                              Only if condition
+                            </label>
+                          </div>
+                          {hasCondition && (
+                            <ConditionBuilder
+                              value={(entry as any).condition || ''}
+                              onChange={v => {
+                                const newEntries = bgEntries.map((en, i) => i === idx ? { ...en, condition: v } : en);
+                                updateBg(newEntries);
+                              }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <button
+                      onClick={() => updateBg([...bgEntries, { color: 'black' }])}
+                      className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Add background layer
+                    </button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>

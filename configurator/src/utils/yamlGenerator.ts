@@ -39,6 +39,15 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
       rows: page.rows,
       cols: page.cols,
       flags: page.flags && page.flags.length > 0 ? page.flags : undefined,
+      background: page.background && page.background.length > 0 ? page.background.map((entry: any) => {
+        const result: any = {};
+        if ('color' in entry && entry.color) result.color = entry.color;
+        if ('image' in entry && entry.image) result.image = entry.image;
+        if ('condition' in entry && entry.condition !== '' && entry.condition != null) {
+          result.condition = transformConditionLogic(entry.condition);
+        }
+        return result;
+      }).filter(e => 'color' in e || 'image' in e) : undefined,
       tiles: page.tiles
         .filter(tile => tile.x < page.cols && tile.y < page.rows)
         .map(({ id, ...rest }) => {
@@ -134,7 +143,8 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
     const yamlString = yaml.dump({ 
         screens,
         dynamic_entities: includeInternalKeys && config.dynamic_entities && config.dynamic_entities.length > 0 ? config.dynamic_entities : undefined,
-        images: config.images && Object.keys(config.images).length > 0 ? config.images : undefined
+        images: config.images && Object.keys(config.images).length > 0 ? config.images : undefined,
+        screen_images: config.screen_images && Object.keys(config.screen_images).length > 0 ? config.screen_images : undefined
     }, { lineWidth: -1, noCompatMode: true, sortKeys: false });
     // Ensure icons are formatted as '"\U..."' for ESPHome compatibility
     return yamlString.replace(/icon:\s*['"]?(\\U[0-9a-fA-F]+)['"]?/g, "icon: '\"$1\"'");

@@ -255,6 +255,14 @@ jobs:
         with:
           path: /tmp/toolchain-artifacts
 
+      - name: Create build ID file
+        id: build_id
+        run: |
+          BUILD_ID="${{ needs.check-version.outputs.esphome_version }}-$(date -u +%Y%m%d)-run${{ github.run_number }}"
+          echo "$BUILD_ID" > /tmp/build_id.txt
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+          echo "Build ID: $BUILD_ID"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -264,6 +272,7 @@ jobs:
             Pre-built PlatformIO/ESP-IDF toolchain for Alpine Linux (musl).
 
             **ESPHome version:** `${{ needs.check-version.outputs.esphome_version }}`
+            **Build ID:** `${{ steps.build_id.outputs.build_id }}`
             **Architectures:** `amd64`, `arm64`
 
             These tarballs are downloaded automatically by the CYD Tiled Display add-on
@@ -272,5 +281,6 @@ jobs:
           files: |
             /tmp/toolchain-artifacts/toolchain-amd64/toolchain-amd64.tar.xz
             /tmp/toolchain-artifacts/toolchain-arm64/toolchain-arm64.tar.xz
+            /tmp/build_id.txt
           prerelease: false
           make_latest: false

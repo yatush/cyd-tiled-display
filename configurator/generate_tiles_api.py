@@ -374,6 +374,60 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
 
         images_yaml = "image:\n" + "\n".join([_none_decl] + image_declarations) + "\n"
 
+        # Handle screen_images: each image is sized to the full screen (screen_w × screen_h).
+        # No per-layout variants — screen images are always full screen size.
+        screen_images = config.get("screen_images") or {}
+        for _sid, _sentry in screen_images.items():
+            if not isinstance(_sentry, dict):
+                continue
+            _sfilename = _sentry.get("filename", f"{_sid}.png")
+            _sdata = _sentry.get("data", "")
+            _stype = _sentry.get("type", "RGB565")
+            _sstem, _ = _os.path.splitext(_os.path.basename(_sfilename))
+            _ssafe = f"screen_{_sstem}.png"
+
+            if images_dir and _sdata and _ssafe not in _written_pngs:
+                _os.makedirs(images_dir, exist_ok=True)
+                try:
+                    raw_bytes = _base64.b64decode(_sdata)
+                    # Cover-crop: scale to fill screen_w × screen_h, center-crop to exact size.
+                    try:
+                        import io as _io
+                        from PIL import Image as _PILImage
+                        _img = _PILImage.open(_io.BytesIO(raw_bytes))
+                        _src_w, _src_h = _img.size
+                        _scale = max(screen_w / _src_w, screen_h / _src_h)
+                        _new_w = int(_src_w * _scale + 0.5)
+                        _new_h = int(_src_h * _scale + 0.5)
+                        _img = _img.resize((_new_w, _new_h), _PILImage.LANCZOS)
+                        _left = (_new_w - screen_w) // 2
+                        _top = (_new_h - screen_h) // 2
+                        _img = _img.crop((_left, _top, _left + screen_w, _top + screen_h))
+                        _buf = _io.BytesIO()
+                        _img.save(_buf, format='PNG')
+                        raw_bytes = _buf.getvalue()
+                    except Exception as _crop_e:
+                        print(f"Warning: cover-crop failed for screen image '{_sid}': {_crop_e}")
+                    with open(_os.path.join(images_dir, _ssafe), 'wb') as _f:
+                        _f.write(raw_bytes)
+                    _written_pngs.add(_ssafe)
+                except Exception as _e:
+                    print(f"Warning: failed to write screen image '{_sid}': {_e}")
+
+            if _stype == 'RGBA':
+                _stype_lines = "    type: RGB\n    transparency: alpha_channel"
+            else:
+                _stype_lines = f"    type: {_stype}"
+
+            image_declarations.append(
+                f"  - file: images/{_ssafe}\n"
+                f"    id: {_sid}\n"
+                f"{_stype_lines}"
+            )
+
+        if screen_images:
+            images_yaml = "image:\n" + "\n".join([_none_decl] + image_declarations) + "\n"
+
         return {
             "success": True,
             "cpp": cpp_lambdas,

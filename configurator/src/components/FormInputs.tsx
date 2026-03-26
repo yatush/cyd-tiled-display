@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Plus, Upload, X } from 'lucide-react';
 import { apiFetch } from '../utils/api';
-import { HaEntity, ImageEntry } from '../types';
+import { HaEntity, ImageEntry, ScreenImageEntry } from '../types';
 import { IconPicker, ColorPicker } from './Pickers';
 
 export const NumberInput = ({ label, value, onChange, min = 0 }: { label: string, value: number, onChange: (v: number) => void, min?: number }) => (
@@ -704,6 +704,29 @@ function detectImageType(base64: string): 'RGBA' | 'RGB565' {
   }
 }
 
+/** Cover-crop an image to exactly targetWidth × targetHeight (scale-to-fill + center-crop). */
+function coverCropToPng(dataUrl: string, targetWidth: number, targetHeight: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
+      const scaledW = Math.round(img.width * scale);
+      const scaledH = Math.round(img.height * scale);
+      const offsetX = Math.round((scaledW - targetWidth) / 2);
+      const offsetY = Math.round((scaledH - targetHeight) / 2);
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('No 2d context')); return; }
+      ctx.drawImage(img, -offsetX, -offsetY, scaledW, scaledH);
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 /** Generate a unique image ID from a filename, avoiding collisions with existing keys. */
 /** Resize an image to fit within maxWidth × maxHeight, returning a PNG base64 string. */
 function resizeImageToPng(dataUrl: string, maxWidth: number, maxHeight: number): Promise<string> {
@@ -732,6 +755,15 @@ function resizeImageToPng(dataUrl: string, maxWidth: number, maxHeight: number):
 export function generateImageId(filename: string, existing: Record<string, ImageEntry>): string {
   const stem = filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
   const base = `img_${stem}`;
+  if (!existing[base]) return base;
+  let n = 1;
+  while (existing[`${base}_${n}`]) n++;
+  return `${base}_${n}`;
+}
+
+export function generateScreenImageId(filename: string, existing: Record<string, ScreenImageEntry>): string {
+  const stem = filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_');
+  const base = `bg_${stem}`;
   if (!existing[base]) return base;
   let n = 1;
   while (existing[`${base}_${n}`]) n++;
@@ -953,6 +985,88 @@ export const ImageManagerPanel = ({
         className="w-full text-xs text-blue-600 border border-dashed border-blue-300 rounded py-1.5 hover:bg-blue-50 flex items-center justify-center gap-1 mt-1"
       >
         <Upload size={12} /> Upload Image
+      </button>
+      <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} />
+    </div>
+  );
+};
+
+// ---- ScreenImageManagerPanel ------------------------------------------------
+// Manages the screen_images store: upload, list, delete.
+// No scale slider — ESPHome resizes screen images to full screen dimensions at compile time.
+
+export const ScreenImageManagerPanel = ({
+  images,
+  onAddImage,
+  onDeleteImage,
+}: {
+  images: Record<string, ScreenImageEntry>;
+  onAddImage: (id: string, entry: ScreenImageEntry) => void;
+  onDeleteImage: (id: string) => void;
+}) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageIds = Object.keys(images || {});
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      if (!file.name.match(/\.(png|jpg|jpeg|gif|bmp)$/i)) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const dataUrl = ev.target?.result as string;
+        const originalBase64 = dataUrl.split(',')[1];
+        const imgType = file.name.toLowerCase().endsWith('.png') ? detectImageType(originalBase64) : 'RGB565';
+        if (Object.keys(images || {}).some(id => images[id].filename === file.name)) return;
+        coverCropToPng(dataUrl, 480, 320).then(base64 => {
+          const newId = generateScreenImageId(file.name, images || {});
+          onAddImage(newId, { data: base64, filename: file.name, type: imgType });
+        }).catch(() => {
+          const newId = generateScreenImageId(file.name, images || {});
+          onAddImage(newId, { data: originalBase64, filename: file.name, type: imgType });
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {imageIds.length === 0 && (
+        <div className="text-[10px] text-slate-400 italic px-1 py-1">No screen background images yet</div>
+      )}
+      {imageIds.map(id => {
+        const entry = images[id];
+        return (
+          <div key={id} className="p-1.5 border rounded bg-white hover:bg-slate-50">
+            <div className="flex items-center gap-2">
+              <img
+                src={`data:image/png;base64,${entry.data}`}
+                alt={entry.filename}
+                className="flex-shrink-0 w-12 h-8 object-contain border rounded bg-slate-100"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-bold text-blue-700 truncate">{id}</div>
+                <div className="text-[9px] text-slate-400">{entry.type || 'RGB565'} · screen bg</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onDeleteImage(id)}
+                className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                title={`Delete ${id}`}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="w-full text-xs text-blue-600 border border-dashed border-blue-300 rounded py-1.5 hover:bg-blue-50 flex items-center justify-center gap-1 mt-1"
+      >
+        <Upload size={12} /> Upload Screen Image
       </button>
       <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} />
     </div>
