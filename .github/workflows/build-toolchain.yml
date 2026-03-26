@@ -101,6 +101,13 @@ jobs:
               for name in gcc g++ cc c++; do
                 ln -sf /usr/bin/ccache /usr/local/lib/ccache/$name
               done
+              # Also intercept the Xtensa ESP32 cross-compilers used by ESP-IDF
+              for name in xtensa-esp32-elf-gcc xtensa-esp32-elf-g++ \
+                          xtensa-esp32s2-elf-gcc xtensa-esp32s2-elf-g++ \
+                          xtensa-esp32s3-elf-gcc xtensa-esp32s3-elf-g++ \
+                          xtensa-esp-elf-gcc xtensa-esp-elf-g++; do
+                ln -sf /usr/bin/ccache /usr/local/lib/ccache/$name
+              done
 
               echo "=== Downloading ESP32 toolchain via ESPHome compile (with ccache) ==="
               mkdir -p /root/.platformio/.ccache
