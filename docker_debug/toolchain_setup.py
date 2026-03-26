@@ -360,8 +360,8 @@ def maybe_warm_cache() -> None:
     env = os.environ.copy()
     env['CCACHE_DIR']                 = f'{PIO_DIR}/.ccache'
     env['CCACHE_MAXSIZE']             = '2G'
-    # Cap at 2 to avoid OOM-killing Gunicorn on memory-constrained devices (RPi4).
-    env['CMAKE_BUILD_PARALLEL_LEVEL'] = '2'
+    # Cap at 1 on arm64 (RPi4) to avoid OOM-killing Gunicorn; 2 on amd64.
+    env['CMAKE_BUILD_PARALLEL_LEVEL'] = '1' if get_arch() == 'arm64' else '2'
     os.makedirs(env['CCACHE_DIR'], exist_ok=True)
     ccache_bin = '/usr/local/lib/ccache'
     if os.path.isdir(ccache_bin):
@@ -408,7 +408,13 @@ def maybe_warm_cache() -> None:
     # so its build output seeds the per-session copy in run_session.sh.
     _compile('480\u00d7320 (3248s035)', 97,
              480, 320, 32, 60, 80, 100, 30, 30, 40, 18)
-
+    # Step 3.5 — re-fix wrappers: the emulator compiles above may have caused
+    # PlatformIO to download a new toolchain package (e.g. toolchain-xtensa-esp-elf
+    # when pioarduino bumps its version). Those freshly-downloaded packages contain
+    # glibc Rust binaries that panic on Alpine/musl. Re-running fix_wrappers() here
+    # is idempotent and ensures both the CI tarball and the runtime container always
+    # end up with Alpine-compatible shell wrappers.
+    fix_wrappers()
     # Step 4 — restore images.yaml to empty placeholder and remove the
     #           temporary test_device_tiles.yaml.
     try:
@@ -452,7 +458,7 @@ def build_toolchain_locally(reason: str) -> None:
                 'esp32:\n  board: esp32dev\n  framework:\n    type: esp-idf\n')
 
     env = os.environ.copy()
-    env['CMAKE_BUILD_PARALLEL_LEVEL'] = '2'
+    env['CMAKE_BUILD_PARALLEL_LEVEL'] = '1' if get_arch() == 'arm64' else '2'
 
     # ── Background watcher ────────────────────────────────────────────────────
     # PlatformIO first downloads all its packages (cmake, ninja, …), then
@@ -542,6 +548,9 @@ def main() -> None:
     if stored == expected and has_packages():
         log('Toolchain up-to-date.')
         set_stored_version(expected)   # ensures SETUP_MARKER is present
+        fix_wrappers()   # idempotent catch-all: PlatformIO may have downloaded
+                         # new packages outside our control (e.g. a fresh
+                         # toolchain-xtensa-esp-elf during a previous esphome run).
         maybe_warm_cache()
         write_progress('ready', 100, 'Toolchain ready.')
         return
@@ -598,6 +607,7 @@ def main() -> None:
         log(f'Pre-built release not available yet: {e}.')
         if os.path.exists(SETUP_MARKER):
             log('Setup marker present — keeping existing toolchain.')
+            fix_wrappers()
             maybe_warm_cache()
             write_progress('ready', 100,
                            'Toolchain ready (update pending — new release not yet available)')
@@ -609,6 +619,7 @@ def main() -> None:
 
     except Exception as e:
         log(f'Background download failed: {e}. Keeping existing toolchain.')
+        fix_wrappers()
         maybe_warm_cache()
         write_progress('ready', 100,
                        'Toolchain ready (update failed; using previous version)')
