@@ -459,6 +459,12 @@ def build_toolchain_locally(reason: str) -> None:
 
     env = os.environ.copy()
     env['CMAKE_BUILD_PARALLEL_LEVEL'] = '1' if get_arch() == 'arm64' else '2'
+    env['CCACHE_DIR']    = f'{PIO_DIR}/.ccache'
+    env['CCACHE_MAXSIZE'] = '2G'
+    os.makedirs(env['CCACHE_DIR'], exist_ok=True)
+    ccache_bin = '/usr/local/lib/ccache'
+    if os.path.isdir(ccache_bin):
+        env['PATH'] = f'{ccache_bin}:{env.get("PATH", "")}'
 
     # ── Background watcher ────────────────────────────────────────────────────
     # PlatformIO first downloads all its packages (cmake, ninja, …), then
