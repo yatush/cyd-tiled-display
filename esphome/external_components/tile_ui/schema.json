@@ -6,7 +6,7 @@
     { "name": "y_span", "type": "number", "label": "Y Span", "optional": true },
     { "name": "display", "type": "display_list", "label": "Display Scripts", "optional": true },
     { "name": "omit_frame", "type": "boolean", "label": "Omit Frame", "optional": true },
-    { "name": "fill_color", "type": "color", "label": "Fill Color", "optional": true },
+    { "name": "fill_color", "type": "color_list", "label": "Fill Color", "optional": true },
     { 
       "name": "requires_fast_refresh", 
       "type": "condition_logic", 

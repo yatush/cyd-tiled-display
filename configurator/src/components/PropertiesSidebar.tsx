@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Layout, Settings2 } from 'lucide-react';
+import { Trash2, Layout, Settings2, Plus } from 'lucide-react';
 import { Tile, Config, Page, HaEntity, ImageEntry } from '../types';
 import { 
   TextInput, 
@@ -177,38 +177,39 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
         {activeTab === 'page' ? (
           renderPageProperties()
         ) : selectedTile ? (
-          <div className="space-y-4 pb-20">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h2 className="font-bold text-lg text-slate-800">Edit Tile</h2>
+          <div className="space-y-5 pb-20">
+            {/* Header */}
+            <div className="flex justify-between items-start border-b pb-3">
+              <div>
+                <h2 className="font-bold text-base text-slate-800">Edit Tile</h2>
+                <div className="text-[10px] font-mono text-slate-400 mt-0.5">{selectedTile.type}</div>
+              </div>
               <button onClick={() => onDelete()} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors" title="Delete Tile">
                 <Trash2 size={18} />
               </button>
             </div>
-            
+
+            {/* Position & Size */}
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Common</label>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="col-span-2">
-                  <label className="block text-xs text-slate-600 mb-1 font-medium">Type</label>
-                  <div className="p-2 bg-slate-100 rounded-lg text-xs font-mono text-slate-600 border border-slate-200">{selectedTile.type}</div>
-                </div>
-                <div className="flex gap-3 col-span-2">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Position & Size</label>
+              <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
                   {schema?.common?.filter((f: any) => f.name === 'x' || f.name === 'y').map((field: any) => (
-                    <div key={field.name} className="flex-1">
-                      <label className="block text-xs text-slate-600 mb-1 font-medium">{field.label}</label>
-                      <input 
-                        type="number" 
-                        value={selectedTile[field.name]} 
+                    <div key={field.name}>
+                      <label className="block text-xs text-slate-500 mb-1 font-medium">{field.label}</label>
+                      <input
+                        type="number"
+                        value={selectedTile[field.name]}
                         onChange={e => onUpdate({...selectedTile, [field.name]: parseInt(e.target.value)})}
-                        className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                        className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors bg-white"
                       />
                     </div>
                   ))}
                 </div>
-                <div className="col-span-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <input 
-                      type="checkbox" 
+                <div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
                       id="enable_span"
                       checked={selectedTile.x_span !== undefined || selectedTile.y_span !== undefined}
                       onChange={e => {
@@ -223,518 +224,541 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                     />
                     <label htmlFor="enable_span" className="text-xs font-medium text-slate-700 select-none cursor-pointer">Span Multiple Cells</label>
                   </div>
-                  
                   {(selectedTile.x_span !== undefined || selectedTile.y_span !== undefined) && (
-                    <div className="flex gap-3 pl-6">
-                      <div className="flex-1">
-                        <label className="block text-xs text-slate-600 mb-1 font-medium">X Span</label>
-                        <input 
-                          type="number" 
-                          value={selectedTile.x_span || 1} 
+                    <div className="grid grid-cols-2 gap-3 pl-6 mt-2">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1 font-medium">X Span</label>
+                        <input
+                          type="number"
+                          value={selectedTile.x_span || 1}
                           onChange={e => onUpdate({...selectedTile, x_span: Math.max(1, parseInt(e.target.value) || 1)})}
                           min={1}
-                          className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                          className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors bg-white"
                         />
                       </div>
-                      <div className="flex-1">
-                        <label className="block text-xs text-slate-600 mb-1 font-medium">Y Span</label>
-                        <input 
-                          type="number" 
-                          value={selectedTile.y_span || 1} 
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1 font-medium">Y Span</label>
+                        <input
+                          type="number"
+                          value={selectedTile.y_span || 1}
                           onChange={e => onUpdate({...selectedTile, y_span: Math.max(1, parseInt(e.target.value) || 1)})}
                           min={1}
-                          className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                          className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors bg-white"
                         />
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-              
-              <div className="space-y-4">
-                {schema?.common?.filter((f: any) => f.name !== 'x' && f.name !== 'y' && f.name !== 'x_span' && f.name !== 'y_span').map((field: any) => {
-           if (field.type === 'display_list') {
-             const hasImages = Array.isArray(selectedTile.display_assets) && selectedTile.display_assets.length > 0;
-             const hasDisplayScripts = Array.isArray(selectedTile[field.name]) && selectedTile[field.name].length > 0;
-             // Find the display_assets field definition from the schema
-             const imagesField = schema?.common?.find((f: any) => f.type === 'assets_list');
-             const imagesEnabled = imagesField && selectedTile[imagesField.name] !== undefined;
-             return (
-                <div key={field.name} className="space-y-2">
-                  {hasImages && hasDisplayScripts && (
-                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-1">
-                      ⚠ Display scripts are ignored when Display Assets are set. Remove display assets or clear display scripts.
-                    </div>
-                  )}
-                  <DisplayListInput
-                    value={Array.isArray(selectedTile[field.name]) ? selectedTile[field.name] : (selectedTile[field.name] ? [selectedTile[field.name]] : [])}
-                    onChange={v => onUpdate({...selectedTile, [field.name]: v})}
-                    tileType={selectedTile.type}
-                  />
-                  {imagesField && (
-                    <div className="border rounded p-2 bg-slate-50">
-                      <div className="flex items-center gap-2 mb-2">
-                        <input
-                          type="checkbox"
-                          checked={!!imagesEnabled}
-                          onChange={e => {
-                            if (e.target.checked) {
-                              onUpdate({...selectedTile, [imagesField.name]: []});
-                            } else {
-                              const newTile = {...selectedTile};
-                              delete newTile[imagesField.name];
-                              onUpdate(newTile);
-                            }
-                          }}
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer"
-                          onClick={() => {
-                            if (!imagesEnabled) onUpdate({...selectedTile, [imagesField.name]: []});
-                            else { const t = {...selectedTile}; delete t[imagesField.name]; onUpdate(t); }
-                          }}
-                        >{imagesField.label}</label>
+            </div>
+
+            {/* Display */}
+            {schema?.common?.some((f: any) => f.type === 'display_list') && (() => {
+              const field = schema.common.find((f: any) => f.type === 'display_list');
+              const imagesField = schema?.common?.find((f: any) => f.type === 'assets_list');
+              const hasImages = Array.isArray(selectedTile.display_assets) && selectedTile.display_assets.length > 0;
+              const hasDisplayScripts = Array.isArray(selectedTile[field.name]) && selectedTile[field.name].length > 0;
+              const imagesEnabled = imagesField && selectedTile[imagesField.name] !== undefined;
+              return (
+                <div key="display-section">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Display</label>
+                  <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
+                    {hasImages && hasDisplayScripts && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-1">
+                        ⚠ Display scripts are ignored when Display Assets are set.
                       </div>
-                      {imagesEnabled && hasDisplayScripts && (
-                        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-1 mb-2">
-                          ⚠ Cannot have both Images and Display Scripts. Remove the display scripts first.
+                    )}
+                    <DisplayListInput
+                      value={Array.isArray(selectedTile[field.name]) ? selectedTile[field.name] : (selectedTile[field.name] ? [selectedTile[field.name]] : [])}
+                      onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                      tileType={selectedTile.type}
+                    />
+                    {imagesField && (
+                      <div className="border-t pt-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <input
+                            type="checkbox"
+                            checked={!!imagesEnabled}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                onUpdate({...selectedTile, [imagesField.name]: []});
+                              } else {
+                                const newTile = {...selectedTile};
+                                delete newTile[imagesField.name];
+                                onUpdate(newTile);
+                              }
+                            }}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <label
+                            className="text-xs font-medium text-slate-600 select-none cursor-pointer"
+                            onClick={() => {
+                              if (!imagesEnabled) onUpdate({...selectedTile, [imagesField.name]: []});
+                              else { const t = {...selectedTile}; delete t[imagesField.name]; onUpdate(t); }
+                            }}
+                          >{imagesField.label}</label>
                         </div>
-                      )}
-                      {imagesEnabled && (
-                        <div className="pl-2">
+                        {imagesEnabled && hasDisplayScripts && (
+                          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-1 mb-2">
+                            ⚠ Cannot have both Images and Display Scripts. Remove the display scripts first.
+                          </div>
+                        )}
+                        {imagesEnabled && (
                           <ImagesListInput
                             value={selectedTile[imagesField.name] || []}
                             onChange={v => onUpdate({...selectedTile, [imagesField.name]: v})}
                             images={images}
                           />
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-             );
-           }
-           if (field.type === 'boolean') {
-             return (
-                <Checkbox 
-                  key={field.name}
-                  label={field.label} 
-                  checked={selectedTile[field.name] || false} 
-                  onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                />
-             );
-           }
-           if (field.type === 'color') {
-             const isEnabled = selectedTile[field.name] !== undefined;
-             return (
-               <div key={field.name} className="mb-2">
-                 <div className="flex items-center gap-2 mb-1">
-                   <input
-                     type="checkbox"
-                     checked={isEnabled}
-                     onChange={e => {
-                       if (e.target.checked) {
-                         onUpdate({...selectedTile, [field.name]: 'dark_dark_gray'});
-                       } else {
-                         const newTile = {...selectedTile};
-                         delete newTile[field.name];
-                         onUpdate(newTile);
-                       }
-                     }}
-                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                   />
-                   <label className="text-xs font-medium text-slate-700 select-none cursor-pointer"
-                     onClick={() => {
-                       if (!isEnabled) onUpdate({...selectedTile, [field.name]: 'dark_dark_gray'});
-                       else { const t = {...selectedTile}; delete t[field.name]; onUpdate(t); }
-                     }}
-                   >{field.label}</label>
-                 </div>
-                 {isEnabled && (
-                   <div className="pl-6">
-                     <ColorPicker
-                       value={selectedTile[field.name]}
-                       onChange={v => onUpdate({...selectedTile, [field.name]: v})}
-                       colors={colorList}
-                     />
-                   </div>
-                 )}
-               </div>
-             );
-           }
-           if (field.type === 'condition_logic') {
-                if (field.optional) {
-                    const isEnabled = selectedTile[field.name] !== undefined;
-                    return (
-                        <div key={field.name} className="mb-4 border rounded p-2 bg-slate-50">
-                            <div className="flex items-center gap-2 mb-2">
-                                <input 
-                                    type="checkbox" 
-                                    checked={isEnabled} 
-                                    onChange={e => {
-                                        if (e.target.checked) {
-                                            onUpdate({...selectedTile, [field.name]: ''});
-                                        } else {
-                                            const newTile = {...selectedTile};
-                                            delete newTile[field.name];
-                                            onUpdate(newTile);
-                                        }
-                                    }}
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer" onClick={() => {
-                                    if (!isEnabled) onUpdate({...selectedTile, [field.name]: ''});
-                                    else {
-                                        const newTile = {...selectedTile};
-                                        delete newTile[field.name];
-                                        onUpdate(newTile);
-                                    }
-                                }}>{field.label}</label>
-                            </div>
-                            {isEnabled && (
-                                <div className="pl-2">
-                                    <ConditionBuilder 
-                                        value={selectedTile[field.name] || ''} 
-                                        onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    );
-                }
-                return (
-                    <div key={field.name} className="mb-4">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">{field.label}</label>
-                        <ConditionBuilder 
-                            value={selectedTile[field.name] || ''} 
-                            onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
+              );
+            })()}
+
+            {/* Appearance */}
+            {schema?.common?.some((f: any) => f.type === 'boolean' || f.type === 'color' || f.type === 'color_list') && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Appearance</label>
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
+                  {schema.common.filter((f: any) => f.type === 'boolean' || f.type === 'color' || f.type === 'color_list').map((field: any) => {
+                    if (field.type === 'boolean') {
+                      return (
+                        <Checkbox
+                          key={field.name}
+                          label={field.label}
+                          checked={selectedTile[field.name] || false}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                         />
-                    </div>
-                );
-           }
-           if (field.type === 'object') {
-                if (field.optional) {
-                    const isEnabled = selectedTile[field.name] !== undefined;
-                    return (
-                        <div key={field.name} className="mb-4 border rounded p-2 bg-slate-50">
-                            <div className="flex items-center gap-2 mb-2">
-                                <input 
-                                    type="checkbox" 
-                                    checked={isEnabled} 
-                                    onChange={e => {
-                                        if (e.target.checked) {
-                                            onUpdate({...selectedTile, [field.name]: {}});
-                                        } else {
-                                            const newTile = {...selectedTile};
-                                            delete newTile[field.name];
-                                            onUpdate(newTile);
-                                        }
-                                    }}
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer" onClick={() => {
-                                    if (!isEnabled) onUpdate({...selectedTile, [field.name]: {}});
-                                    else {
-                                        const newTile = {...selectedTile};
-                                        delete newTile[field.name];
-                                        onUpdate(newTile);
-                                    }
-                                }}>{field.label}</label>
-                            </div>
-                            {isEnabled && (
-                                <div className="pl-2">
-                                    <ObjectInput 
-                                        label="" 
-                                        value={selectedTile[field.name] || {}} 
-                                        fields={field.objectFields}
-                                        onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                                        dynamicEntities={dynamicEntities}
-                                        haEntities={haEntities}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    );
-                }
-                return (
-                    <ObjectInput 
-                      key={field.name}
-                      label={field.label} 
-                      value={selectedTile[field.name] || {}} 
-                      fields={field.objectFields}
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      dynamicEntities={dynamicEntities}
-                      haEntities={haEntities}
-                    />
-                );
-           }
-           if (field.type === 'assets_list') {
-                // Rendered inline inside the display_list block above — skip here
-                return null;
-                const isEnabled = selectedTile[field.name] !== undefined;
-                const hasDisplay = Array.isArray(selectedTile.display) && selectedTile.display.length > 0;
-                return (
-                    <div key={field.name} className="mb-4 border rounded p-2 bg-slate-50">
-                        <div className="flex items-center gap-2 mb-2">
+                      );
+                    }
+                    if (field.type === 'color') {
+                      const isEnabled = selectedTile[field.name] !== undefined;
+                      return (
+                        <div key={field.name}>
+                          <div className="flex items-center gap-2">
                             <input
+                              type="checkbox"
+                              checked={isEnabled}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  onUpdate({...selectedTile, [field.name]: 'dark_dark_gray'});
+                                } else {
+                                  const newTile = {...selectedTile};
+                                  delete newTile[field.name];
+                                  onUpdate(newTile);
+                                }
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label
+                              className="text-xs font-medium text-slate-700 select-none cursor-pointer"
+                              onClick={() => {
+                                if (!isEnabled) onUpdate({...selectedTile, [field.name]: 'dark_dark_gray'});
+                                else { const t = {...selectedTile}; delete t[field.name]; onUpdate(t); }
+                              }}
+                            >{field.label}</label>
+                          </div>
+                          {isEnabled && (
+                            <div className="pl-6 mt-1">
+                              <ColorPicker
+                                value={selectedTile[field.name]}
+                                onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                                colors={colorList}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (field.type === 'color_list') {
+                      const isEnabled = selectedTile[field.name] !== undefined;
+                      const entries: {color: string, condition?: any}[] = isEnabled
+                        ? (Array.isArray(selectedTile[field.name])
+                            ? selectedTile[field.name]
+                            : [{color: selectedTile[field.name] || 'dark_dark_gray'}])
+                        : [];
+                      return (
+                        <div key={field.name}>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isEnabled}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  onUpdate({...selectedTile, [field.name]: [{color: 'dark_dark_gray'}]});
+                                } else {
+                                  const newTile = {...selectedTile};
+                                  delete newTile[field.name];
+                                  onUpdate(newTile);
+                                }
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label
+                              className="text-xs font-medium text-slate-700 select-none cursor-pointer"
+                              onClick={() => {
+                                if (!isEnabled) onUpdate({...selectedTile, [field.name]: [{color: 'dark_dark_gray'}]});
+                                else { const t = {...selectedTile}; delete t[field.name]; onUpdate(t); }
+                              }}
+                            >{field.label}</label>
+                          </div>
+                          {isEnabled && (
+                            <div className="pl-6 mt-2 space-y-2">
+                              {entries.map((entry, idx) => {
+                                const hasCondition = 'condition' in entry;
+                                return (
+                                <div key={idx} className="space-y-1">
+                                  <div className="flex items-center gap-1">
+                                    <div className="flex-1">
+                                      <ColorPicker
+                                        value={entry.color}
+                                        onChange={v => {
+                                          const newEntries = entries.map((e, i) => i === idx ? {...e, color: v} : e);
+                                          onUpdate({...selectedTile, [field.name]: newEntries});
+                                        }}
+                                        colors={colorList}
+                                      />
+                                    </div>
+                                    {idx > 0 && (
+                                      <button
+                                        onClick={() => {
+                                          const newEntries = entries.filter((_, i) => i !== idx);
+                                          onUpdate({...selectedTile, [field.name]: newEntries});
+                                        }}
+                                        className="text-red-400 hover:text-red-600 p-0.5 rounded shrink-0"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="checkbox"
+                                      id={`fill-cond-${field.name}-${idx}`}
+                                      checked={hasCondition}
+                                      onChange={ev => {
+                                        const newEntries = entries.map((e, i) => {
+                                          if (i !== idx) return e;
+                                          const updated = {...e};
+                                          if (ev.target.checked) {
+                                            updated.condition = '';
+                                          } else {
+                                            delete updated.condition;
+                                          }
+                                          return updated;
+                                        });
+                                        onUpdate({...selectedTile, [field.name]: newEntries});
+                                      }}
+                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <label
+                                      htmlFor={`fill-cond-${field.name}-${idx}`}
+                                      className="text-[10px] text-slate-500 select-none cursor-pointer"
+                                    >Only if condition</label>
+                                  </div>
+                                  {hasCondition && (
+                                    <ConditionBuilder
+                                      value={entry.condition || ''}
+                                      onChange={v => {
+                                        const newEntries = entries.map((e, i) => i === idx ? {...e, condition: v} : e);
+                                        onUpdate({...selectedTile, [field.name]: newEntries});
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                                );
+                              })}
+                              <button
+                                onClick={() => {
+                                  const newEntries = [...entries, {color: 'dark_dark_gray', condition: ''}];
+                                  onUpdate({...selectedTile, [field.name]: newEntries});
+                                }}
+                                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                              >
+                                <Plus size={12} /> Add conditional color
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Behavior */}
+            {schema?.common?.some((f: any) => f.type === 'condition_logic' || (f.type === 'object' && f.optional)) && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Behavior</label>
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
+                  {schema.common.filter((f: any) => f.type === 'condition_logic' || (f.type === 'object' && f.optional)).map((field: any) => {
+                    const isEnabled = selectedTile[field.name] !== undefined;
+                    const toggle = (enabled: boolean) => {
+                      if (enabled) {
+                        onUpdate({...selectedTile, [field.name]: field.type === 'object' ? {} : ''});
+                      } else {
+                        const newTile = {...selectedTile};
+                        delete newTile[field.name];
+                        onUpdate(newTile);
+                      }
+                    };
+                    return (
+                      <div key={field.name}>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={e => toggle(e.target.checked)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <label
+                            className="text-xs font-medium text-slate-700 select-none cursor-pointer"
+                            onClick={() => toggle(!isEnabled)}
+                          >{field.label}</label>
+                        </div>
+                        {isEnabled && field.type === 'condition_logic' && (
+                          <div className="pl-6 mt-2">
+                            <ConditionBuilder
+                              value={selectedTile[field.name] || ''}
+                              onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                            />
+                          </div>
+                        )}
+                        {isEnabled && field.type === 'object' && (
+                          <div className="pl-6 mt-2">
+                            <ObjectInput
+                              label=""
+                              value={selectedTile[field.name] || {}}
+                              fields={field.objectFields}
+                              onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                              dynamicEntities={dynamicEntities}
+                              haEntities={haEntities}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Specific Properties */}
+            {tileSchema?.fields?.length > 0 && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">{tileSchema.label} Properties</label>
+                <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
+                  {tileSchema.fields.map((field: any) => {
+                    if (field.type === 'string' || field.type === 'ha_entity') {
+                      return (
+                        <TextInput
+                          key={field.name}
+                          label={field.label}
+                          value={selectedTile[field.name] || ''}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          haEntities={field.type === 'ha_entity' ? haEntities : undefined}
+                        />
+                      );
+                    }
+                    if (field.type === 'ha_entity_list') {
+                      return (
+                        <EntityListInput
+                          key={field.name}
+                          label={field.label}
+                          values={selectedTile[field.name] || []}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          haEntities={haEntities}
+                        />
+                      );
+                    }
+                    if (field.type === 'boolean') {
+                      return (
+                        <Checkbox
+                          key={field.name}
+                          label={field.label}
+                          checked={selectedTile[field.name] || false}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                        />
+                      );
+                    }
+                    if (field.type === 'script') {
+                      return (
+                        <ScriptInput
+                          key={field.name}
+                          label={field.label}
+                          value={selectedTile[field.name] || ''}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          type={field.scriptType}
+                        />
+                      );
+                    }
+                    if (field.type === 'script_list') {
+                      return (
+                        <ArrayInput
+                          key={field.name}
+                          label={field.label}
+                          values={selectedTile[field.name] || []}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          suggestionType={field.scriptType}
+                        />
+                      );
+                    }
+                    if (field.type === 'entity_list') {
+                      return (
+                        <EntityArrayInput
+                          key={field.name}
+                          label={field.label}
+                          values={selectedTile[field.name] || []}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          dynamicEntities={dynamicEntities}
+                          haEntities={haEntities}
+                        />
+                      );
+                    }
+                    if (field.type === 'object') {
+                      if (field.optional) {
+                        const isEnabled = selectedTile[field.name] !== undefined;
+                        return (
+                          <div key={field.name} className="border rounded-lg p-2 bg-white">
+                            <div className="flex items-center gap-2 mb-2">
+                              <input
                                 type="checkbox"
                                 checked={isEnabled}
                                 onChange={e => {
-                                    if (e.target.checked) {
-                                        onUpdate({...selectedTile, [field.name]: []});
-                                    } else {
-                                        const newTile = {...selectedTile};
-                                        delete newTile[field.name];
-                                        onUpdate(newTile);
-                                    }
+                                  if (e.target.checked) {
+                                    onUpdate({...selectedTile, [field.name]: {}});
+                                  } else {
+                                    const newTile = {...selectedTile};
+                                    delete newTile[field.name];
+                                    onUpdate(newTile);
+                                  }
                                 }}
                                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer"
-                                onClick={() => {
-                                    if (!isEnabled) onUpdate({...selectedTile, [field.name]: []});
-                                    else { const t = {...selectedTile}; delete t[field.name]; onUpdate(t); }
+                              />
+                              <label className="text-xs font-medium text-slate-600 select-none cursor-pointer" onClick={() => {
+                                if (!isEnabled) onUpdate({...selectedTile, [field.name]: {}});
+                                else { const newTile = {...selectedTile}; delete newTile[field.name]; onUpdate(newTile); }
+                              }}>{field.label}</label>
+                            </div>
+                            {isEnabled && (
+                              <div className="pl-2">
+                                <ObjectInput
+                                  label=""
+                                  value={selectedTile[field.name] || {}}
+                                  fields={field.objectFields}
+                                  onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                                  dynamicEntities={dynamicEntities}
+                                  haEntities={haEntities}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <ObjectInput
+                          key={field.name}
+                          label={field.label}
+                          value={selectedTile[field.name] || {}}
+                          fields={field.objectFields}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          dynamicEntities={dynamicEntities}
+                          haEntities={haEntities}
+                        />
+                      );
+                    }
+                    if (field.type === 'object_list') {
+                      return (
+                        <ObjectArrayInput
+                          key={field.name}
+                          label={field.label}
+                          values={selectedTile[field.name] || []}
+                          fields={field.objectFields}
+                          onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          haEntities={haEntities}
+                        />
+                      );
+                    }
+                    if (field.type === 'page_select') {
+                      if (field.optional) {
+                        const isEnabled = selectedTile[field.name] !== undefined;
+                        return (
+                          <div key={field.name}>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isEnabled}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    onUpdate({...selectedTile, [field.name]: config.pages[0].id});
+                                  } else {
+                                    const newTile = {...selectedTile};
+                                    delete newTile[field.name];
+                                    onUpdate(newTile);
+                                  }
                                 }}
-                            >{field.label}</label>
-                        </div>
-                        {isEnabled && hasDisplay && (
-                            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-1 mb-2">
-                                ⚠ Cannot have both Images and Display Scripts. Remove the display scripts first.
-                            </div>
-                        )}
-                        {isEnabled && (
-                            <div className="pl-2">
-                                <ImagesListInput
-                                    value={selectedTile[field.name] || []}
-                                    onChange={v => onUpdate({...selectedTile, [field.name]: v})}
-                                    images={images}
-                                />
-                            </div>
-                        )}
-                    </div>
-                );
-           }
-           return null;
-        })}
-      </div>
-
-      <div className="border-t pt-4">
-        <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Specific Properties</label>
-        
-        {tileSchema?.fields?.map((field: any) => {
-            if (field.type === 'string' || field.type === 'ha_entity') {
-                return (
-                    <TextInput 
-                      key={field.name}
-                      label={field.label} 
-                      value={selectedTile[field.name] || ''} 
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      haEntities={field.type === 'ha_entity' ? haEntities : undefined}
-                    />
-                );
-            }
-            if (field.type === 'ha_entity_list') {
-                return (
-                    <EntityListInput 
-                      key={field.name}
-                      label={field.label} 
-                      values={selectedTile[field.name] || []} 
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      haEntities={haEntities}
-                    />
-                );
-            }
-            if (field.type === 'boolean') {
-                return (
-                    <Checkbox 
-                      key={field.name}
-                      label={field.label} 
-                      checked={selectedTile[field.name] || false} 
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                    />
-                );
-            }
-            if (field.type === 'script') {
-                return (
-                    <ScriptInput 
-                      key={field.name}
-                      label={field.label} 
-                      value={selectedTile[field.name] || ''} 
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      type={field.scriptType}
-                    />
-                );
-            }
-            if (field.type === 'script_list') {
-                return (
-                    <ArrayInput 
-                      key={field.name}
-                      label={field.label} 
-                      values={selectedTile[field.name] || []} 
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      suggestionType={field.scriptType}
-                    />
-                );
-            }
-            if (field.type === 'entity_list') {
-                return (
-                    <EntityArrayInput 
-                      key={field.name}
-                      label={field.label} 
-                      values={selectedTile[field.name] || []} 
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      dynamicEntities={dynamicEntities}
-                      haEntities={haEntities}
-                    />
-                );
-            }
-            if (field.type === 'object') {
-                if (field.optional) {
-                    const isEnabled = selectedTile[field.name] !== undefined;
-                    return (
-                        <div key={field.name} className="mb-4 border rounded p-2 bg-slate-50">
-                            <div className="flex items-center gap-2 mb-2">
-                                <input 
-                                    type="checkbox" 
-                                    checked={isEnabled} 
-                                    onChange={e => {
-                                        if (e.target.checked) {
-                                            onUpdate({...selectedTile, [field.name]: {}});
-                                        } else {
-                                            const newTile = {...selectedTile};
-                                            delete newTile[field.name];
-                                            onUpdate(newTile);
-                                        }
-                                    }}
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer" onClick={() => {
-                                    if (!isEnabled) onUpdate({...selectedTile, [field.name]: {}});
-                                    else {
-                                        const newTile = {...selectedTile};
-                                        delete newTile[field.name];
-                                        onUpdate(newTile);
-                                    }
-                                }}>{field.label}</label>
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <label className="text-xs font-medium text-slate-700 select-none cursor-pointer" onClick={() => {
+                                if (!isEnabled) onUpdate({...selectedTile, [field.name]: config.pages[0].id});
+                                else { const newTile = {...selectedTile}; delete newTile[field.name]; onUpdate(newTile); }
+                              }}>{field.label}</label>
                             </div>
                             {isEnabled && (
-                                <div className="pl-2">
-                                    <ObjectInput 
-                                        label="" 
-                                        value={selectedTile[field.name] || {}} 
-                                        fields={field.objectFields}
-                                        onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                                        dynamicEntities={dynamicEntities}
-                                        haEntities={haEntities}
-                                    />
-                                </div>
+                              <div className="pl-6 mt-1">
+                                <select
+                                  value={selectedTile[field.name] || ''}
+                                  onChange={e => onUpdate({...selectedTile, [field.name]: e.target.value})}
+                                  className="w-full border rounded p-1 text-sm bg-white"
+                                >
+                                  <option value="">Select page...</option>
+                                  {config.pages.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
+                                </select>
+                              </div>
                             )}
-                        </div>
-                    );
-                }
-                return (
-                    <ObjectInput 
-                      key={field.name}
-                      label={field.label} 
-                      value={selectedTile[field.name] || {}} 
-                      fields={field.objectFields}
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      dynamicEntities={dynamicEntities}
-                      haEntities={haEntities}
-                    />
-                );
-            }
-            if (field.type === 'object_list') {
-                return (
-                    <ObjectArrayInput 
-                      key={field.name}
-                      label={field.label} 
-                      values={selectedTile[field.name] || []} 
-                      fields={field.objectFields}
-                      onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
-                      haEntities={haEntities}
-                    />
-                );
-            }
-            if (field.type === 'page_select') {
-                if (field.optional) {
-                    const isEnabled = selectedTile[field.name] !== undefined;
-                    return (
-                        <div key={field.name} className="mb-4 border rounded p-2 bg-slate-50">
-                            <div className="flex items-center gap-2 mb-2">
-                                <input 
-                                    type="checkbox" 
-                                    checked={isEnabled} 
-                                    onChange={e => {
-                                        if (e.target.checked) {
-                                            onUpdate({...selectedTile, [field.name]: config.pages[0].id});
-                                        } else {
-                                            const newTile = {...selectedTile};
-                                            delete newTile[field.name];
-                                            onUpdate(newTile);
-                                        }
-                                    }}
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <label className="text-xs font-medium text-slate-600 uppercase select-none cursor-pointer" onClick={() => {
-                                    if (!isEnabled) onUpdate({...selectedTile, [field.name]: config.pages[0].id});
-                                    else {
-                                        const newTile = {...selectedTile};
-                                        delete newTile[field.name];
-                                        onUpdate(newTile);
-                                    }
-                                }}>{field.label}</label>
-                            </div>
-                            {isEnabled && (
-                                <div className="pl-2">
-                                    <select 
-                                        value={selectedTile[field.name] || ''} 
-                                        onChange={e => onUpdate({...selectedTile, [field.name]: e.target.value})} 
-                                        className="w-full border rounded p-1 text-sm bg-white"
-                                    >
-                                        <option value="">Select page...</option>
-                                        {config.pages.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
-                                    </select>
-                                </div>
-                            )}
-                        </div>
-                    );
-                }
-                return (
-                    <div key={field.name} className="mb-2">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">{field.label}</label>
-                        <select 
-                          value={selectedTile[field.name] || ''} 
-                          onChange={e => onUpdate({...selectedTile, [field.name]: e.target.value})} 
-                          className="w-full border rounded p-1 text-sm bg-white"
-                        >
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={field.name} className="mb-1">
+                          <label className="block text-xs font-medium text-slate-600 mb-1">{field.label}</label>
+                          <select
+                            value={selectedTile[field.name] || ''}
+                            onChange={e => onUpdate({...selectedTile, [field.name]: e.target.value})}
+                            className="w-full border rounded p-1 text-sm bg-white"
+                          >
                             <option value="">Select page...</option>
                             {config.pages.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
-                        </select>
-                    </div>
-                );
-            }
-            if (field.type === 'dynamic_entity_select') {
-                return (
-                    <div key={field.name} className="mb-2">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">{field.label}</label>
-                        <select 
-                          value={selectedTile[field.name] || ''} 
-                          onChange={e => onUpdate({...selectedTile, [field.name]: e.target.value})} 
-                          className="w-full border rounded p-1 text-sm bg-white"
-                        >
+                          </select>
+                        </div>
+                      );
+                    }
+                    if (field.type === 'dynamic_entity_select') {
+                      return (
+                        <div key={field.name} className="mb-1">
+                          <label className="block text-xs font-medium text-slate-600 mb-1">{field.label}</label>
+                          <select
+                            value={selectedTile[field.name] || ''}
+                            onChange={e => onUpdate({...selectedTile, [field.name]: e.target.value})}
+                            className="w-full border rounded p-1 text-sm bg-white"
+                          >
                             <option value="">Select variable...</option>
                             {dynamicEntities.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                    </div>
-                );
-            }
-            return null;
-        })}
+                          </select>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
-    ) : null}
+        ) : null}
   </div>
 </div>
   );

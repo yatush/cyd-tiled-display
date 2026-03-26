@@ -276,7 +276,25 @@ def get_tile_modifiers(config, screen_id=None):
     
     fill_color = config.get("fill_color", None)
     if fill_color:
-        method_chains.append(f'setFillColor(id({fill_color}))')
+        if isinstance(fill_color, str):
+            # Backward-compatible: plain color name
+            method_chains.append(f'addFillColor(id({fill_color}))')
+        elif isinstance(fill_color, list):
+            for entry in fill_color:
+                color = entry.get("color") if isinstance(entry, dict) else None
+                if not color:
+                    continue
+                condition = entry.get("condition") if isinstance(entry, dict) else None
+                if condition:
+                    cond_expr = build_expression(condition, context)
+                    if cond_expr:
+                        method_chains.append(
+                            f'addFillColor(id({color}), [](std::vector<std::string> entities) -> bool {{ return {cond_expr}; }})'
+                        )
+                    else:
+                        method_chains.append(f'addFillColor(id({color}))')
+                else:
+                    method_chains.append(f'addFillColor(id({color}))')
 
     x_span = config.get("x_span", 1)
     y_span = config.get("y_span", 1)

@@ -15,8 +15,10 @@ public:
     if (this->display_page_ != id(disp).get_active_page()) {
       return;
     }
-    if (this->has_fill_color_) {
-      id(_draw_tile_fill).execute(this->x_, this->y_, this->x_span_, this->y_span_, this->fill_color_);
+    for (auto& entry : this->fill_colors_) {
+      if (entry.second({})) {
+        id(_draw_tile_fill).execute(this->x_, this->y_, this->x_span_, this->y_span_, entry.first);
+      }
     }
     if (!this->omit_frame_) {
       id(_draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_);
@@ -45,10 +47,15 @@ public:
     return this;
   }
 
-  // Sets the background fill color of the tile.
-  Tile* setFillColor(Color c) {
-    this->fill_color_ = c;
-    this->has_fill_color_ = true;
+  // Adds an unconditional background fill color.
+  Tile* addFillColor(Color c) {
+    this->fill_colors_.push_back({c, [](std::vector<std::string>) { return true; }});
+    return this;
+  }
+
+  // Adds a conditional background fill color (rendered only when cond returns true).
+  Tile* addFillColor(Color c, std::function<bool(std::vector<std::string>)> cond) {
+    this->fill_colors_.push_back({c, cond});
     return this;
   }
 
@@ -134,9 +141,8 @@ protected:
   int y_span_ = 1;
   // Flag to indicate if the frame should be omitted.
   bool omit_frame_ = false;
-  // Fill color for the tile background (optional).
-  Color fill_color_;
-  bool has_fill_color_ = false;
+  // Conditional fill colors for the tile background (rendered in order; last true wins).
+  std::vector<std::pair<Color, std::function<bool(std::vector<std::string>)>>> fill_colors_;
   // Callback function for entity changes.
   std::function<void()> change_entities_callback_ = []() {};
   // Callback function when leaving the screen

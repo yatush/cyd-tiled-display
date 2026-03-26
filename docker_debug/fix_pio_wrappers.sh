@@ -224,11 +224,12 @@ if [ -n "$NINJA_PIO" ]; then
     fi
     SYSTEM_NINJA=$(command -v ninja 2>/dev/null)
     if [ -n "$SYSTEM_NINJA" ] && [ "$SYSTEM_NINJA" != "$NINJA_PIO" ]; then
-        echo "Replacing PlatformIO ninja with system ninja ($SYSTEM_NINJA)..."
+        echo "Replacing PlatformIO ninja with shell wrapper..."
         cp -f "$NINJA_PIO" "${NINJA_PIO}.bak" 2>/dev/null || true
-        ln -sf "$SYSTEM_NINJA" "$NINJA_PIO"
+        printf '#!/bin/sh\nexec "%s" "$@"\n' "$SYSTEM_NINJA" > "$NINJA_PIO"
+        chmod +x "$NINJA_PIO"
         echo "  ninja version: $($SYSTEM_NINJA --version 2>/dev/null)"
     else
-        echo "System ninja not available or already linked — skipping ninja fix"
+        echo "System ninja not available or already replaced — skipping ninja fix"
     fi
 fi

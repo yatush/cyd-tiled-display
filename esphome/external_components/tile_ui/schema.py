@@ -185,6 +185,25 @@ def get_validator(field_type: str, object_fields: list = None):
             list,
             [Schema(item_schema, extra=PREVENT_EXTRA)]
         )
+    if field_type == 'color':
+        return non_empty_string
+    if field_type == 'color_list':
+        def _color_list_validator(value):
+            # Accept plain string (backward compat) or list of {color, condition?} entries
+            if isinstance(value, str):
+                if not value.strip():
+                    raise cv.Invalid("Color string cannot be empty")
+                return value
+            if isinstance(value, list):
+                if not value:
+                    raise cv.Invalid("color_list cannot be empty")
+                _entry_schema = Schema({
+                    Required('color'): non_empty_string,
+                    Optional('condition'): cv.Any(dict, str),
+                }, extra=PREVENT_EXTRA)
+                return [_entry_schema(entry) for entry in value]
+            raise cv.Invalid(f"fill_color must be a string or list, got {type(value).__name__}")
+        return _color_list_validator
     if field_type == 'condition_logic':
         return cv.Any(dict, non_empty_string)
 

@@ -54,7 +54,17 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
   const x_span = tile.x_span || 1;
   const y_span = tile.y_span || 1;
 
-  const fillColorRaw = (tile as any).fill_color as string | undefined;
+  const fillColorRaw = (() => {
+    const raw = (tile as any).fill_color;
+    if (!raw) return undefined;
+    if (typeof raw === 'string') return raw;                         // backward compat
+    if (Array.isArray(raw) && raw.length > 0) {
+      const first = raw[0];
+      if (typeof first === 'string') return first;
+      if (first && typeof first === 'object' && first.color) return first.color as string;
+    }
+    return undefined;
+  })();
   const fillCss = fillColorRaw ? resolveFillColor(fillColorRaw, colorList) : null;
   const darkFill = fillCss ? isColorDark(fillCss) : false;
 

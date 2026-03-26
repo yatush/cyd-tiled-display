@@ -97,6 +97,30 @@ class TestTileUtils(unittest.TestCase):
         # omit_frame
         self.assertEqual(get_tile_modifiers({"omit_frame": True}), ["omitFrame()"])
         
+        # fill_color: plain string (backward compat)
+        self.assertEqual(
+            get_tile_modifiers({"fill_color": "blue_gray"}),
+            ["addFillColor(id(blue_gray))"]
+        )
+
+        # fill_color: single-entry list, no condition
+        self.assertEqual(
+            get_tile_modifiers({"fill_color": [{"color": "blue_gray"}]}),
+            ["addFillColor(id(blue_gray))"]
+        )
+
+        # fill_color: multi-entry list with condition
+        result = get_tile_modifiers({
+            "fill_color": [
+                {"color": "blue_gray"},
+                {"color": "red", "condition": "is_on"},
+            ]
+        })
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0], "addFillColor(id(blue_gray))")
+        self.assertIn("addFillColor(id(red),", result[1])
+        self.assertIn("is_on", result[1])
+
         # activation_var
         config = {
             "activation_var": {
