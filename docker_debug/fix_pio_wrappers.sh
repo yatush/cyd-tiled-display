@@ -93,6 +93,12 @@ echo "Dynconfig lib dir: $LIB_DIR"
 # Tools that need -mdynconfig flag (compilers and assembler)
 COMPILER_TOOLS="gcc g++ cc c++ cpp as"
 
+# Detect ccache — if present, bake it into the generated wrapper scripts so
+# that every compiler invocation is cached even when called by absolute path
+# (cmake stores absolute paths in its cache, bypassing PATH-based shims).
+CCACHE_BIN=$(command -v ccache 2>/dev/null || true)
+[ -n "$CCACHE_BIN" ] && echo "ccache detected at $CCACHE_BIN — wrappers will use it"
+
 # Chips and their dynconfig .so files
 CHIPS="esp32 esp32s2 esp32s3"
 
@@ -143,8 +149,15 @@ for chip in $CHIPS; do
         # Instead, check for the ELF magic number (\x7fELF) in the first 4 bytes.
         magic=$(dd if="$wrapper" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')
         if [ "$magic" != "7f454c46" ]; then
-            echo "  SKIP $tool_name (not an ELF binary - already a shell script?)"
-            continue
+            # Already a shell script. Regenerate it if ccache is now available
+            # but has not been baked in yet (e.g. tarball built before this fix).
+            if [ -n "$CCACHE_BIN" ] && ! grep -qF "$CCACHE_BIN" "$wrapper" 2>/dev/null; then
+                echo "  REGENERATE $tool_name (baking ccache into existing wrapper)"
+                # fall through to regeneration
+            else
+                echo "  SKIP $tool_name (not an ELF binary - already a shell script?)"
+                continue
+            fi
         fi
 
         # Determine if this tool needs -mdynconfig
@@ -160,17 +173,33 @@ for chip in $CHIPS; do
         rm -f "$wrapper"
 
         if [ "$needs_dynconfig" = true ]; then
-            cat > "$wrapper" << WRAPPER_EOF
+            if [ -n "$CCACHE_BIN" ]; then
+                cat > "$wrapper" << WRAPPER_EOF
+#!/bin/sh
+export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
+exec "$CCACHE_BIN" "$real_path" -mdynconfig=$dynconfig "\$@"
+WRAPPER_EOF
+            else
+                cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 exec "$real_path" -mdynconfig=$dynconfig "\$@"
 WRAPPER_EOF
+            fi
         else
-             cat > "$wrapper" << WRAPPER_EOF
+            if [ -n "$CCACHE_BIN" ]; then
+                cat > "$wrapper" << WRAPPER_EOF
+#!/bin/sh
+export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
+exec "$CCACHE_BIN" "$real_path" "\$@"
+WRAPPER_EOF
+            else
+                cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 exec "$real_path" "\$@"
 WRAPPER_EOF
+            fi
         fi
         
         chmod +x "$wrapper"
