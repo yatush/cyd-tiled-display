@@ -295,9 +295,6 @@ def fix_wrappers() -> None:
     if os.path.exists(FIX_WRAPPERS_SCRIPT):
         subprocess.run(['sh', FIX_WRAPPERS_SCRIPT], check=False)
 
-    # Ensure ccache intercepts the Xtensa cross-compilers.
-    _ensure_ccache_symlinks()
-
     # cmake
     for cmake_path in glob.glob('/root/.platformio/packages/*/bin/cmake') + \
                       glob.glob('/root/.platformio/packages/tool-cmake/bin/cmake'):
@@ -327,35 +324,6 @@ def fix_wrappers() -> None:
             pass
 
     log('Wrapper fix complete.')
-
-
-def _ensure_ccache_symlinks() -> None:
-    """Create ccache shim symlinks for the Xtensa cross-compilers.
-
-    The PATH-based ccache interception only works when the compiler is called
-    by a name that has a corresponding symlink under /usr/local/lib/ccache/.
-    ESP-IDF invokes xtensa-esp32-elf-gcc (and variants) by their full name, so
-    we need explicit symlinks for each cross-compiler name.
-    """
-    ccache_bin = shutil.which('ccache')
-    if not ccache_bin:
-        return
-    shim_dir = '/usr/local/lib/ccache'
-    os.makedirs(shim_dir, exist_ok=True)
-    cross_names = [
-        'xtensa-esp32-elf-gcc',   'xtensa-esp32-elf-g++',
-        'xtensa-esp32s2-elf-gcc', 'xtensa-esp32s2-elf-g++',
-        'xtensa-esp32s3-elf-gcc', 'xtensa-esp32s3-elf-g++',
-        'xtensa-esp-elf-gcc',     'xtensa-esp-elf-g++',
-    ]
-    for name in cross_names:
-        link = os.path.join(shim_dir, name)
-        if not os.path.exists(link):
-            try:
-                os.symlink(ccache_bin, link)
-                log(f'Created ccache shim: {link}')
-            except OSError:
-                pass
 
 
 def _cmake_needs_fix() -> bool:
