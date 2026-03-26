@@ -31,6 +31,7 @@ import tarfile
 import platform
 import tempfile
 import subprocess
+import threading
 import urllib.request
 import urllib.error
 
@@ -297,7 +298,8 @@ def fix_wrappers() -> None:
     # cmake
     for cmake_path in glob.glob('/root/.platformio/packages/*/bin/cmake') + \
                       glob.glob('/root/.platformio/packages/tool-cmake/bin/cmake'):
-        if os.path.isfile(cmake_path) and not os.path.islink(cmake_path):
+        if os.path.isfile(cmake_path) and not os.path.islink(cmake_path) \
+                and not os.path.exists(cmake_path + '.orig'):
             os.rename(cmake_path, cmake_path + '.orig')
             with open(cmake_path, 'w') as f:
                 f.write('#!/bin/sh\nexec /usr/bin/cmake "$@"\n')
@@ -306,7 +308,8 @@ def fix_wrappers() -> None:
 
     # ninja
     for ninja_path in glob.glob('/root/.platformio/packages/tool-ninja/ninja'):
-        if os.path.isfile(ninja_path) and not os.path.islink(ninja_path):
+        if os.path.isfile(ninja_path) and not os.path.islink(ninja_path) \
+                and not os.path.exists(ninja_path + '.orig'):
             os.rename(ninja_path, ninja_path + '.orig')
             with open(ninja_path, 'w') as f:
                 f.write('#!/bin/sh\nexec /usr/bin/ninja "$@"\n')
@@ -321,6 +324,15 @@ def fix_wrappers() -> None:
             pass
 
     log('Wrapper fix complete.')
+
+
+def _cmake_needs_fix() -> bool:
+    """Return True if a non-wrapped cmake binary exists in the PIO packages dir."""
+    for cmake_path in (glob.glob('/root/.platformio/packages/*/bin/cmake') +
+                       glob.glob('/root/.platformio/packages/tool-cmake/bin/cmake')):
+        if os.path.isfile(cmake_path) and not os.path.exists(cmake_path + '.orig'):
+            return True
+    return False
 
 
 # ─── Cache warming ───────────────────────────────────────────────────────────
@@ -420,7 +432,14 @@ def maybe_warm_cache() -> None:
 # ─── Local-build fallback ────────────────────────────────────────────────────
 
 def build_toolchain_locally(reason: str) -> None:
-    """Build the toolchain locally via esphome compile (~10–15 min)."""
+    """Build the toolchain locally via esphome compile (~10–15 min).
+
+    On Alpine Linux, PlatformIO downloads glibc cmake/ninja binaries that hang
+    when executed.  A background watcher thread polls for the packages directory
+    and replaces those binaries with system wrappers as soon as they appear —
+    before PlatformIO can invoke them.  The thread also ticks the progress
+    counter so the UI doesn't look frozen during the ~10–15 minute build.
+    """
     log(f'Building locally. Reason: {reason}')
     write_progress('building', 5,
                    'Building toolchain locally — this takes ~10–15 min...',
@@ -435,6 +454,44 @@ def build_toolchain_locally(reason: str) -> None:
     env = os.environ.copy()
     env['CMAKE_BUILD_PARALLEL_LEVEL'] = '2'
 
+    # ── Background watcher ────────────────────────────────────────────────────
+    # PlatformIO first downloads all its packages (cmake, ninja, …), then
+    # invokes cmake.  On Alpine the downloaded cmake is a glibc binary that
+    # hangs forever.  We watch for the packages directory to appear and
+    # immediately replace those binaries with shell wrappers that delegate to
+    # the system (musl-compatible) cmake/ninja installed in the Docker image.
+    #
+    # Polling at 0.5 s catches the window between "last package downloaded"
+    # and "cmake first invoked" — the download phase takes at least a few
+    # seconds, so 0.5 s is reliable in practice.
+    stop_watcher = threading.Event()
+
+    def _watcher() -> None:
+        last_log_size = 0
+        fake_pct = 5
+        while not stop_watcher.is_set():
+            stop_watcher.wait(timeout=0.5)
+            # Fix cmake/ninja wrappers as soon as the binaries appear.
+            # Keep calling fix_wrappers (idempotent) until cmake is patched,
+            # because packages/ may be non-empty before cmake is downloaded.
+            if _cmake_needs_fix():
+                fix_wrappers()
+                log('Watcher: fixed PIO wrappers mid-build.')
+            # Tick the UI progress so it doesn't look stuck.
+            try:
+                sz = os.path.getsize(PIO_SETUP_LOG)
+                if sz > last_log_size:
+                    last_log_size = sz
+                    fake_pct = min(fake_pct + 1, 84)
+                    write_progress('building', fake_pct,
+                                   'Building toolchain locally — this takes ~10–15 min...',
+                                   fallback=True)
+            except OSError:
+                pass
+
+    watcher = threading.Thread(target=_watcher, daemon=True)
+    watcher.start()
+
     with open(PIO_SETUP_LOG, 'w') as logf:
         logf.write(f'[PIO SETUP] Starting at {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
         logf.write(f'[PIO SETUP] Reason: {reason}\n')
@@ -442,7 +499,11 @@ def build_toolchain_locally(reason: str) -> None:
                        env=env, timeout=900, check=False,
                        stdout=logf, stderr=logf)
 
-    write_progress('fixing', 90, 'Configuring toolchain...', fallback=True)
+    stop_watcher.set()
+    watcher.join(timeout=5)
+
+    # Final wrapper fix pass (idempotent) in case watcher lost the race.
+    write_progress('fixing', 86, 'Configuring toolchain for Alpine Linux...', fallback=True)
     fix_wrappers()
     shutil.rmtree(DUMMY_YAML_DIR, ignore_errors=True)
     log('Local build complete.')
