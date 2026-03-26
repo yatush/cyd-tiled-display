@@ -2,7 +2,41 @@ import { useDraggable } from '@dnd-kit/core';
 import { Trash2, ArrowRightCircle } from 'lucide-react';
 import { Tile, ImageEntry } from '../types';
 
-export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage, images = {} }: { 
+// Resolves a fill_color value (named id or Color(r,g,b)) to a CSS color string.
+function resolveFillColor(val: string, colorList: {id: string, value: string}[]): string | null {
+  if (!val) return null;
+  const found = colorList.find(c => c.id === val);
+  if (found) {
+    const v = found.value;
+    if (v.startsWith('#')) return v;
+    const rgbMatch = v.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (rgbMatch) return `rgb(${rgbMatch[1]},${rgbMatch[2]},${rgbMatch[3]})`;
+    return v;
+  }
+  const colorFn = val.match(/^Color\((\d+),\s*(\d+),\s*(\d+)\)$/);
+  if (colorFn) return `rgb(${colorFn[1]},${colorFn[2]},${colorFn[3]})`;
+  return null;
+}
+
+// Returns true if the CSS color is perceptually dark (luminance < 0.35).
+function isColorDark(css: string): boolean {
+  let r = 0, g = 0, b = 0;
+  const hex = css.match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    r = parseInt(hex[1].slice(0, 2), 16);
+    g = parseInt(hex[1].slice(2, 4), 16);
+    b = parseInt(hex[1].slice(4, 6), 16);
+  } else {
+    const rgb = css.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (rgb) { r = +rgb[1]; g = +rgb[2]; b = +rgb[3]; }
+  }
+  // sRGB relative luminance
+  const lum = (c: number) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  const L = 0.2126 * lum(r) + 0.7152 * lum(g) + 0.0722 * lum(b);
+  return L < 0.35;
+}
+
+export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage, images = {}, colorList = [] }: { 
   tile: Tile, 
   isSelected: boolean, 
   onClick: () => void, 
@@ -10,7 +44,8 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
   zIndex?: number,
   dynamicEntities?: string[],
   onNavigateToPage?: (pageId: string) => void,
-  images?: Record<string, ImageEntry>
+  images?: Record<string, ImageEntry>,
+  colorList?: {id: string, value: string}[]
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: tile.id,
@@ -18,6 +53,10 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
   
   const x_span = tile.x_span || 1;
   const y_span = tile.y_span || 1;
+
+  const fillColorRaw = (tile as any).fill_color as string | undefined;
+  const fillCss = fillColorRaw ? resolveFillColor(fillColorRaw, colorList) : null;
+  const darkFill = fillCss ? isColorDark(fillCss) : false;
 
   const style: React.CSSProperties = {
     ...(transform ? {
@@ -28,6 +67,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
     top: '-2px',
     left: '-2px',
     zIndex: isSelected ? 100 : (zIndex ?? (x_span > 1 || y_span > 1 ? 50 : 10)),
+    ...(fillCss ? { backgroundColor: fillCss } : {}),
   };
 
   const entityItems = (() => {
@@ -96,7 +136,14 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
       {...listeners} 
       {...attributes}
       className={`absolute border-2 border-solid rounded flex items-center justify-center group overflow-hidden
-        ${isSelected ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-400' : 'bg-blue-50 border-blue-500'}
+        ${fillCss
+          ? isSelected
+            ? 'border-blue-600 ring-2 ring-blue-400'
+            : 'border-blue-500'
+          : isSelected
+            ? 'bg-blue-100 border-blue-600 ring-2 ring-blue-400'
+            : 'bg-blue-50 border-blue-500'
+        }
         cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow
       `}
       onClick={() => {
@@ -165,10 +212,10 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
           return (
             <>
               {!entry && firstImgId && !firstEntry?.icon && (
-                <div className="absolute inset-0 flex items-center justify-center text-[9px] text-slate-400 z-10">{firstImgId}</div>
+                <div className={`absolute inset-0 flex items-center justify-center text-[9px] z-10 ${darkFill ? 'text-slate-300' : 'text-slate-400'}`}>{firstImgId}</div>
               )}
               <div className="absolute top-0.5 left-0 right-0 text-center pointer-events-none px-1 z-10">
-                <span className="text-[9px] font-bold text-blue-700 bg-white/70 rounded px-0.5 truncate inline-block max-w-full">
+                <span className={`text-[9px] font-bold rounded px-0.5 truncate inline-block max-w-full ${darkFill ? 'text-white bg-black/40' : 'text-blue-700 bg-white/70'}`}>
                   {tile.type.replace(/_/g, ' ')}
                 </span>
               </div>
@@ -178,14 +225,14 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
         // ── Display scripts ────────────────────────────────────────────────
         return (
           <div className="text-center p-1 overflow-hidden w-full pointer-events-none">
-            <div className="font-bold text-[10px] uppercase text-blue-700 truncate">{tile.type.replace('_', ' ')}</div>
+            <div className={`font-bold text-[10px] uppercase truncate ${darkFill ? 'text-white' : 'text-blue-700'}`}>{tile.type.replace('_', ' ')}</div>
             {tileAny.display && (() => {
               const items = Array.isArray(tileAny.display) ? tileAny.display : [tileAny.display];
               if (items.length === 0) return null;
               const first = items[0];
               const title = items.map((d: any) => typeof d === 'string' ? d : Object.keys(d)[0]).join(', ');
               return (
-                <div className="text-[9px] text-slate-600 truncate mt-1" title={title}>
+                <div className={`text-[9px] truncate mt-1 ${darkFill ? 'text-slate-300' : 'text-slate-600'}`} title={title}>
                   {(() => {
                     if (typeof first === 'string') return first;
                     const key = Object.keys(first)[0];

@@ -369,6 +369,34 @@ script:
       - lambda: |-
           id(script_output) = std::any_of(covers.begin(), covers.end(), [](const std::string& cover) { return GetTextSensorValue(cover) == "opening"; });
 
+  - id: _filled_rounded_rectangle
+    parameters: { x: int, y: int, w: int, h: int, r: int, c: Color }
+    then:
+      - lambda: |-
+          filled_circle(x + r, y + r, r, c);
+          filled_circle(x + w - r - 1, y + r, r, c);
+          filled_circle(x + r, y + h - r - 1, r, c);
+          filled_circle(x + w - r - 1, y + h - r - 1, r, c);
+          filled_rectangle(x + r, y, w - 2 * r, h, c);
+          filled_rectangle(x, y + r, w, h - 2 * r, c);
+
+  - id: _draw_tile_fill
+    parameters:
+      i: int
+      j: int
+      i_span: int
+      j_span: int
+      c: Color
+    then:
+      - lambda: |-
+          id(_filled_rounded_rectangle).execute(
+            x_start(i),
+            y_start(j),
+            x_rect() * i_span + (i_span - 1) * id(x_pad),
+            y_rect() * j_span + (j_span - 1) * id(y_pad),
+            id(border_r),
+            c);
+
   - id: _draw_tile_frame
     parameters:
       i: int

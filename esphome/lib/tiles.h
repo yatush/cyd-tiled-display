@@ -15,6 +15,9 @@ public:
     if (this->display_page_ != id(disp).get_active_page()) {
       return;
     }
+    if (this->has_fill_color_) {
+      id(_draw_tile_fill).execute(this->x_, this->y_, this->x_span_, this->y_span_, this->fill_color_);
+    }
     if (!this->omit_frame_) {
       id(_draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_);
     }
@@ -39,6 +42,13 @@ public:
   // Configures the tile to omit drawing the frame.
   Tile* omitFrame() {
     this->omit_frame_ = true;
+    return this;
+  }
+
+  // Sets the background fill color of the tile.
+  Tile* setFillColor(Color c) {
+    this->fill_color_ = c;
+    this->has_fill_color_ = true;
     return this;
   }
 
@@ -124,6 +134,9 @@ protected:
   int y_span_ = 1;
   // Flag to indicate if the frame should be omitted.
   bool omit_frame_ = false;
+  // Fill color for the tile background (optional).
+  Color fill_color_;
+  bool has_fill_color_ = false;
   // Callback function for entity changes.
   std::function<void()> change_entities_callback_ = []() {};
   // Callback function when leaving the screen

@@ -274,6 +274,10 @@ def get_tile_modifiers(config, screen_id=None):
     if config.get("omit_frame", False):
         method_chains.append('omitFrame()')
     
+    fill_color = config.get("fill_color", None)
+    if fill_color:
+        method_chains.append(f'setFillColor(id({fill_color}))')
+
     x_span = config.get("x_span", 1)
     y_span = config.get("y_span", 1)
     if x_span > 1 or y_span > 1:

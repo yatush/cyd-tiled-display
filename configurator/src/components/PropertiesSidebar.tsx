@@ -14,6 +14,8 @@ import {
   ImagesListInput
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
+import { ColorPicker } from './Pickers';
+import { apiFetch } from '../utils/api';
 
 export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig }: { 
   selectedTile: Tile | null, 
@@ -33,12 +35,23 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
   const images = config.images || {};
 
+  const [colorList, setColorList] = useState<{id: string, value: string}[]>([]);
+
   // Switch to tile tab when a tile is selected
   useEffect(() => {
     if (selectedTile) {
       setActiveTab('tile');
     }
   }, [selectedTile?.id]);
+
+  useEffect(() => {
+    apiFetch('/scripts').then(async res => {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.colors) setColorList(data.colors);
+      }
+    }).catch(() => {});
+  }, []);
 
   const renderPageProperties = () => (
     <div className="space-y-6">
@@ -309,6 +322,44 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                   checked={selectedTile[field.name] || false} 
                   onChange={v => onUpdate({...selectedTile, [field.name]: v})} 
                 />
+             );
+           }
+           if (field.type === 'color') {
+             const isEnabled = selectedTile[field.name] !== undefined;
+             return (
+               <div key={field.name} className="mb-2">
+                 <div className="flex items-center gap-2 mb-1">
+                   <input
+                     type="checkbox"
+                     checked={isEnabled}
+                     onChange={e => {
+                       if (e.target.checked) {
+                         onUpdate({...selectedTile, [field.name]: 'dark_dark_gray'});
+                       } else {
+                         const newTile = {...selectedTile};
+                         delete newTile[field.name];
+                         onUpdate(newTile);
+                       }
+                     }}
+                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                   />
+                   <label className="text-xs font-medium text-slate-700 select-none cursor-pointer"
+                     onClick={() => {
+                       if (!isEnabled) onUpdate({...selectedTile, [field.name]: 'dark_dark_gray'});
+                       else { const t = {...selectedTile}; delete t[field.name]; onUpdate(t); }
+                     }}
+                   >{field.label}</label>
+                 </div>
+                 {isEnabled && (
+                   <div className="pl-6">
+                     <ColorPicker
+                       value={selectedTile[field.name]}
+                       onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                       colors={colorList}
+                     />
+                   </div>
+                 )}
+               </div>
              );
            }
            if (field.type === 'condition_logic') {

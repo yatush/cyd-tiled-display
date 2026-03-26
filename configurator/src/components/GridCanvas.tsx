@@ -4,6 +4,7 @@ import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEve
 import { DroppableCell } from './DroppableCell';
 import { DraggableTile } from './DraggableTile';
 import { Page, Tile, ImageEntry } from '../types';
+import { apiFetch } from '../utils/api';
 
 export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage, images = {} }: { 
   page: Page, 
@@ -30,6 +31,17 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
       },
     })
   );
+
+  const [colorList, setColorList] = useState<{id: string, value: string}[]>([]);
+
+  useEffect(() => {
+    apiFetch('/scripts').then(async res => {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.colors) setColorList(data.colors);
+      }
+    }).catch(() => {});
+  }, []);
 
   const [cellActiveIndices, setCellActiveIndices] = useState<{[key: string]: number}>({});
 
@@ -129,6 +141,7 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                       dynamicEntities={dynamicEntities}
                       onNavigateToPage={onNavigateToPage}
                       images={images}
+                      colorList={colorList}
                     />
                   ))}
                   {coveringTiles.length > 1 && (
@@ -189,6 +202,7 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                     dynamicEntities={dynamicEntities}
                     onNavigateToPage={onNavigateToPage}
                     images={images}
+                    colorList={colorList}
                   />
                 </div>
               ))}

@@ -107,6 +107,7 @@ jobs:
               export CCACHE_DIR=/root/.platformio/.ccache
               export CCACHE_MAXSIZE=2G
               export CCACHE_COMPILERCHECK=content
+              export CCACHE_NOHASHDIR=true
               export PATH="/usr/local/lib/ccache:$PATH"
               export CMAKE_BUILD_PARALLEL_LEVEL=$([ "$(uname -m)" = "aarch64" ] && echo 1 || echo 2)
               mkdir -p /tmp/esp32_setup
@@ -229,7 +230,7 @@ jobs:
           DIRS="packages/"
           [ -d platforms ] && DIRS="$DIRS platforms/"
           [ -d .ccache ]   && DIRS="$DIRS .ccache/"
-          XZ_OPT="-2" tar -cJf toolchain-${{ matrix.arch }}.tar.xz $DIRS
+          XZ_OPT="-2" tar -cJhf toolchain-${{ matrix.arch }}.tar.xz $DIRS
           ls -lh toolchain-${{ matrix.arch }}.tar.xz
 
       - name: Upload artifact
