@@ -1,7 +1,7 @@
 {
   "name": "cyd-tiled-display",
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   },
   "postCreateCommand": "cd /workspaces/cyd-tiled-display/configurator && npm install --legacy-peer-deps"
 }
