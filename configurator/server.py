@@ -1113,6 +1113,18 @@ def install_esphome_device():
         # Start the process immediately — timezone is fetched in the background thread
         _install_env = os.environ.copy()
         _install_env['PYTHONUNBUFFERED'] = '1'
+        # Point ESPHome / PlatformIO at the pre-warmed ccache so the compile
+        # reuses cached object files instead of rebuilding from scratch.
+        _pio_dir = '/root/.platformio'
+        _ccache_dir = os.path.join(_pio_dir, '.ccache')
+        _ccache_bin = '/usr/local/lib/ccache'
+        if os.path.isdir(_ccache_dir):
+            _install_env['CCACHE_DIR']           = _ccache_dir
+            _install_env['CCACHE_MAXSIZE']        = '2G'
+            _install_env['CCACHE_COMPILERCHECK']  = 'content'
+            _install_env['CCACHE_NOHASHDIR']      = 'true'
+        if os.path.isdir(_ccache_bin):
+            _install_env['PATH'] = f"{_ccache_bin}:{_install_env.get('PATH', '')}"
         process = subprocess.Popen(
             _esphome_cmd,
             stdout=subprocess.PIPE,
@@ -1402,6 +1414,17 @@ def compile_esphome_device():
         tz = _get_ha_timezone()
         if tz:
             env['TZ'] = tz
+        # Point ESPHome / PlatformIO at the pre-warmed ccache.
+        _pio_dir = '/root/.platformio'
+        _ccache_dir = os.path.join(_pio_dir, '.ccache')
+        _ccache_bin = '/usr/local/lib/ccache'
+        if os.path.isdir(_ccache_dir):
+            env['CCACHE_DIR']           = _ccache_dir
+            env['CCACHE_MAXSIZE']       = '2G'
+            env['CCACHE_COMPILERCHECK'] = 'content'
+            env['CCACHE_NOHASHDIR']     = 'true'
+        if os.path.isdir(_ccache_bin):
+            env['PATH'] = f"{_ccache_bin}:{env.get('PATH', '')}"
 
         process = subprocess.Popen(
             ['esphome', 'compile', filename],
