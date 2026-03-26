@@ -444,7 +444,18 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         }
 
 if __name__ == "__main__":
-    # Read YAML from stdin
+    # Read YAML from stdin; extra params come from env vars set by server.py
+    # so this script can be run in a subprocess without blocking the Flask GIL.
     input_data = sys.stdin.read()
-    result = generate_cpp_from_yaml(input_data)
+    _lib_dir    = os.environ.get('CYD_LIB_DIR')    or None
+    _images_dir = os.environ.get('CYD_IMAGES_DIR') or None
+    _screen_w   = int(os.environ.get('CYD_SCREEN_W', '320'))
+    _screen_h   = int(os.environ.get('CYD_SCREEN_H', '240'))
+    result = generate_cpp_from_yaml(
+        input_data,
+        user_lib_dir=_lib_dir,
+        images_dir=_images_dir,
+        screen_w=_screen_w,
+        screen_h=_screen_h,
+    )
     print(json.dumps(result))

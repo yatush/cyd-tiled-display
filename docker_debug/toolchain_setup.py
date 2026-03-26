@@ -379,16 +379,17 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
 
     log('Extraction complete.')
 
-    # If the tarball shipped a pre-warmed ccache (built in CI), mark the
-    # emulator as already pre-compiled so maybe_warm_cache() nops.
+    # The tarball includes a pre-warmed ccache (object files), which makes
+    # maybe_warm_cache() fast.  But we must NOT skip maybe_warm_cache() here:
+    # it is what creates /app/esphome/lib/.esphome/build/emulator/ — the
+    # directory run_session.sh seeds every new emulator session from.
+    # Without it, each session does a cold cmake + codegen + link cycle
+    # which takes several minutes on RPi4 SD cards.
+    # We simply log that ccache is ready; maybe_warm_cache() writes the marker
+    # itself after a successful run.
     warmed = os.path.join(PIO_DIR, '.ccache', '.cyd_warmed')
     if os.path.exists(warmed):
-        try:
-            with open(EMULATOR_MARKER, 'w') as _f:
-                _f.write(get_expected_version())
-        except OSError:
-            open(EMULATOR_MARKER, 'w').close()
-        log('Tarball includes pre-warmed ccache — emulator marker set.')
+        log('Tarball includes pre-warmed ccache — warming step will use cached objects.')
 
 
 # ─── Fix-wrappers phase ──────────────────────────────────────────────────────

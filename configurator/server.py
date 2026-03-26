@@ -92,6 +92,48 @@ MOCK_ENTITIES = [
     {"entity_id": "mock.cover_garage_door", "state": "closed", "attributes": {}},
 ]
 
+_GENERATE_SCRIPT = os.path.join(os.path.dirname(__file__), 'generate_tiles_api.py')
+
+def _run_generate_subprocess(yaml_str, lib_dir=None, images_dir=None, screen_w=320, screen_h=240):
+    """Run generate_cpp_from_yaml in a child process so the Flask GIL stays free.
+
+    Gunicorn uses a single worker process with a thread GIL.  Calling
+    generate_cpp_from_yaml() directly holds the GIL for the entire duration
+    of its CPU-heavy Python work (validation + C++ codegen), starving all
+    other request threads and making the whole backend appear frozen.
+
+    Running it in a subprocess means the calling thread waits on OS-level
+    pipe I/O (GIL released), so other Flask threads continue to handle
+    polling, log and status requests normally.
+    """
+    env = {
+        **os.environ,
+        'CYD_LIB_DIR':    lib_dir    or '',
+        'CYD_IMAGES_DIR': images_dir or '',
+        'CYD_SCREEN_W':   str(screen_w),
+        'CYD_SCREEN_H':   str(screen_h),
+    }
+    try:
+        proc = subprocess.run(
+            [sys.executable, _GENERATE_SCRIPT],
+            input=yaml_str,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            err = proc.stderr.strip() or 'generator process exited with no output'
+            return {'error': err, 'type': 'subprocess_error'}
+        return json.loads(proc.stdout)
+    except subprocess.TimeoutExpired:
+        return {'error': 'Code generation timed out (>120 s)', 'type': 'timeout'}
+    except json.JSONDecodeError as e:
+        return {'error': f'Bad JSON from generator: {e}', 'type': 'parse_error'}
+    except Exception as e:
+        return {'error': str(e), 'type': 'unexpected_error'}
+
+
 def serve_index_with_env():
     """Serve index.html with injected environment variables."""
     try:
@@ -305,7 +347,7 @@ def start_emulator():
         if not os.path.exists(_lib_dir):
             _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
         _images_dir = os.path.join(_lib_dir, 'images')
-        result = generate_tiles_api.generate_cpp_from_yaml(yaml_str, user_lib_dir=_lib_dir, images_dir=_images_dir, screen_w=_dev_cfg['screen_w'], screen_h=_dev_cfg['screen_h'])
+        result = _run_generate_subprocess(yaml_str, lib_dir=_lib_dir, images_dir=_images_dir, screen_w=_dev_cfg['screen_w'], screen_h=_dev_cfg['screen_h'])
         if "error" in result:
              return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
 
@@ -485,7 +527,7 @@ def generate():
         # Images (PNG files + images.yaml) all live inside lib/ so ESPHome resolves
         # "file: images/foo.png" relative to lib_common.yaml (which is in lib/).
         _images_dir = os.path.join(_lib_dir, 'images')
-        result = generate_tiles_api.generate_cpp_from_yaml(input_data, user_lib_dir=_lib_dir, images_dir=_images_dir)
+        result = _run_generate_subprocess(input_data, lib_dir=_lib_dir, images_dir=_images_dir)
         
         if "error" in result:
             print(f"Generation Error: {result['error']}", flush=True)
@@ -826,9 +868,9 @@ def _regen_images_yaml(filepath, lib_dir, images_dir):
             return
 
         _yaml_str = yaml.dump(_tile_ui)
-        _result = generate_tiles_api.generate_cpp_from_yaml(
+        _result = _run_generate_subprocess(
             _yaml_str,
-            user_lib_dir=lib_dir,
+            lib_dir=lib_dir,
             images_dir=images_dir,
             screen_w=_sw,
             screen_h=_sh,
