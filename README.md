@@ -116,6 +116,39 @@ If you want to run the Configurator on your local machine without Docker:
 
     > **Note:** To simulate the Home Assistant Add-on environment (enabling features like "Update HA Esphome files"), append `?mode=ha` to the URL (e.g., `http://localhost:5173/?mode=ha`).
 
+## Option 4: CLI Build with `run.py`
+
+If you want to compile or flash a device configuration directly from the command line — without the Configurator UI — use the `esphome/run.py` wrapper script.
+
+It automatically handles the two setup steps that are required before `esphome` can compile a tile config:
+- Extracts image files from the YAML (or creates transparent placeholders for missing ones)
+- Creates a `secrets.yaml` with placeholder values if one doesn't exist
+
+After `esphome` finishes (whether it succeeds or fails), the script cleans up all generated files and restores `lib/images.yaml` to its original state.
+
+### Prerequisites
+- Python 3.x
+- ESPHome: `pip install esphome`
+
+### Usage
+
+```bash
+cd esphome
+
+# Compile only
+python3 run.py compile test_device.yaml
+
+# Compile and flash (defaults to 'run' subcommand)
+python3 run.py test_device.yaml
+
+# Flash to a specific USB port
+python3 run.py run test_device.yaml --device /dev/ttyUSB0
+# Windows:
+python3 run.py run test_device.yaml --device COM3
+```
+
+> **Note:** On first run, `secrets.yaml` is created with placeholder WiFi credentials. Edit it with your real values before flashing.
+
 # From YAML file to device
 * **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
 * **Copy library files** - In the configurator UI, click Settings and "Update HA Esphome files". Alternatively, you can manually copy to `/config/esphome` dir on the HA the files from this repository.
