@@ -296,24 +296,73 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
     The tarball contains paths like  packages/<tool>/...  and  platforms/<plat>/...
     Extracting to PIO_DIR places them at /root/.platformio/packages/... and
     /root/.platformio/platforms/... respectively.
+
+    Uses the native `tar` binary (faster xz decompression + bulk I/O) with a
+    progress-ticker thread so the UI stays responsive on slow SD-card systems.
+    Falls back to Python tarfile if `tar` is not available.
     """
     label = 'Updating toolchain' if background else 'Extracting toolchain'
     write_progress('extracting', 61, f'{label}: extracting files...')
     log(f'Extracting {tarball_path} → {PIO_DIR}')
     os.makedirs(PIO_DIR, exist_ok=True)
 
-    with tarfile.open(tarball_path, 'r:xz') as tar:
-        members = tar.getmembers()
-        total   = max(len(members), 1)
-        last_update = 0.0
-        for i, member in enumerate(members):
-            tar.extract(member, path=PIO_DIR, filter='tar')
-            now = time.monotonic()
-            if now - last_update >= 1.0:
-                last_update = now
-                pct = 61 + int(i / total * 24)
-                write_progress('extracting', pct,
-                               f'{label}: {i}/{total} files')
+    # ── Try native tar first ──────────────────────────────────────────────────
+    # `tar` uses the system's multi-threaded xz and does bulk file I/O in C,
+    # which is dramatically faster than the Python tarfile loop on RPi4 SD cards.
+    # We run a background ticker thread to keep the UI progress bar moving.
+    tar_bin = shutil.which('tar')
+    if tar_bin:
+        # Count members cheaply with `tar -t` so we can show X/total progress.
+        try:
+            result = subprocess.run(
+                [tar_bin, '-tJf', tarball_path],
+                capture_output=True, text=True, timeout=60)
+            total = max(result.stdout.count('\n'), 1)
+        except Exception:
+            total = 0  # unknown — ticker uses time-based fake progress
+
+        stop_ticker = threading.Event()
+        start_time  = time.monotonic()
+
+        def _ticker() -> None:
+            fake_pct = 61
+            while not stop_ticker.is_set():
+                stop_ticker.wait(timeout=2.0)
+                elapsed = time.monotonic() - start_time
+                # Fake progress: advance smoothly toward 84% (leaves room for
+                # the real 'fixing' phase at 86%).  Cap at 83 so it never tips
+                # into the next phase prematurely.
+                fake_pct = min(83, 61 + int(elapsed / 2))
+                write_progress('extracting', fake_pct,
+                               f'{label}: extracting files...')
+
+        ticker = threading.Thread(target=_ticker, daemon=True)
+        ticker.start()
+
+        try:
+            subprocess.run(
+                [tar_bin, '-xJf', tarball_path, '-C', PIO_DIR],
+                check=True)
+        finally:
+            stop_ticker.set()
+            ticker.join(timeout=3)
+
+        write_progress('extracting', 84, f'{label}: finalising...')
+
+    else:
+        # ── Fallback: Python tarfile (slower, but works everywhere) ──────────
+        with tarfile.open(tarball_path, 'r:xz') as tar:
+            members = tar.getmembers()
+            total   = max(len(members), 1)
+            last_update = 0.0
+            for i, member in enumerate(members):
+                tar.extract(member, path=PIO_DIR, filter='tar')
+                now = time.monotonic()
+                if now - last_update >= 1.0:
+                    last_update = now
+                    pct = 61 + int(i / total * 23)
+                    write_progress('extracting', pct,
+                                   f'{label}: {i}/{total} files')
 
     log('Extraction complete.')
 
