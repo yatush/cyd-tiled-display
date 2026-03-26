@@ -106,6 +106,7 @@ jobs:
               mkdir -p /root/.platformio/.ccache
               export CCACHE_DIR=/root/.platformio/.ccache
               export CCACHE_MAXSIZE=2G
+              export CCACHE_COMPILERCHECK=content
               export PATH="/usr/local/lib/ccache:$PATH"
               export CMAKE_BUILD_PARALLEL_LEVEL=$([ "$(uname -m)" = "aarch64" ] && echo 1 || echo 2)
               mkdir -p /tmp/esp32_setup
