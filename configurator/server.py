@@ -1912,6 +1912,71 @@ def toolchain_cancel():
         pass
     return jsonify({'status': 'cancelled', 'killed': killed})
 
+@app.route('/api/toolchain/check_update', methods=['GET'])
+def toolchain_check_update():
+    """
+    Non-destructive check: returns whether a newer toolchain build is available.
+    Does NOT launch toolchain_setup.py — use POST /api/toolchain/download_latest for that.
+
+    Returns:
+      { update_available: bool, remote_build_id, local_build_id, version }
+    """
+    import urllib.request as _urllib_req
+    import urllib.error   as _urllib_err
+
+    packages_dir  = '/root/.platformio/packages'
+    build_id_file = '/root/.platformio/.cyd_toolchain_build_id'
+    ver_file      = '/app/esphome_version.txt'
+    repo_file     = '/app/github_repo.txt'
+
+    expected_version = None
+    if os.path.exists(ver_file):
+        try:
+            expected_version = open(ver_file).read().strip() or None
+        except OSError:
+            pass
+
+    local_build_id = None
+    if os.path.exists(build_id_file):
+        try:
+            local_build_id = open(build_id_file).read().strip() or None
+        except OSError:
+            pass
+
+    has_pkgs = os.path.isdir(packages_dir) and bool(os.listdir(packages_dir))
+
+    repo = 'yatush/cyd-tiled-display'
+    if os.path.exists(repo_file):
+        try:
+            r = open(repo_file).read().strip()
+            if r:
+                repo = r
+        except OSError:
+            pass
+
+    remote_build_id = None
+    if expected_version:
+        url = (f'https://github.com/{repo}/releases/download/'
+               f'toolchain-esphome-{expected_version}/build_id.txt')
+        try:
+            req = _urllib_req.Request(url, headers={'User-Agent': 'cyd-tiled-display/server'})
+            with _urllib_req.urlopen(req, timeout=10) as resp:
+                remote_build_id = resp.read().decode().strip() or None
+        except _urllib_err.HTTPError as e:
+            if e.code == 404:
+                remote_build_id = None
+        except Exception:
+            pass
+
+    update_available = bool(remote_build_id and has_pkgs and remote_build_id != local_build_id)
+
+    return jsonify({
+        'update_available': update_available,
+        'remote_build_id': remote_build_id,
+        'local_build_id': local_build_id,
+        'version': expected_version,
+    })
+
 @app.route('/api/toolchain/download_latest', methods=['POST'])
 def toolchain_download_latest():
     """

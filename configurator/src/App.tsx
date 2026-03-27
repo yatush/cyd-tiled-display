@@ -30,9 +30,10 @@ function App() {
   // Toolchain status — polled in background so TopBar can show an upgrade badge
   // and InstallDialog can warn when no toolchain is installed.
   // null = not yet fetched (no UI shown), string = known phase.
-  const [toolchainPhase, setToolchainPhase]       = useState<string | null>(null);
-  const [toolchainProgress, setToolchainProgress] = useState(0);
-  const [toolchainMessage, setToolchainMessage]   = useState('');
+  const [toolchainPhase, setToolchainPhase]             = useState<string | null>(null);
+  const [toolchainProgress, setToolchainProgress]       = useState(0);
+  const [toolchainMessage, setToolchainMessage]         = useState('');
+  const [toolchainUpdateAvailable, setToolchainUpdateAvailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +47,10 @@ function App() {
               setToolchainPhase(data.phase);
               setToolchainProgress(data.progress ?? 0);
               setToolchainMessage(data.message ?? '');
+              // Clear update badge while an upgrade is actively running
+              if (['downloading','extracting','fixing','warming'].includes(data.phase)) {
+                setToolchainUpdateAvailable(false);
+              }
             }
             // Once ready, no need to hammer the server — check once a minute.
             const interval = data.phase === 'ready' ? 60_000 : 3_000;
@@ -61,6 +66,30 @@ function App() {
     poll();
     return () => { cancelled = true; };
   }, []);
+
+  // Periodically check whether a newer toolchain build is available (every 5 min).
+  useEffect(() => {
+    let cancelled = false;
+    async function checkUpdate() {
+      while (!cancelled) {
+        // Only check when toolchain is ready and not already upgrading
+        if (toolchainPhase === 'ready') {
+          try {
+            const res = await apiFetch('/toolchain/check_update');
+            if (res.ok) {
+              const data: { update_available: boolean } = await res.json();
+              if (!cancelled) setToolchainUpdateAvailable(data.update_available);
+            }
+          } catch { /* non-fatal */ }
+        }
+        await new Promise(r => setTimeout(r, 5 * 60_000));
+      }
+    }
+    // Run once on first ready, then on interval
+    if (toolchainPhase === 'ready') checkUpdate();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolchainPhase]);
 
   // Local UI State
   const [schema, setSchema] = useState<any>(null);
@@ -436,6 +465,7 @@ function App() {
         toolchainPhase={toolchainPhase ?? undefined}
         toolchainProgress={toolchainProgress}
         toolchainMessage={toolchainMessage}
+        toolchainUpdateAvailable={toolchainUpdateAvailable}
         onOpenInstall={() => setIsInstallDeviceOpen(true)}
       />
 
@@ -622,6 +652,8 @@ function App() {
         onOtaActiveChange={setOtaInstallActive}
         toolchainPhase={toolchainPhase ?? undefined}
         onToolchainPhaseChange={setToolchainPhase}
+        toolchainUpdateAvailable={toolchainUpdateAvailable}
+        onToolchainUpdateConsumed={() => setToolchainUpdateAvailable(false)}
       />
       
       <ScreensFileDialog 
