@@ -88,9 +88,10 @@ mkdir -p "$PLATFORMIO_CACHEDIR"
 # hundreds of ESPHome framework files).
 export CCACHE_DIR="/root/.platformio/.ccache"
 export CCACHE_MAXSIZE="2G"
-# Normalize absolute paths so the CI cachewarm entries hit here too.
-# CCACHE_BASEDIR strips the base dir prefix from all -I flags before hashing.
-export CCACHE_BASEDIR="$(pwd)"
+# Preprocessor mode: ccache hashes the actual preprocessed output so the
+# session/device name in .pioenvs/<name>/ does not affect the cache key.
+export CCACHE_NODIRECT="true"
+export CCACHE_SLOPPINESS="include_file_mtime,time_macros"
 mkdir -p "$CCACHE_DIR"
 export PATH="/usr/local/lib/ccache:$PATH"
 

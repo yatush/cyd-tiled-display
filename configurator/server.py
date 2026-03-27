@@ -1228,12 +1228,12 @@ def install_esphome_device():
             _install_env['CCACHE_DIR']           = _ccache_dir
             _install_env['CCACHE_MAXSIZE']        = '2G'
             _install_env['CCACHE_COMPILERCHECK']  = 'content'
-            _install_env['CCACHE_NOHASHDIR']      = 'true'
-            # Normalize absolute paths so cache entries created during the
-            # CI cachewarm (/app/esphome) hit here (/config/esphome) and
-            # vice-versa.  Strips the esphome base dir prefix from all -I
-            # flags before hashing, leaving only relative paths.
-            _install_env['CCACHE_BASEDIR']        = BASE_DIR
+            # Preprocessor mode: ccache hashes the actual preprocessed output
+            # rather than include-path strings.  This means the device name
+            # embedded in .pioenvs/<name>/ does not affect the cache key, so
+            # entries warmed with "cachewarm" hit when compiling "testcache2".
+            _install_env['CCACHE_NODIRECT']       = 'true'
+            _install_env['CCACHE_SLOPPINESS']     = 'include_file_mtime,time_macros'
         if os.path.isdir(_ccache_bin):
             _install_env['PATH'] = f"{_ccache_bin}:{_install_env.get('PATH', '')}"
         process = subprocess.Popen(
@@ -1533,8 +1533,8 @@ def compile_esphome_device():
             env['CCACHE_DIR']           = _ccache_dir
             env['CCACHE_MAXSIZE']       = '2G'
             env['CCACHE_COMPILERCHECK'] = 'content'
-            env['CCACHE_NOHASHDIR']     = 'true'
-            env['CCACHE_BASEDIR']       = BASE_DIR
+            env['CCACHE_NODIRECT']      = 'true'
+            env['CCACHE_SLOPPINESS']    = 'include_file_mtime,time_macros'
         if os.path.isdir(_ccache_bin):
             env['PATH'] = f"{_ccache_bin}:{env.get('PATH', '')}"
 
