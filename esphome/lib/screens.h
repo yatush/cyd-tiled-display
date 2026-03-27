@@ -26,8 +26,10 @@ public:
     // Print the Wi-Fi icon.
     print(id(width), y, id(tiny), id(wifi_color), TextAlign::CENTER_RIGHT, wifi_icon.c_str());
     // Print the current time.
-    strftime(id(width) - std::get<0>(sizes).first - std::get<2>(sizes), y, id(text_regular), id(dark_gray), TextAlign::CENTER_RIGHT, "%H:%M", espt);
+    strftime(id(width) - std::get<0>(sizes).first - std::get<2>(sizes), y, id(text_regular), has_time_color_ ? time_color_ : id(dark_gray), TextAlign::CENTER_RIGHT, "%H:%M", espt);
   }
+
+  Screen* setTimeColor(Color c) { time_color_ = c; has_time_color_ = true; return this; }
 
   std::tuple<std::pair<int, int>, std::pair<int, int>, int> wifiHourWidth() {
     auto icon_size = measure(id(tiny), "\U0000e1d8");
@@ -72,6 +74,8 @@ private:
   std::set<ScreenAtt> attributes_;
   int rows_;
   int cols_;
+  bool has_time_color_ = false;
+  Color time_color_;
 };
 
 // A screen composed of multiple tiles.

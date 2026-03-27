@@ -1,4 +1,12 @@
 {
+  "screen": [
+    { "name": "id", "type": "string", "label": "Screen ID" },
+    { "name": "rows", "type": "number", "label": "Rows", "optional": true },
+    { "name": "cols", "type": "number", "label": "Columns", "optional": true },
+    { "name": "flags", "type": "string_list", "label": "Flags", "optional": true },
+    { "name": "time_color", "type": "color", "label": "Time Color", "optional": true },
+    { "name": "background", "type": "background_list", "label": "Background", "optional": true }
+  ],
   "common": [
     { "name": "x", "type": "number", "label": "X" },
     { "name": "y", "type": "number", "label": "Y" },

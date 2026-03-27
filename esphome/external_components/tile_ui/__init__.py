@@ -166,14 +166,26 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
                 draw_fn = f"[=]() {{ id(disp).image(0, 0, &id({entry['image']})); }}"
                 bg_chains.append(f"->addBgLambda({draw_fn}{cond_lambda})")
 
+        # Build time_color method chain (no conditional, simple color override)
+        time_color_val = screen.get("time_color")
+        time_color_chain = None
+        if time_color_val:
+            _tc = str(time_color_val).strip()
+            _tc_cpp = _tc if _tc.startswith('Color(') else f'id({_tc})'
+            time_color_chain = f"->setTimeColor({_tc_cpp})"
+
+        all_chains = bg_chains[:]
+        if time_color_chain:
+            all_chains.append(time_color_chain)
+
         screen_expr = (
             f"  new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id})"
         )
-        if bg_chains:
+        if all_chains:
             screen_expr = (
                 f"  (new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id}))"
             )
-            for chain in bg_chains:
+            for chain in all_chains:
                 screen_expr += f"\n  {chain}"
 
         lines.extend([

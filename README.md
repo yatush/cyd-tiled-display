@@ -198,6 +198,11 @@ The Configurator is designed to be intuitive:
     *   **Fill Color**: Paint the tile interior with a solid color — supports named colors (`red`, `gray`, etc.) or custom `Color(r, g, b)` values. Multiple conditional entries are supported (last matching condition wins).
     *   **Border Color**: Override the tile's rounded-border color. Same format as Fill Color. Default is `gray`. The top-right tile's border color is automatically darkened for the clock/wifi background strip.
 
+1.  **Time Color**:
+    *   In the **Page** tab of the Properties Sidebar, enable the **Time Color** option to override the color of the clock text in the top-right corner.
+    *   Accepts any named color (`white`, `red`, etc.) or a custom `Color(r, g, b)` value. Default is `dark_gray`.
+    *   Useful when using a light-colored background or screen image where the default dark-gray time is hard to read.
+
 1.  **Screen Background**:
     *   In the **Page** tab of the Properties Sidebar, enable a screen background for any page.
     *   Layers are drawn behind all tiles. Multiple layers can be stacked; the **last matching layer** (from the end) is drawn.

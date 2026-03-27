@@ -417,6 +417,12 @@ def screen_schema(value):
                     pass
             raise cv.Invalid(f"{location}: {str(e)}")
     
+    # Validate time_color if present
+    time_color = value.get("time_color")
+    if time_color is not None:
+        if not isinstance(time_color, str):
+            raise cv.Invalid(f"time_color must be a string, got {type(time_color).__name__}")
+
     return {
         "id": screen_id,
         "flags": flags,
@@ -424,6 +430,7 @@ def screen_schema(value):
         "rows": rows,
         "cols": cols,
         "background": _validate_screen_background(value.get("background")),
+        "time_color": time_color,
     }
 
 

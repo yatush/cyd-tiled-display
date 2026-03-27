@@ -145,6 +145,41 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
         </div>
       </div>
 
+      {/* Time Color */}
+      <div>
+        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Time Color</label>
+        <div className="bg-slate-50 rounded-lg border border-slate-100 p-3">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="page-time-color-enable"
+              checked={!!activePage.time_color}
+              onChange={e => {
+                if (e.target.checked) {
+                  onUpdatePage({ ...activePage, time_color: 'dark_gray' });
+                } else {
+                  const { time_color: _tc, ...rest } = activePage as any;
+                  onUpdatePage(rest as Page);
+                }
+              }}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="page-time-color-enable" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
+              Override time color
+            </label>
+          </div>
+          {activePage.time_color && (
+            <div className="pl-4 mt-3">
+              <ColorPicker
+                value={activePage.time_color}
+                onChange={v => onUpdatePage({ ...activePage, time_color: v })}
+                colors={colorList}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Screen Background */}
       <div>
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Screen Background</label>

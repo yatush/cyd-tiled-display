@@ -28,6 +28,7 @@ screens:
     flags: [FLAG1, FLAG2]
     background:            # optional — one or more background layers (see Screen Background)
       - color: dark_dark_gray
+    time_color: white      # optional — override the clock text color (default: dark_gray)
     tiles:
       - tile_type:
           x: 0
@@ -58,6 +59,7 @@ screen_images:        # optional — maintained automatically by the Configurato
   - `TEMPORARY`: Screen is temporary - i.e. after 60 seconds of inactivity, it will change back to the `BASE` screen
   - `FAST_REFRESH`: Screen that refresh several times per second, in contrast to others that might refesh every few seconds. This should be set in case the screen has values that change often.
 - **background**: (Optional) One or more background layers drawn behind all tiles. See [Screen Background](#screen-background) below.
+- **time_color**: (Optional) Override the color of the clock text drawn in the top-right corner. Accepts any named color global or inline `Color(r, g, b)` value. Default is `dark_gray`.
 
 ### Screen Layout
 
@@ -675,6 +677,20 @@ requires_fast_refresh:
 ```
 
 This evaluates to: `((!blinds_moving_up_fn) && blinds_moving_down_fn) || blinds_moving_down_fn`
+
+## Time Color
+
+Each screen can independently override the color of the clock text that appears in the top-right corner (alongside the wifi indicator). Configure it with the `time_color:` key at the screen level:
+
+```yaml
+- id: living_room
+  time_color: white    # override to white for dark backgrounds
+  tiles: []
+```
+
+Accepts the same color formats as tile colors — named globals (`white`, `red`, `dark_gray`, etc.) or inline RGB literals (`Color(255, 255, 255)`). The default when not set is `dark_gray`.
+
+In the Configurator, use the **Time Color** section in the **Page** tab of the Properties Sidebar to enable and change this option.
 
 ## Screen Background
 

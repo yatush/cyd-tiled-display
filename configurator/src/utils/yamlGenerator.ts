@@ -39,6 +39,7 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
       rows: page.rows,
       cols: page.cols,
       flags: page.flags && page.flags.length > 0 ? page.flags : undefined,
+      time_color: page.time_color || undefined,
       background: page.background && page.background.length > 0 ? page.background.map((entry: any) => {
         const result: any = {};
         if ('color' in entry && entry.color) result.color = entry.color;

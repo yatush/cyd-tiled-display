@@ -21,6 +21,7 @@ export interface Page {
   cols: number;
   flags?: string[];
   background?: ScreenBgEntry[];
+  time_color?: string;
 }
 
 export interface ImageEntry {
