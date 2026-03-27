@@ -167,12 +167,17 @@ jobs:
               # all the ESPHome components that real CYD device builds compile.
               # These get cached so the first OTA install on the user's device is
               # fast (cache hit) rather than starting cold.
-              mkdir -p /tmp/esp32_cache
-              cp /app/esphome/esp32_cachewarm.yaml /tmp/esp32_cache/
-              cd /tmp/esp32_cache
-              timeout 1800s esphome compile esp32_cachewarm.yaml || true
-              cd /
-              rm -rf /tmp/esp32_cache
+              if [ -f /app/esphome/esp32_cachewarm.yaml ]; then
+                mkdir -p /tmp/esp32_cache
+                cp /app/esphome/esp32_cachewarm.yaml /tmp/esp32_cache/
+                cd /tmp/esp32_cache
+                timeout 1800s esphome compile esp32_cachewarm.yaml || true
+                cd /
+                rm -rf /tmp/esp32_cache
+              else
+                echo "WARNING: esp32_cachewarm.yaml not found in /app/esphome — skipping component pre-warm"
+                echo "This file should be present in esphome/ in the repo and mounted via the -v bind."
+              fi
 
               echo "--- DEBUG: ccache stats after re-compile ---"
               ccache --show-stats 2>/dev/null || true
