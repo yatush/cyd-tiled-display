@@ -166,7 +166,7 @@ jobs:
                 # Compile directly from /app/esphome/ so ccache keys match the
                 # path used by the running container during user installs.
                 # CCACHE_BASEDIR strips the absolute base dir from all -I flags
-                # so the cache entries match regardless of whether the user's
+                # so the cache entries match regardless of whether the user
                 # ESPHome dir is /app/esphome or /config/esphome.
                 cd /app/esphome
                 export CCACHE_BASEDIR="/app/esphome"
@@ -188,7 +188,7 @@ jobs:
 
               echo "=== Pre-compiling emulator to warm ccache ==="
               echo "--- DEBUG: /app permissions ---"
-              ls -la / | grep -E '^d.*app' || echo "(no /app in /)"
+              ls -la / | grep -E "^d.*app" || echo "(no /app in /)"
               chmod 755 /app 2>/dev/null || true
               mkdir -p /app/configurator || true
 
