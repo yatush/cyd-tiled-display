@@ -2016,14 +2016,17 @@ def toolchain_download_latest():
                 and stored_version == expected_version and has_pkgs):
             return jsonify({'status': 'up_to_date', 'version': stored_version})
 
-    # Launch toolchain_setup.py to download the new build
+    # Launch toolchain_setup.py to download the new build.
+    # Pass --force-download so it skips the "version already matches" check
+    # (Case 1) and re-downloads even when the ESPHome version is unchanged
+    # but a newer build tarball has been published (different build_id).
     setup_script = '/app/toolchain_setup.py'
     if not os.path.exists(setup_script):
         return jsonify({'error': 'toolchain_setup.py not found'}), 500
 
     log_file = open('/tmp/toolchain_setup.log', 'w')
     proc = subprocess.Popen(
-        ['python3', setup_script],
+        ['python3', setup_script, '--force-download'],
         stdout=log_file,
         stderr=log_file,
         stdin=subprocess.DEVNULL,

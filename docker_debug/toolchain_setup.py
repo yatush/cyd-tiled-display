@@ -639,7 +639,8 @@ def build_toolchain_locally(reason: str) -> None:
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:
-    force_local = '--force-local' in sys.argv
+    force_local    = '--force-local'    in sys.argv
+    force_download = '--force-download' in sys.argv
 
     # ── Upgrade ESPHome if a newer version is available on PyPI ──────────────
     # Skipped when the user triggered a local build (version doesn't matter there).
@@ -655,6 +656,7 @@ def main() -> None:
     log(f'Arch                     : {arch}')
     log(f'Has packages             : {has_packages()}')
     log(f'Force local              : {force_local}')
+    log(f'Force download           : {force_download}')
 
     # ── --force-local: user confirmed, build now ──────────────────────────────
     if force_local:
@@ -666,7 +668,9 @@ def main() -> None:
         return
 
     # ── Case 1: already up-to-date ────────────────────────────────────────────
-    if stored == expected and has_packages():
+    # Skipped when --force-download is passed (user clicked "Update toolchain"
+    # and the server detected a newer build_id for the same ESPHome version).
+    if stored == expected and has_packages() and not force_download:
         log('Toolchain up-to-date.')
         set_stored_version(expected)   # ensures SETUP_MARKER is present
         fix_wrappers()   # idempotent catch-all: PlatformIO may have downloaded
