@@ -188,6 +188,7 @@ jobs:
               unset CCACHE_LOGFILE
 
               echo "=== Pre-compiling emulator to warm ccache ==="
+              chmod 755 /app 2>/dev/null || true
               mkdir -p /app/configurator
 
               python3 /app/prepare_precache.py || true

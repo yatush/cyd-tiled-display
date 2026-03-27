@@ -403,6 +403,7 @@ script:
       j: int
       i_span: int
       j_span: int
+      c: Color
     then:
       - lambda: |-
           for (int delta = 0; delta < id(tile_border_width); ++delta) {
@@ -412,7 +413,7 @@ script:
               x_rect() * i_span + (i_span - 1) * id(x_pad) - 2 * delta,
               y_rect() * j_span + (j_span - 1) * id(y_pad) - 2 * delta,
               id(border_r) - delta,
-              id(gray));
+              c);
           }
 
   - id: tile_blinds_up

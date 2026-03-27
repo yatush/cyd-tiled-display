@@ -296,6 +296,29 @@ def get_tile_modifiers(config, screen_id=None):
                 else:
                     method_chains.append(f'addFillColor(id({color}))')
 
+    border_color = config.get("border_color", None)
+    if border_color:
+        def _color_cpp(c):
+            return c if c.startswith('Color(') else f'id({c})'
+        if isinstance(border_color, str):
+            method_chains.append(f'addBorderColor({_color_cpp(border_color)})')
+        elif isinstance(border_color, list):
+            for entry in border_color:
+                color = entry.get("color") if isinstance(entry, dict) else None
+                if not color:
+                    continue
+                condition = entry.get("condition") if isinstance(entry, dict) else None
+                if condition:
+                    cond_expr = build_expression(condition, context)
+                    if cond_expr:
+                        method_chains.append(
+                            f'addBorderColor({_color_cpp(color)}, [](std::vector<std::string> entities) -> bool {{ return {cond_expr}; }})'
+                        )
+                    else:
+                        method_chains.append(f'addBorderColor({_color_cpp(color)})')
+                else:
+                    method_chains.append(f'addBorderColor({_color_cpp(color)})')
+
     x_span = config.get("x_span", 1)
     y_span = config.get("y_span", 1)
     if x_span > 1 or y_span > 1:

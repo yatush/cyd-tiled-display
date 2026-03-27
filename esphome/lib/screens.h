@@ -129,8 +129,14 @@ public:
   void drawWifiHour() override {
     if (this->hasAtt(OMIT_TIME_WIFI)) return;
     // Check if any tile is below the Wi-Fi icon.
-    if (std::any_of(this->tiles_.begin(), this->tiles_.end(),
-                    [](const Tile* tile) { return tile->isBelowWifi(); })) {
+    auto* _tr_tile = [this]() -> Tile* {
+      for (Tile* t : this->tiles_) { if (t->isBelowWifi()) return t; }
+      return nullptr;
+    }();
+    if (_tr_tile) {
+      // Darken the top-right tile's effective border color for the wifi/time background.
+      Color _bc = _tr_tile->getEffectiveBorderColor();
+      Color _wifi_bg(_bc.r >> 1, _bc.g >> 1, _bc.b >> 1);
       auto sizes = wifiHourWidth();
       auto y = x_start(0), w = x_rect(),
            end_x = x_start(id(cols) - 1) + w,
@@ -139,10 +145,10 @@ public:
            end_y = std::get<0>(sizes).second + std::get<2>(sizes);
       for (int delta = 0; delta < id(tile_border_width); ++delta) {
         id(disp).start_clipping(end_x - r - 1, y, end_x, y + r);
-        circle(end_x - r - 1, y + r, r - delta, id(dark_dark_gray));
+        circle(end_x - r - 1, y + r, r - delta, _wifi_bg);
         id(disp).end_clipping();
-        line(start_x, y + delta, end_x - r - 1, y + delta, id(dark_dark_gray));
-        line(end_x - 1 - delta, y + r, end_x - 1 - delta, end_y, id(dark_dark_gray));
+        line(start_x, y + delta, end_x - r - 1, y + delta, _wifi_bg);
+        line(end_x - 1 - delta, y + r, end_x - 1 - delta, end_y, _wifi_bg);
       }
     }
     // Call the base class function to draw the Wi-Fi icon and time.

@@ -26,6 +26,8 @@ esphome/monitor_tiles.yaml
 screens:
   - id: screen_name
     flags: [FLAG1, FLAG2]
+    background:            # optional — one or more background layers (see Screen Background)
+      - color: dark_dark_gray
     tiles:
       - tile_type:
           x: 0
@@ -37,6 +39,11 @@ images:               # optional — maintained automatically by the Configurato
     filename: my_photo.png
     type: RGB565      # RGB565 (default) or RGBA (for alpha-transparent PNGs)
     scale: 80         # 10–100 — percentage of the tile area the image fills
+
+screen_images:        # optional — maintained automatically by the Configurator
+  bg_living_room:     # unique ID you reference from 'background:' entries
+    filename: living_room.jpg
+    type: RGB565
 ```
 
 > **Note:** The `images:` dictionary at the top level is managed automatically by the Configurator's **Images** panel in the left sidebar. You do not need to edit it by hand.
@@ -50,6 +57,7 @@ images:               # optional — maintained automatically by the Configurato
   - `BASE`: This is the base/home screen that loads first, also `TEMPORARY` screens fall back to this screen after timeout. There should be exactly 1 `BASE` screen.
   - `TEMPORARY`: Screen is temporary - i.e. after 60 seconds of inactivity, it will change back to the `BASE` screen
   - `FAST_REFRESH`: Screen that refresh several times per second, in contrast to others that might refesh every few seconds. This should be set in case the screen has values that change often.
+- **background**: (Optional) One or more background layers drawn behind all tiles. See [Screen Background](#screen-background) below.
 
 ### Screen Layout
 
@@ -420,6 +428,56 @@ dynamic_entry:
   - **dynamic_entity**: *(Required)* Identifier key for the dynamic entity
   - **value**: *(Required)* Entity ID to set for this key. Can be a **comma-separated list** of entities.
 
+### Fill Color
+
+Override the tile's background fill color. When a fill color is set the tile interior is painted with the given color before the tile content is drawn. Useful for highlighting active states.
+
+#### Unconditional fill
+
+```yaml
+- ha_action:
+    x: 0
+    y: 0
+    # ...
+    fill_color: dark_dark_gray   # any named color global
+```
+
+#### Conditional fill (evaluated in order; last matching entry wins)
+
+```yaml
+    fill_color:
+      - color: red           # show red when light is on
+        condition: light_on_fn
+      - color: dark_dark_gray  # default
+```
+
+Colors can reference a named global (e.g. `red`, `gray`) or an inline `Color(r, g, b)` literal with RGB values 0–255.
+
+### Border Color
+
+Override the color of the tile's rounded border frame. The default border color is `gray`. Supports the same unconditional and conditional syntax as Fill Color.
+
+#### Unconditional border color
+
+```yaml
+- ha_action:
+    x: 0
+    y: 0
+    # ...
+    border_color: light_blue
+```
+
+#### Conditional border color (last matching entry wins)
+
+```yaml
+    border_color:
+      - color: red             # highlight border when alarm is active
+        condition: alarm_on_fn
+      - color: gray            # default
+```
+
+> **Note on wifi/time indicator**: The top-right tile's effective border color is automatically darkened (each channel halved) and used as the background strip behind the wifi icon and clock, so the text remains visible regardless of which color you choose.
+
 ### Display Assets
 
 Display one or more images or icons on a tile. Images are uploaded via the Configurator's **Images** section in the left sidebar, where they receive a unique ID (e.g., `img_kitchen`). When `display_assets:` is set on a tile it **replaces** the `display:` scripts — the tile renders the image or icon instead. Tiles with animated display assets automatically get `requires_fast_refresh` enabled.
@@ -618,7 +676,63 @@ requires_fast_refresh:
 
 This evaluates to: `((!blinds_moving_up_fn) && blinds_moving_down_fn) || blinds_moving_down_fn`
 
-## How It Works
+## Screen Background
+
+Each screen can display a full-screen background layer drawn behind all tiles. Backgrounds are configured per-screen using the `background:` key and are managed in the Configurator's **Screen Background** section of the Page properties panel.
+
+A background is a list of entries evaluated from last to first; the **first entry (from the end) whose condition is true is drawn**. Only one layer is ever drawn per frame — if a solid-color entry has no condition and sits at the top of the list, it will always be shown and the image below it will never be drawn.
+
+### Solid color background
+
+```yaml
+- id: living_room
+  background:
+    - color: dark_dark_gray
+  tiles: []
+```
+
+### Image background
+
+Images for screen backgrounds are uploaded via the Configurator's **Screen Background Images** panel (separate from tile images). They are stored in `screen_images:` at the top of the YAML and referenced by their ID.
+
+```yaml
+- id: living_room
+  background:
+    - image: bg_living_room
+  tiles: []
+```
+
+Screen background images are automatically **cover-cropped** to the exact screen dimensions at two points:
+1. **Upload time** (in the browser): cropped to 480×320 px to limit the stored file size.
+2. **Compile time** (in the Docker/add-on container): PIL re-crops to the exact target device resolution using scale-to-fill + center-crop.
+
+### Conditional background layers
+
+Layers are listed top-to-bottom; the last entry whose condition is true is drawn. Put the most-specific (conditional) layers last so they override more general layers:
+
+```yaml
+- id: living_room
+  background:
+    - image: bg_living_room      # base layer — always shown if nothing else matches
+    - color: red
+      condition: alarm_active_fn # drawn instead of the image when alarm fires
+  tiles: []
+```
+
+- **color**: Named color global (e.g. `red`, `gray`) or an `Color(r, g, b)` RGB literal.
+- **image**: ID from the `screen_images:` dictionary.
+- **condition**: (Optional) Condition script (see [Conditions](#conditions)). If omitted the layer is always active.
+
+### Colors
+
+Colors can be specified anywhere in the tile or screen configuration with a named global or an inline RGB value:
+
+| Format | Example | Description |
+|---|---|---|
+| Named global | `gray` | Predefined color from `lib_common.yaml` |
+| Inline RGB | `Color(255, 0, 0)` | Custom red (R, G, B, each 0–255) |
+
+Built-in named colors: `blue`, `light_blue`, `red`, `light_red`, `light_green`, `light_purple`, `gray`, `dark_gray`, `dark_dark_gray`, `yellow`, `light_yellow`.
 
 1. **Build Time**: When you run `esphome compile` or `esphome run`:
    - ESPhome loads your configuration

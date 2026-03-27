@@ -195,7 +195,15 @@ The Configurator is designed to be intuitive:
     *   **Entity**: Select the Home Assistant entity to control or monitor.
     *   **Label**: Set a custom label (or leave blank to use the entity's friendly name).
     *   **Icon**: Choose an icon from the Material Design Icons library.
-    *   **Color**: Customize the tile color based on state.
+    *   **Fill Color**: Paint the tile interior with a solid color — supports named colors (`red`, `gray`, etc.) or custom `Color(r, g, b)` values. Multiple conditional entries are supported (last matching condition wins).
+    *   **Border Color**: Override the tile's rounded-border color. Same format as Fill Color. Default is `gray`. The top-right tile's border color is automatically darkened for the clock/wifi background strip.
+
+1.  **Screen Background**:
+    *   In the **Page** tab of the Properties Sidebar, enable a screen background for any page.
+    *   Layers are drawn behind all tiles. Multiple layers can be stacked; the **last matching layer** (from the end) is drawn.
+    *   **Color layer**: Flood-fill the screen with a solid color.
+    *   **Image layer**: Use a full-screen background photo or graphic uploaded via the **Screen Background Images** panel in the left sidebar. Images are automatically **cover-cropped** to fit the screen (scale-to-fill + center-crop), so no letterboxing or borders appear.
+    *   Each layer can have an optional **condition** — for example, show a red background only when an alarm is active.
 
 1.  **File Management**:
     *   **Save Screen**: Save your current layout design (grid, tiles, etc.) to a YAML file on the server (e.g., `monitor_config/my_layout.yaml`). This allows you to reload your work later, and reuse configurations.

@@ -21,7 +21,8 @@ public:
       }
     }
     if (!this->omit_frame_) {
-      id(_draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_);
+      Color border_c = this->getEffectiveBorderColor();
+      id(_draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_, border_c);
     }
     this->customDraw();
   }
@@ -45,6 +46,28 @@ public:
   Tile* omitFrame() {
     this->omit_frame_ = true;
     return this;
+  }
+
+  // Adds an unconditional border color override.
+  Tile* addBorderColor(Color c) {
+    this->border_colors_.push_back({c, [](std::vector<std::string>) { return true; }});
+    return this;
+  }
+
+  // Adds a conditional border color override.
+  Tile* addBorderColor(Color c, std::function<bool(std::vector<std::string>)> cond) {
+    this->border_colors_.push_back({c, cond});
+    return this;
+  }
+
+  // Returns the effective border color: last entry whose condition is true, or id(gray) by default.
+  Color getEffectiveBorderColor() const {
+    for (int i = (int)this->border_colors_.size() - 1; i >= 0; --i) {
+      if (this->border_colors_[i].second({})) {
+        return this->border_colors_[i].first;
+      }
+    }
+    return id(gray);
   }
 
   // Adds an unconditional background fill color.
@@ -143,6 +166,8 @@ protected:
   bool omit_frame_ = false;
   // Conditional fill colors for the tile background (rendered in order; last true wins).
   std::vector<std::pair<Color, std::function<bool(std::vector<std::string>)>>> fill_colors_;
+  // Conditional border color overrides (last true wins; default is id(gray)).
+  std::vector<std::pair<Color, std::function<bool(std::vector<std::string>)>>> border_colors_;
   // Callback function for entity changes.
   std::function<void()> change_entities_callback_ = []() {};
   // Callback function when leaving the screen
