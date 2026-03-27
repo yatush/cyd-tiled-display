@@ -311,11 +311,39 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
 
     if tar_bin:
         # ── Native tar with real file-count progress ──────────────────────────
-        # Run tar with -v (verbose) so it prints one line per file to stdout.
-        # We read that stream in the main thread, counting lines.  This gives
-        # true "N files extracted" progress with zero extra I/O cost.
+        # Pre-count total members with a fast listing pass (tar -tf), then
+        # stream extract with -v to get "N / total files extracted" progress.
         # xz -T0 uses all CPU cores for decompression concurrently with disk
         # writes; falls back to tar's built-in single-threaded xz if missing.
+
+        # Step 1: count total entries (fast — no disk writes)
+        write_progress('extracting', 61, f'{label}: counting files...')
+        total_files = 0
+        try:
+            if xz_bin:
+                _xz_count = subprocess.Popen(
+                    [xz_bin, '-T0', '-dc', tarball_path],
+                    stdout=subprocess.PIPE)
+                _tar_count = subprocess.Popen(
+                    [tar_bin, '-tf', '-'],
+                    stdin=_xz_count.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL)
+                _xz_count.stdout.close()
+            else:
+                _xz_count = None
+                _tar_count = subprocess.Popen(
+                    [tar_bin, '-tJf', tarball_path],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL)
+            for _ in _tar_count.stdout:
+                total_files += 1
+            _tar_count.wait()
+            if _xz_count:
+                _xz_count.wait()
+        except Exception:
+            total_files = 0   # fall back to count-only display
+
         start_time  = time.monotonic()
 
         if xz_bin:
@@ -345,12 +373,15 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
             now = time.monotonic()
             if now - last_update >= 1.0:
                 last_update = now
-                elapsed = now - start_time
-                # Progress bar slides 61 → 83% over time (we have no total),
-                # but the message shows the real extracted file count.
-                fake_pct = min(83, 61 + int(elapsed / 2))
-                write_progress('extracting', fake_pct,
-                               f'{label}: {extracted:,} files extracted...')
+                if total_files > 0:
+                    pct = 62 + int(extracted / total_files * 22)
+                    pct = min(83, pct)
+                    msg = f'{label}: {extracted:,} / {total_files:,} files extracted...'
+                else:
+                    elapsed = now - start_time
+                    pct = min(83, 62 + int(elapsed / 2))
+                    msg = f'{label}: {extracted:,} files extracted...'
+                write_progress('extracting', pct, msg)
 
         tar_proc.wait()
         if xz_proc:
@@ -359,8 +390,9 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
             raise subprocess.CalledProcessError(tar_proc.returncode, tar_bin)
 
         log(f'Extraction complete: {extracted:,} files.')
-        write_progress('extracting', 84,
-                       f'{label}: {extracted:,} files extracted.')
+        final_msg = (f'{label}: {extracted:,} / {total_files:,} files extracted.'
+                     if total_files > 0 else f'{label}: {extracted:,} files extracted.')
+        write_progress('extracting', 84, final_msg)
 
     else:
         # ── Fallback: Python tarfile (slower, but works everywhere) ──────────
