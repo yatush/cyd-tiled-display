@@ -162,11 +162,8 @@ jobs:
 
               echo "=== Re-compiling ESP32 firmware to populate ccache ==="
               export CCACHE_LOGFILE=/tmp/ccache.log
-              # Use the comprehensive cachewarm YAML from the repo.  It includes
-              # api/*, binary_sensor/*, button/*, display/*, copy/sensor/*, etc. —
-              # all the ESPHome components that real CYD device builds compile.
-              # These get cached so the first OTA install on the user's device is
-              # fast (cache hit) rather than starting cold.
+              echo "--- DEBUG: /app/esphome contents ---"
+              ls -la /app/esphome/ 2>/dev/null || echo "(cannot list /app/esphome)"
               if [ -f /app/esphome/esp32_cachewarm.yaml ]; then
                 mkdir -p /tmp/esp32_cache
                 cp /app/esphome/esp32_cachewarm.yaml /tmp/esp32_cache/
@@ -188,8 +185,10 @@ jobs:
               unset CCACHE_LOGFILE
 
               echo "=== Pre-compiling emulator to warm ccache ==="
+              echo "--- DEBUG: /app permissions ---"
+              ls -la / | grep -E '^d.*app' || echo "(no /app in /)"
               chmod 755 /app 2>/dev/null || true
-              mkdir -p /app/configurator
+              mkdir -p /app/configurator || true
 
               python3 /app/prepare_precache.py || true
 
