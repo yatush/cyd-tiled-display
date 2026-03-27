@@ -34,6 +34,7 @@ function App() {
   const [toolchainProgress, setToolchainProgress]       = useState(0);
   const [toolchainMessage, setToolchainMessage]         = useState('');
   const [toolchainUpdateAvailable, setToolchainUpdateAvailable] = useState(false);
+  const [toolchainBuildId, setToolchainBuildId]         = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,8 +78,16 @@ function App() {
           try {
             const res = await apiFetch('/toolchain/check_update');
             if (res.ok) {
-              const data: { update_available: boolean } = await res.json();
-              if (!cancelled) setToolchainUpdateAvailable(data.update_available);
+              const data: { update_available: boolean; local_build_id?: string } = await res.json();
+              if (!cancelled) {
+                if (data.local_build_id) setToolchainBuildId(data.local_build_id);
+                setToolchainUpdateAvailable(data.update_available);
+                if (data.update_available) {
+                  // Auto-start download immediately — no dialog interaction required.
+                  // TopBar will show progress naturally as toolchainPhase changes.
+                  apiFetch('/toolchain/download_latest', { method: 'POST' }).catch(() => {});
+                }
+              }
             }
           } catch { /* non-fatal */ }
         }
@@ -466,6 +475,7 @@ function App() {
         toolchainProgress={toolchainProgress}
         toolchainMessage={toolchainMessage}
         toolchainUpdateAvailable={toolchainUpdateAvailable}
+        toolchainBuildId={toolchainBuildId ?? undefined}
         onOpenInstall={() => setIsInstallDeviceOpen(true)}
       />
 
@@ -652,8 +662,6 @@ function App() {
         onOtaActiveChange={setOtaInstallActive}
         toolchainPhase={toolchainPhase ?? undefined}
         onToolchainPhaseChange={setToolchainPhase}
-        toolchainUpdateAvailable={toolchainUpdateAvailable}
-        onToolchainUpdateConsumed={() => setToolchainUpdateAvailable(false)}
       />
       
       <ScreensFileDialog 

@@ -28,10 +28,6 @@ interface InstallDialogProps {
   toolchainPhase?: string;
   /** Called to update toolchain phase in App state after local build starts */
   onToolchainPhaseChange?: (phase: string) => void;
-  /** Whether App detected a newer build on GitHub */
-  toolchainUpdateAvailable?: boolean;
-  /** Called after the download has been triggered so App clears the badge */
-  onToolchainUpdateConsumed?: () => void;
 }
 
 type InstallStatus = 'idle' | 'loading' | 'saving' | 'installing' | 'success' | 'error' | 'cancelled';
@@ -47,8 +43,6 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   onOtaActiveChange,
   toolchainPhase,
   onToolchainPhaseChange,
-  toolchainUpdateAvailable,
-  onToolchainUpdateConsumed,
 }) => {
   // ── Toolchain state ──────────────────────────────────────────────────────
   // localBuild* tracks the progress of a user-triggered local build.
@@ -161,15 +155,6 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         setToolchainChecked(true);
       });
 
-    // Auto-trigger download when opened with a known update pending.
-    if (toolchainUpdateAvailable) {
-      // Small delay so the status fetch above completes first and doesn't race
-      // with the already_running guard in download_latest.
-      setTimeout(() => {
-        handleDownloadLatest();
-        onToolchainUpdateConsumed?.();
-      }, 600);
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 

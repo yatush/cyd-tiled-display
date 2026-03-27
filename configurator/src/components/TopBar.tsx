@@ -49,6 +49,8 @@ interface TopBarProps {
   onOpenInstall?: () => void;
   /** Whether a newer toolchain build is available on GitHub */
   toolchainUpdateAvailable?: boolean;
+  /** Local installed build ID (e.g. "2026.3.1-20260327-run45") */
+  toolchainBuildId?: string;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -74,10 +76,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   toolchainMessage,
   onOpenInstall,
   toolchainUpdateAvailable,
+  toolchainBuildId,
 }) => {
   const UPGRADING_PHASES = ['downloading', 'extracting', 'fixing', 'warming'];
   const isToolchainUpgrading = toolchainPhase != null && UPGRADING_PHASES.includes(toolchainPhase);
-  const showToolchainIcon = isToolchainUpgrading || toolchainUpdateAvailable || toolchainPhase === 'no_toolchain' || toolchainPhase === 'building';
+  const showToolchainIcon = toolchainPhase != null && toolchainPhase !== 'starting';
+
+  // Short label from build ID: "2026.3.1-20260327-run45" → "run45"
+  const buildTag = toolchainBuildId ? toolchainBuildId.split('-').pop() : null;
 
   const [showLog, setShowLog]     = useState(false);
   const [logContent, setLogContent] = useState('');
@@ -153,23 +159,27 @@ export const TopBar: React.FC<TopBarProps> = ({
                   ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
                   : toolchainUpdateAvailable
                   ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+                  : toolchainPhase === 'ready'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
                   : toolchainPhase === 'building'
                   ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
                   : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
               }`}
-              title={toolchainUpdateAvailable && !isToolchainUpgrading ? 'Toolchain update available — click to update' : 'Click to view toolchain log'}
+              title={toolchainUpdateAvailable && !isToolchainUpgrading ? 'Toolchain update downloading...' : 'Click to view toolchain log'}
             >
               <Wrench size={13} className={isToolchainUpgrading || toolchainPhase === 'building' ? 'animate-pulse' : ''} />
               <span className="hidden sm:inline">
                 {isToolchainUpgrading
                   ? (toolchainPhase === 'warming' ? 'Warming cache' : 'Updating toolchain')
                   : toolchainUpdateAvailable
-                  ? 'Toolchain update available'
+                  ? 'Updating toolchain'
+                  : toolchainPhase === 'ready'
+                  ? `Toolchain ready${buildTag ? ` · ${buildTag}` : ''}`
                   : toolchainPhase === 'building' ? 'Building toolchain' : 'Toolchain needed'}
               </span>
               {isToolchainUpgrading && <span className="font-mono">{toolchainProgress}%</span>}
-              {!isToolchainUpgrading && toolchainUpdateAvailable && <Download size={11} className="opacity-70" />}
-              {!(toolchainUpdateAvailable && !isToolchainUpgrading) && <ChevronDown size={11} className="opacity-60" />}
+              {(isToolchainUpgrading || toolchainUpdateAvailable) && toolchainPhase !== 'warming' && <Download size={11} className="opacity-70 animate-pulse" />}
+              {!isToolchainUpgrading && !toolchainUpdateAvailable && <ChevronDown size={11} className="opacity-60" />}
             </button>
           )}
 
