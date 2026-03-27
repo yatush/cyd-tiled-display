@@ -126,7 +126,7 @@ jobs:
               ccache --version | head -1 || true
 
               echo "--- DEBUG: sample wrapper script content (xtensa-esp32-elf-gcc) ---"
-              SAMPLE=$(find /root/.platformio/packages -name 'xtensa-esp32-elf-gcc' 2>/dev/null | head -1)
+              SAMPLE=$(find /root/.platformio/packages -name "xtensa-esp32-elf-gcc" 2>/dev/null | head -1)
               if [ -n "$SAMPLE" ]; then
                 echo "Path: $SAMPLE"
                 file "$SAMPLE" || true
