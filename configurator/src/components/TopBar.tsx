@@ -85,8 +85,25 @@ export const TopBar: React.FC<TopBarProps> = ({
   // Short label from build ID: "2026.3.1-20260327-run45" → "run45"
   const buildTag = toolchainBuildId ? toolchainBuildId.split('-').pop() : null;
 
-  const [showLog, setShowLog]     = useState(false);
-  const [logContent, setLogContent] = useState('');
+  const [showLog, setShowLog]         = useState(false);
+  const [logContent, setLogContent]     = useState('');
+  const [updateBtnState, setUpdateBtnState] = useState<'idle' | 'checking' | 'up_to_date'>('idle');
+
+  const handleCheckUpdate = async () => {
+    setUpdateBtnState('checking');
+    try {
+      const res = await apiFetch('/toolchain/download_latest', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'up_to_date') {
+          setUpdateBtnState('up_to_date');
+          setTimeout(() => setUpdateBtnState('idle'), 4000);
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+    setUpdateBtnState('idle');
+  };
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -153,7 +170,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           {/* Toolchain badge — clickable to show log */}
           {showToolchainIcon && (
             <button
-              onClick={() => toolchainUpdateAvailable && !isToolchainUpgrading ? onOpenInstall?.() : setShowLog(true)}
+              onClick={() => setShowLog(true)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
                 isToolchainUpgrading
                   ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
@@ -172,7 +189,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 {isToolchainUpgrading
                   ? (toolchainPhase === 'warming' ? 'Warming cache' : 'Updating toolchain')
                   : toolchainUpdateAvailable
-                  ? 'Updating toolchain'
+                  ? 'Update available'
                   : toolchainPhase === 'ready'
                   ? `Toolchain ready${buildTag ? ` · ${buildTag}` : ''}`
                   : toolchainPhase === 'building' ? 'Building toolchain' : 'Toolchain needed'}
@@ -201,6 +218,22 @@ export const TopBar: React.FC<TopBarProps> = ({
                       >
                         <Wrench size={13} />
                         Build locally
+                      </button>
+                    )}
+                    {toolchainPhase === 'ready' && (
+                      <button
+                        onClick={handleCheckUpdate}
+                        disabled={updateBtnState === 'checking'}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                          updateBtnState === 'up_to_date'
+                            ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                            : updateBtnState === 'checking'
+                            ? 'bg-slate-100 text-slate-400 cursor-wait'
+                            : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
+                        }`}
+                      >
+                        <Download size={13} className={updateBtnState === 'checking' ? 'animate-pulse' : ''} />
+                        {updateBtnState === 'up_to_date' ? 'Up to date' : updateBtnState === 'checking' ? 'Checking...' : 'Update toolchain'}
                       </button>
                     )}
                     <button onClick={() => setShowLog(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">

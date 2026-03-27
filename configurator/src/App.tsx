@@ -43,11 +43,12 @@ function App() {
         try {
           const res = await apiFetch('/toolchain/status');
           if (res.ok) {
-            const data: { phase: string; progress: number; message: string } = await res.json();
+            const data: { phase: string; progress: number; message: string; build_id?: string } = await res.json();
             if (!cancelled) {
               setToolchainPhase(data.phase);
               setToolchainProgress(data.progress ?? 0);
               setToolchainMessage(data.message ?? '');
+              if (data.build_id) setToolchainBuildId(data.build_id);
               // Clear update badge while an upgrade is actively running
               if (['downloading','extracting','fixing','warming'].includes(data.phase)) {
                 setToolchainUpdateAvailable(false);
