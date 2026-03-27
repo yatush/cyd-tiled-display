@@ -88,6 +88,9 @@ mkdir -p "$PLATFORMIO_CACHEDIR"
 # hundreds of ESPHome framework files).
 export CCACHE_DIR="/root/.platformio/.ccache"
 export CCACHE_MAXSIZE="2G"
+# Normalize absolute paths so the CI cachewarm entries hit here too.
+# CCACHE_BASEDIR strips the base dir prefix from all -I flags before hashing.
+export CCACHE_BASEDIR="$(pwd)"
 mkdir -p "$CCACHE_DIR"
 export PATH="/usr/local/lib/ccache:$PATH"
 

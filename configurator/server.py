@@ -1229,6 +1229,11 @@ def install_esphome_device():
             _install_env['CCACHE_MAXSIZE']        = '2G'
             _install_env['CCACHE_COMPILERCHECK']  = 'content'
             _install_env['CCACHE_NOHASHDIR']      = 'true'
+            # Normalize absolute paths so cache entries created during the
+            # CI cachewarm (/app/esphome) hit here (/config/esphome) and
+            # vice-versa.  Strips the esphome base dir prefix from all -I
+            # flags before hashing, leaving only relative paths.
+            _install_env['CCACHE_BASEDIR']        = BASE_DIR
         if os.path.isdir(_ccache_bin):
             _install_env['PATH'] = f"{_ccache_bin}:{_install_env.get('PATH', '')}"
         process = subprocess.Popen(
@@ -1529,6 +1534,7 @@ def compile_esphome_device():
             env['CCACHE_MAXSIZE']       = '2G'
             env['CCACHE_COMPILERCHECK'] = 'content'
             env['CCACHE_NOHASHDIR']     = 'true'
+            env['CCACHE_BASEDIR']       = BASE_DIR
         if os.path.isdir(_ccache_bin):
             env['PATH'] = f"{_ccache_bin}:{env.get('PATH', '')}"
 

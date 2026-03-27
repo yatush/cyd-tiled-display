@@ -165,10 +165,13 @@ jobs:
               if [ -f /app/esphome/esp32_cachewarm.yaml ]; then
                 # Compile directly from /app/esphome/ so ccache keys match the
                 # path used by the running container during user installs.
-                # Compiling from a temp dir (/tmp/esp32_cache/) would key the
-                # cache with /tmp/... paths → 100% misses at runtime.
+                # CCACHE_BASEDIR strips the absolute base dir from all -I flags
+                # so the cache entries match regardless of whether the user's
+                # ESPHome dir is /app/esphome or /config/esphome.
                 cd /app/esphome
+                export CCACHE_BASEDIR="/app/esphome"
                 timeout 1800s esphome compile esp32_cachewarm.yaml || true
+                unset CCACHE_BASEDIR
                 cd /
               else
                 echo "WARNING: esp32_cachewarm.yaml not found in /app/esphome — skipping component pre-warm"
