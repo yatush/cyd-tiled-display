@@ -1070,10 +1070,11 @@ def list_esphome_devices():
     try:
         devices = []
         skip_dirs = {'lib', 'external_components', '.esphome', '__pycache__'}
+        skip_files = {'esp32_cachewarm.yaml', 'secrets.yaml'}
 
         for item in os.listdir(BASE_DIR):
             # Skip hidden files, directories we know aren't device configs
-            if item.startswith('.') or item in skip_dirs:
+            if item.startswith('.') or item in skip_dirs or item in skip_files:
                 continue
             filepath = os.path.join(BASE_DIR, item)
             if not os.path.isfile(filepath):
