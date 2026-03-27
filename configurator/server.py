@@ -490,6 +490,69 @@ def stop_emulator():
     _stop_session(session_id)
     return jsonify({"status": "stopped"})
 
+
+@app.route('/api/debug/emulator', methods=['GET'])
+def debug_emulator():
+    """Diagnostic endpoint: returns emulator + seed-dir state for debugging."""
+    import glob as _glob, platform as _platform
+    seed_dir = os.path.join(
+        '/app/esphome' if os.path.isdir('/app/esphome') else
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '../esphome')),
+        'lib', '.esphome', 'build', 'emulator'
+    )
+    pio_dir = '/root/.platformio'
+    emulator_marker = os.path.join(pio_dir, '.emulator_prebuilt')
+    ccache_dir = os.path.join(pio_dir, '.ccache')
+    setup_marker = os.path.join(pio_dir, '.cyd_setup_done')
+
+    def _dir_size_mb(path):
+        try:
+            result = subprocess.run(['du', '-sm', path], capture_output=True, text=True, timeout=5)
+            return result.stdout.split()[0] + ' MB' if result.stdout else 'unknown'
+        except Exception:
+            return 'unknown'
+
+    def _read_file(path):
+        try:
+            return open(path).read().strip()
+        except Exception:
+            return None
+
+    with sessions_lock:
+        sessions_snapshot = {
+            sid: {
+                'pid': s.get('pid'),
+                'running': is_process_running(s.get('pid')),
+                'display': s.get('display'),
+                'vnc_port': s.get('vnc_port'),
+                'websockify_port': s.get('websockify_port'),
+                'screen_type': s.get('screen_type'),
+            }
+            for sid, s in sessions.items()
+        }
+
+    # Recent logs for each session
+    log_files = {}
+    for f in _glob.glob('/tmp/emulator_*.log'):
+        try:
+            result = subprocess.run(['tail', '-n', '20', f], capture_output=True, text=True)
+            log_files[os.path.basename(f)] = result.stdout
+        except Exception:
+            pass
+
+    return jsonify({
+        'arch': _platform.machine(),
+        'sessions': sessions_snapshot,
+        'seed_dir': {'path': seed_dir, 'exists': os.path.isdir(seed_dir), 'size': _dir_size_mb(seed_dir) if os.path.isdir(seed_dir) else None},
+        'emulator_marker': {'exists': os.path.exists(emulator_marker), 'content': _read_file(emulator_marker)},
+        'ccache_dir': {'exists': os.path.isdir(ccache_dir), 'size': _dir_size_mb(ccache_dir) if os.path.isdir(ccache_dir) else None},
+        'setup_marker': os.path.exists(setup_marker),
+        'generate_script': os.path.exists(_GENERATE_SCRIPT),
+        'base_dir': BASE_DIR,
+        'recent_emulator_logs': log_files,
+        'memory_mb': _read_file('/proc/meminfo').split('\n')[0] if os.path.exists('/proc/meminfo') else None,
+    })
+
 @app.route('/api/emulator/status', methods=['GET'])
 def emulator_status():
     session_id = get_session_id()
