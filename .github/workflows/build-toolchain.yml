@@ -107,7 +107,6 @@ jobs:
               export CCACHE_DIR=/root/.platformio/.ccache
               export CCACHE_MAXSIZE=2G
               export CCACHE_COMPILERCHECK=content
-              export CCACHE_NODIRECT=true
               export CCACHE_SLOPPINESS=include_file_mtime,time_macros
               export CCACHE_NOHASHDIR=true
               export PATH="/usr/local/lib/ccache:$PATH"
@@ -185,59 +184,10 @@ jobs:
               # Remove the dist cache — not needed at runtime
               rm -rf /root/.platformio/dist
 
-              echo "=== Re-compiling ESP32 firmware to populate ccache ==="
-
-              echo "--- DIAG: ccache stats before cachewarm (zeroing now) ---"
-              ccache --zero-stats 2>/dev/null || true
-              ccache --show-stats 2>/dev/null || true
-              du -sh /root/.platformio/.ccache/ 2>/dev/null || echo "(cache dir empty)"
-
-              export CCACHE_LOGFILE=/tmp/ccache_warm.log
-              export CCACHE_DEBUG=1
-              export CCACHE_DEBUGDIR=/tmp/ccache_debug
-
-              if [ -f /app/esphome/esp32_cachewarm.yaml ]; then
-                echo "--- DIAG: esp32_cachewarm.yaml found, compiling from $(pwd) ---"
-                echo "--- DIAG: CCACHE_DIR=$CCACHE_DIR CCACHE_NODIRECT=$CCACHE_NODIRECT ---"
-                echo "--- DIAG: CCACHE_SLOPPINESS=$CCACHE_SLOPPINESS ---"
-                cd /app/esphome
-                timeout 1800s esphome compile esp32_cachewarm.yaml || true
-                cd /
-              else
-                echo "ERROR: esp32_cachewarm.yaml not found in /app/esphome — skipping component pre-warm"
-                echo "       This file must be present in esphome/ in the repo and mounted via the -v bind."
-                ls /app/esphome/ 2>/dev/null || echo "(cannot list /app/esphome/)"
-              fi
-
-              echo "--- DIAG: ccache stats after cachewarm (key metric: cache_miss vs cache_hit) ---"
-              ccache --show-stats --verbose 2>/dev/null || ccache --show-stats 2>/dev/null || true
-              du -sh /root/.platformio/.ccache/ 2>/dev/null || echo "(empty)"
-
-              echo "--- DIAG: first 60 lines of ccache log (miss reasons) ---"
-              head -60 /tmp/ccache_warm.log 2>/dev/null || echo "(no log written — ccache was never invoked)"
-
-              echo "--- DIAG: sample .ccache-input-text for one object (shows what ccache hashed) ---"
-              DBGSAMPLE=$(find /tmp/ccache_debug -name "*.ccache-input-text" 2>/dev/null | head -1)
-              if [ -n "$DBGSAMPLE" ]; then
-                echo "  File: $DBGSAMPLE"
-                head -40 "$DBGSAMPLE"
-              else
-                echo "  (no debug files — cache was empty, all misses expected on first warm)"
-              fi
-
-              unset CCACHE_LOGFILE CCACHE_DEBUG CCACHE_DEBUGDIR
-
               echo "=== Pre-compiling emulator to warm ccache ==="
-              echo "--- DIAG: /app permissions ---"
-              ls -la / | grep -E "^d.*app" || echo "(no /app in /)"
               chmod 755 /app 2>/dev/null || true
               mkdir -p /app/configurator || true
-
               python3 /app/prepare_precache.py || true
-
-              echo "--- DIAG: ccache stats before emulator warm (zeroing now) ---"
-              ccache --zero-stats 2>/dev/null || true
-
               export CCACHE_LOGFILE=/tmp/ccache_emulator.log
 
               cd /app/esphome
@@ -249,10 +199,6 @@ jobs:
                 -s font_text_big_bold 30 -s font_text_small 12 \
                 compile lib/emulator.yaml || true
 
-              echo "--- DIAG: ccache stats after first emulator compile (320x240) ---"
-              ccache --show-stats 2>/dev/null || true
-              ccache --zero-stats 2>/dev/null || true
-
               esphome \
                 -s tiles_file test_device_tiles.yaml \
                 -s screen_w 480 -s screen_h 320 \
@@ -261,11 +207,6 @@ jobs:
                 -s font_text_big_bold 40 -s font_text_small 18 \
                 compile lib/emulator.yaml || true
 
-              echo "--- DIAG: ccache stats after second emulator compile 480x320 (should be high hit rate since same source) ---"
-              ccache --show-stats 2>/dev/null || true
-
-              echo "--- DIAG: first 40 lines of emulator ccache log ---"
-              head -40 /tmp/ccache_emulator.log 2>/dev/null || echo "(no log)"
               unset CCACHE_LOGFILE
 
               echo "=== Re-fixing PlatformIO wrappers after emulator pre-compiles ==="
@@ -276,10 +217,6 @@ jobs:
 
               # marker consumed by toolchain_setup.py to skip local warming
               touch /root/.platformio/.ccache/.cyd_warmed
-
-              echo "--- DIAG: FINAL ccache stats ---"
-              ccache --show-stats --verbose 2>/dev/null || ccache --show-stats 2>/dev/null || true
-              du -sh /root/.platformio/.ccache/ || true
 
               echo "=== Toolchain build complete ==="
               du -sh /root/.platformio/packages/ || true

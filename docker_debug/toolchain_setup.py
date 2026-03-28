@@ -504,7 +504,6 @@ def maybe_warm_cache() -> None:
     env['CCACHE_DIR']             = f'{PIO_DIR}/.ccache'
     env['CCACHE_MAXSIZE']         = '2G'
     env['CCACHE_COMPILERCHECK']   = 'content'
-    env['CCACHE_NODIRECT']        = 'true'
     env['CCACHE_SLOPPINESS']      = 'include_file_mtime,time_macros'
     env['CCACHE_NOHASHDIR']       = 'true'
     # Cap at 1 on arm64 (RPi4) to avoid OOM-killing Gunicorn; 2 on amd64.
@@ -609,7 +608,6 @@ def build_toolchain_locally(reason: str) -> None:
     env['CCACHE_DIR']           = f'{PIO_DIR}/.ccache'
     env['CCACHE_MAXSIZE']       = '2G'
     env['CCACHE_COMPILERCHECK'] = 'content'
-    env['CCACHE_NODIRECT']      = 'true'
     env['CCACHE_SLOPPINESS']    = 'include_file_mtime,time_macros'
     env['CCACHE_NOHASHDIR']     = 'true'
     os.makedirs(env['CCACHE_DIR'], exist_ok=True)

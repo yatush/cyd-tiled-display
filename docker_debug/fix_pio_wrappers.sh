@@ -149,13 +149,14 @@ for chip in $CHIPS; do
         # Instead, check for the ELF magic number (\x7fELF) in the first 4 bytes.
         magic=$(dd if="$wrapper" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')
         if [ "$magic" != "7f454c46" ]; then
-            # Already a shell script. Regenerate it if ccache is now available
-            # but has not been baked in yet (e.g. tarball built before this fix).
-            if [ -n "$CCACHE_BIN" ] && ! grep -qF "$CCACHE_BIN" "$wrapper" 2>/dev/null; then
-                echo "  REGENERATE $tool_name (baking ccache into existing wrapper)"
+            # Already a shell script. Regenerate if it contains old path-normalization
+            # code (identified by the _dev= variable) or if ccache is not yet baked in.
+            if grep -qF '_dev=' "$wrapper" 2>/dev/null || \
+               { [ -n "$CCACHE_BIN" ] && ! grep -qF "$CCACHE_BIN" "$wrapper" 2>/dev/null; }; then
+                echo "  REGENERATE $tool_name"
                 # fall through to regeneration
             else
-                echo "  SKIP $tool_name (not an ELF binary - already a shell script?)"
+                echo "  SKIP $tool_name (already correct shell script)"
                 continue
             fi
         fi
@@ -177,25 +178,6 @@ for chip in $CHIPS; do
                 cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
-# Normalize ALL device-specific paths for ccache key consistency.
-# This ensures CI-warmed cache entries match runtime compiles regardless
-# of device name. Symlinks let the preprocessor resolve canonical paths
-# so linemarkers in preprocessed output are also identical.
-_dev=""
-for _a in "\$@"; do case "\$_a" in .pioenvs/*) _dev="\${_a#.pioenvs/}"; _dev="\${_dev%%/*}"
-  [ -n "\$_dev" ] && [ "\$_dev" != "_device_" ] && break; _dev="" ;; esac; done
-if [ -n "\$_dev" ]; then
-  [ ! -L .pioenvs/_device_ ] && ln -sfn "\$_dev" .pioenvs/_device_ 2>/dev/null
-  [ -d ".piolibdeps/\$_dev" ] && [ ! -L .piolibdeps/_device_ ] && ln -sfn "\$_dev" .piolibdeps/_device_ 2>/dev/null
-  _s=0; _n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
-  if [ \$_s -eq 1 ]; then set -- "\$@" "\$_a"; _s=0; continue; fi
-  case "\$_a" in -o) set -- "\$@" "\$_a"; _s=1 ;;
-  -fmacro-prefix-map=*=.) set -- "\$@" "-fmacro-prefix-map=_build_dir_=." ;;
-  *) _b="\$_a"
-  _old=".pioenvs/\$_dev/" _new=".pioenvs/_device_/"; _b="\${_b//\$_old/\$_new}"
-  _old=".piolibdeps/\$_dev/" _new=".piolibdeps/_device_/"; _b="\${_b//\$_old/\$_new}"
-  set -- "\$@" "\$_b" ;; esac; done
-fi
 exec "$CCACHE_BIN" "$real_path" -mdynconfig=$dynconfig "\$@"
 WRAPPER_EOF
             else

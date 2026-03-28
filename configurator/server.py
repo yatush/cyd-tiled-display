@@ -1070,7 +1070,7 @@ def list_esphome_devices():
     try:
         devices = []
         skip_dirs = {'lib', 'external_components', '.esphome', '__pycache__'}
-        skip_files = {'esp32_cachewarm.yaml', 'secrets.yaml'}
+        skip_files = {'secrets.yaml'}
 
         for item in os.listdir(BASE_DIR):
             # Skip hidden files, directories we know aren't device configs
@@ -1228,11 +1228,6 @@ def install_esphome_device():
             _install_env['CCACHE_DIR']           = _ccache_dir
             _install_env['CCACHE_MAXSIZE']        = '2G'
             _install_env['CCACHE_COMPILERCHECK']  = 'content'
-            # Preprocessor mode: ccache hashes the actual preprocessed output
-            # rather than include-path strings.  This means the device name
-            # embedded in .pioenvs/<name>/ does not affect the cache key, so
-            # entries warmed with "cachewarm" hit when compiling "testcache2".
-            _install_env['CCACHE_NODIRECT']       = 'true'
             _install_env['CCACHE_SLOPPINESS']     = 'include_file_mtime,time_macros'
             _install_env['CCACHE_NOHASHDIR']      = 'true'
         if os.path.isdir(_ccache_bin):
@@ -1534,7 +1529,6 @@ def compile_esphome_device():
             env['CCACHE_DIR']           = _ccache_dir
             env['CCACHE_MAXSIZE']       = '2G'
             env['CCACHE_COMPILERCHECK'] = 'content'
-            env['CCACHE_NODIRECT']      = 'true'
             env['CCACHE_SLOPPINESS']    = 'include_file_mtime,time_macros'
             env['CCACHE_NOHASHDIR']     = 'true'
         if os.path.isdir(_ccache_bin):

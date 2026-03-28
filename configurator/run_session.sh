@@ -88,9 +88,6 @@ mkdir -p "$PLATFORMIO_CACHEDIR"
 # hundreds of ESPHome framework files).
 export CCACHE_DIR="/root/.platformio/.ccache"
 export CCACHE_MAXSIZE="2G"
-# Preprocessor mode: ccache hashes the actual preprocessed output so the
-# session/device name in .pioenvs/<name>/ does not affect the cache key.
-export CCACHE_NODIRECT="true"
 export CCACHE_SLOPPINESS="include_file_mtime,time_macros"
 export CCACHE_NOHASHDIR="true"
 mkdir -p "$CCACHE_DIR"
