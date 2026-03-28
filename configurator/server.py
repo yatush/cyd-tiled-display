@@ -1234,6 +1234,7 @@ def install_esphome_device():
             # entries warmed with "cachewarm" hit when compiling "testcache2".
             _install_env['CCACHE_NODIRECT']       = 'true'
             _install_env['CCACHE_SLOPPINESS']     = 'include_file_mtime,time_macros'
+            _install_env['CCACHE_HASHDIR']        = 'false'
         if os.path.isdir(_ccache_bin):
             _install_env['PATH'] = f"{_ccache_bin}:{_install_env.get('PATH', '')}"
         process = subprocess.Popen(
@@ -1535,6 +1536,7 @@ def compile_esphome_device():
             env['CCACHE_COMPILERCHECK'] = 'content'
             env['CCACHE_NODIRECT']      = 'true'
             env['CCACHE_SLOPPINESS']    = 'include_file_mtime,time_macros'
+            env['CCACHE_HASHDIR']       = 'false'
         if os.path.isdir(_ccache_bin):
             env['PATH'] = f"{_ccache_bin}:{env.get('PATH', '')}"
 

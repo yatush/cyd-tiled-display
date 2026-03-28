@@ -506,6 +506,7 @@ def maybe_warm_cache() -> None:
     env['CCACHE_COMPILERCHECK']   = 'content'
     env['CCACHE_NODIRECT']        = 'true'
     env['CCACHE_SLOPPINESS']      = 'include_file_mtime,time_macros'
+    env['CCACHE_HASHDIR']         = 'false'
     # Cap at 1 on arm64 (RPi4) to avoid OOM-killing Gunicorn; 2 on amd64.
     env['CMAKE_BUILD_PARALLEL_LEVEL'] = '1' if get_arch() == 'arm64' else '2'
     os.makedirs(env['CCACHE_DIR'], exist_ok=True)
@@ -610,6 +611,7 @@ def build_toolchain_locally(reason: str) -> None:
     env['CCACHE_COMPILERCHECK'] = 'content'
     env['CCACHE_NODIRECT']      = 'true'
     env['CCACHE_SLOPPINESS']    = 'include_file_mtime,time_macros'
+    env['CCACHE_HASHDIR']       = 'false'
     os.makedirs(env['CCACHE_DIR'], exist_ok=True)
     ccache_bin = '/usr/local/lib/ccache'
     if os.path.isdir(ccache_bin):
