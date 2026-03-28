@@ -192,7 +192,7 @@ private:
           [this](bool x) -> optional<bool> {
             // Ignore touch events shortly after a page change.
             auto now = millis();
-            if (x && (now - id(change_page_ms)) < id(between_pages_ms)) {
+            if (x && id(ignore_touch)) {
               return {};
             }
             if (!x || (now - id(turn_on_ms) < id(inactive_ms)) ||
@@ -208,7 +208,7 @@ private:
           [this](bool x) -> optional<bool> {
             // Ignore touch events shortly after a page change.
             auto now = millis();
-            if (x && (now - id(change_page_ms)) < id(between_pages_ms)) {
+            if (x && id(ignore_touch)) {
               return {};
             }
             if (!x || (now - id(turn_on_ms) < id(inactive_ms)) ||
@@ -392,6 +392,7 @@ protected:
       }
       this->change_screen_callback_();
       id(disp).show_page(this->target_display_page_);
+      id(ignore_touch) = true;
       id(disp).update();
     });
   }

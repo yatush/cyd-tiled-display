@@ -57,6 +57,10 @@ touchscreen:
             y: !lambda return touch.y;
             x_raw: !lambda return touch.x;
             y_raw: !lambda return touch.y;
+    on_release:
+      then:
+        - script.execute: _handle_touch_release
+
 
 binary_sensor:
   - platform: touchscreen

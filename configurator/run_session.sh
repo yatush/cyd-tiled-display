@@ -92,7 +92,7 @@ export CCACHE_MAXSIZE="2G"
 # session/device name in .pioenvs/<name>/ does not affect the cache key.
 export CCACHE_NODIRECT="true"
 export CCACHE_SLOPPINESS="include_file_mtime,time_macros"
-export CCACHE_HASHDIR="false"
+export CCACHE_NOHASHDIR="true"
 mkdir -p "$CCACHE_DIR"
 export PATH="/usr/local/lib/ccache:$PATH"
 

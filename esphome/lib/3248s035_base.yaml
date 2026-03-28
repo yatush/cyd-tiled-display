@@ -147,3 +147,6 @@ touchscreen:
             y: !lambda return touch.y;
             x_raw: !lambda return touch.x_raw;
             y_raw: !lambda return touch.y_raw;
+    on_release:
+      then:
+        - script.execute: _handle_touch_release

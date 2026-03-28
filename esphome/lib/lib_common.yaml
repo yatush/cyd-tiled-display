@@ -62,9 +62,9 @@ globals:
   - id: inactive_ms
     type: unsigned long
     initial_value: "500"
-  - id: between_pages_ms
-    type: unsigned long
-    initial_value: "500"
+  - id: ignore_touch
+    type: bool
+    initial_value: "false"
   - id: change_page_ms
     type: unsigned long
     initial_value: "0"
@@ -233,6 +233,11 @@ script:
             new_brightness = 0.3;
           }
           id(backlight).make_call().set_brightness(new_brightness).set_transition_length(0).perform();
+  
+  - id: _handle_touch_release
+    then:
+      - lambda: |-
+          id(ignore_touch) = false;
 
   - id: _handle_touch
     mode: restart

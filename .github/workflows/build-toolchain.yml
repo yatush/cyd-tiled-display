@@ -109,7 +109,7 @@ jobs:
               export CCACHE_COMPILERCHECK=content
               export CCACHE_NODIRECT=true
               export CCACHE_SLOPPINESS=include_file_mtime,time_macros
-              export CCACHE_HASHDIR=false
+              export CCACHE_NOHASHDIR=true
               export PATH="/usr/local/lib/ccache:$PATH"
               export CMAKE_BUILD_PARALLEL_LEVEL=$([ "$(uname -m)" = "aarch64" ] && echo 1 || echo 2)
 
