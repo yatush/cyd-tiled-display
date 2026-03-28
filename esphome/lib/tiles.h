@@ -204,22 +204,6 @@ private:
             }
             return true;
           }));
-      this->binary_sensor_->add_filter(new esphome::binary_sensor::LambdaFilter(
-          [this](bool x) -> optional<bool> {
-            // Ignore touch events shortly after a page change.
-            auto now = millis();
-            if (x && id(ignore_touch)) {
-              return {};
-            }
-            if (!x || (now - id(turn_on_ms) < id(inactive_ms)) ||
-                id(touch_calibration).state) {
-              return false;
-            }
-            if (!this->checkActivationMaybeToggle()) {
-              return false;
-            }
-            return true;
-          }));
       // Define the touch area for the tile.
           this->binary_sensor_->set_area(
               x_start(this->x_), x_start(this->x_) + x_rect(),
