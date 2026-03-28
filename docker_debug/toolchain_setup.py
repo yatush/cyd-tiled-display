@@ -271,14 +271,14 @@ def download_toolchain(version: str, arch: str, background: bool = False) -> str
                 if now - last_update >= 1.0:          # update UI at most 1×/s
                     last_update = now
                     if total > 0:
-                        pct = int(downloaded / total * 60)
+                        pct = int(downloaded / total * 30)
                         dl_mb   = downloaded / 1_048_576
                         tot_mb  = total / 1_048_576
                         write_progress('downloading', pct,
                                        f'{label}: {dl_mb:.0f} / {tot_mb:.0f} MB')
                     else:
                         dl_mb = downloaded / 1_048_576
-                        write_progress('downloading', 10,
+                        write_progress('downloading', 5,
                                        f'{label}: {dl_mb:.0f} MB...')
     except Exception:
         os.unlink(tmp_path)
@@ -302,7 +302,7 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
     decompression.  Falls back to Python tarfile if `tar` is not available.
     """
     label = 'Updating toolchain' if background else 'Extracting toolchain'
-    write_progress('extracting', 61, f'{label}: preparing...')
+    write_progress('extracting', 30, f'{label}: preparing...')
     log(f'Extracting {tarball_path} → {PIO_DIR}')
     os.makedirs(PIO_DIR, exist_ok=True)
 
@@ -317,7 +317,7 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
         # writes; falls back to tar's built-in single-threaded xz if missing.
 
         # Step 1: count total entries (fast — no disk writes)
-        write_progress('extracting', 61, f'{label}: counting files...')
+        write_progress('extracting', 30, f'{label}: counting files...')
         total_files = 0
         try:
             if xz_bin:
@@ -392,7 +392,7 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
         log(f'Extraction complete: {extracted:,} files.')
         final_msg = (f'{label}: {extracted:,} / {total_files:,} files extracted.'
                      if total_files > 0 else f'{label}: {extracted:,} files extracted.')
-        write_progress('extracting', 84, final_msg)
+        write_progress('extracting', 80, final_msg)
 
     else:
         # ── Fallback: Python tarfile (slower, but works everywhere) ──────────
@@ -405,7 +405,7 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
                 now = time.monotonic()
                 if now - last_update >= 1.0:
                     last_update = now
-                    pct = 61 + int(i / total * 23)
+                    pct = 30 + int(i / total * 50)
                     write_progress('extracting', pct,
                                    f'{label}: {i:,}/{total:,} files')
 
@@ -428,7 +428,7 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
 
 def fix_wrappers() -> None:
     """Replace PlatformIO's glibc Rust binaries with Alpine-compatible wrappers."""
-    write_progress('fixing', 86, 'Configuring toolchain for Alpine Linux...')
+    write_progress('fixing', 82, 'Configuring toolchain for Alpine Linux...')
     log('Fixing PlatformIO wrappers...')
 
     if os.path.exists(FIX_WRAPPERS_SCRIPT):
@@ -515,7 +515,7 @@ def maybe_warm_cache() -> None:
         env['PATH'] = f'{ccache_bin}:{env.get("PATH", "")}'
 
     # Step 1 — generate test_device_tiles.yaml + images.yaml + PNG files.
-    write_progress('warming', 91, 'Warming cache: preparing assets...')
+    write_progress('warming', 85, 'Warming cache: preparing assets...')
     if os.path.exists(PREPARE_PRECACHE):
         with open(PIO_SETUP_LOG, 'a') as logf:
             subprocess.run(['python3', PREPARE_PRECACHE],
@@ -548,12 +548,12 @@ def maybe_warm_cache() -> None:
             )
 
     # Step 2 — 320×240 (2432s028).  Done first so 480×320 seeded build is last.
-    _compile('320\u00d7240 (2432s028)', 93,
+    _compile('320×240 (2432s028)', 90,
              320, 240, 24, 40, 60, 80, 20, 20, 30, 12)
 
     # Step 3 — 480×320 (3248s035, same as emulator.yaml defaults).  Done last
     # so its build output seeds the per-session copy in run_session.sh.
-    _compile('480\u00d7320 (3248s035)', 97,
+    _compile('480\u00d7320 (3248s035)', 95,
              480, 320, 32, 60, 80, 100, 30, 30, 40, 18)
     # Step 3.5 — re-fix wrappers: the emulator compiles above may have caused
     # PlatformIO to download a new toolchain package (e.g. toolchain-xtensa-esp-elf
@@ -666,7 +666,7 @@ def build_toolchain_locally(reason: str) -> None:
     watcher.join(timeout=5)
 
     # Final wrapper fix pass (idempotent) in case watcher lost the race.
-    write_progress('fixing', 86, 'Configuring toolchain for Alpine Linux...', fallback=True)
+    write_progress('fixing', 82, 'Configuring toolchain for Alpine Linux...', fallback=True)
     fix_wrappers()
     shutil.rmtree(DUMMY_YAML_DIR, ignore_errors=True)
     log('Local build complete.')
