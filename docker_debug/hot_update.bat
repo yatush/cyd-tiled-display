@@ -26,7 +26,7 @@ docker cp ..\configurator\run_session.sh "%CONTAINER_NAME%:/app/configurator/"
 docker exec %CONTAINER_NAME% chmod +x /app/configurator/run_session.sh
 
 echo Updating toolchain setup script...
-docker cp toolchain_setup.py "%CONTAINER_NAME%:/app/toolchain_setup.py"
+docker cp ..\container\toolchain_setup.py "%CONTAINER_NAME%:/app/toolchain_setup.py"
 
 echo Building frontend...
 pushd ..\configurator

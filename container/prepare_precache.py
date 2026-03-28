@@ -23,7 +23,7 @@ import yaml
 _SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 
 # Docker layout:  /app/prepare_precache.py   → APP_DIR = /app
-# Dev layout:     .../docker_debug/prepare_precache.py  → APP_DIR = repo root
+# Dev layout:     .../container/prepare_precache.py  → APP_DIR = repo root
 if os.path.isdir(os.path.join(_SCRIPT_DIR, 'esphome')):
     APP_DIR = _SCRIPT_DIR                          # Docker: /app
 else:

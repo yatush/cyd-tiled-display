@@ -75,10 +75,10 @@ jobs:
       - name: Build toolchain inside Alpine container
         run: |
           docker run --name toolchain-build \
-            -v "$PWD/docker_debug/fix_pio_wrappers.sh:/fix_pio_wrappers.sh:ro" \
+            -v "$PWD/container/fix_pio_wrappers.sh:/fix_pio_wrappers.sh:ro" \
             -v "$PWD/esphome:/app/esphome" \
             -v "$PWD/configurator/generate_tiles_api.py:/app/configurator/generate_tiles_api.py:ro" \
-            -v "$PWD/docker_debug/prepare_precache.py:/app/prepare_precache.py:ro" \
+            -v "$PWD/container/prepare_precache.py:/app/prepare_precache.py:ro" \
             python:3.11-alpine sh -ec '
               echo "=== Installing build dependencies ==="
               apk add --no-cache \

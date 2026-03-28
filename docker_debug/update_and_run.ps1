@@ -36,8 +36,8 @@ Write-Host "Starting container..."
 #   cyd_esphome_build: preserves the pre-compiled .esphome build cache across container restarts
 #   cyd_pio_cache: caches PlatformIO downloaded packages
 docker run -d --name $containerName `
-  -v "${PWD}/vnc_startup.sh:/app/vnc_startup.sh" `
-  -v "${PWD}/nginx.conf:/etc/nginx/nginx.conf" `
+  -v "${PWD}/../container/vnc_startup.sh:/app/vnc_startup.sh" `
+  -v "${PWD}/../container/nginx.conf:/etc/nginx/nginx.conf" `
   -v "cyd_esphome_build:/app/esphome/lib/.esphome" `
   -v "cyd_pio_cache:/tmp/pio_cache" `
   -p 6080:6080 -p 8080:8080 -p 8099:8099 -p 5900:5900 `

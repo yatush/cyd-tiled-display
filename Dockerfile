@@ -51,9 +51,9 @@ RUN git clone --depth 1 https://github.com/novnc/noVNC.git /app/novnc && \
 # fix_pio_wrappers.sh: patches PlatformIO's glibc Rust binaries for Alpine/musl.
 # toolchain_setup.py: at container start, downloads the pre-built toolchain
 #   tarball from GitHub Releases (fast) or falls back to a local compile.
-COPY docker_debug/fix_pio_wrappers.sh  /app/
-COPY docker_debug/toolchain_setup.py   /app/
-COPY docker_debug/prepare_precache.py  /app/
+COPY container/fix_pio_wrappers.sh  /app/
+COPY container/toolchain_setup.py   /app/
+COPY container/prepare_precache.py  /app/
 RUN chmod +x /app/fix_pio_wrappers.sh
 
 # Write the ESPHome version and GitHub repository into the image so
@@ -97,7 +97,7 @@ RUN if [ "$BAKE_TOOLCHAIN" = "1" ]; then \
 COPY --from=build-frontend /app/dist /app/configurator/dist
 
 # Copy VNC startup script
-COPY docker_debug/vnc_startup.sh /app/
+COPY container/vnc_startup.sh /app/
 RUN chmod +x /app/vnc_startup.sh
 
 # Copy Python backend and scripts
@@ -114,7 +114,7 @@ COPY esphome /app/esphome
 # Note: emulator pre-compilation is done on first container start (see vnc_startup.sh)
 
 # Copy nginx config
-COPY docker_debug/nginx.conf /etc/nginx/nginx.conf
+COPY container/nginx.conf /etc/nginx/nginx.conf
 
 # Ensure nginx directories exist and have proper permissions
 RUN mkdir -p /run/nginx /var/lib/nginx/tmp /var/log/nginx && \

@@ -115,8 +115,8 @@ echo "Starting container..."
 #   cyd_pio_cache: caches PlatformIO downloaded packages
 _docker_run() {
     docker run -d --name $CONTAINER_NAME \
-      -v "$(pwd)/vnc_startup.sh:/app/vnc_startup.sh" \
-      -v "$(pwd)/nginx.conf:/etc/nginx/nginx.conf" \
+      -v "$(pwd)/../container/vnc_startup.sh:/app/vnc_startup.sh" \
+      -v "$(pwd)/../container/nginx.conf:/etc/nginx/nginx.conf" \
       -v "cyd_esphome_build:/app/esphome/lib/.esphome" \
       -v "cyd_pio_cache:/tmp/pio_cache" \
       -v "cyd_pio_packages:/root/.platformio" \
