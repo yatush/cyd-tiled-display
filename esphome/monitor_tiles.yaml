@@ -215,7 +215,6 @@ screens:
               sensor: temperature
           display:
             - tile_ac_status
-          omit_frame: true
       - move_page:
           x: 2
           y: 0

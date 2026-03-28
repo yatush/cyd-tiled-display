@@ -94,9 +94,6 @@ class TestTileUtils(unittest.TestCase):
         # Empty config
         self.assertEqual(get_tile_modifiers({}), [])
         
-        # omit_frame
-        self.assertEqual(get_tile_modifiers({"omit_frame": True}), ["omitFrame()"])
-        
         # fill_color: plain string (backward compat)
         self.assertEqual(
             get_tile_modifiers({"fill_color": "blue_gray"}),

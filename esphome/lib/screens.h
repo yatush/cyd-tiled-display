@@ -141,13 +141,20 @@ public:
       // Darken the top-right tile's effective border color for the wifi/time background.
       Color _bc = _tr_tile->getEffectiveBorderColor();
       Color _wifi_bg(_bc.r >> 1, _bc.g >> 1, _bc.b >> 1);
+      int _bw = _tr_tile->getEffectiveBorderWidth();
+      if (_bw < 0) _bw = id(tile_border_width);
+      int _br = _tr_tile->getEffectiveBorderRadius();
+      if (_br < 0) _br = id(border_r);
+      int _max_bd = _tr_tile->maxBorderDimension();
+      _bw = std::min(_bw, _max_bd);
+      _br = std::min(_br, _max_bd);
       auto sizes = wifiHourWidth();
       auto y = x_start(0), w = x_rect(),
            end_x = x_start(id(cols) - 1) + w,
-           h = y_rect(), r = id(border_r),
+           h = y_rect(), r = _br,
            start_x = id(width) - (std::get<0>(sizes).first + std::get<1>(sizes).first + 2 * std::get<2>(sizes)),
            end_y = std::get<0>(sizes).second + std::get<2>(sizes);
-      for (int delta = 0; delta < id(tile_border_width); ++delta) {
+      for (int delta = 0; delta < _bw; ++delta) {
         id(disp).start_clipping(end_x - r - 1, y, end_x, y + r);
         circle(end_x - r - 1, y + r, r - delta, _wifi_bg);
         id(disp).end_clipping();

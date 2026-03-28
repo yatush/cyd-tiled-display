@@ -271,9 +271,6 @@ def get_tile_modifiers(config, screen_id=None):
     y = config.get("y", "?")
     context = f"Screen '{screen_id}', Tile at ({x}, {y})" if screen_id else f"Tile at ({x}, {y})"
     
-    if config.get("omit_frame", False):
-        method_chains.append('omitFrame()')
-    
     fill_color = config.get("fill_color", None)
     if fill_color:
         if isinstance(fill_color, str):
@@ -319,6 +316,47 @@ def get_tile_modifiers(config, screen_id=None):
                 else:
                     method_chains.append(f'addBorderColor({_color_cpp(color)})')
 
+    border_width = config.get("border_width", None)
+    if border_width is not None:
+        if isinstance(border_width, int):
+            method_chains.append(f'addBorderWidth({border_width})')
+        elif isinstance(border_width, list):
+            for entry in border_width:
+                value = entry.get("value") if isinstance(entry, dict) else None
+                if value is None:
+                    continue
+                condition = entry.get("condition") if isinstance(entry, dict) else None
+                if condition:
+                    cond_expr = build_expression(condition, context)
+                    if cond_expr:
+                        method_chains.append(
+                            f'addBorderWidth({value}, [](std::vector<std::string> entities) -> bool {{ return {cond_expr}; }})'
+                        )
+                    else:
+                        method_chains.append(f'addBorderWidth({value})')
+                else:
+                    method_chains.append(f'addBorderWidth({value})')
+
+    border_radius = config.get("border_radius", None)
+    if border_radius is not None:
+        if isinstance(border_radius, int):
+            method_chains.append(f'addBorderRadius({border_radius})')
+        elif isinstance(border_radius, list):
+            for entry in border_radius:
+                value = entry.get("value") if isinstance(entry, dict) else None
+                if value is None:
+                    continue
+                condition = entry.get("condition") if isinstance(entry, dict) else None
+                if condition:
+                    cond_expr = build_expression(condition, context)
+                    if cond_expr:
+                        method_chains.append(
+                            f'addBorderRadius({value}, [](std::vector<std::string> entities) -> bool {{ return {cond_expr}; }})'
+                        )
+                    else:
+                        method_chains.append(f'addBorderRadius({value})')
+                else:
+                    method_chains.append(f'addBorderRadius({value})')
     x_span = config.get("x_span", 1)
     y_span = config.get("y_span", 1)
     if x_span > 1 or y_span > 1:

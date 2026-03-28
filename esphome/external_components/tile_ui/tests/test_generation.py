@@ -144,11 +144,11 @@ class TestTileGeneration(unittest.TestCase):
                 "x": 0, "y": 0,
                 "display": "d",
                 "entities": "e",
-                "omit_frame": True
+                "fill_color": "red"
             }
         }
         cpp = generate_tile_cpp(config)
-        self.assertIn("->omitFrame()", cpp)
+        self.assertIn("->addFillColor(id(red))", cpp)
 
     def test_activation_var_modifiers(self):
         # Single value

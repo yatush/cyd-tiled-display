@@ -274,7 +274,6 @@ tile_ui:
               - dynamic_entity: AC
               - dynamic_entity: AC
                 sensor: temperature
-            omit_frame: true
             x: 1
             y: 1
         - move_page:

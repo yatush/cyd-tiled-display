@@ -497,11 +497,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
             })()}
 
             {/* Appearance */}
-            {schema?.common?.some((f: any) => f.type === 'boolean' || f.type === 'color' || f.type === 'color_list') && (
+            {schema?.common?.some((f: any) => f.type === 'boolean' || f.type === 'color' || f.type === 'color_list' || f.type === 'int_list') && (
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Appearance</label>
                 <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
-                  {schema.common.filter((f: any) => f.type === 'boolean' || f.type === 'color' || f.type === 'color_list').map((field: any) => {
+                  {schema.common.filter((f: any) => f.type === 'boolean' || f.type === 'color' || f.type === 'color_list' || f.type === 'int_list').map((field: any) => {
                     if (field.type === 'boolean') {
                       return (
                         <Checkbox
@@ -657,6 +657,118 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                                 className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                               >
                                 <Plus size={12} /> Add conditional color
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (field.type === 'int_list') {
+                      const isEnabled = selectedTile[field.name] !== undefined;
+                      const entries: {value: number, condition?: any}[] = isEnabled
+                        ? (Array.isArray(selectedTile[field.name])
+                            ? selectedTile[field.name]
+                            : [{value: selectedTile[field.name] ?? 1}])
+                        : [];
+                      return (
+                        <div key={field.name}>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isEnabled}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  onUpdate({...selectedTile, [field.name]: [{value: 1}]});
+                                } else {
+                                  const newTile = {...selectedTile};
+                                  delete newTile[field.name];
+                                  onUpdate(newTile);
+                                }
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label
+                              className="text-xs font-medium text-slate-700 select-none cursor-pointer"
+                              onClick={() => {
+                                if (!isEnabled) onUpdate({...selectedTile, [field.name]: [{value: 1}]});
+                                else { const t = {...selectedTile}; delete t[field.name]; onUpdate(t); }
+                              }}
+                            >{field.label}</label>
+                          </div>
+                          {isEnabled && (
+                            <div className="pl-6 mt-2 space-y-2">
+                              {entries.map((entry, idx) => {
+                                const hasCondition = 'condition' in entry;
+                                return (
+                                <div key={idx} className="space-y-1">
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={entry.value}
+                                      onChange={e => {
+                                        const newEntries = entries.map((en, i) => i === idx ? {...en, value: parseInt(e.target.value) || 0} : en);
+                                        onUpdate({...selectedTile, [field.name]: newEntries});
+                                      }}
+                                      className="w-20 text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                    {idx > 0 && (
+                                      <button
+                                        onClick={() => {
+                                          const newEntries = entries.filter((_, i) => i !== idx);
+                                          onUpdate({...selectedTile, [field.name]: newEntries});
+                                        }}
+                                        className="text-red-400 hover:text-red-600 p-0.5 rounded shrink-0"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="checkbox"
+                                      id={`int-cond-${field.name}-${idx}`}
+                                      checked={hasCondition}
+                                      onChange={ev => {
+                                        const newEntries = entries.map((e, i) => {
+                                          if (i !== idx) return e;
+                                          const updated = {...e};
+                                          if (ev.target.checked) {
+                                            (updated as any).condition = '';
+                                          } else {
+                                            delete (updated as any).condition;
+                                          }
+                                          return updated;
+                                        });
+                                        onUpdate({...selectedTile, [field.name]: newEntries});
+                                      }}
+                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <label
+                                      htmlFor={`int-cond-${field.name}-${idx}`}
+                                      className="text-[10px] text-slate-500 select-none cursor-pointer"
+                                    >Only if condition</label>
+                                  </div>
+                                  {hasCondition && (
+                                    <ConditionBuilder
+                                      value={(entry as any).condition || ''}
+                                      onChange={v => {
+                                        const newEntries = entries.map((e, i) => i === idx ? {...e, condition: v} : e);
+                                        onUpdate({...selectedTile, [field.name]: newEntries});
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                                );
+                              })}
+                              <button
+                                onClick={() => {
+                                  const newEntries = [...entries, {value: 1, condition: ''}];
+                                  onUpdate({...selectedTile, [field.name]: newEntries});
+                                }}
+                                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                              >
+                                <Plus size={12} /> Add conditional value
                               </button>
                             </div>
                           )}

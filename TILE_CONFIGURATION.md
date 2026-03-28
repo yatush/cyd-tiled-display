@@ -90,7 +90,6 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
         sensor: temp
     display:
       - tile_temperature
-    omit_frame: false
 ```
 
 **Properties:**
@@ -112,7 +111,6 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
           color: id(gray)
           size: TileFonts::MEDIUM
     ```
-- **omit_frame**: (Optional) Whether to hide the tile frame/border
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 2. HA Action Tile (Entity Control)
@@ -159,7 +157,6 @@ Displays entity state and performs an action (typically toggle) when pressed.
 - **display_page_if_no_entity**: (Optional) Navigate to screen if entity is not available (requires dynamic_entity)
 - **requires_fast_refresh**: (Optional) Condition (see [Conditions](#conditions) section) determining if fast refresh is needed
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
-- **omit_frame**: (Optional) Whether to hide the tile frame/border
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 3. Move Page Tile (Navigation)
@@ -193,7 +190,6 @@ Navigates to another screen when pressed.
 - **destination**: *(Required)* Screen ID to navigate to (must be valid screen ID)
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
-- **omit_frame**: (Optional) Whether to hide the tile frame/border
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 4. Function Tile (Script Execution)
@@ -225,7 +221,6 @@ Calls a script/function when pressed.
 - **on_release**: (Optional*) Function to call when tile is released
   - **Function Arguments**: No parameters passed to the script
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
-- **omit_frame**: (Optional) Whether to hide the tile frame/border
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 > **Note**: At least one of `on_press` or `on_release` must be specified.
@@ -262,7 +257,6 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 - **presentation_name**: (Optional) Display name for this option - sent to the display scripts
 - **initially_chosen**: (Optional, default: false) Whether this is the initially selected option
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
-- **omit_frame**: (Optional) Whether to hide the tile frame/border
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ### 6. Cycle Entity Tile (Entity Cycling)
@@ -305,7 +299,6 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
     - **label**: *(Required)* Display name for this option, passed to the display script
 - **reset_on_leave**: (Optional, default: false) Reset to first option when leaving screen
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
-- **omit_frame**: (Optional) Whether to hide the tile frame/border
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
 ## Entity Formats
@@ -380,19 +373,51 @@ Tiles can span multiple grid cells.
 
 **Note on Overlaps**: If a spanned tile overlaps with other tiles (or if multiple tiles are placed at the same coordinates), **ALL** overlapping tiles MUST have an `activation_var` defined. This ensures the system knows which tile to display at any given time based on the active context.
 
-### Omit Frame
+### Border Width
 
-Hide the tile's border/frame:
+Override the tile's border thickness. When not set, the device-level default is used (1 px on the 2.8" display, 2 px on the 3.5" display). The rendered value is automatically clamped to `min(tile_w, tile_h) / 2`.
+
+#### Unconditional override
 
 ```yaml
 - ha_action:
     x: 0
     y: 0
-    # ... other properties ...
-    omit_frame: true
+    # ...
+    border_width:
+      - value: 3
 ```
 
-- **omit_frame**: (Optional, default: false) Whether to hide the tile frame/border
+#### Conditional override (last matching entry wins)
+
+```yaml
+    border_width:
+      - value: 4               # thick border when alarm is active
+        condition: alarm_on_fn
+      - value: 2               # default — always matches
+```
+
+If only one unconditional entry is needed, a single-element list without `condition` is sufficient (or omit the field entirely to keep the device default).
+
+### Border Radius
+
+Override the tile's corner radius. When not set, the device-level default (`border_r`, initially 8 px) is used. The rendered value is automatically clamped to `min(tile_w, tile_h) / 2`.
+
+#### Unconditional override
+
+```yaml
+    border_radius:
+      - value: 0               # sharp corners
+```
+
+#### Conditional override (last matching entry wins)
+
+```yaml
+    border_radius:
+      - value: 0               # sharp corners when alarm fires
+        condition: alarm_on_fn
+      - value: 8               # default — always matches
+```
 
 ### Activation Variable
 

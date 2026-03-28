@@ -15,14 +15,21 @@ public:
     if (this->display_page_ != id(disp).get_active_page()) {
       return;
     }
+    int eff_bw = this->getEffectiveBorderWidth();
+    if (eff_bw < 0) eff_bw = id(tile_border_width);
+    int eff_br = this->getEffectiveBorderRadius();
+    if (eff_br < 0) eff_br = id(border_r);
+    int max_bd = this->maxBorderDimension();
+    eff_br = std::min(eff_br, max_bd);
+    eff_bw = std::min(eff_bw, max_bd);
     for (auto& entry : this->fill_colors_) {
       if (entry.second({})) {
-        id(_draw_tile_fill).execute(this->x_, this->y_, this->x_span_, this->y_span_, entry.first);
+        id(_draw_tile_fill).execute(this->x_, this->y_, this->x_span_, this->y_span_, entry.first, eff_br);
       }
     }
-    if (!this->omit_frame_) {
+    {
       Color border_c = this->getEffectiveBorderColor();
-      id(_draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_, border_c);
+      id(_draw_tile_frame).execute(this->x_, this->y_, this->x_span_, this->y_span_, border_c, eff_bw, eff_br);
     }
     this->customDraw();
   }
@@ -40,12 +47,6 @@ public:
       return false;
     }
     return this->y_ == 0 && (this->x_ == id(cols) - 1);
-  }
-
-  // Configures the tile to omit drawing the frame.
-  Tile* omitFrame() {
-    this->omit_frame_ = true;
-    return this;
   }
 
   // Adds an unconditional border color override.
@@ -68,6 +69,57 @@ public:
       }
     }
     return id(gray);
+  }
+
+  // Adds an unconditional border width override.
+  Tile* addBorderWidth(int v) {
+    this->border_widths_.push_back({v, [](std::vector<std::string>) { return true; }});
+    return this;
+  }
+
+  // Adds a conditional border width override.
+  Tile* addBorderWidth(int v, std::function<bool(std::vector<std::string>)> cond) {
+    this->border_widths_.push_back({v, cond});
+    return this;
+  }
+
+  // Returns the effective border width: last entry whose condition is true, or -1 (use global).
+  int getEffectiveBorderWidth() const {
+    for (int i = (int)this->border_widths_.size() - 1; i >= 0; --i) {
+      if (this->border_widths_[i].second({})) {
+        return this->border_widths_[i].first;
+      }
+    }
+    return -1;
+  }
+
+  // Adds an unconditional border radius override.
+  Tile* addBorderRadius(int v) {
+    this->border_radii_.push_back({v, [](std::vector<std::string>) { return true; }});
+    return this;
+  }
+
+  // Adds a conditional border radius override.
+  Tile* addBorderRadius(int v, std::function<bool(std::vector<std::string>)> cond) {
+    this->border_radii_.push_back({v, cond});
+    return this;
+  }
+
+  // Returns the effective border radius: last entry whose condition is true, or -1 (use global).
+  int getEffectiveBorderRadius() const {
+    for (int i = (int)this->border_radii_.size() - 1; i >= 0; --i) {
+      if (this->border_radii_[i].second({})) {
+        return this->border_radii_[i].first;
+      }
+    }
+    return -1;
+  }
+
+  // Returns max(w/2, h/2) in pixels for this tile — the upper bound for border width and radius.
+  int maxBorderDimension() const {
+    int tile_w = x_rect() * this->x_span_ + (this->x_span_ - 1) * id(x_pad);
+    int tile_h = y_rect() * this->y_span_ + (this->y_span_ - 1) * id(y_pad);
+    return std::min(tile_w, tile_h) / 2;
   }
 
   // Adds an unconditional background fill color.
@@ -162,12 +214,14 @@ protected:
   int x_span_ = 1;
   // Span of the tile in the Y direction.
   int y_span_ = 1;
-  // Flag to indicate if the frame should be omitted.
-  bool omit_frame_ = false;
   // Conditional fill colors for the tile background (rendered in order; last true wins).
   std::vector<std::pair<Color, std::function<bool(std::vector<std::string>)>>> fill_colors_;
   // Conditional border color overrides (last true wins; default is id(gray)).
   std::vector<std::pair<Color, std::function<bool(std::vector<std::string>)>>> border_colors_;
+  // Conditional border width overrides (last true wins; -1 means use global tile_border_width).
+  std::vector<std::pair<int, std::function<bool(std::vector<std::string>)>>> border_widths_;
+  // Conditional border radius overrides (last true wins; -1 means use global border_r).
+  std::vector<std::pair<int, std::function<bool(std::vector<std::string>)>>> border_radii_;
   // Callback function for entity changes.
   std::function<void()> change_entities_callback_ = []() {};
   // Callback function when leaving the screen

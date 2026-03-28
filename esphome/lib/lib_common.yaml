@@ -392,6 +392,7 @@ script:
       i_span: int
       j_span: int
       c: Color
+      br: int
     then:
       - lambda: |-
           id(_filled_rounded_rectangle).execute(
@@ -399,7 +400,7 @@ script:
             y_start(j),
             x_rect() * i_span + (i_span - 1) * id(x_pad),
             y_rect() * j_span + (j_span - 1) * id(y_pad),
-            id(border_r),
+            br,
             c);
 
   - id: _draw_tile_frame
@@ -409,15 +410,17 @@ script:
       i_span: int
       j_span: int
       c: Color
+      bw: int
+      br: int
     then:
       - lambda: |-
-          for (int delta = 0; delta < id(tile_border_width); ++delta) {
+          for (int delta = 0; delta < bw; ++delta) {
             id(_rounded_rectangle).execute(
               x_start(i)+delta, 
               y_start(j)+delta, 
               x_rect() * i_span + (i_span - 1) * id(x_pad) - 2 * delta,
               y_rect() * j_span + (j_span - 1) * id(y_pad) - 2 * delta,
-              id(border_r) - delta,
+              br - delta,
               c);
           }
 

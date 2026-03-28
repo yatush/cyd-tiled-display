@@ -13,9 +13,10 @@
     { "name": "x_span", "type": "number", "label": "X Span", "optional": true },
     { "name": "y_span", "type": "number", "label": "Y Span", "optional": true },
     { "name": "display", "type": "display_list", "label": "Display Scripts", "optional": true },
-    { "name": "omit_frame", "type": "boolean", "label": "Omit Frame", "optional": true },
     { "name": "fill_color", "type": "color_list", "label": "Fill Color", "optional": true },
     { "name": "border_color", "type": "color_list", "label": "Border Color", "optional": true },
+    { "name": "border_width", "type": "int_list", "label": "Border Width", "optional": true },
+    { "name": "border_radius", "type": "int_list", "label": "Border Radius", "optional": true },
     { 
       "name": "requires_fast_refresh", 
       "type": "condition_logic", 
