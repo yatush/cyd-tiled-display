@@ -192,8 +192,8 @@ if [ -n "\$_dev" ]; then
   case "\$_a" in -o) set -- "\$@" "\$_a"; _s=1 ;;
   -fmacro-prefix-map=*=.) set -- "\$@" "-fmacro-prefix-map=_build_dir_=." ;;
   *) _b="\$_a"
-  case "\$_b" in *.pioenvs/\$_dev/*) _p="\${_b%.pioenvs/\$_dev/*}"; _b="\${_p}.pioenvs/_device_/\${_b#*.pioenvs/\$_dev/}" ;; esac
-  case "\$_b" in *.piolibdeps/\$_dev/*) _p="\${_b%.piolibdeps/\$_dev/*}"; _b="\${_p}.piolibdeps/_device_/\${_b#*.piolibdeps/\$_dev/}" ;; esac
+  _old=".pioenvs/\$_dev/" _new=".pioenvs/_device_/"; _b="\${_b//\$_old/\$_new}"
+  _old=".piolibdeps/\$_dev/" _new=".piolibdeps/_device_/"; _b="\${_b//\$_old/\$_new}"
   set -- "\$@" "\$_b" ;; esac; done
 fi
 exec "$CCACHE_BIN" "$real_path" -mdynconfig=$dynconfig "\$@"
@@ -206,35 +206,15 @@ exec "$real_path" -mdynconfig=$dynconfig "\$@"
 WRAPPER_EOF
             fi
         else
-            if [ -n "$CCACHE_BIN" ]; then
-                cat > "$wrapper" << WRAPPER_EOF
-#!/bin/sh
-export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
-# Normalize ALL device-specific paths for ccache key consistency.
-_dev=""
-for _a in "\$@"; do case "\$_a" in .pioenvs/*) _dev="\${_a#.pioenvs/}"; _dev="\${_dev%%/*}"
-  [ -n "\$_dev" ] && [ "\$_dev" != "_device_" ] && break; _dev="" ;; esac; done
-if [ -n "\$_dev" ]; then
-  [ ! -L .pioenvs/_device_ ] && ln -sfn "\$_dev" .pioenvs/_device_ 2>/dev/null
-  [ -d ".piolibdeps/\$_dev" ] && [ ! -L .piolibdeps/_device_ ] && ln -sfn "\$_dev" .piolibdeps/_device_ 2>/dev/null
-  _s=0; _n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
-  if [ \$_s -eq 1 ]; then set -- "\$@" "\$_a"; _s=0; continue; fi
-  case "\$_a" in -o) set -- "\$@" "\$_a"; _s=1 ;;
-  -fmacro-prefix-map=*=.) set -- "\$@" "-fmacro-prefix-map=_build_dir_=." ;;
-  *) _b="\$_a"
-  case "\$_b" in *.pioenvs/\$_dev/*) _p="\${_b%.pioenvs/\$_dev/*}"; _b="\${_p}.pioenvs/_device_/\${_b#*.pioenvs/\$_dev/}" ;; esac
-  case "\$_b" in *.piolibdeps/\$_dev/*) _p="\${_b%.piolibdeps/\$_dev/*}"; _b="\${_p}.piolibdeps/_device_/\${_b#*.piolibdeps/\$_dev/}" ;; esac
-  set -- "\$@" "\$_b" ;; esac; done
-fi
-exec "$CCACHE_BIN" "$real_path" "\$@"
-WRAPPER_EOF
-            else
-                cat > "$wrapper" << WRAPPER_EOF
+            # Non-compiler tools (ar, ld, nm, objcopy, ranlib, etc.) must NOT
+            # have path normalization — they access real files on disk, not
+            # ccache keys.  ccache is also pointless here (it only caches
+            # C/C++ compilation).  Simple passthrough wrapper.
+            cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 exec "$real_path" "\$@"
 WRAPPER_EOF
-            fi
         fi
         
         chmod +x "$wrapper"

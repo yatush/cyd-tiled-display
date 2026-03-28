@@ -374,12 +374,12 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
             if now - last_update >= 1.0:
                 last_update = now
                 if total_files > 0:
-                    pct = 62 + int(extracted / total_files * 22)
-                    pct = min(83, pct)
+                    pct = 31 + int(extracted / total_files * 49)
+                    pct = min(80, pct)
                     msg = f'{label}: {extracted:,} / {total_files:,} files extracted...'
                 else:
                     elapsed = now - start_time
-                    pct = min(83, 62 + int(elapsed / 2))
+                    pct = min(80, 31 + int(elapsed / 2))
                     msg = f'{label}: {extracted:,} files extracted...'
                 write_progress('extracting', pct, msg)
 
