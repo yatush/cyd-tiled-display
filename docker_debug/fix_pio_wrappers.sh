@@ -177,11 +177,25 @@ for chip in $CHIPS; do
                 cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
-# Normalize device-specific -fmacro-prefix-map for ccache key consistency
-_n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
-case "\$_a" in -fmacro-prefix-map=*=.)
-set -- "\$@" "-fmacro-prefix-map=_build_dir_=."
-;; *) set -- "\$@" "\$_a" ;; esac; done
+# Normalize ALL device-specific paths for ccache key consistency.
+# This ensures CI-warmed cache entries match runtime compiles regardless
+# of device name. Symlinks let the preprocessor resolve canonical paths
+# so linemarkers in preprocessed output are also identical.
+_dev=""
+for _a in "\$@"; do case "\$_a" in .pioenvs/*) _dev="\${_a#.pioenvs/}"; _dev="\${_dev%%/*}"
+  [ -n "\$_dev" ] && [ "\$_dev" != "_device_" ] && break; _dev="" ;; esac; done
+if [ -n "\$_dev" ]; then
+  [ ! -L .pioenvs/_device_ ] && ln -sfn "\$_dev" .pioenvs/_device_ 2>/dev/null
+  [ -d ".piolibdeps/\$_dev" ] && [ ! -L .piolibdeps/_device_ ] && ln -sfn "\$_dev" .piolibdeps/_device_ 2>/dev/null
+  _s=0; _n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
+  if [ \$_s -eq 1 ]; then set -- "\$@" "\$_a"; _s=0; continue; fi
+  case "\$_a" in -o) set -- "\$@" "\$_a"; _s=1 ;;
+  -fmacro-prefix-map=*=.) set -- "\$@" "-fmacro-prefix-map=_build_dir_=." ;;
+  *) _b="\$_a"
+  case "\$_b" in *.pioenvs/\$_dev/*) _p="\${_b%.pioenvs/\$_dev/*}"; _b="\${_p}.pioenvs/_device_/\${_b#*.pioenvs/\$_dev/}" ;; esac
+  case "\$_b" in *.piolibdeps/\$_dev/*) _p="\${_b%.piolibdeps/\$_dev/*}"; _b="\${_p}.piolibdeps/_device_/\${_b#*.piolibdeps/\$_dev/}" ;; esac
+  set -- "\$@" "\$_b" ;; esac; done
+fi
 exec "$CCACHE_BIN" "$real_path" -mdynconfig=$dynconfig "\$@"
 WRAPPER_EOF
             else
@@ -196,11 +210,22 @@ WRAPPER_EOF
                 cat > "$wrapper" << WRAPPER_EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
-# Normalize device-specific -fmacro-prefix-map for ccache key consistency
-_n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
-case "\$_a" in -fmacro-prefix-map=*=.)
-set -- "\$@" "-fmacro-prefix-map=_build_dir_=."
-;; *) set -- "\$@" "\$_a" ;; esac; done
+# Normalize ALL device-specific paths for ccache key consistency.
+_dev=""
+for _a in "\$@"; do case "\$_a" in .pioenvs/*) _dev="\${_a#.pioenvs/}"; _dev="\${_dev%%/*}"
+  [ -n "\$_dev" ] && [ "\$_dev" != "_device_" ] && break; _dev="" ;; esac; done
+if [ -n "\$_dev" ]; then
+  [ ! -L .pioenvs/_device_ ] && ln -sfn "\$_dev" .pioenvs/_device_ 2>/dev/null
+  [ -d ".piolibdeps/\$_dev" ] && [ ! -L .piolibdeps/_device_ ] && ln -sfn "\$_dev" .piolibdeps/_device_ 2>/dev/null
+  _s=0; _n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
+  if [ \$_s -eq 1 ]; then set -- "\$@" "\$_a"; _s=0; continue; fi
+  case "\$_a" in -o) set -- "\$@" "\$_a"; _s=1 ;;
+  -fmacro-prefix-map=*=.) set -- "\$@" "-fmacro-prefix-map=_build_dir_=." ;;
+  *) _b="\$_a"
+  case "\$_b" in *.pioenvs/\$_dev/*) _p="\${_b%.pioenvs/\$_dev/*}"; _b="\${_p}.pioenvs/_device_/\${_b#*.pioenvs/\$_dev/}" ;; esac
+  case "\$_b" in *.piolibdeps/\$_dev/*) _p="\${_b%.piolibdeps/\$_dev/*}"; _b="\${_p}.piolibdeps/_device_/\${_b#*.piolibdeps/\$_dev/}" ;; esac
+  set -- "\$@" "\$_b" ;; esac; done
+fi
 exec "$CCACHE_BIN" "$real_path" "\$@"
 WRAPPER_EOF
             else
