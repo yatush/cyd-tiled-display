@@ -179,8 +179,8 @@ for chip in $CHIPS; do
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 # Normalize device-specific -fmacro-prefix-map for ccache key consistency
 _n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
-case "\$_a" in -fmacro-prefix-map=/config/esphome/.esphome/build/*)
-set -- "\$@" "-fmacro-prefix-map=/config/esphome/.esphome/build/_device_=."
+case "\$_a" in -fmacro-prefix-map=*=.)
+set -- "\$@" "-fmacro-prefix-map=_build_dir_=."
 ;; *) set -- "\$@" "\$_a" ;; esac; done
 exec "$CCACHE_BIN" "$real_path" -mdynconfig=$dynconfig "\$@"
 WRAPPER_EOF
@@ -198,8 +198,8 @@ WRAPPER_EOF
 export LD_LIBRARY_PATH="$LIB_DIR:\${LD_LIBRARY_PATH:-}"
 # Normalize device-specific -fmacro-prefix-map for ccache key consistency
 _n=\$#; while [ \$_n -gt 0 ]; do _a="\$1"; shift; _n=\$((_n-1))
-case "\$_a" in -fmacro-prefix-map=/config/esphome/.esphome/build/*)
-set -- "\$@" "-fmacro-prefix-map=/config/esphome/.esphome/build/_device_=."
+case "\$_a" in -fmacro-prefix-map=*=.)
+set -- "\$@" "-fmacro-prefix-map=_build_dir_=."
 ;; *) set -- "\$@" "\$_a" ;; esac; done
 exec "$CCACHE_BIN" "$real_path" "\$@"
 WRAPPER_EOF
