@@ -1,6 +1,43 @@
 import yaml from 'js-yaml';
 import { Config } from '../types';
 
+// ---------------------------------------------------------------------------
+// Known-field allowlists derived from schema.json.
+// Any tile field not in this set is a stale/removed property and will be
+// silently stripped before the YAML is emitted. Update these when schema.json
+// changes.
+// ---------------------------------------------------------------------------
+const COMMON_TILE_FIELDS = new Set([
+  'x', 'y', 'x_span', 'y_span',
+  'display', 'display_assets',
+  'fill_color', 'border_color', 'border_width', 'border_radius',
+  'requires_fast_refresh', 'activation_var',
+]);
+
+const TYPE_SPECIFIC_FIELDS: Record<string, Set<string>> = {
+  ha_action:     new Set(['entities', 'perform', 'location_perform', 'display_page_if_no_entity']),
+  move_page:     new Set(['destination', 'dynamic_entry']),
+  toggle_entity: new Set(['dynamic_entity', 'entity', 'presentation_name', 'initially_chosen']),
+  title:         new Set(['entities']),
+  cycle_entity:  new Set(['dynamic_entity', 'options', 'reset_on_leave']),
+  function:      new Set(['on_press', 'on_release']),
+};
+
+/** Strip any tile fields not recognised by the current schema, logging a warning for each. */
+function stripUnknownTileFields(tile: Record<string, any>, type: string): Record<string, any> {
+  const typeFields = TYPE_SPECIFIC_FIELDS[type] ?? new Set<string>();
+  const result: Record<string, any> = {};
+  for (const [k, v] of Object.entries(tile)) {
+    // __id is an internal UI field added by includeIds — always pass through
+    if (k === '__id' || COMMON_TILE_FIELDS.has(k) || typeFields.has(k)) {
+      result[k] = v;
+    } else {
+      console.warn(`[yamlGenerator] Stripping unknown field "${k}" from tile type "${type}" at (${tile.x}, ${tile.y})`);
+    }
+  }
+  return result;
+}
+
 const transformConditionLogic = (value: any): any => {
     if (typeof value === 'string') return value;
     if (Array.isArray(value)) {
@@ -137,7 +174,11 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
         // Wrap tile type in object key
         const type = tile.type;
         delete tile.type;
-        return { [type]: tile };
+
+        // Strip any stale/removed fields before serializing
+        const cleanedTile = stripUnknownTileFields(tile, type);
+
+        return { [type]: cleanedTile };
       })
     }));
     

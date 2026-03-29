@@ -29,6 +29,7 @@ from tile_ui.schema import (
     entities_list,
     activation_var_schema,
     script_item,
+    tile_schema,
     TileType,
     VALID_TILE_TYPES
 )
@@ -224,6 +225,104 @@ class TestSchema(unittest.TestCase):
                 {'from': [0.0, 0.5], 'to': [1.0, 0.5], 'duration': 2},
                 {'from': [0.5, 0.0], 'to': [0.5, 1.0], 'duration': 2, 'icon': ''},
             ]}}])
+
+# ---------------------------------------------------------------------------
+# Stale / removed field rejection tests
+# ---------------------------------------------------------------------------
+
+# Minimal valid bodies for each tile type (just the required non-common fields).
+# entity_list requires dicts with 'entity' or 'dynamic_entity' keys;
+# object_list (options) requires dicts with 'entity' and 'label' keys.
+_COMMON = {'x': 0, 'y': 0}
+
+_VALID_BY_TYPE = {
+    'ha_action':     {**_COMMON, 'entities': [{'entity': 'sensor.test'}]},
+    'move_page':     {**_COMMON, 'destination': 'screen2'},
+    'title':         {**_COMMON, 'entities': [{'entity': 'sensor.test'}]},
+    'function':      {**_COMMON, 'on_press': 'cb_press'},
+    'toggle_entity': {**_COMMON, 'dynamic_entity': 'input_boolean.x', 'entity': 'input_boolean.test'},
+    'cycle_entity':  {**_COMMON, 'dynamic_entity': 'input_select.x',
+                      'options': [{'entity': 'input_select.x', 'label': 'A'}]},
+}
+
+
+class TestTileSchemaStaleKeys(unittest.TestCase):
+    """tile_schema must reject stale/removed fields due to PREVENT_EXTRA."""
+
+    def _valid(self, tile_type):
+        return dict(_VALID_BY_TYPE[tile_type])
+
+    # --- omit_frame (removed in refactor) ---
+
+    def test_omit_frame_rejected_for_ha_action(self):
+        cfg = self._valid('ha_action')
+        cfg['omit_frame'] = True
+        with self.assertRaises(Exception):
+            tile_schema({'ha_action': cfg})
+
+    def test_omit_frame_rejected_for_title(self):
+        cfg = self._valid('title')
+        cfg['omit_frame'] = True
+        with self.assertRaises(Exception):
+            tile_schema({'title': cfg})
+
+    def test_omit_frame_rejected_for_move_page(self):
+        cfg = self._valid('move_page')
+        cfg['omit_frame'] = True
+        with self.assertRaises(Exception):
+            tile_schema({'move_page': cfg})
+
+    # --- arbitrary unknown / stale fields ---
+
+    def test_arbitrary_stale_field_rejected(self):
+        cfg = self._valid('title')
+        cfg['legacy_extra'] = 42
+        with self.assertRaises(Exception):
+            tile_schema({'title': cfg})
+
+    def test_multiple_stale_fields_rejected(self):
+        cfg = self._valid('ha_action')
+        cfg['omit_frame'] = True
+        cfg['old_color_map'] = {}
+        with self.assertRaises(Exception):
+            tile_schema({'ha_action': cfg})
+
+    # --- known fields still accepted ---
+
+    def test_border_width_accepted(self):
+        cfg = self._valid('ha_action')
+        cfg['border_width'] = [{'value': 2}]
+        # Should not raise
+        tile_schema({'ha_action': cfg})
+
+    def test_border_radius_accepted(self):
+        cfg = self._valid('title')
+        cfg['border_radius'] = 4
+        tile_schema({'title': cfg})
+
+    def test_fill_color_accepted(self):
+        cfg = self._valid('move_page')
+        cfg['fill_color'] = '#112233'
+        tile_schema({'move_page': cfg})
+
+    def test_border_color_accepted(self):
+        cfg = self._valid('cycle_entity')
+        cfg['border_color'] = '#ffffff'
+        tile_schema({'cycle_entity': cfg})
+
+    # --- cross-type field isolation ---
+
+    def test_ha_action_field_rejected_on_move_page(self):
+        """Fields specific to ha_action are stale on move_page."""
+        cfg = self._valid('move_page')
+        cfg['perform'] = ['some_action']
+        with self.assertRaises(Exception):
+            tile_schema({'move_page': cfg})
+
+    def test_unknown_tile_type_rejected(self):
+        with self.assertRaises(Exception):
+            tile_schema({'nonexistent_type': {'x': 0, 'y': 0}})
+
 
 if __name__ == '__main__':
     unittest.main()
