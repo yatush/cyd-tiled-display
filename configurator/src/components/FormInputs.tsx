@@ -659,7 +659,6 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
                     newValues[i] = { ...item, sensor: e.target.value };
                     onChange(newValues);
                   }}
-                  list={listId}
                   className="w-full border rounded p-1 text-xs"
                 />
             </div>
