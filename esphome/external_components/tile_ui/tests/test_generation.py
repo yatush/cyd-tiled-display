@@ -21,6 +21,7 @@ except ImportError:
     sys.modules["esphome.core"] = MagicMock()
 
 from tile_ui.tile_generation import generate_tile_cpp
+from tile_ui import generate_init_tiles_cpp
 
 class TestTileGeneration(unittest.TestCase):
     
@@ -325,6 +326,98 @@ class TestImageAnimation(unittest.TestCase):
         self.assertIn('millis() % 7000U', cpp)
         self.assertIn('make_icon_draw(', cpp)
         self.assertIn('make_image_draw(&id(img_b), 0.5f, 0.0f, 0.5f, 1.0f, 3000U, 7000U, 2000U)', cpp)
+
+class TestScreenBackground(unittest.TestCase):
+    """Tests that background entries on a screen produce the correct addBg* method chains."""
+
+    # Minimal screen with a BASE flag and one tile so validate_tiles_config passes.
+    _TILE = {'title': {'x': 0, 'y': 0, 'display': ['icon'], 'entities': [{'entity': 'sensor.t'}]}}
+
+    def _screens(self, background):
+        return [{
+            'id': 'main',
+            'rows': 2,
+            'cols': 3,
+            'flags': ['BASE'],
+            'background': background,
+            'tiles': [self._TILE],
+        }]
+
+    def _cpp(self, background):
+        lambdas = generate_init_tiles_cpp(self._screens(background))
+        # Join all lambdas so we can search across the whole output
+        return '\n'.join(lambdas)
+
+    # ── image backgrounds ────────────────────────────────────────────────────
+
+    def test_unconditional_image_generates_addBgLambda(self):
+        cpp = self._cpp([{'image': 'bg_sunset'}])
+        self.assertIn('->addBgLambda(', cpp)
+        self.assertIn('id(bg_sunset)', cpp)
+
+    def test_conditional_image_passes_condition_lambda(self):
+        cpp = self._cpp([{'image': 'bg_night', 'condition': 'night_mode'}])
+        self.assertIn('->addBgLambda(', cpp)
+        self.assertIn('id(bg_night)', cpp)
+        self.assertIn('-> bool', cpp)
+        self.assertIn('night_mode', cpp)
+
+    def test_image_value_none_is_skipped(self):
+        cpp = self._cpp([{'image': 'none'}])
+        self.assertNotIn('addBgLambda', cpp)
+        self.assertNotIn('addBgColor', cpp)
+
+    def test_empty_image_is_skipped(self):
+        cpp = self._cpp([{'image': ''}])
+        self.assertNotIn('addBgLambda', cpp)
+
+    # ── color backgrounds ────────────────────────────────────────────────────
+
+    def test_unconditional_named_color_generates_addBgColor(self):
+        cpp = self._cpp([{'color': 'dark_bg'}])
+        self.assertIn('->addBgColor(id(dark_bg))', cpp)
+
+    def test_unconditional_Color_ctor_not_wrapped_in_id(self):
+        cpp = self._cpp([{'color': 'Color(10, 20, 30)'}])
+        self.assertIn('->addBgColor(Color(10, 20, 30))', cpp)
+        self.assertNotIn('id(Color(', cpp)
+
+    def test_conditional_color_passes_condition_lambda(self):
+        cpp = self._cpp([{'color': 'dark_bg', 'condition': 'is_dark'}])
+        self.assertIn('->addBgColor(id(dark_bg),', cpp)
+        self.assertIn('is_dark', cpp)
+
+    def test_color_value_none_is_skipped(self):
+        cpp = self._cpp([{'color': 'none'}])
+        self.assertNotIn('addBgColor', cpp)
+        self.assertNotIn('addBgLambda', cpp)
+
+    # ── multiple entries ─────────────────────────────────────────────────────
+
+    def test_multiple_background_entries_all_emitted(self):
+        cpp = self._cpp([
+            {'color': 'dark_bg'},
+            {'image': 'overlay_img'},
+        ])
+        self.assertIn('addBgColor', cpp)
+        self.assertIn('addBgLambda', cpp)
+        self.assertIn('id(dark_bg)', cpp)
+        self.assertIn('id(overlay_img)', cpp)
+
+    # ── no background ────────────────────────────────────────────────────────
+
+    def test_no_background_key_produces_no_addBg(self):
+        lambdas = generate_init_tiles_cpp([{
+            'id': 'main', 'rows': 2, 'cols': 3, 'flags': ['BASE'],
+            'tiles': [self._TILE],
+        }])
+        cpp = '\n'.join(lambdas)
+        self.assertNotIn('addBg', cpp)
+
+    def test_empty_background_list_produces_no_addBg(self):
+        cpp = self._cpp([])
+        self.assertNotIn('addBg', cpp)
+
 
 if __name__ == '__main__':
     unittest.main()

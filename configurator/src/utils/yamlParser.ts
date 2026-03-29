@@ -180,6 +180,8 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
         rows: screen.rows || 2,
         cols: screen.cols || 3,
         flags: screen.flags || [],
+        background: Array.isArray(screen.background) ? screen.background : undefined,
+        time_color: screen.time_color || undefined,
         tiles
       };
     });
