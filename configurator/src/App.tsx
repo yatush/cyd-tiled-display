@@ -661,8 +661,6 @@ function App() {
         stayMounted={usbCompileActive || otaInstallActive}
         onCompileActiveChange={setUsbCompileActive}
         onOtaActiveChange={setOtaInstallActive}
-        toolchainPhase={toolchainPhase ?? undefined}
-        onToolchainPhaseChange={setToolchainPhase}
       />
       
       <ScreensFileDialog 
