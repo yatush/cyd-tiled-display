@@ -2301,6 +2301,15 @@ def update_lib():
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
             shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'hw_overrides.yaml'))
+
+            # Restore hw_overrides.yaml: keep user's existing file, otherwise seed from template
+            hw_target = os.path.join(target_lib, 'hw_overrides.yaml')
+            hw_backup = os.path.join(backup_lib, 'hw_overrides.yaml')
+            hw_source = os.path.join(source_lib, 'hw_overrides.yaml')
+            if os.path.exists(hw_backup):
+                shutil.copy2(hw_backup, hw_target)
+            elif os.path.exists(hw_source):
+                shutil.copy2(hw_source, hw_target)
             
         # Update tile_ui without backup
         source_ui = os.path.join(APP_DIR, 'esphome/external_components/tile_ui')
