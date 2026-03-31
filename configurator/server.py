@@ -757,25 +757,41 @@ def _parse_hw_overrides(yaml_text, screen_type=None):
     overrides = []
 
     for component_type, entries in doc.items():
-        # Support both list form (correct) and dict form (common mistake)
+        # A dict means the user forgot the list dash "-" — always an error
         if isinstance(entries, dict):
-            # Dict form: display: {id: !extend disp, ...} — missing the "-" list syntax
             id_val = entries.get('id')
-            if isinstance(id_val, _ExtendTag):
-                return [], (
-                    f"'{component_type}' override is missing the list dash '-'.\n"
-                    f"Change:\n  {component_type}:\n    id: !extend {id_val.value}\n    ...\n"
-                    f"To:\n  {component_type}:\n    - id: !extend {id_val.value}\n    ..."
-                )
-            continue
+            extend_id = id_val.value if isinstance(id_val, _ExtendTag) else '<some_id>'
+            return [], (
+                f"'{component_type}' override is missing the list dash '-'.\n"
+                f"Change:\n  {component_type}:\n    id: !extend {extend_id}\n    ...\n"
+                f"To:\n  {component_type}:\n    - id: !extend {extend_id}\n    ..."
+            )
         if not isinstance(entries, list):
-            continue
+            # Bare scalar or other unexpected value
+            return [], (
+                f"Unexpected value for '{component_type}': {repr(entries)}\n"
+                f"Each top-level key must be a list of component entries, e.g.:\n"
+                f"  {component_type}:\n    - id: !extend <some_id>\n    ..."
+            )
         for entry in entries:
             if not isinstance(entry, dict):
-                continue
+                return [], (
+                    f"Unexpected item in '{component_type}' list: {repr(entry)}\n"
+                    f"Each list item must be a mapping with 'id: !extend <id>', e.g.:\n"
+                    f"  {component_type}:\n    - id: !extend <some_id>\n    ..."
+                )
             id_val = entry.get('id')
+            if id_val is None:
+                return [], (
+                    f"An entry under '{component_type}' is missing the 'id: !extend <id>' key.\n"
+                    f"Each list item must start with 'id: !extend <some_id>'."
+                )
             if not isinstance(id_val, _ExtendTag):
-                continue
+                return [], (
+                    f"'{component_type}' entry has 'id: {id_val}' but is missing the '!extend' tag.\n"
+                    f"Change:\n  - id: {id_val}\n"
+                    f"To:\n  - id: !extend {id_val}"
+                )
             extend_id = id_val.value
             # Build changes from the rest of the entry (everything except 'id')
             rest = {k: v for k, v in entry.items() if k != 'id'}
