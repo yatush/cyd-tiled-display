@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save, Usb } from 'lucide-react';
+import { X, Upload, RefreshCw, Wifi, WifiOff, Monitor, Square, ArrowLeft, ChevronDown, ChevronUp, Save, Usb, CheckCircle, AlertTriangle, ChevronRight, Settings } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { UsbInstallPanel } from './UsbInstallPanel';
+import { HwOverridesDialog } from './HwOverridesDialog';
 
 interface Device {
   filename: string;
@@ -55,6 +56,14 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const installStartRef = useRef<number | null>(null);
   const [lastLogAge, setLastLogAge] = useState(0);
   const lastLogTimeRef = useRef<number | null>(null);
+
+  // HW overrides pre-install check
+  interface OverrideEntry { component_type: string; id: string; id_found: boolean; changes: {key: string; value: unknown}[]; }
+  const [showOverridesConfirm, setShowOverridesConfirm] = useState(false);
+  const [overridesResult, setOverridesResult] = useState<{overrides: OverrideEntry[]; parse_error: string | null} | null>(null);
+  const [overridesChecking, setOverridesChecking] = useState(false);
+  const [showOverridesEditor, setShowOverridesEditor] = useState(false);
+  const pendingInstallRef = useRef<(() => void) | null>(null);
 
   // On mount: check if an install is already running (page reload / reconnect)
   useEffect(() => {
@@ -222,7 +231,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     }
   };
 
-  const handleInstall = async () => {
+  const doInstall = async () => {
     if (!selectedDevice) return;
 
     const device = devices.find(d => d.filename === selectedDevice);
@@ -356,6 +365,28 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     }
   };
 
+  const handleInstall = async () => {
+    if (!selectedDevice) return;
+    // Check for active overrides before proceeding
+    setOverridesChecking(true);
+    const devScreenType = devices.find(d => d.filename === selectedDevice)?.screen_type || null;
+    try {
+      const stParam = devScreenType ? `?screen_type=${encodeURIComponent(devScreenType)}` : '';
+      const res = await apiFetch(`/hw_overrides/validate${stParam}`);
+      if (res.ok) {
+        const result = await res.json();
+        if (result.overrides && result.overrides.length > 0) {
+          setOverridesResult(result);
+          setShowOverridesConfirm(true);
+          pendingInstallRef.current = doInstall;
+          return;
+        }
+      }
+    } catch { /* non-fatal — proceed without check */ }
+    finally { setOverridesChecking(false); }
+    doInstall();
+  };
+
   const handleCancel = async () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -386,7 +417,85 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   const selected = devices.find(d => d.filename === selectedDevice);
 
   return (
+    <>
+    <HwOverridesDialog
+      isOpen={showOverridesEditor}
+      onClose={() => setShowOverridesEditor(false)}
+      onSaved={async () => {
+        // Re-fetch validation after saving so the confirm panel updates
+        try {
+          const stParam = selected?.screen_type ? `?screen_type=${encodeURIComponent(selected.screen_type)}` : '';
+          const res = await apiFetch(`/hw_overrides/validate${stParam}`);
+          if (res.ok) setOverridesResult(await res.json());
+        } catch { /* ignore */ }
+      }}
+    />
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4 backdrop-blur-sm" style={{ display: dialogHidden ? 'none' : undefined }} onClick={onClose}>
+      {/* HW Overrides confirmation overlay */}
+      {showOverridesConfirm && overridesResult && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[250] p-4 backdrop-blur-sm" onClick={() => setShowOverridesConfirm(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b bg-amber-50">
+              <div className="flex items-center gap-2">
+                <Settings size={18} className="text-amber-600" />
+                <h3 className="font-bold text-slate-800">Hardware Overrides Active</h3>
+              </div>
+              <button onClick={() => setShowOverridesConfirm(false)} className="p-1 hover:bg-amber-100 rounded-full transition-colors"><X size={18} /></button>
+            </div>
+            <div className="p-4">
+              <p className="text-xs text-slate-500 mb-3">The following hardware overrides will be compiled into this device:</p>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {overridesResult.parse_error && (
+                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+                    <div className="font-bold flex items-center gap-1"><AlertTriangle size={12} /> Parse error — fix before flashing</div>
+                    <pre className="mt-1 whitespace-pre-wrap font-mono">{overridesResult.parse_error}</pre>
+                  </div>
+                )}
+                {overridesResult.overrides.map((entry, i) => (
+                  <div key={i} className={`p-3 rounded-lg border text-xs ${entry.id_found ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <div className="flex items-center gap-1.5 font-bold mb-1">
+                      {entry.id_found
+                        ? <CheckCircle size={12} className="text-green-600" />
+                        : <AlertTriangle size={12} className="text-yellow-600" />}
+                      <span className={entry.id_found ? 'text-green-800' : 'text-yellow-800'}>{entry.component_type}</span>
+                      <ChevronRight size={10} className="text-slate-400" />
+                      <span className="font-mono">{entry.id}</span>
+                      {!entry.id_found && <span className="ml-auto text-yellow-700 font-normal">ID not found</span>}
+                    </div>
+                    <div className="pl-4 space-y-0.5">
+                      {entry.changes.map((c, j) => (
+                        <div key={j} className="font-mono text-slate-600">
+                          <span className="text-slate-400">{c.key}:</span> <span className="text-slate-800">{String(c.value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 p-4 border-t bg-slate-50">
+              <button
+                onClick={() => { setShowOverridesEditor(true); }}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-bold border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors text-slate-700"
+              >
+                <Settings size={13} /> Edit Overrides
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowOverridesConfirm(false)}
+                  className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                >Cancel</button>
+                <button
+                  onClick={() => { setShowOverridesConfirm(false); doInstall(); }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <Upload size={14} /> Proceed
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b bg-slate-50 flex-shrink-0">
@@ -623,10 +732,13 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
               </button>
               <button
                 onClick={handleInstall}
-                disabled={!selectedDevice}
+                disabled={!selectedDevice || overridesChecking}
                 className="px-4 py-2 text-sm font-bold bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Upload size={16} /> Save & Install
+                {overridesChecking
+                  ? <><RefreshCw size={16} className="animate-spin" /> Checking…</>
+                  : <><Upload size={16} /> Save & Install</>
+                }
               </button>
             </>
           )}
@@ -663,5 +775,6 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         )}
       </div>
     </div>
+    </>
   );
 };

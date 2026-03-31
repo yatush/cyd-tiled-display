@@ -1,0 +1,33 @@
+# hw_overrides.yaml — personal hardware customizations
+#
+# This file is NEVER overwritten by the configurator — edit it freely.
+# Use ESPHome's !extend tag to override any component by its ID.
+#
+# The override applies to all your devices that include this file.
+#
+# ---------------------------------------------------------------------------
+# Common examples (remove the leading # to activate):
+#
+# Flip touchscreen orientation on the 3.5" display:
+# touchscreen:
+#   - id: !extend touchscreen_id
+#     transform:
+#       swap_xy: False
+#       mirror_x: False
+#       mirror_y: True
+#
+# Change backlight restore behaviour:
+# light:
+#   - id: !extend backlight
+#     restore_mode: RESTORE_AND_ON
+#
+# Change sleep timeout (seconds):
+# globals:
+#   - id: !extend sleep_time
+#     initial_value: "120"
+#
+# Override display model (e.g. if your 3.5" panel uses a different driver):
+# display:
+#   - id: !extend disp
+#     model: ST7796
+# ---------------------------------------------------------------------------

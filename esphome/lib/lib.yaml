@@ -12,6 +12,7 @@ esphome:
 
 packages:
   common: !include lib_common.yaml
+  hw_overrides: !include hw_overrides.yaml
 
 wifi:
   ssid: !secret wifi_ssid

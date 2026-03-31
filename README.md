@@ -216,6 +216,33 @@ The Configurator is designed to be intuitive:
     *   **Save Device**: Generate and save the full ESPHome device configuration file (e.g., `monitor.yaml`) to the server.
     *   **Load Device**: Load an existing device configuration to edit its settings (WiFi, secrets, etc.).
     *   **Local Files**: You can also Load/Download YAML files to/from your local computer.
+    *   **Hardware Overrides**: Customize low-level hardware settings that apply to all your devices (see below).
+
+1.  **Hardware Overrides**:
+
+    Some hardware settings — such as touchscreen orientation, display driver model, backlight behaviour, or sleep timeout — may need to differ from the library defaults depending on your exact panel variant. The **Hardware Overrides** system lets you change these values permanently without editing the library files (which get overwritten on updates).
+
+    Open it via **File Management → Hardware Overrides**. You'll get a YAML editor for `lib/hw_overrides.yaml`. Use ESPHome's `!extend` tag to override any component by its `id`:
+
+    ```yaml
+    # Flip touchscreen axes on the 3.5" display
+    touchscreen:
+      - id: !extend touchscreen_id
+        transform:
+          swap_xy: False
+
+    # Change the display driver model
+    display:
+      - id: !extend disp
+        model: ST7796S
+
+    # Extend sleep timeout to 3 minutes
+    globals:
+      - id: !extend sleep_time
+        initial_value: "180"
+    ```
+
+    The file is **never overwritten** by the configurator or library updates. Use **Check Overrides** in the editor to validate your YAML and confirm which component IDs were found. Before installing firmware, the configurator will automatically warn you if any overrides are active.
 
 1.  **Emulator**:
     * After you have the configuration valid and ready, you can run the emulator to test how it works.

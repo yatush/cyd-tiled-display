@@ -14,6 +14,7 @@ import { LoadDeviceDialog } from './components/LoadDeviceDialog';
 import { InstallDialog } from './components/InstallDialog';
 import { ScreensFileDialog } from './components/ScreensFileDialog';
 import { EmulatorDialog } from './components/EmulatorDialog';
+import { HwOverridesDialog } from './components/HwOverridesDialog';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -118,6 +119,7 @@ function App() {
   
   // File Management State
   const [isFileManagementOpen, setIsFileManagementOpen] = useState(false);
+  const [isHwOverridesOpen, setIsHwOverridesOpen] = useState(false);
   const [isSaveDeviceOpen, setIsSaveDeviceOpen] = useState(false);
   const [isLoadDeviceOpen, setIsLoadDeviceOpen] = useState(false);
   const [isInstallDeviceOpen, setIsInstallDeviceOpen] = useState(false);
@@ -621,6 +623,10 @@ function App() {
           setIsFileManagementOpen(false);
           setIsInstallDeviceOpen(true);
         }}
+        onHwOverrides={() => {
+          setIsFileManagementOpen(false);
+          setIsHwOverridesOpen(true);
+        }}
         connectionType={connectionType}
       />
 
@@ -684,6 +690,11 @@ function App() {
         websockifyPort={websockifyPort}
         emulatorSessionId={currentEmulatorSessionIdRef.current}
         isStarting={emulatorStatus === 'starting'}
+      />
+
+      <HwOverridesDialog
+        isOpen={isHwOverridesOpen}
+        onClose={() => setIsHwOverridesOpen(false)}
       />
 
       {/* Device picker dialog shown before starting the emulator */}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap } from 'lucide-react';
+import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap, Settings } from 'lucide-react';
 import { ConnectionType } from '../hooks/useHaConnection';
 import { isAddon } from '../utils/api';
 
@@ -13,6 +13,7 @@ interface FileManagementDialogProps {
   onSaveDevice: () => void;
   onLoadDevice: () => void;
   onInstallDevice: () => void;
+  onHwOverrides: () => void;
   connectionType: ConnectionType;
 }
 
@@ -26,6 +27,7 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
   onSaveDevice,
   onLoadDevice,
   onInstallDevice,
+  onHwOverrides,
   connectionType
 }) => {
   if (!isOpen) return null;
@@ -127,6 +129,25 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Hardware Overrides */}
+          {isAddon && (
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Hardware</h3>
+              <button
+                onClick={() => { onHwOverrides(); onClose(); }}
+                className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-700 transition-all group text-left"
+              >
+                <div className="p-1.5 bg-slate-100 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
+                  <Settings size={16} className="text-slate-500 group-hover:text-amber-600" />
+                </div>
+                <div>
+                  <div className="font-bold text-xs">Hardware Overrides</div>
+                  <div className="text-[10px] text-slate-400">Customize touchscreen, backlight, etc.</div>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

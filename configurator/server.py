@@ -669,6 +669,154 @@ def make_directory():
         print(f"Mkdir Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
+# ============================================================
+# Hardware Overrides Validation
+# ============================================================
+
+def _collect_lib_ids(screen_type=None):
+    """Scan YAML files in the lib directory and return a set of declared IDs.
+
+    If screen_type is provided (e.g. '2432s028' or '3248s035'), base files for
+    the OTHER screen type are skipped so validation reflects the actual device.
+    """
+    lib_dir = os.path.join(BASE_DIR, 'lib')
+    ids = set()
+    if not os.path.isdir(lib_dir):
+        return ids
+    import re
+    id_re = re.compile(r'^\s+id:\s+([A-Za-z_][A-Za-z0-9_]*)\s*$')
+    for fname in os.listdir(lib_dir):
+        if not fname.endswith('.yaml') and not fname.endswith('.yml'):
+            continue
+        # When a specific screen type is given, skip the other screen's base file
+        if screen_type and fname.endswith('_base.yaml') and not fname.startswith(screen_type):
+            continue
+        fpath = os.path.join(lib_dir, fname)
+        try:
+            with open(fpath, 'r', errors='replace') as f:
+                for line in f:
+                    m = id_re.match(line)
+                    if m:
+                        ids.add(m.group(1))
+        except Exception:
+            pass
+    return ids
+
+
+def _flatten_dict(d, prefix=''):
+    """Recursively flatten a dict into a list of {key, value} pairs using dot notation."""
+    result = []
+    if not isinstance(d, dict):
+        return result
+    for k, v in d.items():
+        full_key = f"{prefix}.{k}" if prefix else str(k)
+        if isinstance(v, dict):
+            result.extend(_flatten_dict(v, full_key))
+        else:
+            result.append({"key": full_key, "value": v})
+    return result
+
+
+def _parse_hw_overrides(yaml_text, screen_type=None):
+    """Parse hw_overrides YAML text and return a list of override entries.
+
+    Each entry: {component_type, id, id_found, changes: [{key, value}]}
+    Returns (overrides_list, parse_error_string_or_None).
+    """
+    class _ExtendTag:
+        def __init__(self, value):
+            self.value = value
+
+    class _ExtendLoader(yaml.SafeLoader):
+        pass
+
+    def _construct_extend(loader, node):
+        return _ExtendTag(loader.construct_scalar(node))
+
+    def _ignore_tag(loader, tag_suffix, node):
+        if isinstance(node, yaml.ScalarNode):
+            return loader.construct_scalar(node)
+        elif isinstance(node, yaml.SequenceNode):
+            return loader.construct_sequence(node)
+        else:
+            return loader.construct_mapping(node)
+
+    _ExtendLoader.add_constructor('!extend', _construct_extend)
+    _ExtendLoader.add_multi_constructor('!', _ignore_tag)
+
+    try:
+        doc = yaml.load(yaml_text, Loader=_ExtendLoader)
+    except yaml.YAMLError as e:
+        return [], str(e)
+
+    if not isinstance(doc, dict):
+        return [], None
+
+    known_ids = _collect_lib_ids(screen_type)
+    overrides = []
+
+    for component_type, entries in doc.items():
+        # Support both list form (correct) and dict form (common mistake)
+        if isinstance(entries, dict):
+            # Dict form: display: {id: !extend disp, ...} — missing the "-" list syntax
+            id_val = entries.get('id')
+            if isinstance(id_val, _ExtendTag):
+                return [], (
+                    f"'{component_type}' override is missing the list dash '-'.\n"
+                    f"Change:\n  {component_type}:\n    id: !extend {id_val.value}\n    ...\n"
+                    f"To:\n  {component_type}:\n    - id: !extend {id_val.value}\n    ..."
+                )
+            continue
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            id_val = entry.get('id')
+            if not isinstance(id_val, _ExtendTag):
+                continue
+            extend_id = id_val.value
+            # Build changes from the rest of the entry (everything except 'id')
+            rest = {k: v for k, v in entry.items() if k != 'id'}
+            changes = _flatten_dict(rest)
+            overrides.append({
+                "component_type": component_type,
+                "id": extend_id,
+                "id_found": extend_id in known_ids,
+                "changes": changes,
+            })
+
+    return overrides, None
+
+
+@app.route('/api/hw_overrides/validate', methods=['GET', 'POST'])
+def validate_hw_overrides():
+    """Validate hw_overrides.yaml.
+
+    GET  — reads lib/hw_overrides.yaml from disk.
+    POST — accepts {"yaml_text": "..."} to validate unsaved editor content.
+    """
+    try:
+        hw_overrides_path = os.path.join(BASE_DIR, 'lib', 'hw_overrides.yaml')
+
+        if request.method == 'POST':
+            body = request.get_json(silent=True) or {}
+            yaml_text = body.get('yaml_text', '')
+            screen_type = body.get('screen_type') or None
+        else:
+            screen_type = request.args.get('screen_type') or None
+            if not os.path.exists(hw_overrides_path):
+                return jsonify({"overrides": [], "parse_error": None})
+            with open(hw_overrides_path, 'r', errors='replace') as f:
+                yaml_text = f.read()
+
+        overrides, parse_error = _parse_hw_overrides(yaml_text, screen_type)
+        return jsonify({"overrides": overrides, "parse_error": parse_error})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/save', methods=['POST'])
 def save_config():
     try:
@@ -706,13 +854,21 @@ def load_config():
     try:
         # path is relative to BASE_DIR
         rel_path = request.args.get('path', 'monitor_config/tiles.yaml')
-        
+        raw_mode = request.args.get('raw', '').lower() in ('1', 'true', 'yes')
+
         # Security: prevent directory traversal
         if '..' in rel_path:
             return jsonify({"error": "Invalid path"}), 400
 
         target_path = os.path.join(BASE_DIR, rel_path.lstrip('/'))
-        
+
+        # Raw mode: return plain text (preserves comments, used by hw_overrides editor)
+        if raw_mode:
+            if not os.path.exists(target_path):
+                return '', 404
+            with open(target_path, 'r', errors='replace') as f:
+                return f.read(), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
         if os.path.exists(target_path):
             # Custom YAML loader to handle all tags safely
             class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
@@ -734,6 +890,23 @@ def load_config():
     except Exception as e:
         print(f"Load Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/load_raw', methods=['GET'])
+def load_config_raw():
+    """Return the raw text content of a file (not YAML-parsed). Used by the HW overrides editor."""
+    try:
+        rel_path = request.args.get('path', '')
+        if not rel_path or '..' in rel_path:
+            return jsonify({"error": "Invalid path"}), 400
+        target_path = os.path.join(BASE_DIR, rel_path.lstrip('/'))
+        if not os.path.exists(target_path):
+            return '', 404
+        with open(target_path, 'r', errors='replace') as f:
+            return f.read(), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # ============================================================
 # ESPHome Device Management - List & Install
@@ -2127,7 +2300,7 @@ def update_lib():
                 if os.path.exists(backup_lib):
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
-            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml'))
+            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'hw_overrides.yaml'))
             
         # Update tile_ui without backup
         source_ui = os.path.join(APP_DIR, 'esphome/external_components/tile_ui')
@@ -2162,8 +2335,7 @@ def get_directory_hashes(directory):
         dirs[:] = [d for d in dirs if not d.startswith('.') and d != 'images']
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
-            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file.startswith('.'):
-                continue
+            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file == 'hw_overrides.yaml' or file.startswith('.'):                continue
             path = os.path.join(root, file)
             rel_path = os.path.relpath(path, directory).replace('\\', '/')
             # images.yaml content is always regenerated at compile time;
