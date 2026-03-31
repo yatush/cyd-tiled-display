@@ -15,6 +15,7 @@ logger:
 api:
   id: api_server
   port: ${api_port}
+  reboot_timeout: 0s
 
 globals:
   - id: rows
@@ -167,7 +168,7 @@ light:
     output: backlight_pwm
     name: Display Backlight
     id: backlight
-    restore_mode: ALWAYS_ON
+    restore_mode: RESTORE_DEFAULT_ON
     on_turn_on:
       then:
         - component.update: disp

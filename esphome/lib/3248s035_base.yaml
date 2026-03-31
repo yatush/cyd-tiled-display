@@ -23,14 +23,17 @@ output:
     id: output_red
     pin: GPIO4
     inverted: true
+    zero_means_zero: true
   - platform: ledc
     id: output_green
     pin: GPIO16
     inverted: true
+    zero_means_zero: true
   - platform: ledc
     id: output_blue
     pin: GPIO17
     inverted: true
+    zero_means_zero: true
 
 i2c:
   id: i2c_bus1
