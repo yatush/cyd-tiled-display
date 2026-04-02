@@ -164,7 +164,7 @@ python3 /app/toolchain_setup.py > /tmp/toolchain_setup.log 2>&1 &
     sleep 10; WAIT=$((WAIT + 10))
   done
   while true; do
-    sleep 21600  # 6 hours
+    sleep 3600  # 1 hour
     # Skip if a toolchain_setup.py is already running (e.g. user triggered local build)
     if pgrep -f "toolchain_setup.py" > /dev/null 2>&1; then
       continue

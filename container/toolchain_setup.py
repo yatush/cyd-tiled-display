@@ -191,12 +191,10 @@ def set_stored_build_id(build_id: str) -> None:
         f.write(build_id)
 
 
-def fetch_and_store_build_id(version: str) -> None:
-    """Fetch build_id.txt from the GitHub Release and store it locally.
+def fetch_remote_build_id(version: str) -> str | None:
+    """Fetch build_id.txt from the GitHub Release and return its content.
 
-    Called after a successful toolchain download+extract so the UI can detect
-    whether a newer build is available for the same ESPHome version.
-    Non-fatal: failures are logged but do not affect the toolchain install.
+    Returns None on any error (404, network issues, etc.) — always non-fatal.
     """
     repo = get_github_repo()
     url = (f'https://github.com/{repo}/releases/download/'
@@ -205,12 +203,23 @@ def fetch_and_store_build_id(version: str) -> None:
         req = urllib.request.Request(
             url, headers={'User-Agent': 'cyd-tiled-display/toolchain-setup'})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            build_id = resp.read().decode().strip()
-        if build_id:
-            set_stored_build_id(build_id)
-            log(f'Toolchain build ID stored: {build_id}')
+            return resp.read().decode().strip() or None
     except Exception as e:
         log(f'Could not fetch build_id.txt (non-fatal): {e}')
+        return None
+
+
+def fetch_and_store_build_id(version: str) -> None:
+    """Fetch build_id.txt from the GitHub Release and store it locally.
+
+    Called after a successful toolchain download+extract so the UI can detect
+    whether a newer build is available for the same ESPHome version.
+    Non-fatal: failures are logged but do not affect the toolchain install.
+    """
+    build_id = fetch_remote_build_id(version)
+    if build_id:
+        set_stored_build_id(build_id)
+        log(f'Toolchain build ID stored: {build_id}')
 
 
 def has_packages() -> bool:
@@ -704,15 +713,25 @@ def main() -> None:
     # ── Case 1: already up-to-date ────────────────────────────────────────────
     # Skipped when --force-download is passed (user clicked "Update toolchain"
     # and the server detected a newer build_id for the same ESPHome version).
+    # Also checks the remote build_id so the 6-hour watchdog can trigger a
+    # background download automatically — without the user having to open the
+    # addon in the browser first.
     if stored == expected and has_packages() and not force_download:
-        log('Toolchain up-to-date.')
-        set_stored_version(expected)   # ensures SETUP_MARKER is present
-        fix_wrappers()   # idempotent catch-all: PlatformIO may have downloaded
-                         # new packages outside our control (e.g. a fresh
-                         # toolchain-xtensa-esp-elf during a previous esphome run).
-        maybe_warm_cache()
-        write_progress('ready', 100, 'Toolchain ready.')
-        return
+        local_build_id  = get_stored_build_id()
+        remote_build_id = fetch_remote_build_id(expected)
+        if remote_build_id and remote_build_id != local_build_id:
+            log(f'New toolchain build available: {local_build_id!r} → {remote_build_id!r}. '
+                f'Downloading in background...')
+            # Fall through to Case 2 to download the updated build.
+        else:
+            log('Toolchain up-to-date.')
+            set_stored_version(expected)   # ensures SETUP_MARKER is present
+            fix_wrappers()   # idempotent catch-all: PlatformIO may have downloaded
+                             # new packages outside our control (e.g. a fresh
+                             # toolchain-xtensa-esp-elf during a previous esphome run).
+            maybe_warm_cache()
+            write_progress('ready', 100, 'Toolchain ready.')
+            return
 
     # ── Case 3: no packages at all (fresh install) ────────────────────────────
     if not has_packages():
