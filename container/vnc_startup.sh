@@ -123,6 +123,29 @@ if [ -n "$SUPERVISOR_TOKEN" ] && [ ! -L /root/.platformio ]; then
 fi
 # ---- End PlatformIO persistence ----------------------------------------------
 
+# ---- Seed lib files on first install ----------------------------------------
+# On a fresh HA addon install /config/esphome exists (created by HA) but
+# /config/esphome/lib does NOT contain the *_base.yaml device files yet — the
+# user hasn't clicked "Update HA Esphome files" because the UI hasn't started.
+# We seed from the bundled /app/esphome/lib so gunicorn can start normally and
+# the user sees the UI straight away.  Files are never overwritten if lib/
+# already contains at least one *_base.yaml (i.e. a previous install exists).
+if [ -d /config/esphome ] && [ -d /app/esphome/lib ]; then
+    if ! ls /config/esphome/lib/*_base.yaml 2>/dev/null | grep -q .; then
+        echo "First-run: seeding /config/esphome/lib from bundled library..."
+        mkdir -p /config/esphome/lib
+        # Copy everything except hidden files and user-owned files we must not clobber
+        cp -rn /app/esphome/lib/. /config/esphome/lib/ 2>/dev/null || true
+        # Also seed external_components if missing
+        if [ ! -d /config/esphome/external_components/tile_ui ]; then
+            mkdir -p /config/esphome/external_components
+            cp -rn /app/esphome/external_components/. /config/esphome/external_components/ 2>/dev/null || true
+        fi
+        echo "First-run seeding complete."
+    fi
+fi
+# ---- End lib seeding ---------------------------------------------------------
+
 # ---- Toolchain setup (runs in background) ---------------------------------------
 # toolchain_setup.py first checks PyPI for a newer ESPHome release and upgrades
 # pip in-place if one is found, then checks whether the pre-built toolchain

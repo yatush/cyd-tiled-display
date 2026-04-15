@@ -65,7 +65,13 @@ IS_ADDON = bool(SUPERVISOR_TOKEN)
 
 # Determine environment paths
 # BASE_DIR: Where the user's configuration lives (e.g. /config/esphome)
-if os.path.exists('/config/esphome'):
+# We require that lib/ exists and contains at least one *_base.yaml device file,
+# otherwise the directory is present but not properly initialised.
+def _has_base_yamls(path):
+    lib = os.path.join(path, 'lib')
+    return os.path.isdir(lib) and any(f.endswith('_base.yaml') for f in os.listdir(lib))
+
+if _has_base_yamls('/config/esphome'):
     BASE_DIR = '/config/esphome'
 else:
     # Local fallback: use the esphome folder in the parent directory
