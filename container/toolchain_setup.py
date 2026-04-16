@@ -154,6 +154,13 @@ def maybe_upgrade_esphome() -> None:
 
     log(f'ESPHome upgrade available: {installed} → {latest}. Upgrading pip package...')
     try:
+        # Upgrade pip first to avoid a resolver bug in pip<25 where a package
+        # with a None version field raises:
+        #   TypeError: expected string or bytes-like object, got 'NoneType'
+        # This is already the recommended action printed by pip itself.
+        subprocess.run(
+            ['pip3', 'install', '--upgrade', 'pip'],
+            check=False, timeout=120)
         subprocess.run(
             ['pip3', 'install', '--no-cache-dir', f'esphome=={latest}'],
             check=True, timeout=300)
@@ -710,13 +717,28 @@ def main() -> None:
         log('Setup complete (local build).')
         return
 
-    # ── Case 1: already up-to-date ────────────────────────────────────────────
+    # ── Case 1: already up-to-date (or toolchain is newer than installed ESPHome) ──
     # Skipped when --force-download is passed (user clicked "Update toolchain"
     # and the server detected a newer build_id for the same ESPHome version).
     # Also checks the remote build_id so the 6-hour watchdog can trigger a
     # background download automatically — without the user having to open the
     # addon in the browser first.
-    if stored == expected and has_packages() and not force_download:
+    #
+    # "stored > expected" covers the edge case where a pip upgrade failed and
+    # ESPHome was left at an older version: the existing (newer) toolchain is
+    # still compatible, so we keep running rather than re-downloading the old one.
+    def _ver_tuple(v: str) -> tuple:
+        try:
+            return tuple(int(x) for x in v.split('.'))
+        except ValueError:
+            return (0,)
+
+    toolchain_at_least_as_new = (
+        stored is not None and
+        _ver_tuple(stored) >= _ver_tuple(expected)
+    )
+
+    if toolchain_at_least_as_new and has_packages() and not force_download:
         local_build_id  = get_stored_build_id()
         remote_build_id = fetch_remote_build_id(expected)
         if remote_build_id and remote_build_id != local_build_id:
