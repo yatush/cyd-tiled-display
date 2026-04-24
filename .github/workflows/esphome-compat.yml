@@ -1,0 +1,285 @@
+name: ESPHome Compatibility Check
+
+# Runs every 6 hours. Detects new ESPHome releases, compiles test_device.yaml,
+# runs an LLM analysis of the build log + changelog, then publishes a GitHub
+# Release — which triggers an automatic notification email to repo watchers.
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # Every 6 hours
+  workflow_dispatch:
+    inputs:
+      force_recheck:
+        description: 'Force check even if this ESPHome version was already checked'
+        type: boolean
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ─── 1. Detect latest ESPHome version ──────────────────────────────────────
+  check-version:
+    name: Check ESPHome version
+    runs-on: ubuntu-latest
+    outputs:
+      esphome_version: ${{ steps.version.outputs.version }}
+      needs_check: ${{ steps.check.outputs.needs_check }}
+    steps:
+      - name: Get latest ESPHome version
+        id: version
+        run: |
+          pip install esphome --quiet
+          VERSION=$(python3 -c "from importlib.metadata import version; print(version('esphome'))")
+          echo "ESPHome version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if already checked this version
+        id: check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/compat-check-esphome-${{ steps.version.outputs.version }}")
+          echo "Release check HTTP status: $STATUS"
+          if [ "$STATUS" = "200" ] && [ "${{ inputs.force_recheck }}" != "true" ]; then
+            echo "Already checked ESPHome ${{ steps.version.outputs.version }} — skipping."
+            echo "needs_check=false" >> $GITHUB_OUTPUT
+          else
+            echo "needs_check=true" >> $GITHUB_OUTPUT
+          fi
+
+  # ─── 2. Compile test_device.yaml ──────────────────────────────────────────
+  compile:
+    name: Compile test_device.yaml
+    needs: check-version
+    if: needs.check-version.outputs.needs_check == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      build_status: ${{ steps.compile.outputs.status }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            python3-dev libssl-dev libffi-dev cmake ninja-build git
+
+      - name: Install ESPHome ${{ needs.check-version.outputs.esphome_version }}
+        run: pip install "esphome==${{ needs.check-version.outputs.esphome_version }}"
+
+      # Cache the PlatformIO toolchain (~500 MB) to avoid re-downloading on
+      # manual re-runs of the same ESPHome version.
+      - name: Cache PlatformIO toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-esphome-${{ needs.check-version.outputs.esphome_version }}
+
+      - name: Compile test_device.yaml
+        id: compile
+        run: |
+          cd esphome
+          set +e
+          esphome compile test_device.yaml 2>&1 | tee /tmp/build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "status=PASSED" >> $GITHUB_OUTPUT
+            echo "" | tee -a /tmp/build.log
+            echo "=== BUILD STATUS: PASSED ===" | tee -a /tmp/build.log
+          else
+            echo "status=FAILED" >> $GITHUB_OUTPUT
+            echo "" | tee -a /tmp/build.log
+            echo "=== BUILD STATUS: FAILED (exit code $EXIT_CODE) ===" | tee -a /tmp/build.log
+          fi
+
+      - name: Extract build summary (warnings, deprecations, errors)
+        run: |
+          {
+            echo "=== Lines matching WARNING / deprecated / ERROR ==="
+            grep -E -i 'WARNING|WARN |deprecated|deprecat|error:' /tmp/build.log || echo "(none)"
+            echo ""
+            echo "=== Last 100 lines of full log ==="
+            tail -100 /tmp/build.log
+          } > /tmp/build_summary.log
+
+      - name: Upload full build log
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-log
+          path: /tmp/build.log
+          retention-days: 7
+
+      - name: Upload build summary
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-summary
+          path: /tmp/build_summary.log
+          retention-days: 7
+
+  # ─── 3. LLM Analysis via GitHub Models ────────────────────────────────────
+  analyze:
+    name: LLM Analysis
+    needs: [check-version, compile]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build summary
+        uses: actions/download-artifact@v5
+        with:
+          name: build-summary
+          path: /tmp/artifacts
+
+      - name: Fetch ESPHome release notes
+        run: |
+          VERSION="${{ needs.check-version.outputs.esphome_version }}"
+          fetch_notes() {
+            curl -s \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/esphome/esphome/releases/tags/$1" \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('body','') or '')" 2>/dev/null
+          }
+          BODY=$(fetch_notes "${VERSION}")
+          [ -z "$BODY" ] && BODY=$(fetch_notes "v${VERSION}")
+          [ -z "$BODY" ] && BODY="No release notes found for ESPHome ${VERSION}."
+          printf '%s\n' "$BODY" > /tmp/changelog.txt
+          echo "Changelog: $(wc -c < /tmp/changelog.txt) bytes"
+
+      - name: Analyze with GitHub Models (gpt-4o-mini)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ESPHOME_VERSION: ${{ needs.check-version.outputs.esphome_version }}
+          BUILD_STATUS: ${{ needs.compile.outputs.build_status }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, urllib.request
+
+          version      = os.environ["ESPHOME_VERSION"]
+          build_status = os.environ["BUILD_STATUS"]
+
+          with open("/tmp/artifacts/build_summary.log") as f:
+              build_log = f.read()[-6000:]   # last ~6 k chars to stay within token budget
+
+          with open("/tmp/changelog.txt") as f:
+              changelog = f.read()[:3000]   # first 3 k chars of changelog
+
+          prompt = (
+              f"You are reviewing ESPHome {version} against an ESP32 project that uses:\n"
+              f"- esp-idf framework\n"
+              f"- A custom external component (tile_ui) loaded from a local path\n"
+              f"- ESPHome YAML config with display, Home Assistant API, OTA, time,\n"
+              f"  fonts (gfonts), covers, lights, climate, and UART radar sensor\n\n"
+              f"Build result: **{build_status}**\n\n"
+              f"=== ESPHome {version} Release Notes ===\n{changelog}\n\n"
+              f"=== Build Log Excerpts (warnings/errors + last 100 lines) ===\n{build_log}\n\n"
+              f"Provide a concise analysis covering:\n"
+              f"1. **Breaking Changes** — anything in the release notes that may affect esp-idf/ESP32 projects\n"
+              f"2. **Deprecation Warnings** — warnings visible in the build log that need future action\n"
+              f"3. **Errors / Root Cause** — if the build failed, the likely reason\n"
+              f"4. **Recommendations** — concrete next steps (if any)\n\n"
+              f"Be brief and actionable. If everything looks clean, say so."
+          )
+
+          payload = {
+              "model": "gpt-4o-mini",
+              "messages": [{"role": "user", "content": prompt}],
+              "max_tokens": 1024,
+              "temperature": 0.3,
+          }
+
+          req = urllib.request.Request(
+              "https://models.inference.ai.azure.com/chat/completions",
+              data=json.dumps(payload).encode(),
+              headers={
+                  "Content-Type": "application/json",
+                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+              },
+              method="POST",
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  data = json.loads(resp.read().decode())
+                  summary = data["choices"][0]["message"]["content"]
+          except Exception as e:
+              summary = f"⚠️ LLM analysis unavailable: {e}"
+
+          with open("/tmp/llm_summary.txt", "w") as f:
+              f.write(summary)
+
+          print("--- LLM Summary Preview ---")
+          print(summary[:600])
+          PYEOF
+
+      - name: Upload LLM summary
+        uses: actions/upload-artifact@v5
+        with:
+          name: llm-summary
+          path: /tmp/llm_summary.txt
+          retention-days: 7
+
+  # ─── 4. Publish GitHub Release (triggers notification email) ──────────────
+  publish:
+    name: Publish release notification
+    needs: [check-version, compile, analyze]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download LLM summary
+        uses: actions/download-artifact@v5
+        with:
+          name: llm-summary
+          path: /tmp/artifacts
+
+      - name: Build release metadata and body
+        id: meta
+        env:
+          STATUS: ${{ needs.compile.outputs.build_status }}
+          VERSION: ${{ needs.check-version.outputs.esphome_version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$STATUS" = "PASSED" ]; then
+            echo "title=ESPHome Compat ${VERSION}: ✅ PASSED" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          else
+            echo "title=ESPHome Compat ${VERSION}: ❌ FAILED" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          fi
+
+          python3 << 'PYEOF'
+          import os
+
+          status  = os.environ["STATUS"]
+          version = os.environ["VERSION"]
+          run_url = os.environ["RUN_URL"]
+
+          with open("/tmp/artifacts/llm_summary.txt") as f:
+              llm = f.read()
+
+          badge = "✅ PASSED" if status == "PASSED" else "❌ FAILED"
+
+          body = (
+              f"**ESPHome version:** `{version}`\n"
+              f"**Compile result:** {badge}\n"
+              f"**Build log:** [View full log in GitHub Actions]({run_url})\n"
+              f"\n---\n"
+              f"\n## 🤖 LLM Analysis\n\n"
+              f"{llm}\n"
+          )
+
+          with open("/tmp/release_body.md", "w") as f:
+              f.write(body)
+          PYEOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: compat-check-esphome-${{ needs.check-version.outputs.esphome_version }}
+          name: ${{ steps.meta.outputs.title }}
+          body_path: /tmp/release_body.md
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          make_latest: false
