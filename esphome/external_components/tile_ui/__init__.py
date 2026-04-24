@@ -100,12 +100,15 @@ def _make_1px_transparent_png() -> bytes:
     return b"\x89PNG\r\n\x1a\n" + ihdr + idat + iend
 
 
-async def _register_images(images_conf: dict, screens: list) -> None:
+async def _register_images(images_conf: dict, screens: list, screen_w: int = 480, screen_h: int = 320) -> None:
     """Register tile_ui.images: entries directly through ESPHome's image codegen API.
 
     Processes base64 PNG data from inline config, writes temp files, and registers
     each image as an ESPHome Image* variable — but ONLY for variants that are not
     already registered (i.e. not already declared in images.yaml).
+
+    Images are resized to the tile dimensions (matching the generate_tiles_api.py
+    formula) so flash usage is identical to a configurator-generated build.
 
     This allows test_device.yaml to compile even when the configurator has not run
     and images.yaml only contains the minimal 'none_transparent' entry.
@@ -201,6 +204,19 @@ async def _register_images(images_conf: dict, screens: list) -> None:
             print(f"[tile_ui] Warning: could not decode image '{vid}': {_e}", file=sys.stderr)
             continue
 
+        # Compute resize — mirrors generate_tiles_api.py formula:
+        #   tile_w = (screen_w - (cols+1)*pad) / cols
+        #   tile_h = (screen_h - (rows+1)*pad) / rows
+        #   max_dim = (tile_dim - 2*FIXED_PAD) * scale
+        _TILE_PAD = 10
+        _FIXED_PAD = 5
+        _scale = max(0.1, min(1.0, (img_data.get('scale') or 100) / 100.0))
+        _tile_w = max(8, (screen_w - (_cols + 1) * _TILE_PAD) // _cols)
+        _tile_h = max(8, (screen_h - (_rows + 1) * _TILE_PAD) // _rows)
+        _max_w = max(8, int((_tile_w - _FIXED_PAD * 2) * _scale))
+        _max_h = max(8, int((_tile_h - _FIXED_PAD * 2) * _scale))
+        resize_val = (_max_w, _max_h)
+
         img_id_obj = ID(vid, is_declaration=True, type=Image_)
         raw_data_id = ID(f"{vid}_raw_data", is_declaration=True, type=cg.uint8)
         entry = {
@@ -209,7 +225,7 @@ async def _register_images(images_conf: dict, screens: list) -> None:
             CONF_FILE: png_path,
             CONF_TYPE: esh_type,
             CONF_TRANSPARENCY: esh_trans,
-            CONF_RESIZE: None,
+            CONF_RESIZE: resize_val,
             CONF_DITHER: "NONE",
             CONF_INVERT_ALPHA: False,
         }
@@ -444,7 +460,19 @@ async def to_code(config):
     # when the configurator has generated a full images.yaml).
     images_conf = config.get("images", {})
     if images_conf:
-        await _register_images(images_conf, screens)
+        # Extract screen dimensions from the display component config.
+        # Falls back to 480×320 (3248s035 default) if not found.
+        _screen_w, _screen_h = 480, 320
+        _disp_cfg = CORE.config.get("display", [])
+        if isinstance(_disp_cfg, list) and _disp_cfg:
+            _d = _disp_cfg[0]
+            if isinstance(_d, dict):
+                try:
+                    _screen_w = int(_d.get("width", _screen_w))
+                    _screen_h = int(_d.get("height", _screen_h))
+                except (TypeError, ValueError):
+                    pass
+        await _register_images(images_conf, screens, screen_w=_screen_w, screen_h=_screen_h)
 
     # Generate C++ initialization code (returns list of lambda strings)
     debug_output = config.get(CONF_DEBUG_OUTPUT, False)
