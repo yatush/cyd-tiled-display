@@ -282,6 +282,23 @@ jobs:
               f.write(body)
           PYEOF
 
+      - name: Delete existing release+tag if force_recheck (so a new one is created and email is sent)
+        if: ${{ inputs.force_recheck == true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: compat-check-esphome-${{ needs.check-version.outputs.esphome_version }}
+        run: |
+          RELEASE_ID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || true)
+          if [ -n "$RELEASE_ID" ]; then
+            curl -s -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+            echo "Deleted release $RELEASE_ID"
+            git push origin --delete "$TAG" 2>/dev/null || true
+            echo "Deleted tag $TAG"
+          fi
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
