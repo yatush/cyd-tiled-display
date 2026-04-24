@@ -85,6 +85,147 @@ def _print_debug(message: str) -> None:
     print(f"{'='*70}\n", file=sys.stderr)
 
 
+def _make_1px_transparent_png() -> bytes:
+    """Return the bytes of a minimal 1×1 RGBA transparent PNG (no external deps)."""
+    import struct
+    import zlib
+
+    def _chunk(tag: bytes, data: bytes) -> bytes:
+        c = tag + data
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+    ihdr = _chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+    idat = _chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00\x00"))  # filter + RGBA(0,0,0,0)
+    iend = _chunk(b"IEND", b"")
+    return b"\x89PNG\r\n\x1a\n" + ihdr + idat + iend
+
+
+async def _register_images(images_conf: dict, screens: list) -> None:
+    """Register tile_ui.images: entries directly through ESPHome's image codegen API.
+
+    Processes base64 PNG data from inline config, writes temp files, and registers
+    each image as an ESPHome Image* variable — but ONLY for variants that are not
+    already registered (i.e. not already declared in images.yaml).
+
+    This allows test_device.yaml to compile even when the configurator has not run
+    and images.yaml only contains the minimal 'none_transparent' entry.
+    """
+    import base64
+    import tempfile
+    import os
+
+    from esphome.core import ID, CORE as _CORE
+    from esphome.const import CONF_ID as _IMAGE_CONF_ID
+    from esphome.components.image import (
+        write_image,
+        image_ns,
+        CONF_ALPHA_CHANNEL,
+        CONF_OPAQUE,
+        CONF_TRANSPARENCY,
+    )
+    from esphome.const import (
+        CONF_FILE,
+        CONF_RESIZE,
+        CONF_RAW_DATA_ID,
+        CONF_TYPE,
+        CONF_DITHER,
+        CONF_ID as _CONF_ID,
+    )
+    from esphome.components.image import CONF_INVERT_ALPHA
+
+    from .tile_generation import compute_image_variants
+
+    # Valid ESPHome image type strings (post-2026.2 — RGBA/RGB24 are deprecated)
+    _VALID_TYPES = {"BINARY", "GRAYSCALE", "RGB565", "RGB"}
+
+    Image_ = image_ns.class_("Image")
+    tmp_dir = tempfile.mkdtemp(prefix="tile_ui_images_")
+
+    # Build a set of image IDs already declared in images.yaml (image: component config).
+    # We must not re-register those — the image component will handle them and doing
+    # so twice causes ESPHome's "ID already registered" error.
+    _image_cfg = _CORE.config.get("image", [])
+    _ids_in_image_yaml: set = set()
+    if isinstance(_image_cfg, list):
+        for _entry in _image_cfg:
+            if isinstance(_entry, dict):
+                _eid = _entry.get(_IMAGE_CONF_ID)
+                if _eid is not None:
+                    _ids_in_image_yaml.add(str(_eid))
+    # Also skip anything already registered in CORE.variables (covers the case
+    # where image component's to_code ran first).
+    def _already_registered(vid: str) -> bool:
+        if vid in _ids_in_image_yaml:
+            return True
+        probe = ID(vid, is_declaration=False)
+        return probe in _CORE.variables
+
+    # --- Register each per-layout image variant ---
+    variant_id = compute_image_variants(screens)  # (img_id, rows, cols) -> variant_str
+
+    registered: set = set()
+    for (img_id, _rows, _cols), vid in variant_id.items():
+        if vid in registered:
+            continue
+        registered.add(vid)
+
+        # Skip variants already declared in images.yaml or already registered
+        # (handles both: image component ran first, or images.yaml has them).
+        if _already_registered(vid):
+            continue
+
+        img_data = images_conf.get(img_id)
+        if not isinstance(img_data, dict):
+            continue
+        img_b64 = img_data.get("data", "")
+        if not img_b64:
+            continue
+
+        # Map deprecated types to current equivalents
+        raw_type = str(img_data.get("type", "RGB565")).upper()
+        if raw_type == "RGBA":
+            esh_type, esh_trans = "RGB", CONF_ALPHA_CHANNEL
+        elif raw_type == "RGB24":
+            esh_type, esh_trans = "RGB", CONF_OPAQUE
+        elif raw_type in _VALID_TYPES:
+            esh_type, esh_trans = raw_type, CONF_OPAQUE
+        else:
+            esh_type, esh_trans = "RGB565", CONF_OPAQUE  # safe fallback
+
+        png_path = os.path.join(tmp_dir, f"{vid}.png")
+        try:
+            png_bytes = base64.b64decode(img_b64)
+            with open(png_path, "wb") as _f:
+                _f.write(png_bytes)
+        except Exception as _e:
+            print(f"[tile_ui] Warning: could not decode image '{vid}': {_e}", file=sys.stderr)
+            continue
+
+        img_id_obj = ID(vid, is_declaration=True, type=Image_)
+        raw_data_id = ID(f"{vid}_raw_data", is_declaration=True, type=cg.uint8)
+        entry = {
+            _CONF_ID: img_id_obj,
+            CONF_RAW_DATA_ID: raw_data_id,
+            CONF_FILE: png_path,
+            CONF_TYPE: esh_type,
+            CONF_TRANSPARENCY: esh_trans,
+            CONF_RESIZE: None,
+            CONF_DITHER: "NONE",
+            CONF_INVERT_ALPHA: False,
+        }
+        try:
+            prog_arr, w, h, img_type_val, trans_val, _ = await write_image(entry)
+            cg.new_Pvariable(img_id_obj, prog_arr, w, h, img_type_val, trans_val)
+        except Exception as _e:
+            print(f"[tile_ui] Warning: failed to process image '{vid}': {_e}", file=sys.stderr)
+
+    if registered:
+        print(
+            f"[tile_ui] Registered {len(registered)} image variant(s) from inline tile_ui.images: config",
+            file=sys.stderr,
+        )
+
+
 CALIB_PAGE_LAMBDA = """
           if (id(touch_calibration).state) {
             id(disp).fill(id(Color::WHITE));
@@ -295,7 +436,16 @@ async def to_code(config):
     except Exception as e:
         _print_error("Unexpected Error", str(e))
         sys.exit(1)
-    
+
+    # Register images from inline tile_ui.images: config (Option B).
+    # Supplements the base images.yaml (which always contains none_transparent) with
+    # per-layout image variants decoded from inline base64 data in the tile_ui config.
+    # Skips any variants that were already registered by the image: component (i.e.
+    # when the configurator has generated a full images.yaml).
+    images_conf = config.get("images", {})
+    if images_conf:
+        await _register_images(images_conf, screens)
+
     # Generate C++ initialization code (returns list of lambda strings)
     debug_output = config.get(CONF_DEBUG_OUTPUT, False)
     cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts, available_globals, debug=debug_output)
