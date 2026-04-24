@@ -2322,7 +2322,7 @@ def update_lib():
                 if os.path.exists(backup_lib):
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
-            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'hw_overrides.yaml'))
+            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'hw_overrides.yaml', 'test_device_tiles.yaml'))
 
             # Restore hw_overrides.yaml: keep user's existing file, otherwise seed from template
             hw_target = os.path.join(target_lib, 'hw_overrides.yaml')
