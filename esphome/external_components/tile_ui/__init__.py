@@ -29,6 +29,10 @@ def load_tiles_config(config):
         try:
             tiles_config = load_tiles_yaml(tiles_path)
             config[CONF_SCREENS] = tiles_config.get("screens", [])
+            # Also forward images: from the tiles file so _register_images handles
+            # them the same way as test_device / CI (one path for everything).
+            if "images" not in config and "images" in tiles_config:
+                config["images"] = tiles_config["images"]
         except Exception as e:
             print(f"Error loading tiles config: {e}")
             # Ignore errors here, they will be caught in to_code
@@ -105,13 +109,14 @@ async def _register_images(images_conf: dict, screens: list, screen_w: int = 480
 
     Processes base64 PNG data from inline config, writes temp files, and registers
     each image as an ESPHome Image* variable — but ONLY for variants that are not
-    already registered (i.e. not already declared in images.yaml).
+    already registered (i.e. not already known to the image: component).
 
     Images are resized to the tile dimensions (matching the generate_tiles_api.py
     formula) so flash usage is identical to a configurator-generated build.
 
-    This allows test_device.yaml to compile even when the configurator has not run
-    and images.yaml only contains the minimal 'none_transparent' entry.
+    This allows test_device.yaml to compile even when the configurator has not run;
+    none_transparent is declared inline in lib_common.yaml and tile images are
+    registered here from inline base64 data.
     """
     import base64
     import tempfile
@@ -144,9 +149,9 @@ async def _register_images(images_conf: dict, screens: list, screen_w: int = 480
     Image_ = image_ns.class_("Image")
     tmp_dir = tempfile.mkdtemp(prefix="tile_ui_images_")
 
-    # Build a set of image IDs already declared in images.yaml (image: component config).
-    # We must not re-register those — the image component will handle them and doing
-    # so twice causes ESPHome's "ID already registered" error.
+    # Build a set of image IDs already declared via the image: component config
+    # (e.g. none_transparent from lib_common.yaml).  We must not re-register those —
+    # doing so twice causes ESPHome's "ID already registered" error.
     _image_cfg = _CORE.config.get("image", [])
     _ids_in_image_yaml: set = set()
     if isinstance(_image_cfg, list):
@@ -172,8 +177,8 @@ async def _register_images(images_conf: dict, screens: list, screen_w: int = 480
             continue
         registered.add(vid)
 
-        # Skip variants already declared in images.yaml or already registered
-        # (handles both: image component ran first, or images.yaml has them).
+        # Skip variants already registered by the image: component or by a
+        # previous _register_images call (avoids duplicate ID errors).
         if _already_registered(vid):
             continue
 
@@ -260,7 +265,7 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
     from .tile_generation import compute_image_variants, apply_image_variants
 
     # Apply per-page-size image variant substitution so that the ESPHome IDs
-    # emitted by the lambdas always match the variant filenames in images.yaml.
+    # emitted by the lambdas always match the variant IDs registered by _register_images.
     variant_id = compute_image_variants(screens)
     if variant_id:
         screens = apply_image_variants(screens, variant_id)
@@ -453,11 +458,10 @@ async def to_code(config):
         _print_error("Unexpected Error", str(e))
         sys.exit(1)
 
-    # Register images from inline tile_ui.images: config (Option B).
-    # Supplements the base images.yaml (which always contains none_transparent) with
-    # per-layout image variants decoded from inline base64 data in the tile_ui config.
-    # Skips any variants that were already registered by the image: component (i.e.
-    # when the configurator has generated a full images.yaml).
+    # Register images from inline tile_ui.images: config.
+    # Decodes per-layout image variants from inline base64 data and registers them
+    # via ESPHome's image codegen API.  none_transparent is always present via
+    # lib_common.yaml's inline image: declaration and is therefore skipped here.
     images_conf = config.get("images", {})
     if images_conf:
         # Extract screen dimensions from the display component config.

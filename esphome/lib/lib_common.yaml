@@ -5,7 +5,15 @@ esphome:
       
 packages:
   custom_lib: !include lib_custom.yaml
-  images: !include images.yaml
+
+# none_transparent activates USE_IMAGE so image.h/image.cpp are compiled.
+# Tile images are registered at codegen time by tile_ui's _register_images.
+image:
+  - file: images/none_transparent.png
+    id: none_transparent
+    resize: 8x8
+    type: RGB
+    transparency: alpha_channel
 
 substitutions:
   api_port: "6053"

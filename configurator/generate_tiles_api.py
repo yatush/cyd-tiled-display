@@ -275,34 +275,26 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
             return {"error": str(e), "type": "validation_error"}
 
         # ----------------------------------------------------------------
-        # Handle images: build per-(image, page-size) variants so every
-        # page gets an image sized exactly for its tile dimensions.
-        # generate_init_tiles_cpp already applies the same substitution
-        # internally, so we only need to compute the variant map here to
-        # know which PNG files and YAML declarations to write.
+        # Handle images: write source PNGs for debugging and compute the variant
+        # map so generate_init_tiles_cpp can emit the correct variant IDs.
+        # tile_ui's _register_images now handles ESPHome registration at compile
+        # time for all runs (emulator, CI, test_device) — one path for everything.
         # ----------------------------------------------------------------
         import base64 as _base64
         import os as _os
         from tile_ui.tile_generation import compute_image_variants
 
-        # Tile padding matches the x_pad / y_pad globals in lib_common.yaml.
-        _TILE_PAD = 10
-
         # Generate CPP — generate_init_tiles_cpp handles variant substitution.
         cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts, available_globals)
 
-        # Build the variant map to know which PNG sizes / IDs to emit.
+        # Build the variant map so PNG files can be named correctly.
         _variant_id = compute_image_variants(screens)  # (img_id, rows, cols) -> variant_id
 
-        # Write source PNGs (original, unmodified — one per image ID) and build YAML.
-        # ESPHome's built-in `resize:` handles per-variant scaling at compile time,
-        # so we only need a single source file per image regardless of how many
-        # page layouts reference it.
-        images_yaml = ""
-        image_declarations = []
+        # Write source PNGs (one per unique image ID) for debugging purposes.
         _written_pngs: set = set()  # track which source PNGs have been written
 
-        # Always write the built-in 1×1 transparent image used when 'none' is selected.
+        # Always ensure none_transparent.png exists in images_dir since
+        # lib_common.yaml references it directly (activates USE_IMAGE).
         _NONE_PNG_NAME = 'none_transparent.png'
         if images_dir:
             _os.makedirs(images_dir, exist_ok=True)
@@ -311,16 +303,6 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
                     _f.write(_make_1px_transparent_png())
             except Exception as _e:
                 print(f"Warning: failed to write none_transparent.png: {_e}")
-
-        # The none_transparent declaration is always included so ESPHome can compile
-        # configs that reference it even when no user images have been uploaded.
-        _none_decl = (
-            f"  - file: images/{_NONE_PNG_NAME}\n"
-            f"    id: none_transparent\n"
-            f"    resize: 8x8\n"
-            f"    type: RGB\n"
-            f"    transparency: alpha_channel"
-        )
 
         for (_iid, _rows, _cols), _vid in sorted(_variant_id.items()):
             img_entry = images.get(_iid)
@@ -333,7 +315,9 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
             _stem, _ext = _os.path.splitext(_os.path.basename(filename))
             safe_name = f"{_stem}.png"  # always original, unsuffixed
 
-            # Write the source file once; ESPHome resizes each declaration independently.
+            # Write source PNG once per image ID (useful for debugging).
+            # tile_ui's _register_images handles compile-time registration from
+            # the inline base64 data — no YAML declarations needed here.
             if images_dir and img_data and safe_name not in _written_pngs:
                 _os.makedirs(images_dir, exist_ok=True)
                 try:
@@ -343,39 +327,8 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
                 except Exception as _e:
                     print(f"Warning: failed to write image '{_iid}': {_e}")
 
-            # Compute the resize target for this variant's tile dimensions.
-            # Formula mirrors the C++ x_rect()/y_rect() helpers in utils.h:
-            #   x_rect = (width  - (cols+1)*pad) / cols
-            #   y_rect = (height - (rows+1)*pad) / rows
-            # where pad == _TILE_PAD (10 px).
-            # The user-controlled scale (10–100) then shrinks the image inside
-            # the tile.  At 100% a fixed 5 px padding is kept on each side;
-            # at lower values the image is proportionally smaller.
-            _tile_w = (screen_w - (_cols + 1) * _TILE_PAD) // _cols
-            _tile_h = (screen_h - (_rows + 1) * _TILE_PAD) // _rows
-            _FIXED_PAD = 5  # px kept on each side at 100% scale
-            _scale = max(0.1, min(1.0, (img_entry.get('scale') or 100) / 100.0))
-            _max_w = max(8, int((_tile_w - _FIXED_PAD * 2) * _scale))
-            _max_h = max(8, int((_tile_h - _FIXED_PAD * 2) * _scale))
-
-            # ESPHome 2026.2 removed the RGBA type; alpha images now use
-            # type: RGB with transparency: alpha_channel instead.
-            if img_type == 'RGBA':
-                type_lines = "    type: RGB\n    transparency: alpha_channel"
-            else:
-                type_lines = f"    type: {img_type}"
-
-            image_declarations.append(
-                f"  - file: images/{safe_name}\n"
-                f"    id: {_vid}\n"
-                f"    resize: {_max_w}x{_max_h}\n"
-                f"{type_lines}"
-            )
-
-        images_yaml = "image:\n" + "\n".join([_none_decl] + image_declarations) + "\n"
-
-        # Handle screen_images: each image is sized to the full screen (screen_w × screen_h).
-        # No per-layout variants — screen images are always full screen size.
+        # Screen images (full-screen backgrounds): write PNGs only.
+        # ESPHome registration handled by caller if/when screen_images are wired up.
         screen_images = config.get("screen_images") or {}
         for _sid, _sentry in screen_images.items():
             if not isinstance(_sentry, dict):
@@ -414,24 +367,9 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
                 except Exception as _e:
                     print(f"Warning: failed to write screen image '{_sid}': {_e}")
 
-            if _stype == 'RGBA':
-                _stype_lines = "    type: RGB\n    transparency: alpha_channel"
-            else:
-                _stype_lines = f"    type: {_stype}"
-
-            image_declarations.append(
-                f"  - file: images/{_ssafe}\n"
-                f"    id: {_sid}\n"
-                f"{_stype_lines}"
-            )
-
-        if screen_images:
-            images_yaml = "image:\n" + "\n".join([_none_decl] + image_declarations) + "\n"
-
         return {
             "success": True,
             "cpp": cpp_lambdas,
-            "images_yaml": images_yaml,
             "message": f"Successfully generated {len(cpp_lambdas)} initialization blocks."
         }
 

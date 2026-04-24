@@ -357,17 +357,6 @@ def start_emulator():
         if "error" in result:
              return jsonify({"status": "error", "message": f"Configuration invalid: {result['error']}"}), 400
 
-        # Always refresh images.yaml so the emulator build uses IDs that match
-        # the lambdas generated above (avoids stale-ID compile errors).
-        images_yaml = result.get("images_yaml", "")
-        images_yaml_path = os.path.join(_lib_dir, 'images.yaml')
-        try:
-            os.makedirs(os.path.dirname(images_yaml_path), exist_ok=True)
-            with open(images_yaml_path, 'w') as f:
-                f.write(images_yaml if images_yaml else '# no images\n')
-        except Exception as e:
-            print(f"Warning: could not write images.yaml for emulator: {e}", flush=True)
-            
     except Exception as e:
         print(f"Config processing error: {e}")
         return jsonify({"status": "error", "message": f"Failed to process configuration: {str(e)}"}), 500

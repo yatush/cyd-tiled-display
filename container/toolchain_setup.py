@@ -577,13 +577,7 @@ def maybe_warm_cache() -> None:
     # is idempotent and ensures both the CI tarball and the runtime container always
     # end up with Alpine-compatible shell wrappers.
     fix_wrappers()
-    # Step 4 — restore images.yaml to empty placeholder and remove the
-    #           temporary test_device_tiles.yaml.
-    try:
-        with open(os.path.join(ESPHOME_DIR, 'lib', 'images.yaml'), 'w') as f:
-            f.write('# no images\n')
-    except OSError:
-        pass
+    # Step 4 — remove the temporary test_device_tiles.yaml.
     try:
         os.remove(os.path.join(ESPHOME_DIR, 'lib', 'test_device_tiles.yaml'))
     except OSError:

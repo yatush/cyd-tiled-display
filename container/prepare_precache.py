@@ -5,8 +5,8 @@ Prepare pre-cache assets from test_device.yaml.
 Reads the tile_ui section from test_device.yaml, then:
   1. Writes lib/test_device_tiles.yaml  – the tiles_file used for both
      pre-cache ESPHome compiles.
-  2. Writes lib/images.yaml and lib/images/*.png  – ESPHome image
-     declarations with resized PNGs so the compile resolves image IDs.
+  2. Writes lib/images/*.png  – source PNG files decoded from the inline
+     base64 data; none_transparent.png is always written.
 
 Called by vnc_startup.sh before the emulator pre-compilation loop.
 """
@@ -34,7 +34,6 @@ LIB_DIR      = os.path.join(ESPHOME_DIR, 'lib')
 IMAGES_DIR   = os.path.join(LIB_DIR, 'images')
 TEST_DEVICE  = os.path.join(ESPHOME_DIR, 'test_device.yaml')
 TILES_FILE   = os.path.join(LIB_DIR, 'test_device_tiles.yaml')
-IMAGES_YAML  = os.path.join(LIB_DIR, 'images.yaml')
 
 # The generate_tiles_api module lives in /app/configurator
 sys.path.insert(0, os.path.join(APP_DIR, 'configurator'))
@@ -110,7 +109,7 @@ def run(screen_w: int = 480, screen_h: int = 320) -> bool:
         allow_unicode=True,
     )
 
-    print(f"[prepare_precache] Generating images.yaml for {screen_w}x{screen_h}")
+    print(f"[prepare_precache] Generating image PNGs for {screen_w}x{screen_h}")
     result = generate_cpp_from_yaml(
         input_data,
         user_lib_dir=LIB_DIR,
@@ -123,10 +122,9 @@ def run(screen_w: int = 480, screen_h: int = 320) -> bool:
         print(f"[prepare_precache] ERROR from generate_cpp_from_yaml: {result.get('error')}")
         return False
 
-    images_yaml_content = result.get('images_yaml', '')
-    with open(IMAGES_YAML, 'w') as fh:
-        fh.write(images_yaml_content if images_yaml_content else '# no images\n')
-    print(f"[prepare_precache] Wrote {IMAGES_YAML}")
+    # images_yaml is no longer generated — none_transparent is declared inline
+    # in lib_common.yaml and tile images are registered by _register_images.
+    print(f"[prepare_precache] Done (PNG files written to {IMAGES_DIR})")
     return True
 
 
