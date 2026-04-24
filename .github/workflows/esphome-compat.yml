@@ -76,6 +76,11 @@ jobs:
           path: ~/.platformio
           key: pio-esphome-${{ needs.check-version.outputs.esphome_version }}
 
+      - name: Create dummy secrets for CI
+        run: |
+          printf 'wifi_ssid: ci-dummy\nwifi_password: ci-dummy\n' > esphome/secrets.yaml
+          printf 'wifi_ssid: ci-dummy\nwifi_password: ci-dummy\n' > esphome/lib/secrets.yaml
+
       - name: Compile test_device.yaml
         id: compile
         run: |
