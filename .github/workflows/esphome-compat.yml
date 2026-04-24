@@ -123,6 +123,8 @@ jobs:
     name: LLM Analysis
     needs: [check-version, compile]
     runs-on: ubuntu-latest
+    permissions:
+      models: read
     steps:
       - name: Download build summary
         uses: actions/download-artifact@v5
