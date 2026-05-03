@@ -2224,7 +2224,7 @@ def update_lib():
                 if os.path.exists(backup_lib):
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
-            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'hw_overrides.yaml', 'test_device_tiles.yaml', 'images.yaml'))
+            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'user_config_*.yaml', 'hw_overrides.yaml', 'test_device_tiles.yaml', 'images.yaml'))
 
             # Restore hw_overrides.yaml: keep user's existing file, otherwise seed from template
             hw_target = os.path.join(target_lib, 'hw_overrides.yaml')
@@ -2268,7 +2268,7 @@ def get_directory_hashes(directory):
         dirs[:] = [d for d in dirs if not d.startswith('.') and d != 'images']
         dirs.sort() # Ensure deterministic traversal
         for file in sorted(files):
-            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file == 'hw_overrides.yaml' or file.startswith('.'):                continue
+            if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file.startswith('user_config_') or file == 'hw_overrides.yaml' or file.startswith('.'):                continue
             path = os.path.join(root, file)
             rel_path = os.path.relpath(path, directory).replace('\\', '/')
             if rel_path == 'images.yaml':
