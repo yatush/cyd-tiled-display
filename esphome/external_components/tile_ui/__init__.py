@@ -33,6 +33,8 @@ def load_tiles_config(config):
             # them the same way as test_device / CI (one path for everything).
             if "images" not in config and "images" in tiles_config:
                 config["images"] = tiles_config["images"]
+            if "screen_images" not in config and "screen_images" in tiles_config:
+                config["screen_images"] = tiles_config["screen_images"]
         except Exception as e:
             print(f"Error loading tiles config: {e}")
             # Ignore errors here, they will be caught in to_code
@@ -104,82 +106,170 @@ def _make_1px_transparent_png() -> bytes:
     return b"\x89PNG\r\n\x1a\n" + ihdr + idat + iend
 
 
-async def _register_images(images_conf: dict, screens: list, screen_w: int = 480, screen_h: int = 320) -> None:
-    """Register tile_ui.images: entries directly through ESPHome's image codegen API.
+class _ImageRegistrar:
+    """Lazy-loads ESPHome image codegen symbols once and provides shared registration helpers.
 
-    Processes base64 PNG data from inline config, writes temp files, and registers
-    each image as an ESPHome Image* variable — but ONLY for variants that are not
-    already registered (i.e. not already known to the image: component).
-
-    Images are resized to the tile dimensions (matching the generate_tiles_api.py
-    formula) so flash usage is identical to a configurator-generated build.
-
-    This allows test_device.yaml to compile even when the configurator has not run;
-    none_transparent is declared inline in lib_common.yaml and tile images are
-    registered here from inline base64 data.
+    Instantiated once per to_code() call so imports and the declared-ID set are
+    built only once regardless of how many image groups are processed.
     """
-    import base64
-    import tempfile
-    import os
 
-    from esphome.core import ID, CORE as _CORE
-    from esphome.const import CONF_ID as _IMAGE_CONF_ID
-    from esphome.components.image import (
-        write_image,
-        image_ns,
-        CONF_ALPHA_CHANNEL,
-        CONF_OPAQUE,
-        CONF_TRANSPARENCY,
-    )
-    from esphome.const import (
-        CONF_FILE,
-        CONF_RESIZE,
-        CONF_RAW_DATA_ID,
-        CONF_TYPE,
-        CONF_DITHER,
-        CONF_ID as _CONF_ID,
-    )
-    from esphome.components.image import CONF_INVERT_ALPHA
-
-    from .tile_generation import compute_image_variants
-
-    # Valid ESPHome image type strings (post-2026.2 — RGBA/RGB24 are deprecated)
     _VALID_TYPES = {"BINARY", "GRAYSCALE", "RGB565", "RGB"}
 
-    Image_ = image_ns.class_("Image")
-    tmp_dir = tempfile.mkdtemp(prefix="tile_ui_images_")
+    def __init__(self, prefix: str = "tile_ui_images_"):
+        import tempfile
+        from esphome.core import ID, CORE as _CORE
+        from esphome.const import CONF_ID as _IMAGE_CONF_ID
+        from esphome.components.image import (
+            write_image, image_ns,
+            CONF_ALPHA_CHANNEL, CONF_OPAQUE, CONF_TRANSPARENCY, CONF_INVERT_ALPHA,
+        )
+        from esphome.const import (
+            CONF_FILE, CONF_RESIZE, CONF_RAW_DATA_ID, CONF_TYPE, CONF_DITHER,
+            CONF_ID as _CONF_ID,
+        )
 
-    # Build a set of image IDs already declared via the image: component config
-    # (e.g. none_transparent from lib_common.yaml).  We must not re-register those —
-    # doing so twice causes ESPHome's "ID already registered" error.
-    _image_cfg = _CORE.config.get("image", [])
-    _ids_in_image_yaml: set = set()
-    if isinstance(_image_cfg, list):
-        for _entry in _image_cfg:
-            if isinstance(_entry, dict):
-                _eid = _entry.get(_IMAGE_CONF_ID)
-                if _eid is not None:
-                    _ids_in_image_yaml.add(str(_eid))
-    # Also skip anything already registered in CORE.variables (covers the case
-    # where image component's to_code ran first).
-    def _already_registered(vid: str) -> bool:
-        if vid in _ids_in_image_yaml:
+        self.ID = ID
+        self._CORE = _CORE
+        self.write_image = write_image
+        self.Image_ = image_ns.class_("Image")
+        self.CONF_FILE = CONF_FILE
+        self.CONF_RESIZE = CONF_RESIZE
+        self.CONF_RAW_DATA_ID = CONF_RAW_DATA_ID
+        self.CONF_TYPE = CONF_TYPE
+        self.CONF_DITHER = CONF_DITHER
+        self.CONF_ID = _CONF_ID
+        self.CONF_TRANSPARENCY = CONF_TRANSPARENCY
+        self.CONF_ALPHA_CHANNEL = CONF_ALPHA_CHANNEL
+        self.CONF_OPAQUE = CONF_OPAQUE
+        self.CONF_INVERT_ALPHA = CONF_INVERT_ALPHA
+        self.tmp_dir = tempfile.mkdtemp(prefix=prefix)
+
+        # Build the set of IDs already declared via the image: component
+        # (e.g. none_transparent from lib_common.yaml) so we never re-register them.
+        _image_cfg = _CORE.config.get("image", [])
+        self._declared_ids: set = set()
+        if isinstance(_image_cfg, list):
+            for _entry in _image_cfg:
+                if isinstance(_entry, dict):
+                    _eid = _entry.get(_IMAGE_CONF_ID)
+                    if _eid is not None:
+                        self._declared_ids.add(str(_eid))
+
+    def already_registered(self, vid: str) -> bool:
+        """Return True if *vid* is already known to ESPHome's image component or CORE.variables."""
+        if vid in self._declared_ids:
             return True
-        probe = ID(vid, is_declaration=False)
-        return probe in _CORE.variables
+        probe = self.ID(vid, is_declaration=False)
+        return probe in self._CORE.variables
 
-    # --- Register each per-layout image variant ---
+    def map_type(self, raw_type) -> tuple:
+        """Return (esh_type, esh_trans) for a raw image type string."""
+        rtype = str(raw_type).upper()
+        if rtype == "RGBA":
+            return "RGB", self.CONF_ALPHA_CHANNEL
+        if rtype == "RGB24":
+            return "RGB", self.CONF_OPAQUE
+        if rtype in self._VALID_TYPES:
+            return rtype, self.CONF_OPAQUE
+        return "RGB565", self.CONF_OPAQUE
+
+    async def register(self, img_id: str, png_path: str, esh_type: str, esh_trans,
+                       resize_val=None) -> bool:
+        """Call ESPHome write_image and register the variable. Returns True on success."""
+        img_id_obj = self.ID(img_id, is_declaration=True, type=self.Image_)
+        raw_data_id = self.ID(f"{img_id}_raw_data", is_declaration=True, type=cg.uint8)
+        entry = {
+            self.CONF_ID: img_id_obj,
+            self.CONF_RAW_DATA_ID: raw_data_id,
+            self.CONF_FILE: png_path,
+            self.CONF_TYPE: esh_type,
+            self.CONF_TRANSPARENCY: esh_trans,
+            self.CONF_DITHER: "NONE",
+            self.CONF_INVERT_ALPHA: False,
+        }
+        if resize_val is not None:
+            entry[self.CONF_RESIZE] = resize_val
+        try:
+            prog_arr, w, h, img_type_val, trans_val, _ = await self.write_image(entry)
+            cg.new_Pvariable(img_id_obj, prog_arr, w, h, img_type_val, trans_val)
+            return True
+        except Exception as _e:
+            print(f"[tile_ui] Warning: failed to register image '{img_id}': {_e}", file=sys.stderr)
+            return False
+
+
+async def _register_screen_images(screen_images_conf: dict, screen_w: int, screen_h: int) -> None:
+    """Register screen_images entries (full-screen backgrounds) via ESPHome's image codegen API.
+
+    Each entry is keyed by the ID used in background: declarations.  A cover-crop
+    to screen_w × screen_h is applied when PIL is available.
+    """
+    import base64
+    import io
+    import os
+
+    ctx = _ImageRegistrar(prefix="tile_ui_screen_images_")
+    registered: set = set()
+
+    for img_id, img_data in screen_images_conf.items():
+        if not isinstance(img_data, dict) or ctx.already_registered(img_id):
+            continue
+        img_b64 = img_data.get("data", "")
+        if not img_b64:
+            continue
+
+        esh_type, esh_trans = ctx.map_type(img_data.get("type", "RGB565"))
+        png_path = os.path.join(ctx.tmp_dir, f"{img_id}.png")
+        try:
+            raw_bytes = base64.b64decode(img_b64)
+            # Cover-crop to screen dimensions when PIL is available.
+            try:
+                from PIL import Image as _PILImage
+                _img = _PILImage.open(io.BytesIO(raw_bytes))
+                _src_w, _src_h = _img.size
+                _s = max(screen_w / _src_w, screen_h / _src_h)
+                _new_w, _new_h = int(_src_w * _s + 0.5), int(_src_h * _s + 0.5)
+                _img = _img.resize((_new_w, _new_h), _PILImage.LANCZOS)
+                _left, _top = (_new_w - screen_w) // 2, (_new_h - screen_h) // 2
+                _img = _img.crop((_left, _top, _left + screen_w, _top + screen_h))
+                _buf = io.BytesIO()
+                _img.save(_buf, format="PNG")
+                raw_bytes = _buf.getvalue()
+            except Exception:
+                pass  # fall back to raw bytes
+            with open(png_path, "wb") as _f:
+                _f.write(raw_bytes)
+        except Exception as _e:
+            print(f"[tile_ui] Warning: could not decode screen image '{img_id}': {_e}", file=sys.stderr)
+            continue
+
+        if await ctx.register(img_id, png_path, esh_type, esh_trans):
+            registered.add(img_id)
+
+    if registered:
+        print(f"[tile_ui] Registered {len(registered)} screen background image(s) from inline tile_ui.screen_images: config", file=sys.stderr)
+
+
+async def _register_images(images_conf: dict, screens: list, screen_w: int = 480, screen_h: int = 320) -> None:
+    """Register tile_ui.images: entries via ESPHome's image codegen API.
+
+    Processes base64 PNG data from inline config, writes temp files, and registers
+    each per-layout image variant — skipping any ID already known to ESPHome.
+    Resize targets mirror the generate_tiles_api.py formula so flash usage is identical
+    to a configurator-generated build.
+    """
+    import base64
+    import os
+    from .tile_generation import compute_image_variants
+
+    ctx = _ImageRegistrar(prefix="tile_ui_images_")
     variant_id = compute_image_variants(screens)  # (img_id, rows, cols) -> variant_str
+    _TILE_PAD, _FIXED_PAD = 10, 5
 
     registered: set = set()
     for (img_id, _rows, _cols), vid in variant_id.items():
-        if vid in registered:
-            continue
-        registered.add(vid)
-
-        # Skip variants already registered by the image: component or by a
-        # previous _register_images call (avoids duplicate ID errors).
-        if _already_registered(vid):
+        if vid in registered or ctx.already_registered(vid):
+            registered.add(vid)
             continue
 
         img_data = images_conf.get(img_id)
@@ -189,62 +279,30 @@ async def _register_images(images_conf: dict, screens: list, screen_w: int = 480
         if not img_b64:
             continue
 
-        # Map deprecated types to current equivalents
-        raw_type = str(img_data.get("type", "RGB565")).upper()
-        if raw_type == "RGBA":
-            esh_type, esh_trans = "RGB", CONF_ALPHA_CHANNEL
-        elif raw_type == "RGB24":
-            esh_type, esh_trans = "RGB", CONF_OPAQUE
-        elif raw_type in _VALID_TYPES:
-            esh_type, esh_trans = raw_type, CONF_OPAQUE
-        else:
-            esh_type, esh_trans = "RGB565", CONF_OPAQUE  # safe fallback
-
-        png_path = os.path.join(tmp_dir, f"{vid}.png")
+        esh_type, esh_trans = ctx.map_type(img_data.get("type", "RGB565"))
+        png_path = os.path.join(ctx.tmp_dir, f"{vid}.png")
         try:
-            png_bytes = base64.b64decode(img_b64)
             with open(png_path, "wb") as _f:
-                _f.write(png_bytes)
+                _f.write(base64.b64decode(img_b64))
         except Exception as _e:
             print(f"[tile_ui] Warning: could not decode image '{vid}': {_e}", file=sys.stderr)
             continue
 
         # Compute resize — mirrors generate_tiles_api.py formula:
-        #   tile_w = (screen_w - (cols+1)*pad) / cols
-        #   tile_h = (screen_h - (rows+1)*pad) / rows
-        #   max_dim = (tile_dim - 2*FIXED_PAD) * scale
-        _TILE_PAD = 10
-        _FIXED_PAD = 5
-        _scale = max(0.1, min(1.0, (img_data.get('scale') or 100) / 100.0))
+        #   tile_w = (screen_w - (cols+1)*pad) / cols  ;  max_dim = (tile_dim - 2*FIXED_PAD) * scale
+        _scale = max(0.1, min(1.0, (img_data.get("scale") or 100) / 100.0))
         _tile_w = max(8, (screen_w - (_cols + 1) * _TILE_PAD) // _cols)
         _tile_h = max(8, (screen_h - (_rows + 1) * _TILE_PAD) // _rows)
-        _max_w = max(8, int((_tile_w - _FIXED_PAD * 2) * _scale))
-        _max_h = max(8, int((_tile_h - _FIXED_PAD * 2) * _scale))
-        resize_val = (_max_w, _max_h)
+        resize_val = (
+            max(8, int((_tile_w - _FIXED_PAD * 2) * _scale)),
+            max(8, int((_tile_h - _FIXED_PAD * 2) * _scale)),
+        )
 
-        img_id_obj = ID(vid, is_declaration=True, type=Image_)
-        raw_data_id = ID(f"{vid}_raw_data", is_declaration=True, type=cg.uint8)
-        entry = {
-            _CONF_ID: img_id_obj,
-            CONF_RAW_DATA_ID: raw_data_id,
-            CONF_FILE: png_path,
-            CONF_TYPE: esh_type,
-            CONF_TRANSPARENCY: esh_trans,
-            CONF_RESIZE: resize_val,
-            CONF_DITHER: "NONE",
-            CONF_INVERT_ALPHA: False,
-        }
-        try:
-            prog_arr, w, h, img_type_val, trans_val, _ = await write_image(entry)
-            cg.new_Pvariable(img_id_obj, prog_arr, w, h, img_type_val, trans_val)
-        except Exception as _e:
-            print(f"[tile_ui] Warning: failed to process image '{vid}': {_e}", file=sys.stderr)
+        if await ctx.register(vid, png_path, esh_type, esh_trans, resize_val=resize_val):
+            registered.add(vid)
 
     if registered:
-        print(
-            f"[tile_ui] Registered {len(registered)} image variant(s) from inline tile_ui.images: config",
-            file=sys.stderr,
-        )
+        print(f"[tile_ui] Registered {len(registered)} image variant(s) from inline tile_ui.images: config", file=sys.stderr)
 
 
 CALIB_PAGE_LAMBDA = """
@@ -462,21 +520,27 @@ async def to_code(config):
     # Decodes per-layout image variants from inline base64 data and registers them
     # via ESPHome's image codegen API.  none_transparent is always present via
     # lib_common.yaml's inline image: declaration and is therefore skipped here.
+
+    # Extract screen dimensions once — used by both image registration calls below.
+    _screen_w, _screen_h = 480, 320
+    _disp_cfg = CORE.config.get("display", [])
+    if isinstance(_disp_cfg, list) and _disp_cfg:
+        _d = _disp_cfg[0]
+        if isinstance(_d, dict):
+            try:
+                _screen_w = int(_d.get("width", _screen_w))
+                _screen_h = int(_d.get("height", _screen_h))
+            except (TypeError, ValueError):
+                pass
+
     images_conf = config.get("images", {})
     if images_conf:
-        # Extract screen dimensions from the display component config.
-        # Falls back to 480×320 (3248s035 default) if not found.
-        _screen_w, _screen_h = 480, 320
-        _disp_cfg = CORE.config.get("display", [])
-        if isinstance(_disp_cfg, list) and _disp_cfg:
-            _d = _disp_cfg[0]
-            if isinstance(_d, dict):
-                try:
-                    _screen_w = int(_d.get("width", _screen_w))
-                    _screen_h = int(_d.get("height", _screen_h))
-                except (TypeError, ValueError):
-                    pass
         await _register_images(images_conf, screens, screen_w=_screen_w, screen_h=_screen_h)
+
+    # Register screen background images from inline tile_ui.screen_images: config.
+    screen_images_conf = config.get("screen_images", {})
+    if screen_images_conf:
+        await _register_screen_images(screen_images_conf, screen_w=_screen_w, screen_h=_screen_h)
 
     # Generate C++ initialization code (returns list of lambda strings)
     debug_output = config.get(CONF_DEBUG_OUTPUT, False)
