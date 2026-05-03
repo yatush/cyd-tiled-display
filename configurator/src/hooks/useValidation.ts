@@ -18,7 +18,7 @@ export function useValidation(config: Config) {
   const [isValidating, setIsValidating] = useState(false);
   const [validationStatus, setValidationStatus] = useState<{success: boolean, error?: string} | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationOutput, setGenerationOutput] = useState<{success?: boolean, cpp?: string[], images_yaml?: string, error?: string, type?: string} | null>(null);
+  const [generationOutput, setGenerationOutput] = useState<{success?: boolean, cpp?: string[], error?: string, type?: string} | null>(null);
   
   const lastValidationTimeRef = useRef<number>(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);

@@ -17,7 +17,7 @@ interface MainContentProps {
   handleDragEnd: (event: DragEndEvent) => void;
   handleDeleteTile: (id: string) => void;
   activePageId: string;
-  generationOutput: { success?: boolean; cpp?: string[]; images_yaml?: string; error?: string; type?: string } | null;
+  generationOutput: { success?: boolean; cpp?: string[]; error?: string; type?: string } | null;
   onGenerate: () => void;
   onCopyYaml: () => void;
   onNavigateToPage?: (pageId: string) => void;
@@ -168,17 +168,6 @@ export const MainContent: React.FC<MainContentProps> = ({
                                   </div>
                                   <p className="mb-4">Successfully generated {generationOutput.cpp?.length} initialization blocks.</p>
                                   
-                                  {generationOutput.images_yaml && (
-                                      <div className="mb-4 space-y-1">
-                                          <div className="text-xs text-slate-400 uppercase tracking-wider">
-                                              images.yaml — add to your device config as <code className="text-yellow-300">packages: images: !include images.yaml</code>
-                                          </div>
-                                          <pre className="p-3 bg-black/40 rounded border border-white/10 whitespace-pre-wrap break-all">
-                                              {generationOutput.images_yaml}
-                                          </pre>
-                                      </div>
-                                  )}
-
                                   <div className="space-y-4">
                                       {generationOutput.cpp?.map((block, i) => (
                                           <div key={i} className="space-y-1">

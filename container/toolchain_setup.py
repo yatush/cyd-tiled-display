@@ -529,7 +529,7 @@ def maybe_warm_cache() -> None:
     if os.path.isdir(ccache_bin):
         env['PATH'] = f'{ccache_bin}:{env.get("PATH", "")}'
 
-    # Step 1 — generate test_device_tiles.yaml + images.yaml + PNG files.
+    # Step 1 — generate test_device_tiles.yaml + PNG files.
     write_progress('warming', 85, 'Warming cache: preparing assets...')
     if os.path.exists(PREPARE_PRECACHE):
         with open(PIO_SETUP_LOG, 'a') as logf:

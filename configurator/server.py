@@ -582,7 +582,7 @@ def generate():
         _lib_dir = os.path.join(BASE_DIR, 'lib')
         if not os.path.exists(_lib_dir):
             _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
-        # Images (PNG files + images.yaml) all live inside lib/ so ESPHome resolves
+        # PNG files live inside lib/images/ so ESPHome resolves
         # "file: images/foo.png" relative to lib_common.yaml (which is in lib/).
         _images_dir = os.path.join(_lib_dir, 'images')
         result = _run_generate_subprocess(input_data, lib_dir=_lib_dir, images_dir=_images_dir)
@@ -590,18 +590,6 @@ def generate():
         if "error" in result:
             print(f"Generation Error: {result['error']}", flush=True)
             return jsonify(result), 500
-
-        # Write images.yaml into lib/ so the !include in lib_common.yaml resolves it.
-        # Always write (even when empty) so precompiled builds and fresh containers
-        # don't fail on a missing include.
-        images_yaml = result.get("images_yaml", "")
-        images_yaml_path = os.path.join(BASE_DIR, 'lib', 'images.yaml')
-        try:
-            os.makedirs(os.path.dirname(images_yaml_path), exist_ok=True)
-            with open(images_yaml_path, 'w') as f:
-                f.write(images_yaml if images_yaml else '# no images\n')
-        except Exception as e:
-            print(f"Warning: could not write images.yaml: {e}", flush=True)
             
         return jsonify(result)
     except Exception as e:
@@ -1075,64 +1063,6 @@ if not _DEVICE_CONFIG:
 print(f"  Devices: {list(_DEVICE_CONFIG)}", flush=True)
 
 
-def _regen_images_yaml(filepath, lib_dir, images_dir):
-    """Parse *filepath* (a device YAML), extract the tile_ui config, detect the
-    screen type, regenerate images.yaml with correctly-sized resize targets for
-    that device and write it to *lib_dir*/images.yaml.
-
-    Failures are logged but never bubble up so they never block a compile/install.
-    """
-    try:
-        class _SafeLoader(yaml.SafeLoader):
-            pass
-        def _ignore(loader, tag_suffix, node):
-            return None
-        def _include(loader, node):
-            return loader.construct_scalar(node)
-        _SafeLoader.add_constructor('!include', _include)
-        _SafeLoader.add_multi_constructor('!', _ignore)
-
-        with open(filepath, 'r') as _f:
-            _dev = yaml.load(_f, Loader=_SafeLoader)
-
-        if not isinstance(_dev, dict):
-            return
-
-        # Detect screen type → dimensions
-        _screen_type = None
-        _device_base = (_dev.get('packages') or {}).get('device_base', '')
-        if isinstance(_device_base, str):
-            for _st in _DEVICE_CONFIG:
-                if _st in _device_base:
-                    _screen_type = _st
-                    break
-        _cfg = _DEVICE_CONFIG.get(_screen_type, _DEVICE_CONFIG.get(_DEFAULT_DEVICE, next(iter(_DEVICE_CONFIG.values()))))
-        _sw, _sh = _cfg['screen_w'], _cfg['screen_h']
-
-        # Extract the tile_ui mapping (screens / images / dynamic_entities)
-        _tile_ui = _dev.get('tile_ui')
-        if not _tile_ui or not isinstance(_tile_ui, dict):
-            return
-
-        _yaml_str = yaml.dump(_tile_ui)
-        _result = _run_generate_subprocess(
-            _yaml_str,
-            lib_dir=lib_dir,
-            images_dir=images_dir,
-            screen_w=_sw,
-            screen_h=_sh,
-        )
-
-        _img_yaml = _result.get('images_yaml', '')
-        _img_path = os.path.join(lib_dir, 'images.yaml')
-        os.makedirs(os.path.dirname(_img_path), exist_ok=True)
-        with open(_img_path, 'w') as _f:
-            _f.write(_img_yaml if _img_yaml else '# no images\n')
-        print(f'[images] Regenerated images.yaml for {_screen_type or "unknown"} '
-              f'({_sw}x{_sh}) from {filepath}', flush=True)
-    except Exception as _e:
-        print(f'[images] Warning: could not regenerate images.yaml: {_e}', flush=True)
-
 
 def _parse_device_yaml(filepath):
     """Parse a YAML device config file and extract device metadata.
@@ -1358,15 +1288,6 @@ def install_esphome_device():
                     except subprocess.TimeoutExpired:
                         proc.kill()
             install_processes.clear()
-
-        # Regenerate images.yaml with dimensions matched to this device before compiling.
-        _lib_dir = os.path.join(BASE_DIR, 'lib')
-        if not os.path.exists(_lib_dir):
-            _lib_dir = os.path.join(APP_DIR, 'esphome/lib')
-        # PNGs must live in BASE_DIR/images/ because ESPHome resolves "file: images/foo.png"
-        # relative to the root config file (testing-usb.yaml), not relative to lib/images.yaml.
-        _install_images_dir = os.path.join(BASE_DIR, 'images')
-        _regen_images_yaml(filepath, _lib_dir, _install_images_dir)
 
         # Determine OTA target address so we can pass --device and avoid the
         # interactive "choose upload method" prompt that appears when a USB serial
@@ -1690,14 +1611,6 @@ def compile_esphome_device():
                               os.path.splitext(os.path.basename(filename))[0]
         except Exception:
             device_name = os.path.splitext(os.path.basename(filename))[0]
-
-        # Regenerate images.yaml with dimensions matched to this device before compiling.
-        _lib_dir_compile = os.path.join(BASE_DIR, 'lib')
-        if not os.path.exists(_lib_dir_compile):
-            _lib_dir_compile = os.path.join(APP_DIR, 'esphome/lib')
-        # PNGs must live in BASE_DIR/images/ — same reason as install flow.
-        _compile_images_dir = os.path.join(BASE_DIR, 'images')
-        _regen_images_yaml(filepath, _lib_dir_compile, _compile_images_dir)
 
         # Get timezone
         env = os.environ.copy()
@@ -2311,7 +2224,7 @@ def update_lib():
                 if os.path.exists(backup_lib):
                     shutil.rmtree(backup_lib)
                 shutil.move(target_lib, backup_lib)
-            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'hw_overrides.yaml', 'test_device_tiles.yaml'))
+            shutil.copytree(source_lib, target_lib, ignore=shutil.ignore_patterns('.*', 'user_config.yaml', 'hw_overrides.yaml', 'test_device_tiles.yaml', 'images.yaml'))
 
             # Restore hw_overrides.yaml: keep user's existing file, otherwise seed from template
             hw_target = os.path.join(target_lib, 'hw_overrides.yaml')
@@ -2358,10 +2271,7 @@ def get_directory_hashes(directory):
             if '_custom.' in file or '__pycache__' in root or file.endswith('.pyc') or file == 'user_config.yaml' or file == 'hw_overrides.yaml' or file.startswith('.'):                continue
             path = os.path.join(root, file)
             rel_path = os.path.relpath(path, directory).replace('\\', '/')
-            # images.yaml content is always regenerated at compile time;
-            # only track its existence, not its content.
             if rel_path == 'images.yaml':
-                file_hashes[rel_path] = '__images_yaml_placeholder__'
                 continue
             try:
                 with open(path, 'rb') as f:

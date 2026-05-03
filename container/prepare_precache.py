@@ -62,7 +62,7 @@ def _extract_tile_ui(path: str) -> dict:
 
 
 def run(screen_w: int = 480, screen_h: int = 320) -> bool:
-    """Generate test_device_tiles.yaml, images.yaml, and image PNGs.
+    """Generate test_device_tiles.yaml and image PNGs.
 
     Returns True on success.  Failures are printed but not raised so that
     the caller (vnc_startup.sh) can continue gracefully with ``|| true``.
@@ -94,7 +94,7 @@ def run(screen_w: int = 480, screen_h: int = 320) -> bool:
         yaml.dump(tiles_config, fh, default_flow_style=False, allow_unicode=True)
     print(f"[prepare_precache] Wrote {TILES_FILE}")
 
-    # ── 2. Generate images.yaml + PNG files via generate_tiles_api ───────────
+    # ── 2. Generate PNG files via generate_tiles_api ────────────────────────
     try:
         from generate_tiles_api import generate_cpp_from_yaml  # type: ignore
     except ImportError as exc:
