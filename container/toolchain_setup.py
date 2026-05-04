@@ -587,6 +587,10 @@ def maybe_warm_cache() -> None:
     Re-runs automatically when ESPHome is upgraded or the seed dir is missing.
     Failures are non-fatal: the marker is not written, so the next startup retries.
     """
+    if not shutil.which('esphome'):
+        log('WARNING: esphome not found in PATH — skipping cache warming.')
+        return
+
     expected = get_expected_version()
     seed_dir = os.path.join(ESPHOME_DIR, 'lib', '.esphome', 'build', 'emulator')
     if os.path.exists(EMULATOR_MARKER) and os.path.isdir(seed_dir):
