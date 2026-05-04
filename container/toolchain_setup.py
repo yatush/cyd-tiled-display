@@ -118,24 +118,46 @@ def get_expected_version() -> str:
     """Return the currently-installed ESPHome version.
 
     Priority order:
-      1. Live importlib.metadata query (accurate after in-process pip upgrade).
-      2. Persistent pip version file in PIO_DIR (survives container restarts;
-         written by _install_version after a successful pip upgrade).
+      1. Persistent pip version file in PIO_DIR (survives container restarts;
+         written by _install_version after a successful pip upgrade).  This is
+         the authoritative record of what was last successfully installed.
+      2. Live importlib.metadata query — used only when PIP_VER_FILE is absent
+         (first boot) or when it reports a newer version than the file (e.g.
+         after a manual pip install outside of toolchain_setup).
       3. Baked-in /app/esphome_version.txt (image default, resets on addon update).
     """
+    def _ver_tuple(v: str) -> tuple:
+        try:
+            return tuple(int(x) for x in v.split('.'))
+        except ValueError:
+            return (0,)
+
+    pip_file_ver = None
+    if os.path.exists(PIP_VER_FILE):
+        v = open(PIP_VER_FILE).read().strip()
+        if v:
+            pip_file_ver = v
+
+    live_ver = None
     try:
         r = subprocess.run(
             ['python3', '-c', 'from importlib.metadata import version; print(version("esphome"))'],
             capture_output=True, text=True, timeout=30)
         v = r.stdout.strip()
         if v:
-            return v
+            live_ver = v
     except Exception:
         pass
-    if os.path.exists(PIP_VER_FILE):
-        v = open(PIP_VER_FILE).read().strip()
-        if v:
-            return v
+
+    # Prefer whichever is higher: the persisted post-upgrade version, or what
+    # is actually installed right now (handles manual pip installs and first boot).
+    if pip_file_ver and live_ver:
+        return pip_file_ver if _ver_tuple(pip_file_ver) >= _ver_tuple(live_ver) else live_ver
+    if pip_file_ver:
+        return pip_file_ver
+    if live_ver:
+        return live_ver
+
     if os.path.exists(ESPHOME_VER_FILE):
         v = open(ESPHOME_VER_FILE).read().strip()
         if v:
