@@ -184,12 +184,15 @@ def maybe_upgrade_esphome() -> None:
 
     def _install_version(ver: str) -> bool:
         try:
-            subprocess.run(['pip3', 'install', '--upgrade', 'pip'],
+            # Use sys.executable -m pip to avoid relying on pip3/pip being in PATH.
+            # In Alpine-based HA addon containers pip3 may not exist.
+            pip_cmd = [sys.executable, '-m', 'pip']
+            subprocess.run([*pip_cmd, 'install', '--upgrade', 'pip'],
                            check=False, timeout=120)
             # Use a two-step install to avoid leaving esphome uninstalled if the
             # new version fails mid-way (--force-reinstall removes the old copy
             # before installing the new one, so a failure leaves nothing behind).
-            subprocess.run(['pip3', 'install', '--no-cache-dir',
+            subprocess.run([*pip_cmd, 'install', '--no-cache-dir',
                             f'esphome=={ver}'],
                            check=True, timeout=300)
             # Clear stale .pyc bytecode left by the previous version.  Without
