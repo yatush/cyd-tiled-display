@@ -176,7 +176,10 @@ def maybe_upgrade_esphome() -> None:
         try:
             subprocess.run(['pip3', 'install', '--upgrade', 'pip'],
                            check=False, timeout=120)
-            subprocess.run(['pip3', 'install', '--force-reinstall', '--no-cache-dir',
+            # Use a two-step install to avoid leaving esphome uninstalled if the
+            # new version fails mid-way (--force-reinstall removes the old copy
+            # before installing the new one, so a failure leaves nothing behind).
+            subprocess.run(['pip3', 'install', '--no-cache-dir',
                             f'esphome=={ver}'],
                            check=True, timeout=300)
             # Clear stale .pyc bytecode left by the previous version.  Without
@@ -815,6 +818,15 @@ def main() -> None:
         stored is not None and
         _ver_tuple(stored) >= _ver_tuple(expected)
     )
+
+    # If force_download was requested but the stored toolchain is already newer
+    # than the expected ESPHome version (e.g. pip upgrade failed and ESPHome was
+    # left at an older version), skip the re-download — the newer toolchain is
+    # still fully compatible and re-downloading the older one would be wasteful.
+    if force_download and toolchain_at_least_as_new and stored != expected:
+        log(f'Stored toolchain ({stored}) is newer than current ESPHome ({expected}) '
+            f'— skipping redundant re-download.')
+        force_download = False
 
     if toolchain_at_least_as_new and has_packages() and not force_download:
         local_build_id  = get_stored_build_id()
