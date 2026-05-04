@@ -121,6 +121,31 @@ if [ -n "$SUPERVISOR_TOKEN" ] && [ ! -L /root/.platformio ]; then
     ln -sf /data/.platformio /root/.platformio
     echo "Linked /root/.platformio → /data/.platformio (HA persistent storage)"
 fi
+
+# ---- Persist emulator build cache across addon updates ----------------------
+# The emulator seed dir lives under /app/esphome/lib/.esphome/build/emulator/
+# which is inside the container image and gets wiped on every addon update,
+# forcing a re-warm (~5 min) on every restart.
+# We redirect it into /data/.esphome_build so it survives image updates.
+# Only done in HA addon mode.
+if [ -n "$SUPERVISOR_TOKEN" ]; then
+    ESPHOME_BUILD_SRC="/app/esphome/lib/.esphome"
+    ESPHOME_BUILD_PERSISTENT="/data/.esphome_build"
+    if [ ! -L "$ESPHOME_BUILD_SRC" ]; then
+        mkdir -p "$ESPHOME_BUILD_PERSISTENT"
+        # Carry over any build cache already present in the image (e.g. baked in)
+        if [ -d "$ESPHOME_BUILD_SRC" ]; then
+            cp -a "$ESPHOME_BUILD_SRC/." "$ESPHOME_BUILD_PERSISTENT/" 2>/dev/null || true
+            rm -rf "$ESPHOME_BUILD_SRC"
+        fi
+        mkdir -p "$ESPHOME_BUILD_SRC"
+        # Replace with a symlink to the persistent location
+        rm -rf "$ESPHOME_BUILD_SRC"
+        ln -sf "$ESPHOME_BUILD_PERSISTENT" "$ESPHOME_BUILD_SRC"
+        echo "Linked $ESPHOME_BUILD_SRC → $ESPHOME_BUILD_PERSISTENT (HA persistent storage)"
+    fi
+fi
+# ---- End emulator build cache persistence ------------------------------------
 # ---- End PlatformIO persistence ----------------------------------------------
 
 # ---- Seed lib files on first install ----------------------------------------

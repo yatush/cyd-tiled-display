@@ -88,9 +88,12 @@ def write_progress(phase: str, progress: int, message: str,
     if error:
         data['error'] = error
     tmp = PROGRESS_FILE + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(data, f)
-    os.replace(tmp, PROGRESS_FILE)
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp, PROGRESS_FILE)
+    except OSError:
+        pass  # progress file is purely informational — never crash on write failure
 
 
 def log(msg: str) -> None:
@@ -161,9 +164,7 @@ def maybe_upgrade_esphome() -> None:
     """
     # Versions with known import-time crashes that make ESPHome unusable.
     # If the installed version is in this set, we downgrade to the last known-good.
-    BROKEN_VERSIONS = {
-        '2026.4.3',  # esp32 module missing VARIANT_ESP32 / VARIANT_ESP32C2
-    }
+    BROKEN_VERSIONS: set[str] = set()  # none currently known
 
     def _ver_tuple(v: str) -> tuple:
         try:
