@@ -293,32 +293,6 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         # Write source PNGs (one per unique image ID) for debugging purposes.
         _written_pngs: set = set()  # track which source PNGs have been written
 
-        # Always ensure none_transparent.png exists in images_dir since
-        # lib_common.yaml references it directly (activates USE_IMAGE).
-        # Also write it to the parent of images_dir (i.e. BASE_DIR/images/) because
-        # ESPHome resolves `file: images/none_transparent.png` relative to the
-        # main config file's directory, not relative to lib_common.yaml's directory.
-        _NONE_PNG_NAME = 'none_transparent.png'
-        if images_dir:
-            _os.makedirs(images_dir, exist_ok=True)
-            try:
-                with open(_os.path.join(images_dir, _NONE_PNG_NAME), 'wb') as _f:
-                    _f.write(_make_1px_transparent_png())
-            except Exception as _e:
-                print(f"Warning: failed to write none_transparent.png to lib/images/: {_e}")
-            # Also write to the grandparent images/ dir (BASE_DIR/images/) which is
-            # where ESPHome looks when compiling a device config from BASE_DIR.
-            _root_images_dir = _os.path.join(_os.path.dirname(images_dir), '..', 'images')
-            _root_images_dir = _os.path.normpath(_root_images_dir)
-            try:
-                _os.makedirs(_root_images_dir, exist_ok=True)
-                _root_png = _os.path.join(_root_images_dir, _NONE_PNG_NAME)
-                if not _os.path.exists(_root_png):
-                    with open(_root_png, 'wb') as _f:
-                        _f.write(_make_1px_transparent_png())
-            except Exception as _e:
-                print(f"Warning: failed to write none_transparent.png to images/: {_e}")
-
         for (_iid, _rows, _cols), _vid in sorted(_variant_id.items()):
             img_entry = images.get(_iid)
             if not isinstance(img_entry, dict):

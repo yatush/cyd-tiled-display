@@ -516,10 +516,20 @@ async def to_code(config):
         _print_error("Unexpected Error", str(e))
         sys.exit(1)
 
+    # Register none_transparent — a 1×1 fully-transparent PNG needed by all
+    # builds to activate USE_IMAGE so image.h/image.cpp are compiled.
+    # Done here (not via YAML image:) so no file ever needs to exist on disk.
+    _nt_ctx = _ImageRegistrar(prefix="tile_ui_none_")
+    if not _nt_ctx.already_registered("none_transparent"):
+        import os as _os_nt
+        _nt_path = _os_nt.join(_nt_ctx.tmp_dir, "none_transparent.png")
+        with open(_nt_path, "wb") as _nt_f:
+            _nt_f.write(_make_1px_transparent_png())
+        await _nt_ctx.register("none_transparent", _nt_path, "RGB", _nt_ctx.CONF_ALPHA_CHANNEL)
+
     # Register images from inline tile_ui.images: config.
     # Decodes per-layout image variants from inline base64 data and registers them
-    # via ESPHome's image codegen API.  none_transparent is always present via
-    # lib_common.yaml's inline image: declaration and is therefore skipped here.
+    # via ESPHome's image codegen API.
 
     # Extract screen dimensions once — used by both image registration calls below.
     _screen_w, _screen_h = 480, 320

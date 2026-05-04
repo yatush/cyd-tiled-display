@@ -9,60 +9,25 @@ Usage (from the esphome/ directory):
     python3 run.py run test_device.yaml --device COM3 # any extra args are forwarded
 
 Why this exists:
-    Ensures none_transparent.png is present in images/ (it is declared inline in
-    lib_common.yaml so it must exist before esphome reads the config) and creates
-    a placeholder secrets.yaml when needed.  Tile images are registered at codegen
-    time by tile_ui's _register_images -- no pre-processing of images.yaml required.
+    Creates a placeholder secrets.yaml when needed.  Tile images (including
+    none_transparent) are registered at codegen time by tile_ui's to_code --
+    no pre-processing or on-disk image files required.
 """
 
 import os
 import re
-import struct
 import sys
-import zlib
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-IMAGES_DIR   = os.path.join(SCRIPT_DIR, "images")
 SECRETS_YAML = os.path.join(SCRIPT_DIR, "secrets.yaml")
-
-# ---------------------------------------------------------------------------
-# Minimal 1x1 transparent PNG
-# ---------------------------------------------------------------------------
-
-def _make_transparent_png() -> bytes:
-    def chunk(name: bytes, data: bytes) -> bytes:
-        c = struct.pack(">I", len(data)) + name + data
-        return c + struct.pack(">I", zlib.crc32(c[4:]) & 0xFFFFFFFF)
-    ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)  # 1x1 RGBA
-    idat = zlib.compress(bytes([0, 0, 0, 0, 0]))           # filter=0, RGBA=(0,0,0,0)
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", idat)
-        + chunk(b"IEND", b"")
-    )
 
 # ---------------------------------------------------------------------------
 # Setup helpers
 # ---------------------------------------------------------------------------
-
-def _ensure_none_transparent():
-    """Create images/none_transparent.png if it doesn't exist.
-
-    lib_common.yaml references this file directly, so it must exist before
-    ESPHome parses the config (before any Python codegen hooks run).
-    """
-    png_path = os.path.join(IMAGES_DIR, "none_transparent.png")
-    if not os.path.exists(png_path):
-        os.makedirs(IMAGES_DIR, exist_ok=True)
-        with open(png_path, "wb") as f:
-            f.write(_make_transparent_png())
-        print(f"  [run.py] Created  images/none_transparent.png")
-
 
 def _ensure_secrets(device_yaml_path: str):
     """Create a placeholder secrets.yaml next to the device YAML if missing."""
@@ -128,8 +93,6 @@ def main():
                 break
 
     # --- pre-processing ---
-    _ensure_none_transparent()
-
     if device_yaml_path:
         _ensure_secrets(device_yaml_path)
     elif device_yaml_arg:
