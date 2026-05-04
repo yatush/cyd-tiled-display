@@ -91,17 +91,18 @@ export CCACHE_MAXSIZE="2G"
 export CCACHE_COMPILERCHECK="content"
 export CCACHE_SLOPPINESS="include_file_mtime,time_macros"
 export CCACHE_NOHASHDIR="true"
-# Relativize the session-specific data-dir prefix from compiler -I paths before
-# hashing so that warming cache entries (from /app/esphome/lib/.esphome) and
-# per-session entries (from /tmp/esphome_sessions/$SESSION_ID/.esphome) both
-# hash to the same relative path and produce cache hits.
-export CCACHE_BASEDIR="$SESSION_ESPHOME"
 mkdir -p "$CCACHE_DIR"
 export PATH="/usr/local/lib/ccache:$PATH"
 
 # Create a session-specific build directory by copying from the pre-compiled cache
 # This allows concurrent sessions without conflicts, while reusing compiled objects
 SESSION_ESPHOME="/tmp/esphome_sessions/$SESSION_ID/.esphome"
+# Relativize the session-specific data-dir prefix from compiler -I paths before
+# hashing so that warming cache entries (from /app/esphome/lib/.esphome) and
+# per-session entries (from /tmp/esphome_sessions/$SESSION_ID/.esphome) both
+# hash to the same relative path and produce cache hits.
+# Must be set AFTER SESSION_ESPHOME is defined.
+export CCACHE_BASEDIR="$SESSION_ESPHOME"
 if [ ! -d "$SESSION_ESPHOME/build/emulator" ] && [ -d "/app/esphome/lib/.esphome/build/emulator" ]; then
     echo "Seeding session build cache from pre-compiled image..."
     mkdir -p "$SESSION_ESPHOME"
@@ -114,12 +115,19 @@ if [ ! -d "$SESSION_ESPHOME/build/emulator" ] && [ -d "/app/esphome/lib/.esphome
     if [ -f "$STORAGE_FILE" ]; then
         sed -i "s|/app/esphome/lib/.esphome/build/emulator|$SESSION_ESPHOME/build/emulator|g" "$STORAGE_FILE"
     fi
+
+    # Touch all seeded object files to be newer than the freshly-generated sources.
+    # SCons uses mtime to decide whether to re-invoke the compiler; without this it
+    # would invoke the compiler for every .o even though ccache would hit.  With
+    # fresh mtimes SCons sees the .o as up-to-date and skips compilation entirely.
+    find "$SESSION_ESPHOME/build/emulator/.pioenvs" -name '*.o' -exec touch {} +
 fi
 
 # Point ESPHome to the session-specific build directory
 export ESPHOME_DATA_DIR="$SESSION_ESPHOME"
 
-# Use all available cores; ccache makes each unchanged .o a near-instant cache hit.
+# Use all available cores; with seeded + touched .o files PlatformIO skips
+# unchanged translation units entirely.
 export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc)
 
 # Use the same device name as the pre-compiled build to maximize cache reuse
