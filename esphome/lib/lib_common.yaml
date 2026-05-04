@@ -9,6 +9,7 @@ image:
   # none_transparent variable is registered programmatically in tile_ui/to_code().
   - file: ../images/none_transparent.png
     id: none_transparent
+    type: RGBA
     resize: 1x1
 
 packages:
