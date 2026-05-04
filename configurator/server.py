@@ -1321,6 +1321,30 @@ def install_esphome_device():
         else:
             print("[install] WARNING: could not determine OTA address — ESPHome may prompt interactively", flush=True)
 
+        # Ensure none_transparent.png exists in BASE_DIR/images/ — ESPHome resolves
+        # `file: images/none_transparent.png` in lib_common.yaml relative to the
+        # main config directory (BASE_DIR), not relative to lib_common.yaml itself.
+        _none_png_dir = os.path.join(BASE_DIR, 'images')
+        _none_png_path = os.path.join(_none_png_dir, 'none_transparent.png')
+        if not os.path.exists(_none_png_path):
+            try:
+                os.makedirs(_none_png_dir, exist_ok=True)
+                # Minimal 1×1 fully-transparent PNG (same as generate_tiles_api)
+                import struct, zlib as _zlib
+                def _make_1px() -> bytes:
+                    hdr = b'\x89PNG\r\n\x1a\n'
+                    def _chunk(t, d):
+                        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', (0xffffffff & __import__('binascii').crc32(t + d)) )
+                    ihdr = _chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0))
+                    idat = _chunk(b'IDAT', _zlib.compress(b'\x00\x00\x00\x00\x00'))
+                    iend = _chunk(b'IEND', b'')
+                    return hdr + ihdr + idat + iend
+                with open(_none_png_path, 'wb') as _f:
+                    _f.write(_make_1px())
+                print(f"[install] Created {_none_png_path}", flush=True)
+            except Exception as _e:
+                print(f"[install] Warning: could not write none_transparent.png: {_e}", flush=True)
+
         # Start the process immediately — timezone is fetched in the background thread
         _install_env = os.environ.copy()
         _install_env['PYTHONUNBUFFERED'] = '1'
