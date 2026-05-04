@@ -633,12 +633,19 @@ def maybe_warm_cache() -> None:
 
     log('Warming emulator cache...')
 
+    # Warming always writes to this fixed path; run_session.sh seeds from here.
+    _esphome_data_dir = os.path.join(ESPHOME_DIR, 'lib', '.esphome')
     env = os.environ.copy()
+    env['ESPHOME_DATA_DIR']       = _esphome_data_dir
     env['CCACHE_DIR']             = f'{PIO_DIR}/.ccache'
     env['CCACHE_MAXSIZE']         = '2G'
     env['CCACHE_COMPILERCHECK']   = 'content'
     env['CCACHE_SLOPPINESS']      = 'include_file_mtime,time_macros'
     env['CCACHE_NOHASHDIR']       = 'true'
+    # Strip the data-dir prefix from absolute compiler -I paths before hashing.
+    # Sessions set CCACHE_BASEDIR=$SESSION_ESPHOME (their own data dir), so
+    # both sides normalize to the same relative path and get cache hits.
+    env['CCACHE_BASEDIR']         = _esphome_data_dir
     # Cap at 1 on arm64 (RPi4) to avoid OOM-killing Gunicorn; 2 on amd64.
     env['CMAKE_BUILD_PARALLEL_LEVEL'] = '1' if get_arch() == 'arm64' else '2'
     os.makedirs(env['CCACHE_DIR'], exist_ok=True)

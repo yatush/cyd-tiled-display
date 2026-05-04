@@ -91,6 +91,11 @@ export CCACHE_MAXSIZE="2G"
 export CCACHE_COMPILERCHECK="content"
 export CCACHE_SLOPPINESS="include_file_mtime,time_macros"
 export CCACHE_NOHASHDIR="true"
+# Relativize the session-specific data-dir prefix from compiler -I paths before
+# hashing so that warming cache entries (from /app/esphome/lib/.esphome) and
+# per-session entries (from /tmp/esphome_sessions/$SESSION_ID/.esphome) both
+# hash to the same relative path and produce cache hits.
+export CCACHE_BASEDIR="$SESSION_ESPHOME"
 mkdir -p "$CCACHE_DIR"
 export PATH="/usr/local/lib/ccache:$PATH"
 
