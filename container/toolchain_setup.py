@@ -130,6 +130,28 @@ def get_expected_version() -> str:
     return 'unknown'
 
 
+def _check_compat_status(version: str) -> str | None:
+    """
+    Query the compat-check GitHub Release for a given ESPHome version.
+    Returns 'PASSED', 'FAILED', or None (release not yet published).
+    """
+    repo = get_github_repo()
+    url = (f'https://api.github.com/repos/{repo}/releases/tags/'
+           f'compat-check-esphome-{version}')
+    req = urllib.request.Request(
+        url, headers={'User-Agent': 'cyd-tiled-display/toolchain-setup'})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+            return 'FAILED' if data.get('prerelease') else 'PASSED'
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None  # compat check hasn't run yet for this version
+        return None
+    except Exception:
+        return None
+
+
 def maybe_upgrade_esphome() -> None:
     """Check PyPI for a newer ESPHome release; upgrade in-place if found.
 
@@ -137,40 +159,101 @@ def maybe_upgrade_esphome() -> None:
     watchdog) so the container stays current without a Docker image rebuild.
     Failures are non-fatal — the existing installed version is kept.
     """
-    try:
+    # Versions with known import-time crashes that make ESPHome unusable.
+    # If the installed version is in this set, we downgrade to the last known-good.
+    BROKEN_VERSIONS = {
+        '2026.4.3',  # esp32 module missing VARIANT_ESP32 / VARIANT_ESP32C2
+    }
+
+    def _ver_tuple(v: str) -> tuple:
+        try:
+            return tuple(int(x) for x in v.split('.'))
+        except ValueError:
+            return (0,)
+
+    def _install_version(ver: str) -> bool:
+        try:
+            subprocess.run(['pip3', 'install', '--upgrade', 'pip'],
+                           check=False, timeout=120)
+            subprocess.run(['pip3', 'install', '--force-reinstall', '--no-cache-dir',
+                            f'esphome=={ver}'],
+                           check=True, timeout=300)
+            # Clear stale .pyc bytecode left by the previous version.  Without
+            # this, Python sometimes loads .pyc files from the old install
+            # (missing source → "(unknown location)") causing ImportError /
+            # AttributeError at runtime even though the new wheel is correct.
+            for pyc_dir in glob.glob(
+                    '/usr/local/lib/python*/site-packages/esphome/**/__pycache__',
+                    recursive=True):
+                shutil.rmtree(pyc_dir, ignore_errors=True)
+            with open(ESPHOME_VER_FILE, 'w') as f:
+                f.write(ver)
+            return True
+        except Exception as e:
+            log(f'ESPHome install of {ver} failed: {e}.')
+            return False
+
+    def _fetch_all_versions() -> list[str]:
         req = urllib.request.Request(
             'https://pypi.org/pypi/esphome/json',
             headers={'User-Agent': 'cyd-tiled-display/toolchain-setup'})
         with urllib.request.urlopen(req, timeout=15) as resp:
-            latest = json.load(resp)['info']['version']
+            return list(json.load(resp)['releases'].keys())
+
+    installed = get_expected_version()
+
+    # If the currently installed version is known-broken, downgrade immediately
+    # to the highest non-broken version whose compat check has PASSED.
+    if installed in BROKEN_VERSIONS:
+        log(f'ESPHome {installed} is a known-broken version. Finding last good release...')
+        try:
+            all_versions = _fetch_all_versions()
+            good_versions = sorted(
+                [v for v in all_versions if v not in BROKEN_VERSIONS],
+                key=_ver_tuple, reverse=True)
+            fallback = good_versions[0] if good_versions else None
+        except Exception as e:
+            log(f'PyPI version list failed: {e}. Cannot auto-downgrade.')
+            return
+        if not fallback:
+            log('No known-good ESPHome version found. Keeping broken install.')
+            return
+        log(f'Downgrading ESPHome {installed} → {fallback}...')
+        if _install_version(fallback):
+            log(f'ESPHome downgraded to {fallback}.')
+        return
+
+    try:
+        all_versions = _fetch_all_versions()
+        # Use the latest version, but filter out broken ones and those that
+        # haven't passed the compat check yet.
+        candidates = sorted(
+            [v for v in all_versions if v not in BROKEN_VERSIONS],
+            key=_ver_tuple, reverse=True)
+        latest = candidates[0] if candidates else installed
     except Exception as e:
         log(f'PyPI version check skipped: {e}')
         return
 
-    installed = get_expected_version()
     if latest == installed:
         log(f'ESPHome {installed} is up-to-date.')
         return
 
-    log(f'ESPHome upgrade available: {installed} → {latest}. Upgrading pip package...')
-    try:
-        # Upgrade pip first to avoid a resolver bug in pip<25 where a package
-        # with a None version field raises:
-        #   TypeError: expected string or bytes-like object, got 'NoneType'
-        # This is already the recommended action printed by pip itself.
-        subprocess.run(
-            ['pip3', 'install', '--upgrade', 'pip'],
-            check=False, timeout=120)
-        subprocess.run(
-            ['pip3', 'install', '--no-cache-dir', f'esphome=={latest}'],
-            check=True, timeout=300)
-        # Update the baked-in file so other processes (e.g. write_progress) also
-        # see the new version immediately.
-        with open(ESPHOME_VER_FILE, 'w') as f:
-            f.write(latest)
+    # Check the compat-check CI result before upgrading.
+    # If the check FAILED (prerelease=true) or hasn't run yet (None), skip.
+    compat = _check_compat_status(latest)
+    if compat == 'FAILED':
+        log(f'ESPHome {latest} failed compatibility check — skipping upgrade.')
+        return
+    if compat is None:
+        log(f'ESPHome {latest} not yet compatibility-checked — skipping upgrade until check completes.')
+        return
+
+    log(f'ESPHome upgrade available: {installed} → {latest} (compat: {compat}). Upgrading...')
+    if _install_version(latest):
         log(f'ESPHome upgraded to {latest}.')
-    except Exception as e:
-        log(f'ESPHome upgrade failed: {e}. Keeping {installed}.')
+    else:
+        log(f'ESPHome upgrade failed. Keeping {installed}.')
 
 
 def get_stored_version() -> str | None:

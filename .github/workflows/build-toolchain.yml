@@ -130,6 +130,16 @@ jobs:
               echo "--- DIAG: ccache stats after toolchain download compile ---"
               ccache --show-stats 2>/dev/null || true
 
+              echo "=== Smoke-testing ESP32 config parsing ==="
+              # This catches Python import errors (e.g. missing symbols in esphome components)
+              # before we commit to a full compile. Runs fast — no compilation needed.
+              cd /tmp/esp32_setup
+              esphome config dummy.yaml
+              echo "ESP32 config smoke test PASSED"
+              cd /
+
+              rm -rf /tmp/esp32_setup
+
               echo "=== Fixing PlatformIO wrappers for Alpine/musl ==="
               bash /fix_pio_wrappers.sh || true
 
@@ -191,6 +201,17 @@ jobs:
               export CCACHE_LOGFILE=/tmp/ccache_emulator.log
 
               cd /app/esphome
+
+              echo "=== Smoke-testing emulator config parsing ==="
+              esphome \
+                -s tiles_file test_device_tiles.yaml \
+                -s screen_w 320 -s screen_h 240 \
+                -s font_tiny 24 -s font_small 40 -s font_medium 60 -s font_big 80 \
+                -s font_text_regular 20 -s font_text_bold 20 \
+                -s font_text_big_bold 30 -s font_text_small 12 \
+                config lib/emulator.yaml
+              echo "Emulator config smoke test PASSED"
+
               esphome \
                 -s tiles_file test_device_tiles.yaml \
                 -s screen_w 320 -s screen_h 240 \
