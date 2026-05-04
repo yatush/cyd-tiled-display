@@ -11,7 +11,7 @@ packages:
 time:
   - platform: host
     id: esptime
-    timezone: UTC
+    timezone: Etc/UTC
 
 number:
   - platform: template
