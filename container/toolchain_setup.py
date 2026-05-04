@@ -642,8 +642,19 @@ def maybe_warm_cache() -> None:
     Failures are non-fatal: the marker is not written, so the next startup retries.
     """
     if not shutil.which('esphome'):
-        log('WARNING: esphome not found in PATH — skipping cache warming.')
-        return
+        # May be temporarily absent while a concurrent pip upgrade is in progress.
+        # Wait up to 3 minutes (pip install of esphome takes ~1-2 min on arm64).
+        log('esphome not found in PATH — waiting for pip upgrade to complete...')
+        _waited = 0
+        while _waited < 180:
+            time.sleep(10)
+            _waited += 10
+            if shutil.which('esphome'):
+                log(f'esphome appeared after {_waited}s — proceeding with cache warming.')
+                break
+        else:
+            log('WARNING: esphome still not in PATH after 3 minutes — skipping cache warming.')
+            return
 
     expected = get_expected_version()
     cfg_hash = _emulator_config_hash()
