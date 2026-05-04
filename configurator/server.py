@@ -2016,6 +2016,14 @@ def toolchain_check_update():
         except OSError:
             pass
 
+    version_file = '/root/.platformio/.cyd_esphome_version'
+    stored_version = None
+    if os.path.exists(version_file):
+        try:
+            stored_version = open(version_file).read().strip() or None
+        except OSError:
+            pass
+
     local_build_id = None
     if os.path.exists(build_id_file):
         try:
@@ -2034,10 +2042,25 @@ def toolchain_check_update():
         except OSError:
             pass
 
+    # When the stored toolchain is already ahead of the baked-in ESPHome version
+    # (e.g. stored=2026.4.3, baked-in=2026.4.0), look up build_id.txt for the
+    # stored version — not the baked-in one.  Using the baked-in version would
+    # always produce a mismatch against the stored build_id, making the update
+    # check incorrectly report that a new download is needed on every restart.
+    def _ver_key(v):
+        try:
+            return tuple(int(x) for x in (v or '').split('.'))
+        except Exception:
+            return (0,)
+
+    lookup_version = expected_version
+    if _ver_key(stored_version) > _ver_key(lookup_version):
+        lookup_version = stored_version
+
     remote_build_id = None
-    if expected_version:
+    if lookup_version:
         url = (f'https://github.com/{repo}/releases/download/'
-               f'toolchain-esphome-{expected_version}/build_id.txt')
+               f'toolchain-esphome-{lookup_version}/build_id.txt')
         try:
             req = _urllib_req.Request(url, headers={'User-Agent': 'cyd-tiled-display/server'})
             with _urllib_req.urlopen(req, timeout=10) as resp:
@@ -2054,7 +2077,7 @@ def toolchain_check_update():
         'update_available': update_available,
         'remote_build_id': remote_build_id,
         'local_build_id': local_build_id,
-        'version': expected_version,
+        'version': lookup_version,
     })
 
 @app.route('/api/toolchain/download_latest', methods=['POST'])
@@ -2127,11 +2150,26 @@ def toolchain_download_latest():
         except OSError:
             pass
 
+    # When the stored toolchain is already ahead of the baked-in ESPHome version
+    # (e.g. stored=2026.4.3, baked-in=2026.4.0), look up build_id.txt for the
+    # stored version — not the baked-in one.  Using the baked-in version would
+    # always produce a mismatch against the stored build_id, triggering a
+    # spurious re-download on every container restart.
+    def _ver_key(v):
+        try:
+            return tuple(int(x) for x in (v or '').split('.'))
+        except Exception:
+            return (0,)
+
+    lookup_version = expected_version
+    if _ver_key(stored_version) > _ver_key(lookup_version):
+        lookup_version = stored_version
+
     # Fetch remote build_id.txt (tiny file, fast)
     remote_build_id = None
-    if expected_version:
+    if lookup_version:
         url = (f'https://github.com/{repo}/releases/download/'
-               f'toolchain-esphome-{expected_version}/build_id.txt')
+               f'toolchain-esphome-{lookup_version}/build_id.txt')
         try:
             req = _urllib_req.Request(
                 url, headers={'User-Agent': 'cyd-tiled-display/server'})
@@ -2151,14 +2189,13 @@ def toolchain_download_latest():
     if remote_build_id is not None:
         if remote_build_id == local_build_id:
             return jsonify({'status': 'up_to_date',
-                            'version': expected_version,
+                            'version': lookup_version,
                             'build_id': remote_build_id})
         # IDs differ (or no local ID) → fall through to launch
 
     # Case B: no remote build_id (old release / network error) — version fallback
     else:
-        if (stored_version and expected_version
-                and stored_version == expected_version and has_pkgs):
+        if lookup_version and stored_version and has_pkgs and stored_version == lookup_version:
             return jsonify({'status': 'up_to_date', 'version': stored_version})
 
     # Launch toolchain_setup.py to download the new build.
