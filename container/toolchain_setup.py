@@ -605,12 +605,40 @@ def _cmake_needs_fix() -> bool:
 
 # ─── Cache warming ───────────────────────────────────────────────────────────
 
+def _emulator_config_hash() -> str:
+    """Return a short hash of emulator-relevant config files.
+
+    Any change to lib_common.yaml, lib_emulator.yaml, emulator.yaml, or
+    tile_ui/__init__.py (which drives code generation) will produce a
+    different hash, invalidating the EMULATOR_MARKER and forcing re-warming.
+    This prevents stale seed builds when the YAML component list changes
+    (e.g. removing the explicit 'image:' block causes ESPHome to detect
+    'Components removed (image)' and purge .pioenvs on every session start).
+    """
+    import hashlib
+    h = hashlib.md5()
+    for rel in (
+        'lib/lib_common.yaml',
+        'lib/lib_emulator.yaml',
+        'lib/emulator.yaml',
+        'external_components/tile_ui/__init__.py',
+    ):
+        path = os.path.join(ESPHOME_DIR, rel)
+        try:
+            with open(path, 'rb') as f:
+                h.update(f.read())
+        except OSError:
+            h.update(rel.encode())  # file missing → include its name so hash changes
+    return h.hexdigest()[:12]
+
+
 def maybe_warm_cache() -> None:
     """Pre-compile the emulator for both screen sizes to warm the ccache.
 
     Skipped when the marker already exists with the current ESPHome version
-    AND the seed directory actually exists on disk.
-    Re-runs automatically when ESPHome is upgraded or the seed dir is missing.
+    AND config hash AND the seed directory actually exists on disk.
+    Re-runs automatically when ESPHome is upgraded, any emulator YAML changes,
+    or the seed dir is missing.
     Failures are non-fatal: the marker is not written, so the next startup retries.
     """
     if not shutil.which('esphome'):
@@ -618,16 +646,18 @@ def maybe_warm_cache() -> None:
         return
 
     expected = get_expected_version()
+    cfg_hash = _emulator_config_hash()
+    expected_marker = f'{expected}:{cfg_hash}'
     seed_dir = os.path.join(ESPHOME_DIR, 'lib', '.esphome', 'build', 'emulator')
     if os.path.exists(EMULATOR_MARKER) and os.path.isdir(seed_dir):
         try:
-            stored_ver = open(EMULATOR_MARKER).read().strip()
+            stored_marker = open(EMULATOR_MARKER).read().strip()
         except OSError:
-            stored_ver = ''
-        if stored_ver == expected:
+            stored_marker = ''
+        if stored_marker == expected_marker:
             log('Emulator cache already warm — skipping.')
             return
-        log(f'ESPHome version changed ({stored_ver!r} → {expected!r}) — re-warming.')
+        log(f'Emulator marker mismatch ({stored_marker!r} → {expected_marker!r}) — re-warming.')
     elif os.path.exists(EMULATOR_MARKER) and not os.path.isdir(seed_dir):
         log('Emulator marker present but seed directory missing — re-warming.')
 
@@ -709,7 +739,7 @@ def maybe_warm_cache() -> None:
 
     try:
         with open(EMULATOR_MARKER, 'w') as f:
-            f.write(expected)
+            f.write(f'{expected}:{cfg_hash}')
     except OSError:
         open(EMULATOR_MARKER, 'w').close()
     log('Cache warming complete.')
