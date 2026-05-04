@@ -522,7 +522,7 @@ async def to_code(config):
     _nt_ctx = _ImageRegistrar(prefix="tile_ui_none_")
     if not _nt_ctx.already_registered("none_transparent"):
         import os as _os_nt
-        _nt_path = _os_nt.join(_nt_ctx.tmp_dir, "none_transparent.png")
+        _nt_path = _os_nt.path.join(_nt_ctx.tmp_dir, "none_transparent.png")
         with open(_nt_path, "wb") as _nt_f:
             _nt_f.write(_make_1px_transparent_png())
         await _nt_ctx.register("none_transparent", _nt_path, "RGB", _nt_ctx.CONF_ALPHA_CHANNEL)
