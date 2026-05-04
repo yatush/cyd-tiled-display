@@ -856,18 +856,20 @@ def main() -> None:
         _ver_tuple(stored) >= _ver_tuple(expected)
     )
 
-    # If force_download was requested but the stored toolchain is already newer
-    # than the expected ESPHome version (e.g. pip upgrade failed and ESPHome was
-    # left at an older version), skip the re-download — the newer toolchain is
-    # still fully compatible and re-downloading the older one would be wasteful.
-    if force_download and toolchain_at_least_as_new and stored != expected:
-        log(f'Stored toolchain ({stored}) is newer than current ESPHome ({expected}) '
-            f'— skipping redundant re-download.')
-        force_download = False
-
     if toolchain_at_least_as_new and has_packages() and not force_download:
+        if stored != expected:
+            # Stored toolchain is newer than the currently-installed ESPHome
+            # (e.g. pip upgrade failed and ESPHome stayed at an older version).
+            # The newer toolchain is still compatible — don't re-download the
+            # older one.  We'll re-check once ESPHome catches up.
+            log(f'Stored toolchain ({stored}) is ahead of ESPHome ({expected}) — skipping build-ID check.')
+            set_stored_version(stored)   # keep SETUP_MARKER consistent
+            fix_wrappers()
+            maybe_warm_cache()
+            write_progress('ready', 100, 'Toolchain ready.')
+            return
         local_build_id  = get_stored_build_id()
-        remote_build_id = fetch_remote_build_id(expected)
+        remote_build_id = fetch_remote_build_id(stored)   # compare against stored, not expected
         if remote_build_id and remote_build_id != local_build_id:
             log(f'New toolchain build available: {local_build_id!r} → {remote_build_id!r}. '
                 f'Downloading in background...')
