@@ -3,6 +3,14 @@ esphome:
     then:
       - script.execute: _init_radar
       
+image:
+  # Dummy 1×1 transparent image kept solely to ensure ESPHome loads the image
+  # component and emits the required #include / type declarations.  The actual
+  # none_transparent variable is registered programmatically in tile_ui/to_code().
+  - file: ../images/none_transparent.png
+    id: none_transparent
+    resize: 1x1
+
 packages:
   custom_lib: !include lib_custom.yaml
 
