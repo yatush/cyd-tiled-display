@@ -48,6 +48,10 @@ PIO_SETUP_LOG       = '/tmp/pio_setup.log'
 DUMMY_YAML_DIR      = '/tmp/esp32_setup'
 
 BUILD_ID_FILE       = f'{PIO_DIR}/.cyd_toolchain_build_id'
+# Persists the pip-installed ESPHome version across container restarts.
+# /app/esphome_version.txt is baked into the image and resets on every
+# addon update; this file lives in the persistent /data/.platformio volume.
+PIP_VER_FILE        = f'{PIO_DIR}/.cyd_esphome_pip_version'
 
 # Cache-warming paths (emulator pre-compile)
 _SCRIPT_DIR         = os.path.dirname(os.path.abspath(__file__))
@@ -113,9 +117,11 @@ def get_arch() -> str:
 def get_expected_version() -> str:
     """Return the currently-installed ESPHome version.
 
-    Always queries the live installed package so the version stays accurate
-    even after an in-place pip upgrade done by maybe_upgrade_esphome().
-    Falls back to the baked-in file only when importlib can't find the package.
+    Priority order:
+      1. Live importlib.metadata query (accurate after in-process pip upgrade).
+      2. Persistent pip version file in PIO_DIR (survives container restarts;
+         written by _install_version after a successful pip upgrade).
+      3. Baked-in /app/esphome_version.txt (image default, resets on addon update).
     """
     try:
         r = subprocess.run(
@@ -126,6 +132,10 @@ def get_expected_version() -> str:
             return v
     except Exception:
         pass
+    if os.path.exists(PIP_VER_FILE):
+        v = open(PIP_VER_FILE).read().strip()
+        if v:
+            return v
     if os.path.exists(ESPHOME_VER_FILE):
         v = open(ESPHOME_VER_FILE).read().strip()
         if v:
@@ -192,6 +202,14 @@ def maybe_upgrade_esphome() -> None:
                 shutil.rmtree(pyc_dir, ignore_errors=True)
             with open(ESPHOME_VER_FILE, 'w') as f:
                 f.write(ver)
+            # Also persist to PIO_DIR so the version survives container restarts
+            # (/app is ephemeral in HA addon; /data/.platformio is a volume).
+            try:
+                os.makedirs(PIO_DIR, exist_ok=True)
+                with open(PIP_VER_FILE, 'w') as f:
+                    f.write(ver)
+            except OSError:
+                pass
             return True
         except Exception as e:
             log(f'ESPHome install of {ver} failed: {e}.')
