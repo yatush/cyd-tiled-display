@@ -329,9 +329,14 @@ def fetch_and_store_build_id(version: str) -> None:
     Non-fatal: failures are logged but do not affect the toolchain install.
     """
     build_id = fetch_remote_build_id(version)
-    if build_id:
-        set_stored_build_id(build_id)
-        log(f'Toolchain build ID stored: {build_id}')
+    # Always write something to BUILD_ID_FILE after a successful download so
+    # the next startup doesn't compare the old version's build_id against the
+    # new remote one and trigger an endless re-download loop.
+    # If build_id.txt isn't available yet, use a version-stamped sentinel so
+    # the file at least reflects the installed version.
+    stored = build_id or f'downloaded-{version}'
+    set_stored_build_id(stored)
+    log(f'Toolchain build ID stored: {stored}')
 
 
 def has_packages() -> bool:
