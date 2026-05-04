@@ -7,7 +7,7 @@ image:
   # Dummy 1×1 transparent image kept solely to ensure ESPHome loads the image
   # component and emits the required #include / type declarations.  The actual
   # none_transparent variable is registered programmatically in tile_ui/to_code().
-  - file: ../images/none_transparent.png
+  - file: /app/esphome/images/none_transparent.png
     id: none_transparent
     type: RGB
     transparency: alpha_channel
