@@ -125,7 +125,6 @@ jobs:
               cd /tmp/esp32_setup
               timeout 900s esphome compile dummy.yaml || true
               cd /
-              rm -rf /tmp/esp32_setup
 
               echo "--- DIAG: ccache stats after toolchain download compile ---"
               ccache --show-stats 2>/dev/null || true
