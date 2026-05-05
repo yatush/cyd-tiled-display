@@ -80,6 +80,10 @@ jobs:
         run: |
           printf 'wifi_ssid: ci-dummy\nwifi_password: ci-dummy\n' > esphome/secrets.yaml
           printf 'wifi_ssid: ci-dummy\nwifi_password: ci-dummy\n' > esphome/lib/secrets.yaml
+          # Absolute image paths in YAML (e.g. /app/esphome/images/) are designed
+          # for the Docker environment. Symlink so they resolve in CI too.
+          sudo mkdir -p /app
+          sudo ln -s "$PWD/esphome" /app/esphome
 
       - name: Compile test_device.yaml
         id: compile
