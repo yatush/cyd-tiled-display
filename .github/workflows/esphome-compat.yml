@@ -184,18 +184,24 @@ jobs:
               f"Build result: **{build_status}**\n\n"
               f"=== ESPHome {version} Release Notes ===\n{changelog}\n\n"
               f"=== Build Log Excerpts (warnings/errors + last 100 lines) ===\n{build_log}\n\n"
-              f"Provide a concise analysis covering:\n"
+              f"Provide an analysis covering the following sections:\n\n"
+              f"## What's new in ESPHome {version}\n"
+              f"Write 2–3 paragraphs summarising the notable changes, new features, and improvements "
+              f"introduced in this release. Focus on what actually changed and why it matters to users — "
+              f"not just a list of bullet points. Mention things like new components, framework changes, "
+              f"performance improvements, or UI/config changes.\n\n"
+              f"## Compatibility Analysis\n"
               f"1. **Breaking Changes** — anything in the release notes that may affect esp-idf/ESP32 projects\n"
               f"2. **Deprecation Warnings** — warnings visible in the build log that need future action\n"
               f"3. **Errors / Root Cause** — if the build failed, the likely reason\n"
               f"4. **Recommendations** — concrete next steps (if any)\n\n"
-              f"Be brief and actionable. If everything looks clean, say so."
+              f"Be specific and actionable in the compatibility section. If everything looks clean, say so."
           )
 
           payload = {
               "model": "gpt-4o-mini",
               "messages": [{"role": "user", "content": prompt}],
-              "max_tokens": 1024,
+              "max_tokens": 2048,
               "temperature": 0.3,
           }
 
@@ -272,10 +278,12 @@ jobs:
               llm = f.read()
 
           badge = "✅ PASSED" if status == "PASSED" else "❌ FAILED"
+          release_notes_url = f"https://github.com/esphome/esphome/releases/tag/v{version}"
 
           body = (
               f"**ESPHome version:** `{version}`\n"
               f"**Compile result:** {badge}\n"
+              f"**Release notes:** [ESPHome v{version}]({release_notes_url})\n"
               f"**Build log:** [View full log in GitHub Actions]({run_url})\n"
               f"\n---\n"
               f"\n## 🤖 LLM Analysis\n\n"
