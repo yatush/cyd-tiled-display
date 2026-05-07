@@ -278,7 +278,7 @@ jobs:
               llm = f.read()
 
           badge = "✅ PASSED" if status == "PASSED" else "❌ FAILED"
-          release_notes_url = f"https://github.com/esphome/esphome/releases/tag/v{version}"
+          release_notes_url = f"https://github.com/esphome/esphome/releases/tag/{version}"
 
           body = (
               f"**ESPHome version:** `{version}`\n"
