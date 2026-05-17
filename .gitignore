@@ -1,3 +1,7 @@
+# Coverage reports
+.coverage
+htmlcov/
+
 esphome/secrets.yaml
 esphome/external_components/tile_ui/__pycache__/*
 esphome/external_components/tile_ui/tests/__pycache__*

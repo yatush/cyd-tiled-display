@@ -419,5 +419,200 @@ class TestScreenBackground(unittest.TestCase):
         self.assertNotIn('addBg', cpp)
 
 
+class TestActionTileExtras(unittest.TestCase):
+    """Tests for generate_action_tile paths not covered by TestTileGeneration."""
+
+    def _gen(self, config):
+        from tile_ui.tile_generation import generate_action_tile
+        return generate_action_tile(config, {}, 'main')
+
+    def test_display_page_if_no_entity_sets_modifier(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "perform": ["act"],
+            "entities": [{"dynamic_entity": "state_var"}],
+            "display_page_if_no_entity": "detail_screen",
+        }
+        cpp = self._gen(config)
+        self.assertIn('setDisplayPageIfNoEntity(&id(detail_screen))', cpp)
+
+    def test_display_page_if_no_entity_without_dynamic_entity_raises(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "perform": ["act"],
+            "entities": ["sensor.static"],
+            "display_page_if_no_entity": "detail_screen",
+        }
+        with self.assertRaises(ValueError) as cm:
+            self._gen(config)
+        self.assertIn("dynamic_entity", str(cm.exception))
+
+    def test_explicit_requires_fast_refresh_true(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "perform": ["act"],
+            "entities": ["sensor.t"],
+            "requires_fast_refresh": True,
+        }
+        cpp = self._gen(config)
+        self.assertIn('setRequiresFastRefreshFunc', cpp)
+        self.assertIn('return true', cpp)
+
+    def test_explicit_requires_fast_refresh_string(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "perform": ["act"],
+            "entities": ["sensor.t"],
+            "requires_fast_refresh": "is_fast",
+        }
+        cpp = self._gen(config)
+        self.assertIn('setRequiresFastRefreshFunc', cpp)
+        self.assertIn('is_fast', cpp)
+
+    def test_location_perform_only_emits_empty_perform(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "location_perform": ["loc_act"],
+            "entities": ["sensor.t"],
+        }
+        cpp = self._gen(config)
+        # location_perform-only -> args include an empty perform list "{}"
+        self.assertIn('{}', cpp)
+        self.assertIn('loc_act', cpp)
+
+
+class TestTitleTileExtras(unittest.TestCase):
+    """Extra tests for generate_title_tile."""
+
+    def test_title_with_requires_fast_refresh(self):
+        from tile_ui.tile_generation import generate_title_tile
+        config = {
+            "x": 0, "y": 0,
+            "display": ["label"],
+            "entities": ["sensor.t"],
+            "requires_fast_refresh": True,
+        }
+        cpp = generate_title_tile(config, {}, 'main')
+        self.assertIn('setRequiresFastRefreshFunc', cpp)
+        self.assertIn('return true', cpp)
+
+
+class TestToggleTileExtras(unittest.TestCase):
+    """Extra paths in generate_toggle_entity_tile."""
+
+    def _gen(self, config):
+        from tile_ui.tile_generation import generate_toggle_entity_tile
+        return generate_toggle_entity_tile(config, {}, 'main')
+
+    def test_initially_chosen_true_emits_true(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "dynamic_entity": "state_var",
+            "entity": "light.bedroom",
+            "presentation_name": "Bedroom",
+            "initially_chosen": True,
+        }
+        cpp = self._gen(config)
+        self.assertIn('true)', cpp)
+        self.assertNotIn('false)', cpp)
+
+    def test_missing_dynamic_entity_raises(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "entity": "light.bedroom",
+            "presentation_name": "Bedroom",
+        }
+        with self.assertRaises(ValueError) as cm:
+            self._gen(config)
+        self.assertIn("dynamic_entity", str(cm.exception))
+
+    def test_missing_entity_raises(self):
+        config = {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "dynamic_entity": "state_var",
+            "presentation_name": "Bedroom",
+        }
+        with self.assertRaises(ValueError) as cm:
+            self._gen(config)
+        self.assertIn("entity", str(cm.exception))
+
+
+class TestCycleTileExtras(unittest.TestCase):
+    """Extra paths in generate_cycle_entity_tile."""
+
+    def _gen(self, config):
+        from tile_ui.tile_generation import generate_cycle_entity_tile
+        return generate_cycle_entity_tile(config, {}, 'main')
+
+    def _base_config(self):
+        return {
+            "x": 0, "y": 0,
+            "display": ["icon"],
+            "dynamic_entity": "mode_var",
+            "options": [
+                {"entity": "mode1", "label": "Mode 1"},
+                {"entity": "mode2", "label": "Mode 2"},
+            ],
+        }
+
+    def test_reset_on_leave_true_emits_true(self):
+        config = {**self._base_config(), "reset_on_leave": True}
+        cpp = self._gen(config)
+        self.assertIn(', true)', cpp)
+
+    def test_reset_on_leave_false_emits_false(self):
+        cpp = self._gen(self._base_config())
+        self.assertIn(', false)', cpp)
+
+    def test_empty_options_raises(self):
+        config = {**self._base_config(), "options": []}
+        with self.assertRaises(ValueError) as cm:
+            self._gen(config)
+        self.assertIn("options", str(cm.exception))
+
+    def test_missing_dynamic_entity_raises(self):
+        config = {**self._base_config()}
+        del config["dynamic_entity"]
+        with self.assertRaises(ValueError) as cm:
+            self._gen(config)
+        self.assertIn("dynamic_entity", str(cm.exception))
+
+    def test_option_missing_entity_raises(self):
+        config = {**self._base_config(), "options": [{"label": "Only Label"}]}
+        with self.assertRaises(ValueError) as cm:
+            self._gen(config)
+        self.assertIn("entity", str(cm.exception))
+
+    def test_option_not_dict_raises(self):
+        config = {**self._base_config(), "options": ["not_a_dict"]}
+        with self.assertRaises(ValueError) as cm:
+            self._gen(config)
+        self.assertIn("dicts", str(cm.exception))
+
+
+class TestMoveTileExtras(unittest.TestCase):
+    """Extra paths in generate_move_page_tile."""
+
+    def test_dynamic_entry_missing_value_raises(self):
+        from tile_ui.tile_generation import generate_move_page_tile
+        config = {
+            "x": 0, "y": 0,
+            "display": ["arrow"],
+            "destination": "screen2",
+            "dynamic_entry": {"dynamic_entity": "var"},  # 'value' missing
+        }
+        with self.assertRaises(ValueError) as cm:
+            generate_move_page_tile(config, {}, 'main')
+        self.assertIn("dynamic_entry", str(cm.exception))
+
+
 if __name__ == '__main__':
     unittest.main()
