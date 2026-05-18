@@ -98,12 +98,14 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
           {['BASE', 'TEMPORARY', 'FAST_REFRESH', 'OMIT_TIME_WIFI'].map(flag => {
             const isChecked = activePage.flags?.includes(flag) || false;
             const isBase = flag === 'BASE';
+            const isTemporaryFlag = flag === 'TEMPORARY';
             const isCurrentBase = activePage.flags?.includes('BASE');
             const isTemporary = activePage.flags?.includes('TEMPORARY');
             
             // Cannot uncheck BASE if it's the current base screen
             // Cannot check BASE if page is TEMPORARY
-            const isDisabled = (isBase && isCurrentBase) || (isBase && isTemporary && !isChecked);
+            // Cannot check TEMPORARY if page is BASE
+            const isDisabled = (isBase && isCurrentBase) || (isBase && isTemporary && !isChecked) || (isTemporaryFlag && isCurrentBase && !isChecked);
             
             return (
               <div key={flag} className="flex items-center gap-2">
@@ -138,6 +140,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                   {flag === 'OMIT_TIME_WIFI' ? 'Omit time & WiFi indicator' : flag}
                   {isBase && isCurrentBase && <span className="text-xs text-slate-500 ml-1">(cannot remove)</span>}
                   {isBase && isTemporary && !isChecked && <span className="text-xs text-slate-500 ml-1">(cannot use with TEMPORARY)</span>}
+                  {isTemporaryFlag && isCurrentBase && !isChecked && <span className="text-xs text-slate-500 ml-1">(cannot use with BASE)</span>}
                 </label>
               </div>
             );
