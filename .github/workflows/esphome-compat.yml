@@ -141,6 +141,12 @@ jobs:
           name: build-summary
           path: /tmp/artifacts
 
+      - name: Download full build log
+        uses: actions/download-artifact@v5
+        with:
+          name: build-log
+          path: /tmp/artifacts
+
       - name: Fetch ESPHome release notes
         run: |
           VERSION="${{ needs.check-version.outputs.esphome_version }}"
@@ -275,7 +281,6 @@ jobs:
 
           python3 << 'PYEOF'
           import os
-          import re
 
           status  = os.environ["STATUS"]
           version = os.environ["VERSION"]
@@ -285,24 +290,15 @@ jobs:
               llm = f.read()
 
           try:
-              with open("/tmp/artifacts/build_summary.log") as f:
-                  build_summary = f.read()
+              with open("/tmp/artifacts/build.log") as f:
+                  full_build_log = f.read()
           except FileNotFoundError:
-              build_summary = "(build summary artifact not found)"
+              full_build_log = "(full build log artifact not found)"
 
           failure_excerpt = ""
           if status != "PASSED":
-              lines = build_summary.splitlines()
-              # Keep only likely failure lines so the notification email is actionable.
-              keep = [
-                  ln for ln in lines
-                  if re.search(r"error:|failed|traceback|exception|fatal|build status: failed", ln, re.IGNORECASE)
-              ]
-
-              if not keep:
-                  keep = lines[-120:]
-
-              excerpt = "\n".join(keep[-80:]).strip()
+              lines = full_build_log.splitlines()
+              excerpt = "\n".join(lines[-50:]).strip()
               if len(excerpt) > 6000:
                   excerpt = excerpt[-6000:]
 
