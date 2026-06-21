@@ -281,6 +281,7 @@ jobs:
 
           python3 << 'PYEOF'
           import os
+          from pathlib import Path
 
           status  = os.environ["STATUS"]
           version = os.environ["VERSION"]
@@ -289,10 +290,21 @@ jobs:
           with open("/tmp/artifacts/llm_summary.txt") as f:
               llm = f.read()
 
-          try:
-              with open("/tmp/artifacts/build.log") as f:
-                  full_build_log = f.read()
-          except FileNotFoundError:
+          artifacts_dir = Path("/tmp/artifacts")
+          candidates = [
+              artifacts_dir / "build.log",
+              artifacts_dir / "build-log" / "build.log",
+          ]
+          if not any(p.exists() for p in candidates):
+              candidates.extend(sorted(artifacts_dir.rglob("build.log")))
+
+          full_build_log = None
+          for p in candidates:
+              if p.exists() and p.is_file():
+                  full_build_log = p.read_text(encoding="utf-8", errors="replace")
+                  break
+
+          if full_build_log is None:
               full_build_log = "(full build log artifact not found)"
 
           failure_excerpt = ""
