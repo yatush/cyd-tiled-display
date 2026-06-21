@@ -264,6 +264,12 @@ jobs:
           name: build-summary
           path: /tmp/artifacts
 
+      - name: Download full build log
+        uses: actions/download-artifact@v5
+        with:
+          name: build-log
+          path: /tmp/artifacts
+
       - name: Build release metadata and body
         id: meta
         env:
