@@ -125,9 +125,6 @@ display:
     update_interval: 10s
     color_depth: 8BIT
     buffer_size : 70%
-    dimensions:
-      height: 320
-      width: 480
     data_rate: 40000000.0
     rotation: 90
 

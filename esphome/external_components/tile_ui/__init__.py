@@ -145,7 +145,7 @@ class _ImageRegistrar:
         self.tmp_dir = tempfile.mkdtemp(prefix=prefix)
 
         # Build the set of IDs already declared via the image: component
-        # (e.g. none_transparent from lib_common.yaml) so we never re-register them.
+        # so we never re-register them.
         _image_cfg = _CORE.config.get("image", [])
         self._declared_ids: set = set()
         if isinstance(_image_cfg, list):

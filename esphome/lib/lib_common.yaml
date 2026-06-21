@@ -2,16 +2,14 @@ esphome:
   on_boot:
     then:
       - script.execute: _init_radar
-      
+
 image:
-  # Dummy 1×1 transparent image kept solely to ensure ESPHome loads the image
-  # component and emits the required #include / type declarations.  The actual
-  # none_transparent variable is registered programmatically in tile_ui/to_code().
-  - file: /app/esphome/images/none_transparent.png
-    id: none_transparent
-    type: RGB
-    transparency: alpha_channel
+  # Bootstrap the image component without relying on a local file path.
+  # tile_ui registers real runtime images (including none_transparent) in to_code().
+  - file: "mdi:image-outline"
+    id: _image_component_bootstrap
     resize: 1x1
+    type: BINARY
 
 packages:
   custom_lib: !include lib_custom.yaml

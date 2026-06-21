@@ -7,6 +7,8 @@ esphome/external_components/tile_ui/__pycache__/*
 esphome/external_components/tile_ui/tests/__pycache__*
 server.log
 __pycache__*
+.venv/
+.vscode/
 
 # Generated at runtime by prepare_precache.py / generate_tiles_api
 esphome/lib/test_device_tiles.yaml
