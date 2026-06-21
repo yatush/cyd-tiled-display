@@ -252,6 +252,12 @@ jobs:
           name: llm-summary
           path: /tmp/artifacts
 
+      - name: Download build summary
+        uses: actions/download-artifact@v5
+        with:
+          name: build-summary
+          path: /tmp/artifacts
+
       - name: Build release metadata and body
         id: meta
         env:
@@ -269,6 +275,7 @@ jobs:
 
           python3 << 'PYEOF'
           import os
+          import re
 
           status  = os.environ["STATUS"]
           version = os.environ["VERSION"]
@@ -276,6 +283,35 @@ jobs:
 
           with open("/tmp/artifacts/llm_summary.txt") as f:
               llm = f.read()
+
+          try:
+              with open("/tmp/artifacts/build_summary.log") as f:
+                  build_summary = f.read()
+          except FileNotFoundError:
+              build_summary = "(build summary artifact not found)"
+
+          failure_excerpt = ""
+          if status != "PASSED":
+              lines = build_summary.splitlines()
+              # Keep only likely failure lines so the notification email is actionable.
+              keep = [
+                  ln for ln in lines
+                  if re.search(r"error:|failed|traceback|exception|fatal|build status: failed", ln, re.IGNORECASE)
+              ]
+
+              if not keep:
+                  keep = lines[-120:]
+
+              excerpt = "\n".join(keep[-80:]).strip()
+              if len(excerpt) > 6000:
+                  excerpt = excerpt[-6000:]
+
+              failure_excerpt = (
+                  "\n## Build Failure Log Excerpt\n\n"
+                  "```text\n"
+                  f"{excerpt if excerpt else '(no matching failure lines found)'}\n"
+                  "```\n"
+              )
 
           badge = "✅ PASSED" if status == "PASSED" else "❌ FAILED"
           release_notes_url = f"https://github.com/esphome/esphome/releases/tag/{version}"
@@ -285,6 +321,7 @@ jobs:
               f"**Compile result:** {badge}\n"
               f"**Release notes:** [ESPHome v{version}]({release_notes_url})\n"
               f"**Build log:** [View full log in GitHub Actions]({run_url})\n"
+              f"{failure_excerpt}"
               f"\n---\n"
               f"\n## 🤖 LLM Analysis\n\n"
               f"{llm}\n"
