@@ -147,7 +147,7 @@ python3 run.py run test_device.yaml --device COM3
 * **Initialize the CYD, and connect it to your ESPHome installation** - A great starting point can be found [here](https://esphome.io/guides/getting_started_hassio.html).
 * **Copy library files** - In the configurator UI, click Settings and "Update HA Esphome files". Alternatively, you can manually copy to `/config/esphome` dir on the HA the files from this repository.
     *   *Note*: The library structure has been updated. `lib.yaml` now includes `lib_common.yaml` to share core functionality between the physical device and the emulator. Ensure both files are present in your `esphome/lib/` directory.
-* **Configure files** - Add the configed file from the configurator using "File Management" -> "Save Device". Alternatively you can manually do it by editing YAML files. See [TILE_CONFIGURATION.md](https://github.com/yatush/cyd-tiled-display/raw/main/TILE_CONFIGURATION.md) for detailed documentation.
+* **Configure files** - Add the configed file from the configurator using "File Management" -> "Save Device". Alternatively you can manually do it by editing YAML files. See [TILE_CONFIGURATION.md](./TILE_CONFIGURATION.md) for detailed documentation.
 * **Enable CYD to execute HA commands** - In your HA, go to *Settings -> Devices and Services -> ESPHome -> <device> -> Configure -> Enable "Allow the device to perform Home Assistant actions"*
 * On ESPHome interface, go to the device, and click `Update`
 * That's it, you're all set!
@@ -371,5 +371,5 @@ When using the Home Assistant Add-on, the core library files (like `lib.yaml` an
 
 # Documentation
 
-*   [**Tile Configuration Guide**](https://github.com/yatush/cyd-tiled-display/raw/main/TILE_CONFIGURATION.md): Detailed reference for all available tile types, properties, and configuration options.
-*   [**Script Validation Guide**](https://github.com/yatush/cyd-tiled-display/raw/main/SCRIPT_VALIDATION.md): Information about how the system validates your configuration and scripts.
+*   [**Tile Configuration Guide**](./TILE_CONFIGURATION.md): Detailed reference for all available tile types, properties, and configuration options.
+*   [**Script Validation Guide**](./SCRIPT_VALIDATION.md): Information about how the system validates your configuration and scripts.

@@ -326,7 +326,9 @@ Generates output like: `light|brightness`
 
 ### Dynamic Entity
 
-Reference an entity from the dynamic entity map (populated at runtime). This acts like a variable, and is a key concept in the UI.
+Reference an entity from the runtime dynamic-entity map. A dynamic entity is best thought of as a named variable that stores one or more concrete entity IDs.
+
+Use dynamic entities when the tile logic should stay the same, but the target entity should change based on UI state (selected room, selected light group, active mode, etc.).
 
 ```yaml
 entities:
@@ -334,9 +336,126 @@ entities:
     sensor: brightness
 ```
 
-The dynamic entity is replaced at runtime with the actual selected entity.
+At render/action time, the system resolves `LIGHT` to its current value and then applies `sensor` if present. For the example above, if `LIGHT` currently maps to `light.kitchen`, the resolved value behaves like:
 
-**Note**: A dynamic entity can store multiple entity IDs simultaneously (acting as a vector/group). This allows a single tile to control multiple devices at once. This is typically populated using the `"*"` special value in a `cycle_entity` tile, or by providing a **comma-separated list** of entities (e.g., `light.kitchen, light.living_room`).
+```yaml
+light.kitchen|brightness
+```
+
+Dynamic entities can also hold multiple entity IDs simultaneously (a group/vector behavior), enabling a single tile to control multiple devices at once.
+
+#### How dynamic entities get values
+
+Common ways to populate/update a dynamic entity:
+
+- `toggle_entity` tile: sets a fixed entity (or comma-separated entity list) when tapped.
+- `cycle_entity` tile: rotates through options; supports `"*"` to represent all other options.
+- `move_page.dynamic_entry`: sets a value when entering a destination screen.
+
+#### Where dynamic entities are used
+
+- In `title` / `ha_action` tile `entities` entries (`dynamic_entity: ...`)
+- In `activation_var.dynamic_entity` to conditionally show/hide overlapping/context tiles
+- In `move_page.dynamic_entry.dynamic_entity` to pass context between screens
+
+#### Value formats
+
+- Single entity string: `light.kitchen`
+- Comma-separated entity list: `light.kitchen, light.living_room`
+- Via `cycle_entity` special `"*"`: expands to all non-`"*"` options in that tile
+
+#### Practical examples
+
+Example 1: Room selector + reusable action tile
+
+```yaml
+screens:
+  - id: lights
+    flags: [BASE]
+    tiles:
+      - toggle_entity:
+          x: 0
+          y: 0
+          dynamic_entity: LIGHT
+          entity: light.kitchen
+          presentation_name: Kitchen
+          display: [tile_choose_light]
+
+      - toggle_entity:
+          x: 1
+          y: 0
+          dynamic_entity: LIGHT
+          entity: light.living_room
+          presentation_name: Living Room
+          display: [tile_choose_light]
+
+      - ha_action:
+          x: 0
+          y: 1
+          x_span: 2
+          entities:
+            - dynamic_entity: LIGHT
+              sensor: brightness
+          display: [tile_lights]
+          perform: [action_lights]
+```
+
+Example 2: "All lights" mode with `cycle_entity`
+
+```yaml
+- cycle_entity:
+    x: 0
+    y: 0
+    dynamic_entity: LIGHT
+    display: [tile_cycle_light]
+    options:
+      - entity: "*"
+        label: All
+      - entity: light.kitchen
+        label: Kitchen
+      - entity: light.living_room
+        label: Living Room
+
+- ha_action:
+    x: 1
+    y: 0
+    entities:
+      - dynamic_entity: LIGHT
+    display: [tile_lights]
+    perform: [action_lights]
+```
+
+In the `All` option, `LIGHT` resolves to both `light.kitchen` and `light.living_room`.
+
+Example 3: Pass context when navigating to a detail screen
+
+```yaml
+- move_page:
+    x: 2
+    y: 0
+    destination: room_details
+    display: [tile_settings]
+    dynamic_entry:
+      dynamic_entity: ROOM
+      value: living_room
+
+# On room_details screen
+- title:
+    x: 0
+    y: 0
+    entities:
+      - dynamic_entity: ROOM
+    display: [tile_room_title]
+```
+
+#### Recommendations
+
+- Define each dynamic entity key before first use: initialize it via `toggle_entity` (`initially_chosen: true`), `cycle_entity` (first option), or `move_page.dynamic_entry` before entering screens that consume it.
+- In the Configurator UI, add the key first in the left sidebar **Dynamic Entities** panel; only then will it appear in dynamic-entity dropdown selectors.
+- Treat dynamic entity names (like `LIGHT`, `ROOM`) as stable keys reused across screens.
+- Use upper-case names for dynamic keys to make them visually distinct from real entity IDs.
+- Prefer dynamic entities when multiple tiles should react to the same selection state.
+- If a tile depends on a dynamic entity being available, combine it with `display_page_if_no_entity` (`ha_action`) or set the value through `dynamic_entry` before entering the screen.
 
 ### Mixed List
 
