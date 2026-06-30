@@ -87,7 +87,39 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const [showLog, setShowLog]         = useState(false);
   const [logContent, setLogContent]     = useState('');
-  const [updateBtnState, setUpdateBtnState] = useState<'idle' | 'checking' | 'up_to_date'>('idle');
+  const [updateBtnState, setUpdateBtnState] = useState<'idle' | 'checking' | 'up_to_date' | 'update_available'>('idle');
+
+  useEffect(() => {
+    // Keep local button state in sync with the latest background status while the log is closed.
+    if (!showLog) {
+      setUpdateBtnState(toolchainUpdateAvailable ? 'update_available' : 'idle');
+    }
+  }, [toolchainUpdateAvailable, showLog]);
+
+  useEffect(() => {
+    if (!showLog || toolchainPhase !== 'ready') return;
+    let cancelled = false;
+
+    const checkOnOpen = async () => {
+      setUpdateBtnState('checking');
+      try {
+        const res = await apiFetch('/toolchain/check_update');
+        if (!res.ok) throw new Error('check_update failed');
+        const data: { update_available: boolean } = await res.json();
+        if (!cancelled) {
+          setUpdateBtnState(data.update_available ? 'update_available' : 'up_to_date');
+        }
+      } catch {
+        if (!cancelled) {
+          // Fall back to current background signal if a live check fails.
+          setUpdateBtnState(toolchainUpdateAvailable ? 'update_available' : 'idle');
+        }
+      }
+    };
+
+    checkOnOpen();
+    return () => { cancelled = true; };
+  }, [showLog, toolchainPhase, toolchainUpdateAvailable]);
 
   const handleCheckUpdate = async () => {
     setUpdateBtnState('checking');
@@ -97,7 +129,10 @@ export const TopBar: React.FC<TopBarProps> = ({
         const data = await res.json();
         if (data.status === 'up_to_date') {
           setUpdateBtnState('up_to_date');
-          setTimeout(() => setUpdateBtnState('idle'), 4000);
+          return;
+        }
+        if (data.status === 'already_running' || data.status === 'started') {
+          setUpdateBtnState('idle');
           return;
         }
       }
@@ -226,14 +261,18 @@ export const TopBar: React.FC<TopBarProps> = ({
                         disabled={updateBtnState === 'checking'}
                         className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
                           updateBtnState === 'up_to_date'
-                            ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                            ? 'bg-emerald-100 text-emerald-700'
                             : updateBtnState === 'checking'
                             ? 'bg-slate-100 text-slate-400 cursor-wait'
                             : 'bg-amber-100 hover:bg-amber-200 text-amber-700'
                         }`}
                       >
                         <Download size={13} className={updateBtnState === 'checking' ? 'animate-pulse' : ''} />
-                        {updateBtnState === 'up_to_date' ? 'Up to date' : updateBtnState === 'checking' ? 'Checking...' : 'Update toolchain'}
+                        {updateBtnState === 'up_to_date'
+                          ? 'Up to date'
+                          : updateBtnState === 'checking'
+                          ? 'Checking...'
+                          : 'Update toolchain'}
                       </button>
                     )}
                     <button onClick={() => setShowLog(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
