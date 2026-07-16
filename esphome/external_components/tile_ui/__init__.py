@@ -116,6 +116,7 @@ class _ImageRegistrar:
     _VALID_TYPES = {"BINARY", "GRAYSCALE", "RGB565", "RGB"}
 
     def __init__(self, prefix: str = "tile_ui_images_"):
+        import importlib
         import tempfile
         from esphome.core import ID, CORE as _CORE
         from esphome.const import CONF_ID as _IMAGE_CONF_ID
@@ -123,12 +124,22 @@ class _ImageRegistrar:
             image_ns,
             CONF_ALPHA_CHANNEL, CONF_OPAQUE, CONF_TRANSPARENCY, CONF_INVERT_ALPHA,
         )
-        try:
-            # ESPHome <= 2026.6 kept write_image in image.__init__.
-            from esphome.components.image import write_image
-        except ImportError:
-            # ESPHome >= 2026.7 moved image codegen into platform modules.
-            from esphome.components.image.file import write_image
+        write_image = None
+        for _mod_name in (
+            "esphome.components.image",          # ESPHome <= 2026.6
+            "esphome.components.file.image",     # ESPHome >= 2026.7
+            "esphome.components.image.file",     # transient/alt layouts
+        ):
+            try:
+                _mod = importlib.import_module(_mod_name)
+            except Exception:
+                continue
+            _fn = getattr(_mod, "write_image", None)
+            if _fn is not None:
+                write_image = _fn
+                break
+        if write_image is None:
+            raise ImportError("tile_ui could not locate image write_image() helper in ESPHome")
         from esphome.const import (
             CONF_FILE, CONF_RESIZE, CONF_RAW_DATA_ID, CONF_TYPE, CONF_DITHER,
             CONF_ID as _CONF_ID,
