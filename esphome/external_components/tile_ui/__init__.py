@@ -120,9 +120,15 @@ class _ImageRegistrar:
         from esphome.core import ID, CORE as _CORE
         from esphome.const import CONF_ID as _IMAGE_CONF_ID
         from esphome.components.image import (
-            write_image, image_ns,
+            image_ns,
             CONF_ALPHA_CHANNEL, CONF_OPAQUE, CONF_TRANSPARENCY, CONF_INVERT_ALPHA,
         )
+        try:
+            # ESPHome <= 2026.6 kept write_image in image.__init__.
+            from esphome.components.image import write_image
+        except ImportError:
+            # ESPHome >= 2026.7 moved image codegen into platform modules.
+            from esphome.components.image.file import write_image
         from esphome.const import (
             CONF_FILE, CONF_RESIZE, CONF_RAW_DATA_ID, CONF_TYPE, CONF_DITHER,
             CONF_ID as _CONF_ID,
@@ -190,7 +196,13 @@ class _ImageRegistrar:
         if resize_val is not None:
             entry[self.CONF_RESIZE] = resize_val
         try:
-            prog_arr, w, h, img_type_val, trans_val, _ = await self.write_image(entry)
+            result = await self.write_image(entry)
+            if len(result) == 6:
+                prog_arr, w, h, img_type_val, trans_val, _ = result
+            elif len(result) == 5:
+                prog_arr, w, h, img_type_val, trans_val = result
+            else:
+                raise ValueError(f"unexpected write_image() return length {len(result)}")
             cg.new_Pvariable(img_id_obj, prog_arr, w, h, img_type_val, trans_val)
             return True
         except Exception as _e:
