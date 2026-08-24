@@ -163,7 +163,7 @@ jobs:
           printf '%s\n' "$BODY" > /tmp/changelog.txt
           echo "Changelog: $(wc -c < /tmp/changelog.txt) bytes"
 
-      - name: Analyze with GitHub Models (gpt-4o-mini)
+      - name: Analyze with GitHub Models (gpt-4.1)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ESPHOME_VERSION: ${{ needs.check-version.outputs.esphome_version }}
@@ -205,14 +205,14 @@ jobs:
           )
 
           payload = {
-              "model": "gpt-4o-mini",
+              "model": "openai/gpt-4.1",
               "messages": [{"role": "user", "content": prompt}],
               "max_tokens": 2048,
               "temperature": 0.3,
           }
 
           req = urllib.request.Request(
-              "https://models.inference.ai.azure.com/chat/completions",
+              "https://models.github.ai/inference/chat/completions",
               data=json.dumps(payload).encode(),
               headers={
                   "Content-Type": "application/json",
