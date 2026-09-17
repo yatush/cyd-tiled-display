@@ -202,49 +202,58 @@ jobs:
               f"Be specific and actionable in the compatibility section. If everything looks clean, say so."
           )
 
-          payload = {
-              "model": "openai/gpt-4.1",
-              "messages": [{"role": "user", "content": prompt}],
-              "max_tokens": 2048,
-              "temperature": 0.3,
-          }
-
-          req = urllib.request.Request(
-              "https://models.github.ai/inference/chat/completions",
-              data=json.dumps(payload).encode(),
-              headers={
-                  "Content-Type": "application/json",
-                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-              },
-              method="POST",
-          )
-
           retryable_statuses = {410, 429, 500, 502, 503, 504}
-          retry_delays = [15, 30, 60]
+          retry_delays = [15]
+          models = ["openai/gpt-4.1", "openai/gpt-4o-mini"]
           summary = None
+          errors = []
 
-          for attempt in range(4):
-              try:
-                  with urllib.request.urlopen(req, timeout=60) as resp:
-                      data = json.loads(resp.read().decode())
-                      summary = data["choices"][0]["message"]["content"]
-                  break
-              except urllib.error.HTTPError as e:
-                  error_body = e.read().decode(errors="replace")
-                  summary = f"⚠️ LLM analysis unavailable: HTTP {e.code}: {error_body}"
-                  if e.code not in retryable_statuses or attempt == 3:
+          for model in models:
+              payload = {
+                  "model": model,
+                  "messages": [{"role": "user", "content": prompt}],
+                  "max_tokens": 2048,
+                  "temperature": 0.3,
+              }
+              req = urllib.request.Request(
+                  "https://models.github.ai/inference/chat/completions",
+                  data=json.dumps(payload).encode(),
+                  headers={
+                      "Content-Type": "application/json",
+                      "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                  },
+                  method="POST",
+              )
+
+              for attempt in range(2):
+                  try:
+                      with urllib.request.urlopen(req, timeout=60) as resp:
+                          data = json.loads(resp.read().decode())
+                          summary = data["choices"][0]["message"]["content"]
+                      print(f"GitHub Models succeeded with {model}")
                       break
-                  print(f"GitHub Models returned HTTP {e.code}; retrying in {retry_delays[attempt]}s")
-                  time.sleep(retry_delays[attempt])
-              except urllib.error.URLError as e:
-                  summary = f"⚠️ LLM analysis unavailable: {e}"
-                  if attempt == 3:
+                  except urllib.error.HTTPError as e:
+                      error_body = e.read().decode(errors="replace")
+                      errors.append(f"{model}: HTTP {e.code}: {error_body}")
+                      if e.code not in retryable_statuses or attempt == 1:
+                          break
+                      print(f"{model} returned HTTP {e.code}; retrying in 15s")
+                      time.sleep(retry_delays[attempt])
+                  except urllib.error.URLError as e:
+                      errors.append(f"{model}: {e}")
+                      if attempt == 1:
+                          break
+                      print(f"{model} request failed; retrying in 15s")
+                      time.sleep(retry_delays[attempt])
+                  except Exception as e:
+                      errors.append(f"{model}: {e}")
                       break
-                  print(f"GitHub Models request failed; retrying in {retry_delays[attempt]}s")
-                  time.sleep(retry_delays[attempt])
-              except Exception as e:
-                  summary = f"⚠️ LLM analysis unavailable: {e}"
+
+              if summary is not None:
                   break
+
+          if summary is None:
+              summary = "⚠️ LLM analysis unavailable after model fallback:\n" + "\n".join(errors)
 
           with open("/tmp/llm_summary.txt", "w") as f:
               f.write(summary)
