@@ -45,13 +45,13 @@ globals:
     initial_value: "0"
 
 interval:
-  - interval: 1s
+  - interval: 10s
     then:
       - lambda: |-
           uint32_t current_count = id(ble_adv_counter);
           uint32_t delta = current_count - id(ble_last_counter);
           id(ble_last_counter) = current_count;
-          id(ble_adv_rate) = static_cast<int>(delta * 60);
+          id(ble_adv_rate) = static_cast<int>(delta * 6);
 
           int conns = 0;
           #ifdef USE_BLUETOOTH_PROXY_CONNECTIONS
