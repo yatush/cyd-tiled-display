@@ -17,6 +17,8 @@ packages:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  power_save_mode: LIGHT
+  fast_connect: true
 
 time:
   - platform: homeassistant
