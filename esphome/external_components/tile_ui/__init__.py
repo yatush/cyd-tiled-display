@@ -531,7 +531,15 @@ async def to_code(config):
     
     # Validate the configuration
     try:
-        validate_tiles_config(screens, available_scripts, available_globals)
+        available_images = set(config.get("images", {}).keys())
+        available_screen_images = set(config.get("screen_images", {}).keys())
+        validate_tiles_config(
+            screens,
+            available_scripts,
+            available_globals,
+            available_images=available_images,
+            available_screen_images=available_screen_images,
+        )
     except ValueError as e:
         _print_error("Validation Failed", str(e))
         sys.exit(1)

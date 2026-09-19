@@ -281,13 +281,16 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         try:
             declared_dynamic_entities = config.get("dynamic_entities") or None
             images = config.get("images") or {}
-            available_images = set(images.keys()) if images else None
+            screen_images = config.get("screen_images") or {}
+            available_images = set(images.keys())
+            available_screen_images = set(screen_images.keys())
             validate_tiles_config(
                 screens,
                 available_scripts,
                 available_globals,
                 declared_dynamic_entities,
                 available_images=available_images,
+                available_screen_images=available_screen_images,
             )
         except ValueError as e:
             return {"error": str(e), "type": "validation_error"}

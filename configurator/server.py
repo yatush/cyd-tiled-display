@@ -1812,15 +1812,30 @@ def cleanup_compile():
     return jsonify({'status': 'ok', 'cleaned': cleaned, 'errors': errors})
 
 
+def _find_build_dir(device_name):
+    """Find the directory containing compiled firmware binaries for a device.
+
+    ESP-IDF puts binaries in .esphome/build/<device>/build/
+    PlatformIO/Arduino puts binaries in .esphome/build/<device>/.pioenvs/<device>/
+    """
+    candidates = [
+        os.path.join(BASE_DIR, '.esphome', 'build', device_name, 'build'),
+        os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name),
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return None
+
+
 @app.route('/api/esphome/firmware/<device_name>/manifest.json')
 def get_firmware_manifest(device_name):
     """Return a manifest for flashing via esptool-js (ESP Web Tools compatible)."""
     if '..' in device_name:
         return jsonify({'error': 'Invalid device name'}), 400
 
-    build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name)
-
-    if not os.path.isdir(build_dir):
+    build_dir = _find_build_dir(device_name)
+    if not build_dir:
         return jsonify({'error': f'Build output not found for {device_name}. Compile first.'}), 404
 
     # Check for factory image (esp-idf, single image that includes bootloader+partitions+app)
@@ -1865,9 +1880,11 @@ def get_firmware_file(device_name, filename):
     if not filename.endswith('.bin'):
         return jsonify({'error': 'Invalid file type'}), 400
 
-    build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name)
-    filepath = os.path.join(build_dir, filename)
+    build_dir = _find_build_dir(device_name)
+    if not build_dir:
+        return jsonify({'error': f'Build output not found for {device_name}. Compile first.'}), 404
 
+    filepath = os.path.join(build_dir, filename)
     if not os.path.exists(filepath):
         return jsonify({'error': f'File not found: {filename}'}), 404
 

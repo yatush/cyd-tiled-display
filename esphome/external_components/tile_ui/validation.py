@@ -33,6 +33,7 @@ def validate_tiles_config(
     available_globals: set | None = None,
     declared_dynamic_entities: list[str] | None = None,
     available_images: set | None = None,
+    available_screen_images: set | None = None,
 ) -> None:
     """Validate the complete tiles configuration.
     
@@ -263,11 +264,15 @@ def validate_tiles_config(
     if available_images is not None:
         _validate_image_references(screens, available_images)
 
+    # Validate all screen background image references point to known screen image IDs
+    if available_screen_images is not None:
+        _validate_screen_image_references(screens, available_screen_images)
+
 
 def _validate_image_references(screens: list[dict], available_images: set) -> None:
-    """Validate that every image reference in every tile's display_assets list exists in
-    the global images store.  Icon entries (with 'icon' key) are skipped since
-    they do not reference the image store.
+    """Validate that every image reference in every tile's display_assets list (including animation
+    steps and legacy 'image' field) exists in the global images store. Icon entries (with 'icon' key)
+    are skipped since they do not reference the image store.
     """
     for screen in screens:
         screen_id = screen.get("id", "")
@@ -276,20 +281,63 @@ def _validate_image_references(screens: list[dict], available_images: set) -> No
             config = tile[tile_type]
             x = config.get("x", 0)
             y = config.get("y", 0)
+
+            # Check legacy image field if present
+            legacy_img = config.get("image")
+            if legacy_img and legacy_img != 'none' and legacy_img not in available_images:
+                available_list = ", ".join(sorted(available_images)) if available_images else "(none)"
+                raise ValueError(
+                    f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                    f"image '{legacy_img}' is not defined in the images store. "
+                    f"Available images: {available_list}"
+                )
+
             for entry in (config.get("display_assets") or []):
                 if not isinstance(entry, dict):
                     continue
                 # Skip icon entries — they don't reference image store IDs
                 if entry.get("icon"):
-                    continue
-                img_id = entry.get("image", "")
-                if img_id and img_id != 'none' and img_id not in available_images:
-                    available_list = ", ".join(sorted(available_images)) if available_images else "(none)"
-                    raise ValueError(
-                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
-                        f"image '{img_id}' is not defined in the images store. "
-                        f"Available images: {available_list}"
-                    )
+                    pass
+                else:
+                    img_id = entry.get("image", "")
+                    if img_id and img_id != 'none' and img_id not in available_images:
+                        available_list = ", ".join(sorted(available_images)) if available_images else "(none)"
+                        raise ValueError(
+                            f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                            f"image '{img_id}' is not defined in the images store. "
+                            f"Available images: {available_list}"
+                        )
+
+                # Check animation steps if any step overrides or provides 'image'
+                anim = entry.get("animation")
+                if isinstance(anim, dict):
+                    for step_idx, step in enumerate(anim.get("steps") or []):
+                        if isinstance(step, dict):
+                            step_img = step.get("image")
+                            if step_img and step_img != 'none' and step_img not in available_images:
+                                available_list = ", ".join(sorted(available_images)) if available_images else "(none)"
+                                raise ValueError(
+                                    f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                                    f"animation step {step_idx} image '{step_img}' is not defined in the images store. "
+                                    f"Available images: {available_list}"
+                                )
+
+
+def _validate_screen_image_references(screens: list[dict], available_screen_images: set) -> None:
+    """Validate that every image reference in screen background entries exists in screen_images."""
+    for screen in screens:
+        screen_id = screen.get("id", "")
+        for bg_idx, entry in enumerate(screen.get("background") or []):
+            if not isinstance(entry, dict):
+                continue
+            img_id = entry.get("image", "")
+            if img_id and img_id != 'none' and img_id not in available_screen_images:
+                available_list = ", ".join(sorted(available_screen_images)) if available_screen_images else "(none)"
+                raise ValueError(
+                    f"Screen '{screen_id}', background entry {bg_idx}: "
+                    f"image '{img_id}' is not defined in screen_images. "
+                    f"Available screen images: {available_list}"
+                )
 
 
 def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[str]) -> None:

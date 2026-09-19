@@ -338,6 +338,80 @@ class TestValidationImageReferences(unittest.TestCase):
         # Passing available_images=None means the check is skipped entirely
         validate_tiles_config(self._screen_with_image("any_image"), available_images=None)
 
+    def test_legacy_tile_image_validated(self):
+        screen = [{
+            "id": "main", "flags": ["BASE"],
+            "tiles": [{"ha_action": {
+                "x": 0, "y": 0,
+                "display": ["d"],
+                "image": "legacy_img",
+                "perform": ["p"], "entities": ["e"],
+            }}],
+        }]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(screen, available_images={"other_img"})
+        self.assertIn("legacy_img", str(cm.exception))
+
+    def test_animation_step_image_validated(self):
+        screen = [{
+            "id": "main", "flags": ["BASE"],
+            "tiles": [{"ha_action": {
+                "x": 0, "y": 0,
+                "display_assets": [{
+                    "image": "my_img",
+                    "animation": {
+                        "steps": [
+                            {"from": [0, 0], "to": [1, 1], "duration": 1, "image": "missing_step_img"}
+                        ]
+                    }
+                }],
+                "perform": ["p"], "entities": ["e"],
+            }}],
+        }]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(screen, available_images={"my_img"})
+        self.assertIn("missing_step_img", str(cm.exception))
+        self.assertIn("animation step 0", str(cm.exception))
+
+    def test_screen_background_image_known_passes(self):
+        screen = [{
+            "id": "main", "flags": ["BASE"],
+            "background": [{"image": "bg_img"}],
+            "tiles": [{"ha_action": {
+                "x": 0, "y": 0,
+                "display": ["d"],
+                "perform": ["p"], "entities": ["e"],
+            }}],
+        }]
+        validate_tiles_config(screen, available_screen_images={"bg_img"})
+
+    def test_screen_background_image_missing_raises(self):
+        screen = [{
+            "id": "main", "flags": ["BASE"],
+            "background": [{"image": "missing_bg_img"}],
+            "tiles": [{"ha_action": {
+                "x": 0, "y": 0,
+                "display": ["d"],
+                "perform": ["p"], "entities": ["e"],
+            }}],
+        }]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(screen, available_screen_images=set())
+        self.assertIn("missing_bg_img", str(cm.exception))
+        self.assertIn("not defined in screen_images", str(cm.exception))
+
+    def test_screen_background_image_none_skipped(self):
+        screen = [{
+            "id": "main", "flags": ["BASE"],
+            "background": [{"image": "none"}],
+            "tiles": [{"ha_action": {
+                "x": 0, "y": 0,
+                "display": ["d"],
+                "perform": ["p"], "entities": ["e"],
+            }}],
+        }]
+        validate_tiles_config(screen, available_screen_images=set())
+
 
 class TestValidationDynamicEntityReferences(unittest.TestCase):
     """Tests for declared_dynamic_entities validation."""
