@@ -114,42 +114,33 @@ script:
 
           if (!is_on) {
             std::string icon = "\U0000e1a9";
-            auto icon_size = measure(id(medium), icon.c_str());
-            auto text_size = measure(id(text_bold), "OFF");
-            int icon_y = y_mid - text_size.second / 2;
-            int text_y = y_mid + icon_size.second / 2;
-
-            print(x_mid, icon_y, id(medium), id(dark_gray), TextAlign::CENTER, icon.c_str());
-            print(x_mid, text_y, id(text_bold), id(dark_gray), TextAlign::CENTER, "OFF");
+            print(x_mid, y_mid, id(medium), id(dark_dark_gray), TextAlign::CENTER, icon.c_str());
+            auto ts = measure(id(text_bold), "OFF");
+            filled_rectangle(x_mid - ts.first / 2 - 3, y_mid - ts.second / 2 - 1, ts.first + 6, ts.second + 2, Color::BLACK);
+            print(x_mid, y_mid, id(text_bold), id(gray), TextAlign::CENTER, "OFF");
           } else {
             int conns = id(ble_connected_count);
             int rate = id(ble_adv_rate);
 
             if (conns > 0) {
               std::string icon = "\U0000e1a8";
-              auto icon_size = measure(id(medium), icon.c_str());
               char buf[32];
               snprintf(buf, sizeof(buf), "%d conn", conns);
-              auto text_size = measure(id(text_bold), buf);
-              int icon_y = y_mid - text_size.second / 2;
-              int text_y = y_mid + icon_size.second / 2;
-
-              print(x_mid, icon_y, id(medium), id(light_green), TextAlign::CENTER, icon.c_str());
-              print(x_mid, text_y, id(text_bold), id(light_green), TextAlign::CENTER, buf);
+              print(x_mid, y_mid, id(medium), id(light_blue), TextAlign::CENTER, icon.c_str());
+              auto ts = measure(id(text_bold), buf);
+              filled_rectangle(x_mid - ts.first / 2 - 3, y_mid - ts.second / 2 - 1, ts.first + 6, ts.second + 2, Color::BLACK);
+              print(x_mid, y_mid, id(text_bold), id(light_green), TextAlign::CENTER, buf);
             } else {
               std::string icon = "\U0000e1a7";
-              auto icon_size = measure(id(medium), icon.c_str());
               char buf[32];
               if (rate > 0) {
                 snprintf(buf, sizeof(buf), "%d/m", rate);
               } else {
                 snprintf(buf, sizeof(buf), "Active");
               }
-              auto text_size = measure(id(text_bold), buf);
-              int icon_y = y_mid - text_size.second / 2;
-              int text_y = y_mid + icon_size.second / 2;
-
-              print(x_mid, icon_y, id(medium), id(light_blue), TextAlign::CENTER, icon.c_str());
-              print(x_mid, text_y, id(text_bold), id(light_blue), TextAlign::CENTER, buf);
+              print(x_mid, y_mid, id(medium), id(light_blue), TextAlign::CENTER, icon.c_str());
+              auto ts = measure(id(text_bold), buf);
+              filled_rectangle(x_mid - ts.first / 2 - 3, y_mid - ts.second / 2 - 1, ts.first + 6, ts.second + 2, Color::BLACK);
+              print(x_mid, y_mid, id(text_bold), Color::WHITE, TextAlign::CENTER, buf);
             }
           }

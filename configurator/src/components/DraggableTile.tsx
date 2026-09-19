@@ -247,9 +247,9 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
                     if (typeof first === 'string') {
                       if (first === 'tile_ble_proxy') {
                         return (
-                          <div className="flex flex-col items-center justify-center">
-                            <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '24px', lineHeight: 1 }}>{'\ue1a7'}</span>
-                            <span className="text-[8px] font-bold mt-0.5">BLE Proxy</span>
+                          <div className="relative flex items-center justify-center my-auto">
+                            <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '32px', lineHeight: 1 }} className="text-blue-500 opacity-60">{'\ue1a7'}</span>
+                            <span className="absolute text-[8px] font-bold bg-white/90 px-1 rounded shadow-sm">BLE</span>
                           </div>
                         );
                       }
