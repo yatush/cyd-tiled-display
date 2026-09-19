@@ -18,7 +18,8 @@ import {
   Square,
   Wrench,
   X,
-  ChevronDown
+  ChevronDown,
+  AlertTriangle
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
 import { apiFetch } from '../utils/api';
@@ -51,6 +52,8 @@ interface TopBarProps {
   toolchainUpdateAvailable?: boolean;
   /** Local installed build ID (e.g. "2026.3.1-20260327-run45") */
   toolchainBuildId?: string;
+  /** Warning message if ESPHome auto-upgrade failed */
+  toolchainWarning?: string | null;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -77,6 +80,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenInstall,
   toolchainUpdateAvailable,
   toolchainBuildId,
+  toolchainWarning,
 }) => {
   const UPGRADING_PHASES = ['downloading', 'extracting', 'fixing', 'warming'];
   const isToolchainUpgrading = toolchainPhase != null && UPGRADING_PHASES.includes(toolchainPhase);
@@ -209,6 +213,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
                 isToolchainUpgrading
                   ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                  : toolchainWarning
+                  ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
                   : toolchainUpdateAvailable
                   ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
                   : toolchainPhase === 'ready'
@@ -217,12 +223,24 @@ export const TopBar: React.FC<TopBarProps> = ({
                   ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
                   : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
               }`}
-              title={toolchainUpdateAvailable && !isToolchainUpgrading ? 'Toolchain update downloading...' : 'Click to view toolchain log'}
+              title={
+                toolchainWarning
+                  ? `ESPHome upgrade notice: ${toolchainWarning}`
+                  : toolchainUpdateAvailable && !isToolchainUpgrading
+                  ? 'Toolchain update downloading...'
+                  : 'Click to view toolchain log'
+              }
             >
-              <Wrench size={13} className={isToolchainUpgrading || toolchainPhase === 'building' ? 'animate-pulse' : ''} />
+              {toolchainWarning ? (
+                <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
+              ) : (
+                <Wrench size={13} className={isToolchainUpgrading || toolchainPhase === 'building' ? 'animate-pulse' : ''} />
+              )}
               <span className="hidden sm:inline">
                 {isToolchainUpgrading
                   ? (toolchainPhase === 'warming' ? 'Warming cache' : 'Updating toolchain')
+                  : toolchainWarning
+                  ? 'Upgrade notice'
                   : toolchainUpdateAvailable
                   ? 'Update available'
                   : toolchainPhase === 'ready'
@@ -280,6 +298,15 @@ export const TopBar: React.FC<TopBarProps> = ({
                     </button>
                   </div>
                 </div>
+                {toolchainWarning && (
+                  <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 text-xs flex items-start gap-2 flex-shrink-0">
+                    <AlertTriangle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">ESPHome Upgrade Notice: </span>
+                      <span>{toolchainWarning}</span>
+                    </div>
+                  </div>
+                )}
                 <div className="flex-1 overflow-y-auto bg-slate-900 rounded-b-xl p-3">
                   <pre className="text-green-400 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all">
                     {logContent || 'No log output yet — toolchain_setup.py has not written anything.'}

@@ -36,6 +36,7 @@ function App() {
   const [toolchainMessage, setToolchainMessage]         = useState('');
   const [toolchainUpdateAvailable, setToolchainUpdateAvailable] = useState(false);
   const [toolchainBuildId, setToolchainBuildId]         = useState<string | null>(null);
+  const [toolchainWarning, setToolchainWarning]         = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,12 +45,17 @@ function App() {
         try {
           const res = await apiFetch('/toolchain/status');
           if (res.ok) {
-            const data: { phase: string; progress: number; message: string; build_id?: string } = await res.json();
+            const data: { phase: string; progress: number; message: string; build_id?: string; upgrade_warning?: { reason: string } } = await res.json();
             if (!cancelled) {
               setToolchainPhase(data.phase);
               setToolchainProgress(data.progress ?? 0);
               setToolchainMessage(data.message ?? '');
               if (data.build_id) setToolchainBuildId(data.build_id);
+              if (data.upgrade_warning?.reason) {
+                setToolchainWarning(data.upgrade_warning.reason);
+              } else {
+                setToolchainWarning(null);
+              }
               // Clear update badge while an upgrade is actively running
               if (['downloading','extracting','fixing','warming'].includes(data.phase)) {
                 setToolchainUpdateAvailable(false);
@@ -479,6 +485,7 @@ function App() {
         toolchainMessage={toolchainMessage}
         toolchainUpdateAvailable={toolchainUpdateAvailable}
         toolchainBuildId={toolchainBuildId ?? undefined}
+        toolchainWarning={toolchainWarning}
         onOpenInstall={() => setIsInstallDeviceOpen(true)}
       />
 

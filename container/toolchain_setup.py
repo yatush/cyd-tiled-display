@@ -53,6 +53,43 @@ BUILD_ID_FILE       = f'{PIO_DIR}/.cyd_toolchain_build_id'
 # addon update; this file lives in the persistent /data/.platformio volume.
 PIP_VER_FILE        = f'{PIO_DIR}/.cyd_esphome_pip_version'
 
+UPGRADE_WARNING_FILE = f'{PIO_DIR}/.cyd_upgrade_warning.json'
+UPGRADE_WARNING_TMP  = '/tmp/cyd_upgrade_warning.json'
+
+def get_upgrade_warning() -> dict | None:
+    for path in (UPGRADE_WARNING_TMP, UPGRADE_WARNING_FILE):
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+    return None
+
+def set_upgrade_warning(target_version: str, reason: str, details: str = '') -> None:
+    data = {
+        'installed_version': get_expected_version(),
+        'target_version': target_version,
+        'reason': reason,
+        'details': details,
+        'timestamp': time.time(),
+    }
+    for path in (UPGRADE_WARNING_FILE, UPGRADE_WARNING_TMP):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump(data, f)
+        except OSError:
+            pass
+
+def clear_upgrade_warning() -> None:
+    for path in (UPGRADE_WARNING_FILE, UPGRADE_WARNING_TMP):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
+
 # Cache-warming paths (emulator pre-compile)
 _SCRIPT_DIR         = os.path.dirname(os.path.abspath(__file__))
 # Stored inside PIO_DIR so it survives HA addon updates via the
@@ -89,6 +126,9 @@ def write_progress(phase: str, progress: int, message: str,
         'esphome_version': esphome_version,
         'build_id':        build_id,
     }
+    warn = get_upgrade_warning()
+    if warn:
+        data['upgrade_warning'] = warn
     if error:
         data['error'] = error
     tmp = PROGRESS_FILE + '.tmp'
@@ -222,7 +262,7 @@ def maybe_upgrade_esphome() -> None:
         except ValueError:
             return (0,)
 
-    def _install_version(ver: str) -> bool:
+    def _install_version(ver: str) -> tuple[bool, str]:
         try:
             # Use sys.executable -m pip to avoid relying on pip3/pip being in PATH.
             # In Alpine-based HA addon containers pip3 may not exist.
@@ -232,9 +272,15 @@ def maybe_upgrade_esphome() -> None:
             # Use a two-step install to avoid leaving esphome uninstalled if the
             # new version fails mid-way (--force-reinstall removes the old copy
             # before installing the new one, so a failure leaves nothing behind).
-            subprocess.run([*pip_cmd, 'install', '--no-cache-dir',
-                            f'esphome=={ver}'],
-                           check=True, timeout=300)
+            res = subprocess.run(
+                [*pip_cmd, 'install', '--no-cache-dir', f'esphome=={ver}'],
+                capture_output=True, text=True, timeout=300
+            )
+            if res.returncode != 0:
+                err_output = (res.stderr or res.stdout or '').strip()
+                log(f'ESPHome install of {ver} failed (code {res.returncode}): {err_output[:300]}')
+                return False, err_output
+
             # Clear stale .pyc bytecode left by the previous version.  Without
             # this, Python sometimes loads .pyc files from the old install
             # (missing source → "(unknown location)") causing ImportError /
@@ -253,10 +299,11 @@ def maybe_upgrade_esphome() -> None:
                     f.write(ver)
             except OSError:
                 pass
-            return True
+            clear_upgrade_warning()
+            return True, ''
         except Exception as e:
             log(f'ESPHome install of {ver} failed: {e}.')
-            return False
+            return False, str(e)
 
     def _fetch_all_versions() -> list[str]:
         req = urllib.request.Request(
@@ -284,7 +331,8 @@ def maybe_upgrade_esphome() -> None:
             log('No known-good ESPHome version found. Keeping broken install.')
             return
         log(f'Downgrading ESPHome {installed} → {fallback}...')
-        if _install_version(fallback):
+        downgraded, _ = _install_version(fallback)
+        if downgraded:
             log(f'ESPHome downgraded to {fallback}.')
         return
 
@@ -302,22 +350,36 @@ def maybe_upgrade_esphome() -> None:
 
     if latest == installed:
         log(f'ESPHome {installed} is up-to-date.')
+        clear_upgrade_warning()
         return
 
     # Check the compat-check CI result before upgrading.
     # If the check FAILED (prerelease=true) or hasn't run yet (None), skip.
     compat = _check_compat_status(latest)
     if compat == 'FAILED':
-        log(f'ESPHome {latest} failed compatibility check — skipping upgrade.')
+        reason = (f'ESPHome {latest} is available on PyPI but failed automated compatibility testing for CYD displays. '
+                  f'Continuing with verified version {installed}.')
+        log(reason)
+        set_upgrade_warning(latest, reason)
         return
     if compat is None:
         log(f'ESPHome {latest} not yet compatibility-checked — skipping upgrade until check completes.')
         return
 
     log(f'ESPHome upgrade available: {installed} → {latest} (compat: {compat}). Upgrading...')
-    if _install_version(latest):
+    success, err_details = _install_version(latest)
+    if success:
         log(f'ESPHome upgraded to {latest}.')
+        clear_upgrade_warning()
     else:
+        if 'Requires-Python' in err_details:
+            reason = (f'ESPHome {latest} requires a newer Python/OS environment than installed in this container '
+                      f'(running Python {sys.version.split()[0]}). Please update the CYD Configurator add-on in Home Assistant.')
+        else:
+            reason = (f'ESPHome auto-upgrade to {latest} failed. '
+                      f'Please update the CYD Configurator add-on in Home Assistant.')
+        set_upgrade_warning(latest, reason, err_details)
+        log(f'ESPHome upgrade failed: {reason}')
         log(f'ESPHome upgrade failed. Keeping {installed}.')
 
 

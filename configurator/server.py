@@ -1258,6 +1258,29 @@ def get_ha_timezone_endpoint():
     return jsonify({'timezone': tz})
 
 
+def _get_esphome_upgrade_notice_lines():
+    """Return warning lines to prepend to build/install logs if ESPHome auto-upgrade failed."""
+    for warn_file in ('/tmp/cyd_upgrade_warning.json', '/root/.platformio/.cyd_upgrade_warning.json'):
+        if os.path.exists(warn_file):
+            try:
+                with open(warn_file) as f:
+                    data = json.load(f)
+                reason = data.get('reason')
+                installed = data.get('installed_version')
+                target = data.get('target_version')
+                if reason:
+                    return [
+                        "=" * 70,
+                        f"WARNING: ESPHome is running version {installed} (newer {target} available).",
+                        f"         {reason}",
+                        "=" * 70,
+                        ""
+                    ]
+            except Exception:
+                pass
+    return []
+
+
 @app.route('/api/esphome/install', methods=['POST'])
 def install_esphome_device():
     """Start compiling and installing a device config via OTA. Returns immediately; poll /api/esphome/install/status for progress."""
@@ -1350,7 +1373,7 @@ def install_esphome_device():
 
         install_state = {
             'process': process,
-            'lines': [],
+            'lines': _get_esphome_upgrade_notice_lines(),
             'status': 'running',      # running | success | error
             'message': f'Starting install of {filename}...',
             'line_offset': 0,          # not used server-side, just tracks total
@@ -1634,7 +1657,7 @@ def compile_esphome_device():
 
         compile_state = {
             'process': process,
-            'lines': [],
+            'lines': _get_esphome_upgrade_notice_lines(),
             'status': 'running',
             'message': f'Compiling {filename}...',
             'device_name': device_name,
@@ -1864,17 +1887,33 @@ def toolchain_status():
     Falls back to ready if the legacy .cyd_setup_done marker is present.
     """
     progress_file = '/tmp/toolchain_setup_progress.json'
+    upgrade_warning = None
+    for warn_file in ('/tmp/cyd_upgrade_warning.json', '/root/.platformio/.cyd_upgrade_warning.json'):
+        if os.path.exists(warn_file):
+            try:
+                with open(warn_file) as f:
+                    upgrade_warning = json.load(f)
+                break
+            except Exception:
+                pass
+
     if os.path.exists(progress_file):
         try:
             with open(progress_file) as f:
-                return jsonify(json.load(f))
+                data = json.load(f)
+                if upgrade_warning and 'upgrade_warning' not in data:
+                    data['upgrade_warning'] = upgrade_warning
+                return jsonify(data)
         except (json.JSONDecodeError, OSError):
             pass
 
     # Legacy: baked-in toolchain (BAKE_TOOLCHAIN=1) or already-set-up volume
     if os.path.exists('/root/.platformio/.cyd_setup_done'):
-        return jsonify({'phase': 'ready', 'progress': 100,
-                        'message': 'Toolchain ready.', 'fallback': False})
+        res = {'phase': 'ready', 'progress': 100,
+               'message': 'Toolchain ready.', 'fallback': False}
+        if upgrade_warning:
+            res['upgrade_warning'] = upgrade_warning
+        return jsonify(res)
 
     # No progress file and no marker — check if the script is still running.
     # Cache the pgrep result for 5 s so rapid polls don't spawn a new process.
