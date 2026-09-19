@@ -256,6 +256,24 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
                         except Exception:
                             pass
 
+                    # Merge ble_proxy.yaml — check user_lib_dir first (addon mode), then lib_path.parent
+                    _ble_candidates = []
+                    if user_lib_dir:
+                        _ble_candidates.append(Path(user_lib_dir) / 'ble_proxy.yaml')
+                    if lib_path.parent not in [Path(c).parent for c in _ble_candidates]:
+                        _ble_candidates.append(lib_path.parent / 'ble_proxy.yaml')
+                    ble_proxy_path = next((p for p in _ble_candidates if p.exists()), None)
+                    if ble_proxy_path:
+                        try:
+                            with open(ble_proxy_path, 'r') as f_ble:
+                                ble_doc = yaml.load(f_ble, Loader=SafeLoaderIgnoreUnknown) or {}
+                            for key in ['script', 'globals']:
+                                if key in ble_doc and isinstance(ble_doc[key], list):
+                                    lib_doc.setdefault(key, [])
+                                    lib_doc[key].extend(ble_doc[key])
+                        except Exception:
+                            pass
+
                     available_scripts = collect_available_scripts(lib_doc)
                     available_globals = collect_available_globals(lib_doc)
 

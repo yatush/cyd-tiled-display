@@ -2460,6 +2460,22 @@ def get_scripts():
             except Exception as e:
                 print(f"Error loading custom lib: {e}")
 
+        # Load ble_proxy lib from SAME directory if it exists
+        ble_proxy_path = os.path.join(source_dir, 'ble_proxy.yaml')
+        if os.path.exists(ble_proxy_path):
+            try:
+                with open(ble_proxy_path, 'r') as f:
+                    ble_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+                    
+                    # Merge lists from ble_proxy lib into main doc
+                    for key in ['script', 'color', 'globals']:
+                        if key in ble_doc and isinstance(ble_doc[key], list):
+                            if key not in doc:
+                                doc[key] = []
+                            doc[key].extend(ble_doc[key])
+            except Exception as e:
+                print(f"Error loading ble_proxy lib: {e}")
+
         scripts = doc.get('script', [])
         
         # Standard colors — Color(r, g, b) in RGB order, value is the matching CSS hex

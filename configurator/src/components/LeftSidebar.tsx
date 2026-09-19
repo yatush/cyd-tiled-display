@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Upload, ImageIcon, Copy, Home } from 'lucide-react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Upload, ImageIcon, Copy, Home, Bluetooth } from 'lucide-react';
 import { Config, Tile, ImageEntry, ScreenImageEntry } from '../types';
 import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange } from '../utils/tileUtils';
@@ -25,7 +25,7 @@ interface LeftSidebarProps {
   isAddTileOpen: boolean;
   setIsAddTileOpen: (open: boolean) => void;
   schema: any;
-  handleAddTile: (type: string) => void;
+  handleAddTile: (type: string, initialProps?: Partial<Tile>) => void;
   handleDuplicateTile: (id: string) => void;
   isPagesOpen: boolean;
   setIsPagesOpen: (open: boolean) => void;
@@ -221,6 +221,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                               {t.label}
                           </button>
                       ))}
+                      <button
+                          onClick={() => handleAddTile('function', {
+                              display: ['tile_ble_proxy'],
+                              on_press: 'action_toggle_ble_proxy'
+                          })}
+                          className="col-span-2 p-2 h-10 flex items-center justify-center gap-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-center transition-colors shadow-sm"
+                      >
+                          <Bluetooth size={14} /> BLE Proxy Tile
+                      </button>
                   </div>
               </div>
           )}

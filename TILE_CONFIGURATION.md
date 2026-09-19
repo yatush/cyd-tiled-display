@@ -225,6 +225,20 @@ Calls a script/function when pressed.
 
 > **Note**: At least one of `on_press` or `on_release` must be specified.
 
+#### Example: Bluetooth Proxy Control & Status Tile
+The BLE Proxy tile toggles the on-board Bluetooth repeater on/off with state persistence across power outages, and live displays active connection count and packet rates:
+
+```yaml
+- function:
+    x: 0
+    y: 1
+    display:
+      - tile_ble_proxy
+    on_press: action_toggle_ble_proxy
+```
+
+When this tile is included in your configuration, the BLE proxy package (`lib/ble_proxy.yaml`) is automatically compiled into the device firmware. When omitted, no Bluetooth code or RAM buffers are included.
+
 ### 5. Toggle Entity Tile (Entity Selection)
 
 Allows user to set the value of a dynamic_entity to an entity when tapping the tile. The tile automatically sets to be selected/not-selected according to the dynamic_entity value.

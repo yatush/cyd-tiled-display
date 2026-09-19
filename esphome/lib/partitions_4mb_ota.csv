@@ -1,0 +1,8 @@
+# ESP32 4MB Flash Partition Table - Optimized for Dual-OTA with BLE
+# Total flash: 0x400000 (4,194,304 bytes = 4MB)
+# Name,     Type, SubType, Offset,   Size,     Flags
+nvs,        data, nvs,     0x9000,   0x14000,
+otadata,    data, ota,     0x1D000,  0x2000,
+phy_init,   data, phy,     0x1F000,  0x1000,
+app0,       app,  ota_0,   0x20000,  0x1F0000,
+app1,       app,  ota_1,   0x210000, 0x1F0000,

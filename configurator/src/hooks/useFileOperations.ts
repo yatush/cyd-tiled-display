@@ -244,6 +244,20 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
 `;
 
       const screensYaml = generateYaml(config, false, false);
+
+      // Check if any tile in the config uses the BLE proxy display script or action
+      const hasBleProxy = config.pages?.some(page =>
+        page.tiles?.some(tile => {
+          const displayList = Array.isArray(tile.display) ? tile.display : (tile.display ? [tile.display] : []);
+          const hasBleDisplay = displayList.some((d: any) => 
+            d === 'tile_ble_proxy' || (typeof d === 'object' && d !== null && 'tile_ble_proxy' in d)
+          );
+          const hasBleAction = tile.on_press === 'action_toggle_ble_proxy' || tile.on_release === 'action_toggle_ble_proxy';
+          return hasBleDisplay || hasBleAction;
+        })
+      ) || false;
+
+      const blePackageSection = hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : '';
       
       const fullYaml = `substitutions:
   device_name: "${deviceName}"
@@ -251,7 +265,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
 
 packages:
   device_base: !include lib/${screenType}_base.yaml
-  lib: !include lib/lib.yaml
+  lib: !include lib/lib.yaml${blePackageSection}
 
 esphome:
   name: $device_name

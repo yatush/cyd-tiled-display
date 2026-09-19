@@ -5,6 +5,7 @@ substitutions:
 packages:
   device_base: !include lib/3248s035_base.yaml
   lib: !include lib/lib.yaml
+  ble_proxy: !include lib/ble_proxy.yaml
 
 esphome:
   name: $device_name
@@ -328,6 +329,12 @@ tile_ui:
                   size: id(big)
             on_press: action_power
             x: 1
+            y: 1
+        - function:
+            display:
+              - tile_ble_proxy
+            on_press: action_toggle_ble_proxy
+            x: 2
             y: 1
     - id: light_settings
       rows: 2

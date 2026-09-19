@@ -1,0 +1,149 @@
+# ble_proxy.yaml — Modular Bluetooth Proxy with Persistent On/Off Control and Activity Tracking
+# Automatically included in packages when the device configuration contains the BLE Proxy tile.
+
+esp32:
+  partitions: lib/partitions_4mb_ota.csv
+
+esp32_ble_tracker:
+  id: ble_tracker
+  scan_parameters:
+    interval: 1100ms
+    window: 300ms
+    active: true
+    continuous: true
+  on_ble_advertise:
+    then:
+      - lambda: |-
+          id(ble_adv_counter)++;
+
+bluetooth_proxy:
+  id: ble_proxy_hub
+  active: true
+  connections:
+    - id: ble_conn_0
+    - id: ble_conn_1
+    - id: ble_conn_2
+
+globals:
+  # Raw counter for incoming advertisement packets
+  - id: ble_adv_counter
+    type: uint32_t
+    initial_value: "0"
+  # Calculated packets per minute
+  - id: ble_adv_rate
+    type: int
+    initial_value: "0"
+  # Previous counter reading for rate calculation
+  - id: ble_last_counter
+    type: uint32_t
+    initial_value: "0"
+  # Number of currently active connections
+  - id: ble_connected_count
+    type: int
+    initial_value: "0"
+
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          uint32_t current_count = id(ble_adv_counter);
+          uint32_t delta = current_count - id(ble_last_counter);
+          id(ble_last_counter) = current_count;
+          id(ble_adv_rate) = static_cast<int>(delta * 12);
+
+          int conns = 0;
+          #ifdef USE_BLUETOOTH_PROXY_CONNECTIONS
+          if (id(ble_conn_0).connected()) conns++;
+          if (id(ble_conn_1).connected()) conns++;
+          if (id(ble_conn_2).connected()) conns++;
+          #endif
+          id(ble_connected_count) = conns;
+
+switch:
+  - platform: template
+    name: "BLE Proxy Switch"
+    id: ble_proxy_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - esp32_ble_tracker.start_scan:
+          continuous: true
+    turn_off_action:
+      - esp32_ble_tracker.stop_scan:
+      - lambda: |-
+          id(ble_adv_rate) = 0;
+          id(ble_connected_count) = 0;
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - if:
+          condition:
+            not:
+              switch.is_on: ble_proxy_switch
+          then:
+            - esp32_ble_tracker.stop_scan:
+
+script:
+  # Action to toggle BLE proxy on/off from UI
+  - id: action_toggle_ble_proxy
+    then:
+      - switch.toggle: ble_proxy_switch
+      - lambda: |-
+          id(disp).update();
+
+  # Display script for the BLE Proxy tile
+  - id: tile_ble_proxy
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+    then:
+      - lambda: |-
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          bool is_on = id(ble_proxy_switch).state;
+
+          if (!is_on) {
+            std::string icon = "\U0000e1a9";
+            auto icon_size = measure(id(medium), icon.c_str());
+            auto text_size = measure(id(text_bold), "OFF");
+            int icon_y = y_mid - text_size.second / 2;
+            int text_y = y_mid + icon_size.second / 2;
+
+            print(x_mid, icon_y, id(medium), id(dark_gray), TextAlign::CENTER, icon.c_str());
+            print(x_mid, text_y, id(text_bold), id(dark_gray), TextAlign::CENTER, "OFF");
+          } else {
+            int conns = id(ble_connected_count);
+            int rate = id(ble_adv_rate);
+
+            if (conns > 0) {
+              std::string icon = "\U0000e1a8";
+              auto icon_size = measure(id(medium), icon.c_str());
+              char buf[32];
+              snprintf(buf, sizeof(buf), "%d conn", conns);
+              auto text_size = measure(id(text_bold), buf);
+              int icon_y = y_mid - text_size.second / 2;
+              int text_y = y_mid + icon_size.second / 2;
+
+              print(x_mid, icon_y, id(medium), id(light_green), TextAlign::CENTER, icon.c_str());
+              print(x_mid, text_y, id(text_bold), id(light_green), TextAlign::CENTER, buf);
+            } else {
+              std::string icon = "\U0000e1a7";
+              auto icon_size = measure(id(medium), icon.c_str());
+              char buf[32];
+              if (rate > 0) {
+                snprintf(buf, sizeof(buf), "%d/m", rate);
+              } else {
+                snprintf(buf, sizeof(buf), "Active");
+              }
+              auto text_size = measure(id(text_bold), buf);
+              int icon_y = y_mid - text_size.second / 2;
+              int text_y = y_mid + icon_size.second / 2;
+
+              print(x_mid, icon_y, id(medium), id(light_blue), TextAlign::CENTER, icon.c_str());
+              print(x_mid, text_y, id(text_bold), id(light_blue), TextAlign::CENTER, buf);
+            }
+          }

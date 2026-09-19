@@ -34,4 +34,8 @@
   "\U0000e425", # Timer
   "\U0000f154", # Airwave
   "\U0000f418", # Power
+  # Bluetooth
+  "\U0000e1a7", # Bluetooth
+  "\U0000e1a8", # Bluetooth connected
+  "\U0000e1a9", # Bluetooth disabled
 ]

@@ -244,7 +244,17 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
               return (
                 <div className={`text-[9px] truncate mt-1 ${darkFill ? 'text-slate-300' : 'text-slate-600'}`} title={title}>
                   {(() => {
-                    if (typeof first === 'string') return first;
+                    if (typeof first === 'string') {
+                      if (first === 'tile_ble_proxy') {
+                        return (
+                          <div className="flex flex-col items-center justify-center">
+                            <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '24px', lineHeight: 1 }}>{'\ue1a7'}</span>
+                            <span className="text-[8px] font-bold mt-0.5">BLE Proxy</span>
+                          </div>
+                        );
+                      }
+                      return first;
+                    }
                     const key = Object.keys(first)[0];
                     if (key === 'tile_icon' && first[key]?.icon) {
                       let iconVal = first[key].icon;

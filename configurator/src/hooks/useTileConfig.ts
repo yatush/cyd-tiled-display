@@ -131,7 +131,7 @@ export function useTileConfig() {
     [activePage.tiles, selectedTileId]
   );
 
-  const handleAddTile = (type: string) => {
+  const handleAddTile = (type: string, initialProps?: Partial<Tile>) => {
     let x = 0, y = 0;
     let found = false;
     for(let r=0; r<activePage.rows; r++) {
@@ -164,6 +164,7 @@ export function useTileConfig() {
       type,
       x,
       y,
+      ...(initialProps || {})
     } as Tile;
 
     const updatedPage = {
