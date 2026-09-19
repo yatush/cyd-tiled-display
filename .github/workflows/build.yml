@@ -69,6 +69,14 @@ jobs:
           sed -i 's/^version: .*/version: "${{ steps.determine_version.outputs.version }}"/' config.yaml
           cat config.yaml
 
+      - name: Get latest ESPHome version
+        id: esphome_version
+        run: |
+          pip install esphome --quiet 2>/dev/null
+          VERSION=$(python3 -c "from importlib.metadata import version; print(version('esphome'))")
+          echo "ESPHome version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Build and push multi-platform image
         uses: docker/build-push-action@v5
         with:
@@ -78,6 +86,8 @@ jobs:
           #   aarch64 → linux/arm64      (RP4 native)
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            ESPHOME_VERSION=${{ steps.esphome_version.outputs.version }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.determine_version.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

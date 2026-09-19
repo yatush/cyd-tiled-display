@@ -171,6 +171,24 @@ def _check_compat_status(version: str) -> str | None:
     Returns 'PASSED', 'FAILED', or None (release not yet published).
     """
     repo = get_github_repo()
+
+    # 1. Fast, un-rate-limited check: if the toolchain release asset build_id.txt
+    # is downloadable, the compat check has already passed and the toolchain is ready.
+    direct_url = (f'https://github.com/{repo}/releases/download/'
+                  f'toolchain-esphome-{version}/build_id.txt')
+    try:
+        req = urllib.request.Request(
+            direct_url, headers={'User-Agent': 'cyd-tiled-display/toolchain-setup'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status == 200:
+                return 'PASSED'
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            pass  # other error, proceed to fallback
+    except Exception:
+        pass
+
+    # 2. Fallback: query GitHub API
     url = (f'https://api.github.com/repos/{repo}/releases/tags/'
            f'compat-check-esphome-{version}')
     req = urllib.request.Request(

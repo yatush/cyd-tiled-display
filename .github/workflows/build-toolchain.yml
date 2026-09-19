@@ -79,7 +79,7 @@ jobs:
             -v "$PWD/esphome:/app/esphome" \
             -v "$PWD/configurator/generate_tiles_api.py:/app/configurator/generate_tiles_api.py:ro" \
             -v "$PWD/container/prepare_precache.py:/app/prepare_precache.py:ro" \
-            python:3.11-alpine sh -ec '
+            python:3.12-alpine sh -ec '
               echo "=== Installing build dependencies ==="
               apk add --no-cache \
                 g++ gcc musl-dev python3-dev \
