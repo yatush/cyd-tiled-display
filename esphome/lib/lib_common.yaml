@@ -6,7 +6,8 @@ esphome:
 image:
   # Bootstrap the image component without relying on a local file path.
   # tile_ui registers real runtime images (including none_transparent) in to_code().
-  - file: "mdi:image-outline"
+  - platform: file
+    file: "mdi:image-outline"
     id: _image_component_bootstrap
     resize: 1x1
     type: BINARY
