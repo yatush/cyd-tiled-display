@@ -226,9 +226,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                               display: ['tile_ble_proxy'],
                               on_press: 'action_toggle_ble_proxy'
                           })}
-                          className="col-span-2 p-2 h-10 flex items-center justify-center gap-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-center transition-colors shadow-sm"
+                          className="p-2 h-10 flex items-center justify-center gap-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-center transition-colors shadow-sm"
                       >
-                          <Bluetooth size={14} /> BLE Proxy Tile
+                          <Bluetooth size={14} /> BLE Proxy
                       </button>
                   </div>
               </div>
