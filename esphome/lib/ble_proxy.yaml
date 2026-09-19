@@ -1,6 +1,10 @@
 # ble_proxy.yaml — Modular Bluetooth Proxy with Persistent On/Off Control and Activity Tracking
 # Automatically included in packages when the device configuration contains the BLE Proxy tile.
 
+substitutions:
+  # Reduce display buffer on 3.5" panels when BLE is compiled in to prevent SRAM starvation
+  display_buffer_size: "20%"
+
 esp32:
   partitions: lib/partitions_4mb_ota.csv
 
