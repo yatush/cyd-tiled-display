@@ -21,8 +21,6 @@ bluetooth_proxy:
   active: true
   connections:
     - id: ble_conn_0
-    - id: ble_conn_1
-    - id: ble_conn_2
 
 globals:
   # Raw counter for incoming advertisement packets
@@ -54,8 +52,6 @@ interval:
           int conns = 0;
           #ifdef USE_BLUETOOTH_PROXY_CONNECTIONS
           if (id(ble_conn_0).connected()) conns++;
-          if (id(ble_conn_1).connected()) conns++;
-          if (id(ble_conn_2).connected()) conns++;
           #endif
           id(ble_connected_count) = conns;
 
