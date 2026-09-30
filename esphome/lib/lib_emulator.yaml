@@ -48,6 +48,72 @@ script:
     then: []
   - id: _adapt_bright
     then: []
+  - id: action_toggle_ble_proxy
+    then:
+      - switch.toggle: ble_proxy_switch
+      - lambda: |-
+          id(disp).update();
+  - id: tile_ble_proxy
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+    then:
+      - lambda: |-
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          bool is_on = id(ble_proxy_switch).state;
+
+          if (!is_on) {
+            std::string icon = "\U0000e1a9";
+            print(x_mid, y_mid, id(medium), id(dark_dark_gray), TextAlign::CENTER, icon.c_str());
+            auto ts = measure(id(text_bold), "OFF");
+            filled_rectangle(x_mid - ts.first / 2 - 3, y_mid - ts.second / 2 - 1, ts.first + 6, ts.second + 2, Color::BLACK);
+            print(x_mid, y_mid, id(text_bold), id(gray), TextAlign::CENTER, "OFF");
+          } else {
+            int conns = id(ble_connected_count);
+            int rate = id(ble_adv_rate);
+
+            if (conns > 0) {
+              std::string icon = "\U0000e1a8";
+              char buf[32];
+              snprintf(buf, sizeof(buf), "%d conn", conns);
+              print(x_mid, y_mid, id(medium), id(light_blue), TextAlign::CENTER, icon.c_str());
+              auto ts = measure(id(text_bold), buf);
+              filled_rectangle(x_mid - ts.first / 2 - 3, y_mid - ts.second / 2 - 1, ts.first + 6, ts.second + 2, Color::BLACK);
+              print(x_mid, y_mid, id(text_bold), id(light_blue), TextAlign::CENTER, buf);
+            } else if (rate > 0) {
+              std::string icon = "\U0000e1a8";
+              char buf[32];
+              snprintf(buf, sizeof(buf), "%d/m", rate);
+              print(x_mid, y_mid, id(medium), id(light_blue), TextAlign::CENTER, icon.c_str());
+              auto ts = measure(id(text_bold), buf);
+              filled_rectangle(x_mid - ts.first / 2 - 3, y_mid - ts.second / 2 - 1, ts.first + 6, ts.second + 2, Color::BLACK);
+              print(x_mid, y_mid, id(text_bold), id(light_blue), TextAlign::CENTER, buf);
+            } else {
+              std::string icon = "\U0000e1a8";
+              print(x_mid, y_mid, id(medium), id(light_blue), TextAlign::CENTER, icon.c_str());
+              auto ts = measure(id(text_bold), "ON");
+              filled_rectangle(x_mid - ts.first / 2 - 3, y_mid - ts.second / 2 - 1, ts.first + 6, ts.second + 2, Color::BLACK);
+              print(x_mid, y_mid, id(text_bold), id(light_blue), TextAlign::CENTER, "ON");
+            }
+          }
+
+globals:
+  - id: ble_adv_rate
+    type: int
+    initial_value: "0"
+  - id: ble_connected_count
+    type: int
+    initial_value: "0"
+
+switch:
+  - platform: template
+    name: "BLE Proxy Switch (Simulated)"
+    id: ble_proxy_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
 
 output:
   - platform: template
