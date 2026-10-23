@@ -252,24 +252,16 @@ jobs:
       - name: Extract toolchain cache from container
         run: |
           mkdir -p /tmp/toolchain-export
-          if docker exec toolchain-build sh -c '[ -d /root/.cache/esphome/idf ] && [ -n "$(find /root/.cache/esphome/idf -mindepth 1 -print -quit)" ]'; then
-            docker cp toolchain-build:/root/.cache/esphome/idf /tmp/toolchain-export/esphome_idf
-          fi
-          if docker exec toolchain-build sh -c '[ -d /root/.platformio/packages ] && [ -n "$(find /root/.platformio/packages -mindepth 1 -print -quit)" ]'; then
-            docker cp toolchain-build:/root/.platformio/packages /tmp/toolchain-export/packages
-          fi
-          if docker exec toolchain-build test -d /root/.platformio/platforms; then
-            docker cp toolchain-build:/root/.platformio/platforms /tmp/toolchain-export/platforms
-          fi
-          if docker exec toolchain-build test -d /root/.platformio/.ccache; then
-            docker cp toolchain-build:/root/.platformio/.ccache /tmp/toolchain-export/.ccache
-          fi
+          trap 'docker rm -f toolchain-build >/dev/null 2>&1 || true' EXIT
+          docker cp toolchain-build:/root/.cache/esphome/idf /tmp/toolchain-export/esphome_idf 2>/dev/null || true
+          docker cp toolchain-build:/root/.platformio/packages /tmp/toolchain-export/packages 2>/dev/null || true
+          docker cp toolchain-build:/root/.platformio/platforms /tmp/toolchain-export/platforms 2>/dev/null || true
+          docker cp toolchain-build:/root/.platformio/.ccache /tmp/toolchain-export/.ccache 2>/dev/null || true
           if { [ ! -d /tmp/toolchain-export/esphome_idf ] || [ -z "$(find /tmp/toolchain-export/esphome_idf -mindepth 1 -print -quit)" ]; } && \
              { [ ! -d /tmp/toolchain-export/packages ] || [ -z "$(find /tmp/toolchain-export/packages -mindepth 1 -print -quit)" ]; }; then
             echo "ERROR: No ESPHome toolchain cache was exported."
             exit 1
           fi
-          docker rm toolchain-build
 
       - name: Create toolchain tarball
         run: |
