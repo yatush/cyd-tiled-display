@@ -276,7 +276,7 @@ jobs:
             echo "ERROR: No toolchain files are available to archive."
             exit 1
           fi
-          XZ_OPT="-2" tar -cJhf toolchain-${{ matrix.arch }}.tar.xz $DIRS
+          XZ_OPT="-2" tar -cJf toolchain-${{ matrix.arch }}.tar.xz $DIRS
           ls -lh toolchain-${{ matrix.arch }}.tar.xz
 
       - name: Upload artifact
