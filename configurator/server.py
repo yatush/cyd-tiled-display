@@ -2048,6 +2048,15 @@ def toolchain_cancel():
         pass
     return jsonify({'status': 'cancelled', 'killed': killed})
 
+def _has_toolchain_assets() -> bool:
+    packages_dir = '/root/.platformio/packages'
+    idf_dir = '/root/.cache/esphome/idf'
+    return (
+        (os.path.isdir(packages_dir) and bool(os.listdir(packages_dir))) or
+        (os.path.isdir(idf_dir) and bool(os.listdir(idf_dir)))
+    )
+
+
 @app.route('/api/toolchain/check_update', methods=['GET'])
 def toolchain_check_update():
     """
@@ -2060,7 +2069,6 @@ def toolchain_check_update():
     import urllib.request as _urllib_req
     import urllib.error   as _urllib_err
 
-    packages_dir  = '/root/.platformio/packages'
     build_id_file = '/root/.platformio/.cyd_toolchain_build_id'
     ver_file      = '/app/esphome_version.txt'
     repo_file     = '/app/github_repo.txt'
@@ -2087,7 +2095,7 @@ def toolchain_check_update():
         except OSError:
             pass
 
-    has_pkgs = os.path.isdir(packages_dir) and bool(os.listdir(packages_dir))
+    has_pkgs = _has_toolchain_assets()
 
     repo = 'yatush/cyd-tiled-display'
     if os.path.exists(repo_file):
@@ -2154,7 +2162,6 @@ def toolchain_download_latest():
     import urllib.request as _urllib_req
     import urllib.error   as _urllib_err
 
-    packages_dir   = '/root/.platformio/packages'
     version_file   = '/root/.platformio/.cyd_esphome_version'
     build_id_file  = '/root/.platformio/.cyd_toolchain_build_id'
     ver_file       = '/app/esphome_version.txt'
@@ -2194,7 +2201,7 @@ def toolchain_download_latest():
         except OSError:
             pass
 
-    has_pkgs = os.path.isdir(packages_dir) and bool(os.listdir(packages_dir))
+    has_pkgs = _has_toolchain_assets()
 
     # Determine GitHub repo
     repo = 'yatush/cyd-tiled-display'

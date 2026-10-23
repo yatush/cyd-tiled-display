@@ -239,24 +239,51 @@ jobs:
               touch /root/.platformio/.ccache/.cyd_warmed
 
               echo "=== Toolchain build complete ==="
-              du -sh /root/.platformio/packages/ || true
+              if [ -d /root/.cache/esphome/idf ] && [ -n "$(find /root/.cache/esphome/idf -mindepth 1 -print -quit)" ]; then
+                du -sh /root/.cache/esphome/idf
+              elif [ -d /root/.platformio/packages ] && [ -n "$(find /root/.platformio/packages -mindepth 1 -print -quit)" ]; then
+                du -sh /root/.platformio/packages
+              else
+                echo "ERROR: ESPHome did not create an ESP-IDF or PlatformIO toolchain cache."
+                exit 1
+              fi
             '
 
-      - name: Extract packages from container
+      - name: Extract toolchain cache from container
         run: |
           mkdir -p /tmp/toolchain-export
-          docker cp toolchain-build:/root/.platformio/packages /tmp/toolchain-export/packages
-          docker cp toolchain-build:/root/.platformio/platforms /tmp/toolchain-export/platforms 2>/dev/null || echo "No platforms dir — skipping"
-          docker cp toolchain-build:/root/.platformio/.ccache  /tmp/toolchain-export/.ccache  2>/dev/null || echo "No .ccache dir — skipping"
+          if docker exec toolchain-build sh -c '[ -d /root/.cache/esphome/idf ] && [ -n "$(find /root/.cache/esphome/idf -mindepth 1 -print -quit)" ]'; then
+            docker cp toolchain-build:/root/.cache/esphome/idf /tmp/toolchain-export/esphome_idf
+          fi
+          if docker exec toolchain-build sh -c '[ -d /root/.platformio/packages ] && [ -n "$(find /root/.platformio/packages -mindepth 1 -print -quit)" ]'; then
+            docker cp toolchain-build:/root/.platformio/packages /tmp/toolchain-export/packages
+          fi
+          if docker exec toolchain-build test -d /root/.platformio/platforms; then
+            docker cp toolchain-build:/root/.platformio/platforms /tmp/toolchain-export/platforms
+          fi
+          if docker exec toolchain-build test -d /root/.platformio/.ccache; then
+            docker cp toolchain-build:/root/.platformio/.ccache /tmp/toolchain-export/.ccache
+          fi
+          if { [ ! -d /tmp/toolchain-export/esphome_idf ] || [ -z "$(find /tmp/toolchain-export/esphome_idf -mindepth 1 -print -quit)" ]; } && \
+             { [ ! -d /tmp/toolchain-export/packages ] || [ -z "$(find /tmp/toolchain-export/packages -mindepth 1 -print -quit)" ]; }; then
+            echo "ERROR: No ESPHome toolchain cache was exported."
+            exit 1
+          fi
           docker rm toolchain-build
 
       - name: Create toolchain tarball
         run: |
           cd /tmp/toolchain-export
           echo "Creating toolchain-${{ matrix.arch }}.tar.xz ..."
-          DIRS="packages/"
+          DIRS=""
+          [ -d esphome_idf ] && DIRS="$DIRS esphome_idf/"
+          [ -d packages ] && DIRS="$DIRS packages/"
           [ -d platforms ] && DIRS="$DIRS platforms/"
           [ -d .ccache ]   && DIRS="$DIRS .ccache/"
+          if [ -z "$DIRS" ]; then
+            echo "ERROR: No toolchain files are available to archive."
+            exit 1
+          fi
           XZ_OPT="-2" tar -cJhf toolchain-${{ matrix.arch }}.tar.xz $DIRS
           ls -lh toolchain-${{ matrix.arch }}.tar.xz
 

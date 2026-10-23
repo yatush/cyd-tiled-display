@@ -4,10 +4,10 @@ Toolchain setup for CYD Tiled Display.
 
 Three-state logic on every container start:
 
-  1. Version matches + packages present  → write ready, exit immediately (silent)
-  2. Newer version + old packages exist   → download in background, keep old
+  1. Version matches + toolchain present → write ready, exit immediately (silent)
+  2. Newer version + old toolchain exists → download in background, keep the old
                                             toolchain working, overwrite when done
-  3. No packages at all (fresh install)   → write no_toolchain, exit.
+  3. No toolchain present (fresh install) → write no_toolchain, exit.
                                             User is prompted in the Install dialog
                                             and confirms via the UI which calls
                                             POST /api/toolchain/start_local_build,
@@ -39,6 +39,8 @@ import urllib.error
 PROGRESS_FILE       = '/tmp/toolchain_setup_progress.json'
 PIO_DIR             = '/root/.platformio'
 PACKAGES_DIR        = f'{PIO_DIR}/packages'
+ESPHOME_IDF_DIR     = '/root/.cache/esphome/idf'
+PERSISTENT_IDF_DIR  = f'{PIO_DIR}/esphome_idf'
 VERSION_FILE        = f'{PIO_DIR}/.cyd_esphome_version'
 SETUP_MARKER        = f'{PIO_DIR}/.cyd_setup_done'
 ESPHOME_VER_FILE    = '/app/esphome_version.txt'
@@ -444,9 +446,33 @@ def fetch_and_store_build_id(version: str) -> None:
     log(f'Toolchain build ID stored: {stored}')
 
 
-def has_packages() -> bool:
-    """Return True if the PlatformIO packages directory has content."""
-    return os.path.isdir(PACKAGES_DIR) and bool(os.listdir(PACKAGES_DIR))
+def ensure_esphome_idf_cache() -> None:
+    """Keep ESPHome's managed ESP-IDF toolchain in the persistent toolchain volume."""
+    os.makedirs(PIO_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(ESPHOME_IDF_DIR), exist_ok=True)
+
+    if os.path.islink(ESPHOME_IDF_DIR):
+        if os.path.isdir(ESPHOME_IDF_DIR):
+            return
+        os.unlink(ESPHOME_IDF_DIR)
+
+    if os.path.isdir(ESPHOME_IDF_DIR):
+        if os.path.isdir(PERSISTENT_IDF_DIR):
+            shutil.copytree(ESPHOME_IDF_DIR, PERSISTENT_IDF_DIR, dirs_exist_ok=True)
+            shutil.rmtree(ESPHOME_IDF_DIR)
+        else:
+            shutil.move(ESPHOME_IDF_DIR, PERSISTENT_IDF_DIR)
+    elif os.path.exists(ESPHOME_IDF_DIR):
+        os.remove(ESPHOME_IDF_DIR)
+
+    os.symlink(PERSISTENT_IDF_DIR, ESPHOME_IDF_DIR)
+
+
+def has_toolchain() -> bool:
+    """Return True when either supported ESPHome toolchain cache is populated."""
+    has_pio_packages = os.path.isdir(PACKAGES_DIR) and bool(os.listdir(PACKAGES_DIR))
+    has_esphome_idf = os.path.isdir(ESPHOME_IDF_DIR) and bool(os.listdir(ESPHOME_IDF_DIR))
+    return has_pio_packages or has_esphome_idf
 
 
 def get_github_repo() -> str:
@@ -524,9 +550,9 @@ def download_toolchain(version: str, arch: str, background: bool = False) -> str
 def extract_toolchain(tarball_path: str, background: bool = False) -> None:
     """
     Extract the toolchain tarball into PIO_DIR.
-    The tarball contains paths like  packages/<tool>/...  and  platforms/<plat>/...
-    Extracting to PIO_DIR places them at /root/.platformio/packages/... and
-    /root/.platformio/platforms/... respectively.
+    The tarball may contain PlatformIO packages and platforms, an
+    ``esphome_idf/`` cache, or both. The managed ESP-IDF cache is symlinked into
+    PIO_DIR so extracting that prefix also populates ESPHome's expected cache path.
 
     Uses the native `tar` binary with verbose output (-v) so we can count
     extracted files in real time.  xz -T0 is used when available for parallel
@@ -535,6 +561,7 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
     label = 'Updating toolchain' if background else 'Extracting toolchain'
     write_progress('extracting', 30, f'{label}: preparing...')
     log(f'Extracting {tarball_path} → {PIO_DIR}')
+    ensure_esphome_idf_cache()
     os.makedirs(PIO_DIR, exist_ok=True)
 
     tar_bin = shutil.which('tar')
@@ -870,6 +897,7 @@ def build_toolchain_locally(reason: str) -> None:
     counter so the UI doesn't look frozen during the ~10–15 minute build.
     """
     log(f'Building locally. Reason: {reason}')
+    ensure_esphome_idf_cache()
     write_progress('building', 5,
                    'Building toolchain locally — this takes ~10–15 min...',
                    fallback=True)
@@ -944,6 +972,8 @@ def build_toolchain_locally(reason: str) -> None:
     write_progress('fixing', 82, 'Configuring toolchain for Alpine Linux...', fallback=True)
     fix_wrappers()
     shutil.rmtree(DUMMY_YAML_DIR, ignore_errors=True)
+    if not has_toolchain():
+        raise RuntimeError('ESPHome did not create an ESP-IDF or PlatformIO toolchain cache.')
     log('Local build complete.')
 
 
@@ -958,6 +988,7 @@ def main() -> None:
     if not force_local:
         maybe_upgrade_esphome()
 
+    ensure_esphome_idf_cache()
     expected    = get_expected_version()
     stored      = get_stored_version()
     arch        = get_arch()
@@ -965,7 +996,7 @@ def main() -> None:
     log(f'Expected ESPHome version : {expected}')
     log(f'Stored toolchain version : {stored or "(none)"}')
     log(f'Arch                     : {arch}')
-    log(f'Has packages             : {has_packages()}')
+    log(f'Has toolchain             : {has_toolchain()}')
     log(f'Force local              : {force_local}')
     log(f'Force download           : {force_download}')
 
@@ -999,7 +1030,7 @@ def main() -> None:
         _ver_tuple(stored) >= _ver_tuple(expected)
     )
 
-    if toolchain_at_least_as_new and has_packages() and not force_download:
+    if toolchain_at_least_as_new and has_toolchain() and not force_download:
         if stored != expected:
             # Stored toolchain is newer than the currently-installed ESPHome
             # (e.g. pip upgrade failed and ESPHome stayed at an older version).
@@ -1028,7 +1059,7 @@ def main() -> None:
             return
 
     # ── Case 3: no packages at all (fresh install) ────────────────────────────
-    if not has_packages():
+    if not has_toolchain():
         log('No toolchain installed. Trying to download pre-built release...')
         tmp_path = None
         try:
