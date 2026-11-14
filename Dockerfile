@@ -36,6 +36,7 @@ RUN apk add --no-cache g++ gcc musl-dev python3-dev \
 ARG ESPHOME_VERSION
 RUN apk add --no-cache --virtual .build-deps rust cargo openssl-dev libffi-dev jpeg-dev zlib-dev \
     && pip3 install --no-cache-dir esphome${ESPHOME_VERSION:+==$ESPHOME_VERSION} aioesphomeapi flask flask-cors requests pyyaml gunicorn websockify \
+    && (pip3 uninstall -y numpy || true) \
     && apk del .build-deps \
     # We must keep some runtime libraries that were previously pulled by dev packages
     && apk add --no-cache openssl libffi jpeg zlib \
