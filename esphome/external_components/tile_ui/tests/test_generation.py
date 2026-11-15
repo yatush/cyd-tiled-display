@@ -327,6 +327,41 @@ class TestImageAnimation(unittest.TestCase):
         self.assertIn('make_icon_draw(', cpp)
         self.assertIn('make_image_draw(&id(img_b), 0.5f, 0.0f, 0.5f, 1.0f, 3000U, 7000U, 2000U)', cpp)
 
+
+class TestEntityTileAssets(unittest.TestCase):
+    def test_toggle_static_icon_uses_compatible_draw_callback(self):
+        cpp = generate_tile_cpp({'toggle_entity': {
+            'x': 5, 'y': 0, 'dynamic_entity': 'BLINDS',
+            'entity': ['cover.lr1'], 'initially_chosen': True,
+            'display_assets': [{'icon': '"\\U0000e286"', 'icon_color': 'white',
+                                'icon_size': 'small'}],
+        }})
+        self.assertIn('[draw = make_icon_draw("\\U0000e286", id(white), &id(small))]'
+                      '(int arg0, int arg1, int arg2, int arg3, std::string arg4, bool arg5)'
+                      ' { draw(arg0, arg1, arg2, arg3, {}); }', cpp)
+
+    def test_toggle_conditional_animated_icon_uses_compatible_draw_arguments(self):
+        cpp = generate_tile_cpp({'toggle_entity': {
+            'x': 0, 'y': 0, 'dynamic_entity': 'BLINDS', 'entity': ['cover.lr1'],
+            'display_assets': [{'icon': '"\\U0000e286"', 'condition': 'show_icon',
+                                'animation': {'steps': [
+                                    {'duration': 1}, {'duration': 2},
+                                ]}}],
+        }})
+        self.assertIn('const std::vector<std::string> entities{};', cpp)
+        self.assertIn('(arg0, arg1, arg2, arg3, {});', cpp)
+        self.assertNotIn('(arg0, arg1, arg2, arg3, arg4, arg5);', cpp)
+
+    def test_cycle_icon_passes_options_to_draw_callback(self):
+        cpp = generate_tile_cpp({'cycle_entity': {
+            'x': 0, 'y': 0, 'dynamic_entity': 'BLINDS',
+            'options': [{'entity': 'cover.lr1', 'label': 'Living room'}],
+            'display_assets': [{'icon': '"\\U0000e286"'}],
+        }})
+        self.assertIn('std::string arg4, std::vector<std::string> arg5)', cpp)
+        self.assertIn('draw(arg0, arg1, arg2, arg3, arg5);', cpp)
+
+
 class TestScreenBackground(unittest.TestCase):
     """Tests that background entries on a screen produce the correct addBg* method chains."""
 

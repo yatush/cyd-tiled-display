@@ -109,6 +109,8 @@ globals:
 
 # This is now standard RGB
 color:
+  - id: white
+    hex: "FFFFFF"
   - id: blue
     hex: "0000FF"
   - id: light_blue

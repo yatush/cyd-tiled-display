@@ -192,16 +192,18 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
         return None
 
     sig = _build_lambda_sig(expected_params)
-    n_params = len(expected_params)
-    args_cpp = ", ".join(f"arg{i}" for i in range(n_params))
     param_types = [p_type for (_, p_type) in expected_params]
 
     has_vec = 'string[]' in param_types
     if has_vec:
         vec_idx = param_types.index('string[]')
         entities_binding = f"  const std::vector<std::string>& entities = arg{vec_idx};"
+        draw_entities = f"arg{vec_idx}"
     else:
         entities_binding = "  const std::vector<std::string> entities{};"
+        draw_entities = "{}"
+    args_cpp = f"arg0, arg1, arg2, arg3, {draw_entities}"
+    direct_draw_signature = param_types == ['int', 'int', 'int', 'int', 'string[]']
 
     # Legacy direction → (from_x, from_y, to_x, to_y) fracs.
     _LEGACY_DIR_POS = {
@@ -416,6 +418,8 @@ def _build_image_lambda(config: dict, expected_params: list) -> str | None:
             call = _make_draw_call(entry)
             if call is None:
                 return []
+            if not direct_draw_signature:
+                return [f"[draw = {call}]({sig}) {{ draw({args_cpp}); }}"]
             return [call]  # bare expr; caller wraps in { }
         # Multi-step requires a lambda so the time dispatch runs each call
         body = "\n".join(f"  {l}" for l in _entry_dispatch_lines(entry))
