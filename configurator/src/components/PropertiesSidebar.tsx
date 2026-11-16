@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Layout, Settings2, Plus } from 'lucide-react';
+import { Trash2, Copy, Layout, Settings2, Plus } from 'lucide-react';
 import { Tile, Config, Page, HaEntity, ImageEntry, ScreenBgEntry, ScreenImageEntry } from '../types';
 import { 
   TextInput, 
@@ -18,10 +18,11 @@ import { DisplayListInput } from './DisplayListInput';
 import { ColorPicker } from './Pickers';
 import { apiFetch } from '../utils/api';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: { 
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: {
   selectedTile: Tile | null, 
   onUpdate: (t: Tile) => void, 
   onDelete: () => void,
+  onDuplicate: (id: string) => void,
   config: Config,
   schema: any,
   activePage: Page,
@@ -366,9 +367,14 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, config, schema, acti
                 <h2 className="font-bold text-base text-slate-800">Edit Tile</h2>
                 <div className="text-[10px] font-mono text-slate-400 mt-0.5">{selectedTile.type}</div>
               </div>
-              <button onClick={() => onDelete()} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors" title="Delete Tile">
-                <Trash2 size={18} />
-              </button>
+              <div className="flex gap-1">
+                <button onClick={() => onDuplicate(selectedTile.id)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-colors" title="Duplicate Tile" aria-label="Duplicate Tile">
+                  <Copy size={18} />
+                </button>
+                <button onClick={() => onDelete()} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors" title="Delete Tile">
+                  <Trash2 size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Position & Size */}

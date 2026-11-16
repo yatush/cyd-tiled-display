@@ -186,6 +186,7 @@ The Configurator is designed to be intuitive:
 
 1.  **Tile Configuration**:
     *   Click on any tile in the grid to open the **Properties Sidebar**.
+    *   Click **Duplicate Tile** in the tile properties to copy all settings to the current page. The copy uses the first free area that fits its size, or appears in Unplaced Tiles if none fits.
     *   **Entity**: Select the Home Assistant entity to control or monitor.
     *   **Label**: Set a custom label (or leave blank to use the entity's friendly name).
     *   **Icon**: Choose an icon from the Material Design Icons library.
@@ -364,6 +365,7 @@ This is useful for low-level helpers that are called from other scripts (e.g. `_
 When using the Home Assistant Add-on, the core library files (like `lib.yaml` and the `tile_ui` component) are managed by the Add-on. The Configurator provides a way to update these files in your `/config/esphome` directory to match the version in the Add-on.
 
 *   **Updates**: When you update the Add-on, you may see a notification in the Configurator that your library files are out of sync. You can click the update button to overwrite the core files with the new versions.
+*   **Test GitHub changes**: In HA Connection Settings → Maintenance, choose **Sync ESPHome files from GitHub main** to download the current `main` branch without updating the add-on. Stop builds and emulator sessions first. The sync overlays the library, `tile_ui`, and `test_device.yaml`; it does not delete files removed upstream and leaves custom files, hardware overrides, generated images, and user configurations untouched. Replaced files are backed up in a new `/config/esphome/cyd-github-backup-*` directory. The editor reloads after syncing. The add-on version mismatch warning may remain, and the normal update button restores the bundled version. Newer files may be incompatible with the installed add-on or ESPHome toolchain.
 *   **Customization**: If you want to add your own scripts, global variables, or override existing behavior, **do not edit `lib.yaml` directly**, as it will be overwritten during updates. Instead, use **`lib_custom.yaml`**.
     *   This file is included by `lib.yaml` but is **never overwritten** by the update process.
     *   You can safely put your custom logic here and update the core library without losing your changes.

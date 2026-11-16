@@ -1,4 +1,39 @@
-import { Config, Tile } from '../types';
+import type { Config, Page, Tile } from '../types';
+
+function copyTileValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(copyTileValue);
+  if (value instanceof Date) return new Date(value);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copyTileValue(item)]));
+  }
+  return value;
+}
+
+export function duplicateTile(tile: Tile, page: Page): Tile {
+  const width = tile.x_span || 1;
+  const height = tile.y_span || 1;
+  let x = -1;
+  let y = -1;
+
+  for (let row = 0; row <= page.rows - height && y < 0; row++) {
+    for (let col = 0; col <= page.cols - width; col++) {
+      const occupied = page.tiles.some(t =>
+        t.x >= 0 && t.y >= 0 &&
+        col < t.x + (t.x_span || 1) && col + width > t.x &&
+        row < t.y + (t.y_span || 1) && row + height > t.y
+      );
+      if (!occupied) {
+        x = col;
+        y = row;
+        break;
+      }
+    }
+  }
+
+  const copy = { ...tile };
+  for (const key of Object.keys(copy)) copy[key] = copyTileValue(copy[key]);
+  return { ...copy, id: Math.random().toString(36).substr(2, 9), x, y };
+}
 
 /**
  * Given an old and new list of dynamic entity names, build a map of renames

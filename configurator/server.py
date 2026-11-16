@@ -12,10 +12,12 @@ import time
 import threading
 import asyncio
 import concurrent.futures
+import zipfile
 from flask import Flask, request, send_from_directory, jsonify, Response, stream_with_context
 import requests
 from api_proxy import run_proxy_thread
 import generate_tiles_api
+from github_sync import sync_github_files
 from aioesphomeapi import APIClient
 
 import logging
@@ -115,6 +117,7 @@ def _run_generate_subprocess(yaml_str, lib_dir=None, images_dir=None, screen_w=3
     env = {
         **os.environ,
         'CYD_LIB_DIR':    lib_dir    or '',
+        'CYD_COMPONENTS_DIR': os.path.join(BASE_DIR, 'external_components'),
         'CYD_IMAGES_DIR': images_dir or '',
         'CYD_SCREEN_W':   str(screen_w),
         'CYD_SCREEN_H':   str(screen_h),
@@ -2282,11 +2285,31 @@ def toolchain_download_latest():
 
 @app.route('/api/schema', methods=['GET'])
 def get_schema():
-    schema_path = os.path.join(APP_DIR, 'esphome/external_components/tile_ui/schema.json')
+    schema_path = os.path.join(BASE_DIR, 'external_components/tile_ui/schema.json')
+    if not os.path.exists(schema_path):
+        schema_path = os.path.join(APP_DIR, 'esphome/external_components/tile_ui/schema.json')
     if os.path.exists(schema_path):
         with open(schema_path, 'r') as f:
             return jsonify(json.load(f))
     return jsonify({"error": "Schema not found"}), 404
+
+@app.route('/api/sync_github_lib', methods=['POST'])
+def sync_github_lib():
+    if not IS_ADDON:
+        return jsonify({"error": "GitHub sync is only available in add-on mode"}), 403
+    try:
+        def validate_lib(lib_dir):
+            configs = _load_device_configs(lib_dir)
+            if _DEFAULT_DEVICE not in configs:
+                raise ValueError("GitHub archive has an invalid default device configuration")
+
+        count, backup = sync_github_files(BASE_DIR, validate_lib)
+        global _DEVICE_CONFIG
+        _DEVICE_CONFIG = _load_device_configs(os.path.join(BASE_DIR, 'lib'))
+        return jsonify({"success": True, "count": count, "backup": backup})
+    except (OSError, ValueError, RuntimeError, requests.RequestException, zipfile.BadZipFile) as error:
+        app.logger.exception("GitHub sync failed")
+        return jsonify({"error": str(error)}), 500
 
 @app.route('/api/update_lib', methods=['POST'])
 def update_lib():

@@ -894,7 +894,7 @@ script:
           print(x_mid, icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
           print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
 
-  - id: tile_choose_cover
+  - id: tile_choose_cover_sized
     parameters:
       x_start: int
       x_end: int
@@ -902,6 +902,7 @@ script:
       y_end: int
       name: string
       is_on: bool
+      size: esphome::display::BaseFont*
     then:
       - lambda: |-
           std::string cur_name = name;
@@ -912,14 +913,56 @@ script:
 
           std::string icon = "\U0000e286";
           // Sizes
-          auto icon_size = measure(id(medium), icon.c_str());
+          auto icon_size = measure(size, icon.c_str());
           auto text_size = measure(id(text_bold), "0");
 
           int icon_y = y_mid - text_size.second / 2;
           int text_y = y_mid + icon_size.second / 2;
 
-          print(x_mid, icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          print(x_mid, icon_y, size, cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
           print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+
+  - id: tile_choose_cover
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      name: string
+      is_on: bool
+    then:
+      - script.execute:
+          id: tile_choose_cover_sized
+          x_start: !lambda return x_start;
+          x_end: !lambda return x_end;
+          y_start: !lambda return y_start;
+          y_end: !lambda return y_end;
+          name: !lambda return name;
+          is_on: !lambda return is_on;
+          size: !lambda return id(medium);
+
+  - id: tile_choose_text
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      name: string
+      is_on: bool
+      text: string
+      size: esphome::display::BaseFont*
+    then:
+      - lambda: |-
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          if (name.empty()) {
+            print(x_mid, y_mid, size, is_on ? id(yellow) : id(gray), TextAlign::CENTER, text.c_str());
+          } else {
+            auto content_size = measure(size, text.c_str());
+            auto name_size = measure(id(text_bold), name.c_str());
+            print(x_mid, y_mid - name_size.second / 2, size, is_on ? id(yellow) : id(gray), TextAlign::CENTER, text.c_str());
+            print(x_mid, y_mid + content_size.second / 2, id(text_bold), Color::WHITE, TextAlign::CENTER, name.c_str());
+          }
 
   - id: tile_cover_name
     parameters:

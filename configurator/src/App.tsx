@@ -568,6 +568,7 @@ function App() {
           selectedTile={selectedTile} 
           onUpdate={handleUpdateTile} 
           onDelete={handleDeleteTile} 
+          onDuplicate={handleDuplicateTile}
           config={config}
           schema={schema}
           activePage={activePage}

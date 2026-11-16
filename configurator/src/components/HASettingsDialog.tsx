@@ -33,6 +33,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   const [localToken, setLocalToken] = useState(haToken);
   const [libStatus, setLibStatus] = useState<{lib_synced: boolean, ui_synced: boolean, synced: boolean, details?: string[]} | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [syncingGithub, setSyncingGithub] = useState(false);
 
   // Reset local state when dialog opens
   useEffect(() => {
@@ -90,6 +91,27 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
         }
     } catch (e) {
         alert("Error updating: " + e);
+    }
+  };
+
+  const handleSyncGithub = async () => {
+    if (!confirm(
+      "Download ESPHome library files, tile_ui and test_device.yaml from yatush/cyd-tiled-display main? " +
+      "Matching managed files will be overwritten and backed up in /config/esphome. " +
+      "Custom files are preserved. Stop any builds or emulator sessions first."
+    )) return;
+
+    setSyncingGithub(true);
+    try {
+      const res = await apiFetch('/sync_github_lib', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      alert(`Synced ${data.count} files. Backup: /config/esphome/${data.backup}\n\nThe add-on version warning may remain. Reloading will refresh the editor schema.`);
+      window.location.reload();
+    } catch (error) {
+      alert(`GitHub sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSyncingGithub(false);
     }
   };
 
@@ -203,6 +225,16 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
                       <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white" />
                   )}
               </button>
+              {isAddon && (
+                <button
+                  onClick={handleSyncGithub}
+                  disabled={syncingGithub}
+                  className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-50 text-blue-800 border border-blue-200 p-3 rounded-lg text-sm font-bold hover:bg-blue-100 disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw size={16} className={syncingGithub ? 'animate-spin' : ''} />
+                  {syncingGithub ? 'Downloading from GitHub...' : 'Sync ESPHome files from GitHub main'}
+                </button>
+              )}
               
               {libStatus && !libStatus.synced && libStatus.details && libStatus.details.length > 0 && (
                 <div className="mt-2">
@@ -227,7 +259,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
               )}
 
               <p className="text-[10px] text-slate-400 mt-1 text-center">
-                  Updates shared library files and tile_ui component
+                  The update button restores the add-on's bundled files. GitHub sync may differ from the add-on version.
               </p>
           </div>
         </div>

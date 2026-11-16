@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Config, Tile, Page } from '../types';
+import { duplicateTile } from '../utils/tileUtils';
 
 const DEFAULT_CONFIG: Config = {
   project_path: 'tiles.yaml',
@@ -189,39 +190,7 @@ export function useTileConfig() {
     
     if (!tileToDuplicate) return;
 
-    let x = 0, y = 0;
-    let found = false;
-    for(let r=0; r<activePage.rows; r++) {
-      for(let c=0; c<activePage.cols; c++) {
-        const isOccupied = activePage.tiles.some(t => {
-          const t_x_span = t.x_span || 1;
-          const t_y_span = t.y_span || 1;
-          return (
-            c >= t.x && c < t.x + t_x_span &&
-            r >= t.y && r < t.y + t_y_span
-          );
-        });
-
-        if (!isOccupied) {
-          x = c; y = r;
-          found = true;
-          break;
-        }
-      }
-      if(found) break;
-    }
-
-    if (!found) {
-      x = -1;
-      y = -1;
-    }
-
-    const newTile: Tile = {
-      ...tileToDuplicate,
-      id: Math.random().toString(36).substr(2, 9),
-      x,
-      y,
-    };
+    const newTile = duplicateTile(tileToDuplicate, activePage);
 
     const updatedPage = {
       ...activePage,

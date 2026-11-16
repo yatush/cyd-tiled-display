@@ -48,8 +48,8 @@ export const LibMismatchDialog: React.FC<LibMismatchDialogProps> = ({
         <div className="p-5 space-y-4">
           <p className="text-sm text-slate-600">
             The shared ESPHome library files in your HA config directory do not match the
-            current add-on version. It is recommended to update them before compiling
-            your devices.
+            current add-on version. This is expected after syncing from GitHub. Updating
+            from the add-on will replace those changes with the bundled files.
           </p>
 
           {details.length > 0 && (

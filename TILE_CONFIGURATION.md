@@ -273,6 +273,43 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
+For a cover selection icon with a configurable size, use the
+`tile_choose_cover_sized` display script:
+
+```yaml
+- toggle_entity:
+    x: 0
+    y: 0
+    dynamic_entity: BLINDS
+    entity: cover.lr1
+    presentation_name: LR1
+    display:
+      - tile_choose_cover_sized:
+          size: tiny
+```
+
+`size` is a font ID, such as `tiny`, `small`, `medium`, or `big`.
+The icon is yellow when selected and gray otherwise. The existing
+`tile_choose_cover` script continues to use `medium`.
+
+To display text instead of an icon, use `tile_choose_text`:
+
+```yaml
+- toggle_entity:
+    x: 0
+    y: 0
+    dynamic_entity: BLINDS
+    entity: cover.lr1
+    display:
+      - tile_choose_text:
+          text: LR1
+          size: text_small
+```
+
+The text is yellow when selected and gray otherwise. Choose a text font ID
+such as `text_small`, `text_regular`, or `text_bold` for `size`. An optional
+`presentation_name` appears as a separate white label below the text.
+
 ### 6. Cycle Entity Tile (Entity Cycling)
 
 Cycles through multiple options on each press. Sets the value of the dynamic_entity to one of the static ones each time.

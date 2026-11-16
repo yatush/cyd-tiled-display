@@ -104,6 +104,7 @@ RUN chmod +x /app/vnc_startup.sh
 # Copy Python backend and scripts
 COPY configurator/generate_tiles_api.py /app/configurator/
 COPY configurator/server.py /app/configurator/
+COPY configurator/github_sync.py /app/configurator/
 COPY configurator/api_proxy.py /app/configurator/
 COPY configurator/run_emulator.sh /app/configurator/
 COPY configurator/run_session.sh /app/configurator/

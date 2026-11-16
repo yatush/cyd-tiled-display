@@ -7,7 +7,11 @@ from pathlib import Path
 # Add the external_components directory to sys.path so we can import tile_ui
 repo_root = Path(__file__).parent.parent
 tile_ui_path = repo_root / "esphome" / "external_components"
-sys.path.append(str(tile_ui_path))
+user_components = os.environ.get("CYD_COMPONENTS_DIR")
+if user_components and (Path(user_components) / "tile_ui" / "__init__.py").is_file():
+    sys.path.insert(0, user_components)
+else:
+    sys.path.append(str(tile_ui_path))
 
 # Mock esphome module to prevent import errors
 class MockEsphome:
