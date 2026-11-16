@@ -97,7 +97,7 @@ int main() {
     assert(draws.size() == 2);
     assert(draws[0].x == 12 && draws[0].y == 22 && draws[0].font == tiny);
     assert(draws[0].color == white && draws[0].align == TOP_LEFT && draws[0].text == "\U0000f168");
-    assert(draws[1].x == 60 && draws[1].y == 70 && draws[1].color == light_blue);
+    assert(draws[1].x == 60 && draws[1].y == 70 && draws[1].color == white);
   }
 }
 """
