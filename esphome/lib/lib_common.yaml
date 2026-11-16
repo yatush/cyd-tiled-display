@@ -568,19 +568,6 @@ script:
             PerformHaAction(blind, down ? STOP_COVER : CLOSE_COVER);
           }
 
-  - id: action_blinds_location
-    parameters:
-      entities: string[]
-      location: string
-    then:
-      - lambda: |-
-          static std::string set_cover_position = "set_cover_position";
-          static const char* SET_COVER_POSITION = "set_cover_position";
-          static const char* POSITION = "position";
-          for (const std::string& blind : entities) {
-            PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, location}});
-          }
-
   - id: action_blinds_position
     parameters:
       entities: string[]
@@ -591,7 +578,10 @@ script:
             ESP_LOGE("action_blinds_position", "Position must be between 0 and 100: %d", position);
             return;
           }
-          id(action_blinds_location).execute(entities, std::to_string(position));
+          const std::string position_value = std::to_string(position);
+          for (const std::string& blind : entities) {
+            PerformHaAction(blind, "set_cover_position", {{"position", position_value}});
+          }
 
   - id: action_blinds_mid
     parameters:
