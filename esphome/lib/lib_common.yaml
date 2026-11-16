@@ -1135,7 +1135,7 @@ script:
           std::string entity = entities[1];
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
-          std::string status = GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°";
+          std::string status = GetTextSensorValue(state) + " " + GetClimateTemperatureValue(entity) + "°";
           auto* font = id(text_big_bold);
           if (measure(font, status.c_str()).first > x_end - x_start) {
             font = id(text_bold);

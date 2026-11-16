@@ -134,6 +134,10 @@ The `tile_ac` power icon is gray when off, blue for cool, red for heat, purple
 for heat/cool, and white for unknown or other modes.
 The `action_temp_up` and `action_temp_down` actions accept the climate entity
 with or without `sensor: temperature` and adjust its target by one degree.
+`tile_ac_status` immediately shows the requested temperature, including repeated
+adjustments. It then uses the temperature reported by Home Assistant, including
+if the reported value differs. If no confirmation arrives within 10 seconds, it
+returns to the last reported value.
 `action_ac_mode` cycles through the climate entity's `hvac_modes` in the order
 reported by Home Assistant, excluding `off`. If currently off, it selects
 `heat_cool` when supported, otherwise the first available active mode. If the

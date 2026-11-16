@@ -285,6 +285,42 @@ std::vector<std::string> getRequiredAttributes(const std::string& sensor) {
   return {};
 }
 
+struct PendingClimateTemperature {
+  float target;
+  std::vector<float> previous_targets;
+  uint32_t request_id;
+};
+
+std::map<std::string, PendingClimateTemperature> pending_climate_temperatures;
+uint32_t climate_temperature_request_id = 0;
+
+std::string ClimateTemperatureKey(const std::string& ac) {
+  return GetAtt(ac).empty() ? GetSensor(ac) + "|temperature" : ac;
+}
+
+void ReconcileClimateTemperature(const std::string& key, const std::string& value) {
+  auto pending = pending_climate_temperatures.find(key);
+  if (pending == pending_climate_temperatures.end()) return;
+
+  auto reported = esphome::parse_number<float>(value);
+  if (reported.has_value() && std::isfinite(*reported)) {
+    auto matches = [reported](float target) { return std::fabs(*reported - target) < 0.001f; };
+    if (!matches(pending->second.target)) {
+      auto previous = std::find_if(pending->second.previous_targets.begin(),
+                                   pending->second.previous_targets.end(), matches);
+      if (previous != pending->second.previous_targets.end()) {
+        pending->second.previous_targets.erase(pending->second.previous_targets.begin(), previous + 1);
+        return;
+      }
+      ESP_LOGW("ClimateTemperature", "Requested temperature for %s was not confirmed: %s",
+               key.c_str(), value.c_str());
+    }
+  } else {
+    ESP_LOGW("ClimateTemperature", "Invalid temperature reported for %s: %s", key.c_str(), value.c_str());
+  }
+  pending_climate_temperatures.erase(pending);
+}
+
 // --- Sensor Initialization ---
 
 // Initializes a sensor in ESPHome, connecting it to Home Assistant.
@@ -314,7 +350,10 @@ void InitSensor(const std::string& key, const std::string& sensor,
     text_sensor->set_entity_id(Repository::instance().ptr(sensor)->c_str());
     // Lambda function to update the display when the sensor state changes.
     text_sensor->add_on_state_callback(
-        [](std::string x) { id(disp).update(); });
+        [key](std::string x) {
+          ReconcileClimateTemperature(key, x);
+          id(disp).update();
+        });
     if (attribute != "") {
       text_sensor->set_attribute(Repository::instance().ptr(attribute)->c_str());
     }
@@ -345,6 +384,15 @@ std::string GetTextSensorValue(const std::string& key) {
     return "";
   }
   return id(text_sensors)[key]->state;
+}
+
+std::string GetClimateTemperatureValue(const std::string& ac) {
+  const std::string key = ClimateTemperatureKey(ac);
+  auto pending = pending_climate_temperatures.find(key);
+  if (pending == pending_climate_temperatures.end()) return GetTextSensorValue(key);
+  std::ostringstream value;
+  value << pending->second.target;
+  return value.str();
 }
 
 // Retrieves the value of a binary sensor.
@@ -412,14 +460,34 @@ void PerformHaAction(
 
 void AdjustClimateTemperature(const std::string& ac, float adjustment, const char* log_tag) {
   const std::string entity = GetSensor(ac);
-  const std::string key = GetAtt(ac).empty() ? entity + "|temperature" : ac;
-  const std::string value = GetTextSensorValue(key);
+  const std::string key = ClimateTemperatureKey(ac);
+  const std::string value = GetClimateTemperatureValue(ac);
   auto temperature = esphome::parse_number<float>(value);
   if (!temperature.has_value() || !std::isfinite(*temperature) || !std::isfinite(*temperature + adjustment)) {
     ESP_LOGE(log_tag, "Failed getting temp for %s: %s", key.c_str(), value.c_str());
     return;
   }
-  PerformHaAction(entity, "set_temperature", {{"temperature", std::to_string(*temperature + adjustment)}});
+  const float target = *temperature + adjustment;
+  auto pending = pending_climate_temperatures.find(key);
+  if (pending == pending_climate_temperatures.end()) {
+    pending = pending_climate_temperatures.emplace(
+        key, PendingClimateTemperature{target, {}, ++climate_temperature_request_id}).first;
+  } else {
+    pending->second.previous_targets.push_back(pending->second.target);
+    pending->second.target = target;
+    pending->second.request_id = ++climate_temperature_request_id;
+  }
+  const uint32_t request_id = pending->second.request_id;
+  esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 10000, [key, request_id]() {
+    auto pending = pending_climate_temperatures.find(key);
+    if (pending != pending_climate_temperatures.end() && pending->second.request_id == request_id) {
+      ESP_LOGW("ClimateTemperature", "No temperature confirmation for %s", key.c_str());
+      pending_climate_temperatures.erase(pending);
+      id(disp).update();
+    }
+  });
+  PerformHaAction(entity, "set_temperature", {{"temperature", std::to_string(target)}});
+  id(disp).update();
 }
 
 // Home Assistant sends list attributes as Python-style strings (or JSON).
