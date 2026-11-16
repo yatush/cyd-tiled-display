@@ -1118,12 +1118,12 @@ script:
           for (const std::string& ac : entities) {
             const std::string entity = GetSensor(ac);
             const std::string modes = GetTextSensorValue(entity + "|hvac_modes");
-            const std::string next = NextClimateMode(GetTextSensorValue(entity), modes);
+            const std::string next = NextClimateMode(GetClimateModeValue(entity), modes);
             if (next.empty()) {
               ESP_LOGW("ActionAcMode", "Cannot select a supported HVAC mode for %s (hvac_modes: %s)", entity.c_str(), modes.c_str());
               continue;
             }
-            PerformHaAction(entity, "set_hvac_mode", {{"hvac_mode", next}});
+            SetClimateMode(entity, next);
           }
 
   - id: tile_ac_status
@@ -1142,7 +1142,7 @@ script:
           std::string entity = entities[1];
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
-          std::string status = GetTextSensorValue(state) + " " + GetClimateTemperatureValue(entity) + "°";
+          std::string status = GetClimateModeValue(state) + " " + GetClimateTemperatureValue(entity) + "°";
           auto* font = id(text_big_bold);
           if (measure(font, status.c_str()).first > x_end - x_start) {
             font = id(text_bold);

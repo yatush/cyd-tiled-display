@@ -294,6 +294,15 @@ struct PendingClimateTemperature {
 std::map<std::string, PendingClimateTemperature> pending_climate_temperatures;
 uint32_t climate_temperature_request_id = 0;
 
+struct PendingClimateMode {
+  std::string target;
+  std::vector<std::string> previous_targets;
+  uint32_t request_id;
+};
+
+std::map<std::string, PendingClimateMode> pending_climate_modes;
+uint32_t climate_mode_request_id = 0;
+
 std::string ClimateTemperatureKey(const std::string& ac) {
   return GetAtt(ac).empty() ? GetSensor(ac) + "|temperature" : ac;
 }
@@ -319,6 +328,22 @@ void ReconcileClimateTemperature(const std::string& key, const std::string& valu
     ESP_LOGW("ClimateTemperature", "Invalid temperature reported for %s: %s", key.c_str(), value.c_str());
   }
   pending_climate_temperatures.erase(pending);
+}
+
+void ReconcileClimateMode(const std::string& key, const std::string& value) {
+  auto pending = pending_climate_modes.find(key);
+  if (pending == pending_climate_modes.end()) return;
+
+  if (value != pending->second.target) {
+    auto previous = std::find(pending->second.previous_targets.begin(),
+                              pending->second.previous_targets.end(), value);
+    if (previous != pending->second.previous_targets.end()) {
+      pending->second.previous_targets.erase(pending->second.previous_targets.begin(), previous + 1);
+      return;
+    }
+    ESP_LOGW("ClimateMode", "Requested mode for %s was not confirmed: %s", key.c_str(), value.c_str());
+  }
+  pending_climate_modes.erase(pending);
 }
 
 // --- Sensor Initialization ---
@@ -352,6 +377,7 @@ void InitSensor(const std::string& key, const std::string& sensor,
     text_sensor->add_on_state_callback(
         [key](std::string x) {
           ReconcileClimateTemperature(key, x);
+          ReconcileClimateMode(key, x);
           id(disp).update();
         });
     if (attribute != "") {
@@ -384,6 +410,12 @@ std::string GetTextSensorValue(const std::string& key) {
     return "";
   }
   return id(text_sensors)[key]->state;
+}
+
+std::string GetClimateModeValue(const std::string& ac) {
+  const std::string entity = GetSensor(ac);
+  auto pending = pending_climate_modes.find(entity);
+  return pending == pending_climate_modes.end() ? GetTextSensorValue(entity) : pending->second.target;
 }
 
 std::string GetClimateTemperatureValue(const std::string& ac) {
@@ -525,6 +557,29 @@ std::string NextClimateMode(const std::string& current, const std::string& modes
   return current_it == cycle.end() || ++current_it == cycle.end() ? cycle.front() : *current_it;
 }
 
+void SetClimateMode(const std::string& entity, const std::string& mode) {
+  auto pending = pending_climate_modes.find(entity);
+  if (pending == pending_climate_modes.end()) {
+    pending = pending_climate_modes.emplace(
+        entity, PendingClimateMode{mode, {}, ++climate_mode_request_id}).first;
+  } else {
+    pending->second.previous_targets.push_back(pending->second.target);
+    pending->second.target = mode;
+    pending->second.request_id = ++climate_mode_request_id;
+  }
+  const uint32_t request_id = pending->second.request_id;
+  esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 10000, [entity, request_id]() {
+    auto pending = pending_climate_modes.find(entity);
+    if (pending != pending_climate_modes.end() && pending->second.request_id == request_id) {
+      ESP_LOGW("ClimateMode", "No mode confirmation for %s", entity.c_str());
+      pending_climate_modes.erase(pending);
+      id(disp).update();
+    }
+  });
+  PerformHaAction(entity, "set_hvac_mode", {{"hvac_mode", mode}});
+  id(disp).update();
+}
+
 // Extracts an ID from a string using a regular expression.
 // Example: "#{some_id}" -> "some_id"
 std::string ExtractId(const std::string& input) {
@@ -660,7 +715,7 @@ void print (int x, int y, BaseFont &font, Color color, const char *text) {
 
 void DrawAcIcon(int x_start, int x_end, int y_start, int y_end,
                 const std::vector<std::string>& entities, const char* icon, BaseFont* size) {
-  const std::string state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0));
+  const std::string state = entities.empty() ? "none" : GetClimateModeValue(entities.at(0));
   print((x_start + x_end) / 2, (y_start + y_end) / 2, size,
         state == "cool" ? id(blue) : state == "heat" ? id(red) :
         state == "heat_cool" ? id(light_purple) : state == "off" ? id(gray) : id(white),

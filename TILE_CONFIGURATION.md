@@ -145,7 +145,9 @@ returns to the last reported value.
 reported by Home Assistant, excluding `off`. If currently off, it selects
 `heat_cool` when supported, otherwise the first available active mode. If the
 current state or active mode list is unavailable, it logs a warning and sends
-no action.
+no action. Mode changes appear immediately in the status and AC icon colors,
+including on repeated taps. A differing Home Assistant response replaces the
+requested mode; without confirmation, the display reverts after 10 seconds.
 
 ### Blind Position Tile
 

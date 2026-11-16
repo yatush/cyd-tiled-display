@@ -22,13 +22,16 @@ def extract_function(source, signature):
 
 
 class ClimateModeTest(unittest.TestCase):
-    def test_temperature_optimistic_display_and_reconciliation(self):
+    def test_optimistic_climate_display_and_reconciliation(self):
         utils = (ROOT / "esphome/lib/utils.h").read_text()
         yaml = (ROOT / "esphome/lib/lib_common.yaml").read_text()
         pending = utils.split("struct PendingClimateTemperature {", 1)[1].split(
             "// --- Sensor Initialization ---", 1
         )[0]
         display = yaml.split("  - id: tile_ac_status\n", 1)[1].split(
+            "\n  - id:", 1
+        )[0].split("      - lambda: |-\n", 1)[1]
+        mode_action = yaml.split("  - id: action_ac_mode\n", 1)[1].split(
             "\n  - id:", 1
         )[0].split("      - lambda: |-\n", 1)[1]
         source = r"""
@@ -95,26 +98,36 @@ std::map<std::string, esphome::homeassistant::HomeassistantTextSensor*> text_sen
         ) + r"""
 std::map<std::string, std::string> values;
 std::string GetTextSensorValue(const std::string& key) { return values[key]; }
-""" + extract_function(utils, "std::string GetClimateTemperatureValue(") + r"""
+""" + extract_function(utils, "std::string GetClimateTemperatureValue(") + "\n" + extract_function(
+            utils, "std::string GetClimateModeValue("
+        ) + r"""
 std::vector<std::pair<std::string, std::string>> calls;
 void PerformHaAction(const std::string& entity, const std::string& action,
                      std::vector<std::pair<std::string, std::string>> data) {
-  assert(action == "set_temperature");
+  assert(action == "set_temperature" || action == "set_hvac_mode");
   calls.emplace_back(entity, data.at(0).second);
 }
-""" + extract_function(utils, "void AdjustClimateTemperature(") + r"""
+""" + "\n".join(
+            extract_function(utils, signature)
+            for signature in ("void AdjustClimateTemperature(", "std::string NextClimateMode(", "void SetClimateMode(")
+        ) + r"""
+using BaseFont = int;
 int large_font, bold_font, small_font;
 int* text_big_bold = &large_font;
 int* text_bold = &bold_font;
 int* text_small = &small_font;
-int gray = 0;
+int blue = 1, red = 2, light_purple = 3, gray = 4, white = 5, printed_color = 0;
 enum class TextAlign { CENTER };
 std::string rendered;
 std::pair<int, int> measure(int*, const char*) { return {10, 10}; }
-void print(int, int, int*, int, TextAlign, const char* text) { rendered = text; }
+void print(int, int, int*, int color, TextAlign, const char* text) { rendered = text; printed_color = color; }
+""" + extract_function(utils, "void DrawAcIcon(") + r"""
 void draw(const std::vector<std::string>& entities) {
   int x_start = 0, x_end = 100, y_start = 0, y_end = 100;
 """ + display + r"""
+}
+void change_mode(const std::vector<std::string>& entities) {
+""" + mode_action + r"""
 }
 void report(const std::string& key, const std::string& value) {
   values[key] = value;
@@ -163,6 +176,41 @@ int main() {
   esphome::App.scheduler.timeouts.back()();
   assert(GetClimateTemperatureValue("climate.other") == "18");
   assert(disp.updates == updates_before_timeout + 1);
+
+  InitSensor(ac, ac);
+  InitSensor("climate.other", "climate.other");
+  values[ac] = "off";
+  values[ac + "|hvac_modes"] = "['off', 'cool', 'heat', 'heat_cool']";
+  values["climate.other"] = "heat";
+  values["climate.other|hvac_modes"] = "['off', 'cool', 'heat']";
+  calls.clear();
+  change_mode({ac});
+  assert(calls.size() == 1 && calls.back().second == "heat_cool");
+  draw({ac, key}); assert(rendered == "heat_cool 19°");
+  DrawAcIcon(0, 100, 0, 100, {ac}, "icon", &large_font); assert(printed_color == light_purple);
+  const auto first_timeout = esphome::App.scheduler.timeouts.size() - 1;
+  change_mode({ac + "|temperature"});
+  assert(calls.back().second == "cool");
+  esphome::App.scheduler.timeouts[first_timeout]();
+  report(ac, "heat_cool");
+  assert(GetClimateModeValue(ac) == "cool");
+  report(ac, "cool");
+  assert(pending_climate_modes.empty());
+  draw({ac, key}); assert(rendered == "cool 19°");
+
+  change_mode({ac, "climate.other"});
+  assert(GetClimateModeValue(ac) == "heat");
+  assert(GetClimateModeValue("climate.other") == "cool");
+  report(ac, "off");
+  assert(GetClimateModeValue(ac) == "off");
+  DrawAcIcon(0, 100, 0, 100, {ac}, "icon", &large_font); assert(printed_color == gray);
+  assert(GetClimateModeValue("climate.other") == "cool");
+  esphome::App.scheduler.timeouts.back()();
+  assert(GetClimateModeValue("climate.other") == "heat");
+  assert(pending_climate_modes.empty());
+  values[ac] = "unavailable";
+  const auto mode_calls = calls.size();
+  change_mode({ac}); assert(calls.size() == mode_calls);
 }
 """
         with tempfile.TemporaryDirectory() as directory:
@@ -202,7 +250,7 @@ std::string state;
 std::string icon;
 int color;
 BaseFont* font;
-std::string GetTextSensorValue(const std::string&) { return state; }
+std::string GetClimateModeValue(const std::string&) { return state; }
 void print(int, int, BaseFont* chosen_font, int chosen, TextAlign, const char* glyph) {
   color = chosen;
   icon = glyph;
@@ -275,10 +323,14 @@ void InitSensor(const std::string& key, const std::string&, const std::string& =
 std::map<std::string, std::string> values;
 std::vector<std::pair<std::string, std::string>> calls;
 std::string GetTextSensorValue(const std::string& key) { return values[key]; }
+std::string GetClimateModeValue(const std::string& key) { return GetTextSensorValue(key); }
 void PerformHaAction(const std::string& entity, const std::string& action,
                      std::vector<std::pair<std::string, std::string>> data) {
   assert(action == "set_hvac_mode");
   calls.emplace_back(entity, data.at(0).second);
+}
+void SetClimateMode(const std::string& entity, const std::string& mode) {
+  PerformHaAction(entity, "set_hvac_mode", {{"hvac_mode", mode}});
 }
 void run(const std::vector<std::string>& entities) {
 """ + action + """
