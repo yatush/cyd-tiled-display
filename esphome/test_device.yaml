@@ -79,7 +79,7 @@ tile_ui:
             y: 0
         - ha_action:
             display:
-              - tile_ac
+              - tile_ac_power
             entities:
               - entity: AC_1_ID
             perform:

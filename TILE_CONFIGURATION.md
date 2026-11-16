@@ -130,8 +130,9 @@ attribute (the target temperature):
 
 The status shows the HVAC mode and target temperature, for example `off 26°`.
 The font shrinks when needed for longer modes such as `heat_cool`.
-The `tile_ac` power icon is gray when off, blue for cool, red for heat, purple
-for heat/cool, and white for unknown or other modes.
+`tile_ac` shows an air icon; `tile_ac_power` shows a power icon. Both are gray
+when off, blue for cool, red for heat, purple for heat/cool, and white for
+unknown or other modes. Use `tile_ac_power` with `action_ac` for an on/off control.
 The `action_temp_up` and `action_temp_down` actions accept the climate entity
 with or without `sensor: temperature` and adjust its target by one degree.
 `tile_ac_status` immediately shows the requested temperature, including repeated

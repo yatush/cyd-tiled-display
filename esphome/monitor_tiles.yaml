@@ -21,7 +21,7 @@ screens:
           entities:
             - entity: AC_1_ID
           display:
-            - tile_ac
+            - tile_ac_power
           perform:
             - action_ac
       - move_page:

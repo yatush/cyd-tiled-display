@@ -177,11 +177,16 @@ int main() {
 
     def test_ac_icon_colors(self):
         yaml = (ROOT / "esphome/lib/lib_common.yaml").read_text()
-        display = yaml.split("  - id: tile_ac\n", 1)[1].split(
-            "\n  - id:", 1
-        )[0].split("      - lambda: |-\n", 1)[1]
+        utils = (ROOT / "esphome/lib/utils.h").read_text()
+        displays = [
+            yaml.split(f"  - id: {script}\n", 1)[1].split(
+                "\n  - id:", 1
+            )[0].split("      - lambda: |-\n", 1)[1]
+            for script in ("tile_ac", "tile_ac_power")
+        ]
         glyphs = (ROOT / "esphome/lib/mdi_glyphs.yaml").read_text()
-        self.assertIn(r'"\U0000f418"', glyphs)
+        for glyph in (r'"\U0000f154"', r'"\U0000f418"'):
+            self.assertIn(glyph, glyphs)
         source = """
 #include <cassert>
 #include <string>
@@ -197,19 +202,27 @@ void print(int, int, int, int chosen, TextAlign, const char* glyph) {
   color = chosen;
   icon = glyph;
 }
-void draw(const std::vector<std::string>& entities) {
+""" + extract_function(utils, "void DrawAcIcon(") + """
+void draw_air(const std::vector<std::string>& entities) {
   int x_start = 0, x_end = 10, y_start = 0, y_end = 10;
-""" + display + """
+""" + displays[0] + """
+}
+void draw_power(const std::vector<std::string>& entities) {
+  int x_start = 0, x_end = 10, y_start = 0, y_end = 10;
+""" + displays[1] + """
 }
 int main() {
-  state = "off"; draw({"climate.ac"}); assert(color == gray); assert(icon == "\\U0000f418");
-  state = "unknown"; draw({"climate.ac"}); assert(color == white);
-  state = "unavailable"; draw({"climate.ac"}); assert(color == white);
-  state = "auto"; draw({"climate.ac"}); assert(color == white);
-  state = "cool"; draw({"climate.ac"}); assert(color == blue);
-  state = "heat"; draw({"climate.ac"}); assert(color == red);
-  state = "heat_cool"; draw({"climate.ac"}); assert(color == light_purple);
-  draw({}); assert(color == white);
+  for (auto draw : {draw_air, draw_power}) {
+    const std::string expected_icon = draw == draw_air ? "\\U0000f154" : "\\U0000f418";
+    state = "off"; draw({"climate.ac"}); assert(color == gray); assert(icon == expected_icon);
+    state = "unknown"; draw({"climate.ac"}); assert(color == white);
+    state = "unavailable"; draw({"climate.ac"}); assert(color == white);
+    state = "auto"; draw({"climate.ac"}); assert(color == white);
+    state = "cool"; draw({"climate.ac"}); assert(color == blue);
+    state = "heat"; draw({"climate.ac"}); assert(color == red);
+    state = "heat_cool"; draw({"climate.ac"}); assert(color == light_purple);
+    draw({}); assert(color == white);
+  }
 }
 """
         with tempfile.TemporaryDirectory() as directory:

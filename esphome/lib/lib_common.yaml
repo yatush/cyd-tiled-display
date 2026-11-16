@@ -732,12 +732,18 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          int x_mid = (x_start + x_end) / 2;
-          int y_mid = (y_start + y_end) / 2;
-          std::string state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0));
-          print(x_mid, y_mid, id(big),
-                      state == "cool" ? id(blue) : state == "heat" ? id(red) : state == "heat_cool" ? id(light_purple) : state == "off" ? id(gray) : id(white),
-                      TextAlign::CENTER, "\U0000f418");
+          DrawAcIcon(x_start, x_end, y_start, y_end, entities, "\U0000f154");
+
+  - id: tile_ac_power
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+    then:
+      - lambda: |-
+          DrawAcIcon(x_start, x_end, y_start, y_end, entities, "\U0000f418");
 
   - id: action_ac
     parameters:
