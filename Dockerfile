@@ -107,8 +107,7 @@ COPY configurator/server.py /app/configurator/
 COPY configurator/github_sync.py /app/configurator/
 COPY configurator/api_proxy.py /app/configurator/
 COPY configurator/run_emulator.sh /app/configurator/
-COPY configurator/run_session.sh /app/configurator/
-RUN chmod +x /app/configurator/run_emulator.sh /app/configurator/run_session.sh
+RUN chmod +x /app/configurator/run_emulator.sh
 
 # Copy ESPHome files (needed for schema and scripts)
 COPY esphome /app/esphome

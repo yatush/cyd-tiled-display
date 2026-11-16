@@ -3,7 +3,7 @@ substitutions:
   friendly_name: Emulator
   tiles_file: "user_config.yaml"
   # Screen dimensions and font sizes below are defaults for the 3248s035 device.
-  # When launched via run_session.sh these are always overridden with values
+  # When launched via run_emulator.sh these are always overridden with values
   # parsed directly from the esphome/lib/*_base.yaml file for the selected device.
   screen_w: "480"
   screen_h: "320"

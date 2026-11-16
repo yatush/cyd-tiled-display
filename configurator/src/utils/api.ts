@@ -17,18 +17,11 @@ const sessionId = Math.random().toString(36).substring(2, 15);
 
 export const SESSION_ID = sessionId;
 
-// Generate a new session ID (for emulator starts)
-export function generateNewSessionId(): string {
-  return Math.random().toString(36).substring(2, 15);
-}
-
-export async function apiFetch(path: string, options: RequestInit = {}, overrideSessionId?: string) {
+export async function apiFetch(path: string, options: RequestInit = {}) {
   const url = `${API_BASE}${path.startsWith('/') ? path : '/' + path}`;
   
-  // Create headers with session ID (use override if provided, otherwise use default)
   const headers = new Headers(options.headers || {});
-  const sessionIdToUse = overrideSessionId || SESSION_ID;
-  headers.set('X-Session-Id', sessionIdToUse);
+  headers.set('X-Session-Id', SESSION_ID);
   
   return fetch(url, { 
     ...options, 

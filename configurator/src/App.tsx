@@ -22,7 +22,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
-import { apiFetch, generateNewSessionId } from './utils/api';
+import { apiFetch } from './utils/api';
 import { ImageEntry, ScreenImageEntry } from './types';
 
 import { generateYaml } from './utils/yamlGenerator';
@@ -260,18 +260,12 @@ function App() {
 
   // Emulator State
   const [emulatorStatus, setEmulatorStatus] = useState<'stopped' | 'running' | 'starting' | 'error'>('stopped');
-  const [websockifyPort, setWebsockifyPort] = useState<number | null>(null);
-  const emulatorKeepAliveRef = useRef<AbortController | null>(null);
-  const currentEmulatorSessionIdRef = useRef<string | null>(null);
 
   const checkEmulatorStatus = async () => {
     try {
-      const res = await apiFetch('/emulator/status', {}, currentEmulatorSessionIdRef.current || undefined);
+      const res = await apiFetch('/emulator/status');
       const data = await res.json();
-      setEmulatorStatus(data.status);
-      if (data.websockify_port) {
-        setWebsockifyPort(data.websockify_port);
-      }
+      setEmulatorStatus(prev => (prev === 'starting' ? prev : data.status));
     } catch (e) {
       // console.error("Failed to check emulator status", e);
     }
@@ -296,73 +290,24 @@ function App() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    // Sync keep-alive connection with status
-    if (emulatorStatus === 'running' && !emulatorKeepAliveRef.current) {
-      const controller = new AbortController();
-      emulatorKeepAliveRef.current = controller;
-      
-      (async () => {
-        try {
-          const res = await apiFetch('/emulator/start', { 
-            method: 'POST', 
-            signal: controller.signal,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ check_only: true })
-          }, currentEmulatorSessionIdRef.current || undefined);
-          const reader = res.body?.getReader();
-          if (reader) {
-            while (true) {
-              const { done } = await reader.read();
-              if (done) break;
-            }
-          }
-        } catch (e) {
-          // Ignore abort errors
-        } finally {
-          emulatorKeepAliveRef.current = null;
-        }
-      })();
-    } else if (emulatorStatus === 'stopped' && emulatorKeepAliveRef.current) {
-      emulatorKeepAliveRef.current.abort();
-      emulatorKeepAliveRef.current = null;
-    }
-  }, [emulatorStatus]);
-
   const handleStartEmulator = async (screenType: string) => {
     setIsEmulatorOpen(true);
-    
-    if (emulatorKeepAliveRef.current) {
-        emulatorKeepAliveRef.current.abort();
-    }
-    
-    const controller = new AbortController();
-    emulatorKeepAliveRef.current = controller;
-
-    // Generate a new session ID for this emulator start
-    const newSessionId = generateNewSessionId();
-    currentEmulatorSessionIdRef.current = newSessionId;
-
     setEmulatorStatus('starting');
-    
+
     const _closeWithError = (msg: string) => {
       alert(msg);
       setEmulatorStatus('stopped');
       setIsEmulatorOpen(false);
-      emulatorKeepAliveRef.current = null;
     };
 
     try {
       const yamlConfig = generateYaml(config);
-      const res = await apiFetch('/emulator/start', { 
+      const res = await apiFetch('/emulator/start', {
         method: 'POST',
-        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ yaml: yamlConfig, screen_type: screenType })
-      }, newSessionId);  // Pass new session ID
-      
-      // Check for session limit or other errors — always safe to call res.text()
-      // then parse, so a malformed body doesn't swallow the error silently.
+      });
+
       if (!res.ok) {
         let msg = 'Failed to start emulator';
         try { msg = (await res.json()).message || msg; } catch { /* use default */ }
@@ -370,61 +315,28 @@ function App() {
         return;
       }
 
+      const data = await res.json();
+      if (data.status === 'error') {
+        _closeWithError(data.message || 'Emulator failed to start');
+        return;
+      }
+
       setEmulatorStatus('running');
-      
-      const reader = res.body?.getReader();
-      if (reader) {
-        const decoder = new TextDecoder();
-        const { value } = await reader.read();
-        const text = decoder.decode(value);
-        try {
-          // Parse the first line which contains the status and ports
-          const firstLine = text.split('\n')[0];
-          const data = JSON.parse(firstLine);
-          if (data.websockify_port) {
-            setWebsockifyPort(data.websockify_port);
-          }
-          // Surface backend error that arrived as a 200 keep-alive stream
-          if (data.status === 'error') {
-            _closeWithError(data.message || 'Emulator failed to start');
-            return;
-          }
-        } catch (e) {
-          console.error("Failed to parse emulator start response", e);
-        }
-        
-        // Continue reading to keep connection alive
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      }
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
-        setEmulatorStatus('stopped');
-        setIsEmulatorOpen(false);
-        emulatorKeepAliveRef.current = null;
-        console.error(e);
-      }
+      _closeWithError('Failed to start emulator');
+      console.error(e);
     }
   };
 
   const handleStopEmulator = async () => {
     setIsEmulatorOpen(false);
     setEmulatorStatus('stopped');
-    
-    if (emulatorKeepAliveRef.current) {
-      emulatorKeepAliveRef.current.abort();
-      emulatorKeepAliveRef.current = null;
-    }
 
     try {
-      await apiFetch('/emulator/stop', { method: 'POST' }, currentEmulatorSessionIdRef.current || undefined);
+      await apiFetch('/emulator/stop', { method: 'POST' });
     } catch (e) {
       console.error("Failed to stop emulator", e);
     }
-    
-    currentEmulatorSessionIdRef.current = null;
   };
 
   useEffect(() => {
@@ -695,8 +607,6 @@ function App() {
         isOpen={isEmulatorOpen} 
         onClose={() => setIsEmulatorOpen(false)}
         onStop={handleStopEmulator}
-        websockifyPort={websockifyPort}
-        emulatorSessionId={currentEmulatorSessionIdRef.current}
         isStarting={emulatorStatus === 'starting'}
       />
 

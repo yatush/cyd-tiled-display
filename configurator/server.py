@@ -24,35 +24,18 @@ import logging
 
 app = Flask(__name__, static_folder='dist')
 
-# Activity Monitoring
-EMULATOR_TIMEOUT = 300  # 5 minutes of inactivity
-EMULATOR_MAX_SESSION_TIME = 1800  # 30 minutes max session duration
-last_activity_time = time.time()
+# Activity / Single-emulator state
+emulator_lock = threading.RLock()  # RLock allows re-entrant locking
+emulator_state = None  # dict when running, None when stopped
 
-# Multi-session tracking
-MAX_CONCURRENT_SESSIONS = 3  # Maximum number of concurrent emulator sessions
-sessions_lock = threading.RLock()  # RLock allows re-entrant locking
-sessions = {}  # session_id -> dict
 
 def get_session_id():
     sid = request.headers.get('X-Session-Id', 'default')
-    # print(f"DEBUG: Request {request.path} from session {sid}", flush=True)
     return sid
-
-def update_activity(session_id=None):
-    global last_activity_time
-    last_activity_time = time.time()
-    if session_id:
-        with sessions_lock:
-            if session_id in sessions:
-                sessions[session_id]['last_activity'] = time.time()
-
 
 
 @app.before_request
 def before_request():
-    # Activity tracking is now only done via explicit /api/emulator/activity endpoint
-    # to avoid resetting timeout on every request
     pass
 
 @app.errorhandler(401)
@@ -230,19 +213,8 @@ def proxy_ha(path):
         return jsonify({"error": str(e)}), 500
 
 EMULATOR_PID_FILE = '/tmp/emulator.pid'
-
-def find_free_display():
-    """Find an unused X display number."""
-    with sessions_lock:
-        used_displays = {s['display'] for s in sessions.values() if 'display' in s}
-    
-    # Start from 10 to avoid conflict with potential system displays
-    for display in range(10, 100):
-        if display not in used_displays:
-            # Also check for lock file
-            if not os.path.exists(f'/tmp/.X11-unix/X{display}') and not os.path.exists(f'/tmp/.X{display}-lock'):
-                return display
-    return None
+EMULATOR_LOG_FILE = '/tmp/emulator.log'
+EMULATOR_API_PORT = 6053
 
 def is_process_running(pid):
     try:
@@ -251,75 +223,28 @@ def is_process_running(pid):
     except (OSError, TypeError, ProcessLookupError):
         return False
 
-def create_emulator_stream(session_id, status):
-    """Creates a streaming response that keeps the emulator alive as long as the connection is open."""
-    def generate():
-        with sessions_lock:
-            if session_id not in sessions:
-                return
-            session = sessions[session_id]
-            session['connections'] = session.get('connections', 0) + 1
-            pid = session.get('pid')
-            websockify_port = session.get('websockify_port')
-            
-            # Start inactivity timer on first VNC connection (emulator is showing content)
-            if session.get('last_activity') is None:
-                session['last_activity'] = time.time()
-                print(f"Session {session_id}: VNC connected, starting inactivity timer", flush=True)
-            
-            print(f"New connection for session {session_id}. Total: {session['connections']}", flush=True)
-        
-        try:
-            # Send initial status
-            yield json.dumps({
-                "status": status, 
-                "pid": pid, 
-                "session_id": session_id,
-                "websockify_port": websockify_port
-            }) + "\n"
-            
-            # Keep connection open as long as process is running
-            while is_process_running(pid):
-                time.sleep(5)
-                yield " " # Keep-alive padding
-        except GeneratorExit:
-            # print(f"Session {session_id} connection closed by client.", flush=True)
-            pass
-        except Exception as e:
-            print(f"Session {session_id} stream error: {e}", flush=True)
-        finally:
-            with sessions_lock:
-                if session_id in sessions:
-                    sessions[session_id]['connections'] -= 1
-                    count = sessions[session_id]['connections']
-                    # print(f"Session {session_id} connection closed. Remaining: {count}", flush=True)
-                    # We NO LONGER stop the session here. 
-                    # The monitor_activity thread will clean it up after timeout if no connections.
-    
-    return Response(stream_with_context(generate()), mimetype='application/x-ndjson')
+def _stop_emulator():
+    """Stops the running emulator process and cleans up its state."""
+    global emulator_state
+    with emulator_lock:
+        if emulator_state is None:
+            return
+        pid = emulator_state.get('pid')
+        if pid:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                pass
+        if os.path.exists(EMULATOR_PID_FILE):
+            try:
+                os.remove(EMULATOR_PID_FILE)
+            except OSError:
+                pass
+        emulator_state = None
 
 @app.route('/api/emulator/start', methods=['POST'])
 def start_emulator():
-    session_id = get_session_id()
-    
-    with sessions_lock:
-        if session_id in sessions:
-            session = sessions[session_id]
-            if is_process_running(session.get('pid')):
-                 return create_emulator_stream(session_id, "running")
-            else:
-                 # Clean up dead session
-                 _stop_session(session_id)
-        
-        # Check if we're at the session limit (only count sessions that don't belong to this session_id)
-        active_sessions = sum(1 for sid, s in sessions.items() 
-                            if sid != session_id and is_process_running(s.get('pid')))
-        if active_sessions >= MAX_CONCURRENT_SESSIONS:
-            return jsonify({
-                "status": "error", 
-                "message": f"Too many emulators are currently running ({active_sessions}/{MAX_CONCURRENT_SESSIONS}). Please try again later.",
-                "error_code": "session_limit_reached"
-            }), 429
+    global emulator_state
 
     # Validate and Save Configuration
     try:
@@ -327,8 +252,11 @@ def start_emulator():
         if not config_data:
              return jsonify({"status": "error", "message": "No configuration provided"}), 400
 
-        # If we are just checking and it's not running, don't start it
+        # If we are just checking and it's already running, return status
         if config_data.get('check_only'):
+            with emulator_lock:
+                if emulator_state and is_process_running(emulator_state.get('pid')):
+                    return jsonify({"status": "running", "pid": emulator_state.get('pid')})
             return jsonify({"status": "stopped", "message": "Emulator not running"}), 404
 
         # Determine screen type / dimensions
@@ -344,8 +272,8 @@ def start_emulator():
         else:
             return jsonify({"status": "error", "message": "Invalid configuration format"}), 400
         
-        # Write to session-specific config
-        user_config_filename = f'user_config_{session_id}.yaml'
+        # Write to user_config.yaml
+        user_config_filename = 'user_config.yaml'
         user_config_path = os.path.join(BASE_DIR, 'lib', user_config_filename)
         with open(user_config_path, 'w') as f:
             f.write(yaml_str)
@@ -364,22 +292,14 @@ def start_emulator():
         print(f"Config processing error: {e}")
         return jsonify({"status": "error", "message": f"Failed to process configuration: {str(e)}"}), 500
 
-    script_path = os.path.join(os.path.dirname(__file__), 'run_session.sh')
-    log_path = f'/tmp/emulator_{session_id}.log'
-    
+    script_path = os.path.join(os.path.dirname(__file__), 'run_emulator.sh')
     if not os.path.exists(script_path):
-        print(f"ERROR: Session script not found at {script_path}", flush=True)
-        return jsonify({"status": "error", "message": f"Session script not found: {script_path}"}), 500
+        print(f"ERROR: Emulator script not found at {script_path}", flush=True)
+        return jsonify({"status": "error", "message": f"Emulator script not found: {script_path}"}), 500
 
-    # Allocate display and ports
-    display = find_free_display()
-    if display is None:
-        return jsonify({"status": "error", "message": "No free display available"}), 507
-    
-    vnc_port = 5900 + display
-    websockify_port = 6000 + display
-    api_port = 6050 + display
-    
+    # Stop any existing emulator instance before starting a new one
+    _stop_emulator()
+
     # Get HA credentials for the proxy
     ha_url = request.headers.get('x-ha-url')
     ha_token = request.headers.get('x-ha-token')
@@ -387,15 +307,14 @@ def start_emulator():
     
     try:
         os.chmod(script_path, 0o755)
-        print(f"Starting session {session_id}: display={display}, vnc={vnc_port}, ws={websockify_port}, api={api_port}", flush=True)
+        print(f"Starting emulator (screen_type={screen_type}, api={EMULATOR_API_PORT})", flush=True)
         
-        with open(log_path, 'w', buffering=1) as log_file:
-            log_file.write(f"--- Starting Session {session_id} ---\n")
+        with open(EMULATOR_LOG_FILE, 'w', buffering=1) as log_file:
+            log_file.write("--- Starting Emulator ---\n")
             log_file.flush()
-            # Usage: ./run_session.sh <session_id> <display_num> <vnc_port> <websockify_port> <tiles_file> <api_port>
             # Device config (screen dims, font sizes) is passed via environment variables.
             proc = subprocess.Popen(
-                ['/bin/bash', script_path, session_id, str(display), str(vnc_port), str(websockify_port), user_config_filename, str(api_port)],
+                ['/bin/bash', script_path],
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 cwd=os.path.dirname(__file__),
@@ -403,22 +322,13 @@ def start_emulator():
                 env={**os.environ, **{k.upper(): str(v) for k, v in _dev_cfg.items()}},
             )
         
-        pid_file = f'/tmp/emulator_{session_id}.pid'
-        with open(pid_file, 'w') as f:
+        with open(EMULATOR_PID_FILE, 'w') as f:
             f.write(str(proc.pid))
             
-        with sessions_lock:
-            sessions[session_id] = {
+        with emulator_lock:
+            emulator_state = {
                 'pid': proc.pid,
-                'display': display,
-                'vnc_port': vnc_port,
-                'websockify_port': websockify_port,
-                'api_port': api_port,
-                'connections': 0,
-                'last_activity': None,  # Will be set on VNC connection
-                'session_start_time': time.time(),  # Track session creation time
-                'pid_file': pid_file,
-                'log_path': log_path,
+                'log_path': EMULATOR_LOG_FILE,
                 'user_config_path': user_config_path,
                 'screen_type': screen_type,
                 'screen_w': _dev_cfg['screen_w'],
@@ -428,71 +338,33 @@ def start_emulator():
         # Start API proxy thread to forward service calls from emulator to HA
         # Only start if not in mock mode and we have some way to reach HA
         if not is_mock and (SUPERVISOR_TOKEN or (ha_url and ha_url.strip())):
-            def check_session_alive():
-                with sessions_lock:
-                    return session_id in sessions
+            started_pid = proc.pid
+            def check_emulator_alive():
+                with emulator_lock:
+                    return emulator_state is not None and emulator_state.get('pid') == started_pid
 
             threading.Thread(
                 target=run_proxy_thread, 
-                args=(session_id, api_port, ha_url, ha_token, SUPERVISOR_TOKEN, check_session_alive),
+                args=('emulator', EMULATOR_API_PORT, ha_url, ha_token, SUPERVISOR_TOKEN, check_emulator_alive),
                 daemon=True
             ).start()
         else:
-            print(f"API PROXY [{session_id}]: Skipping start (Mock mode or no HA credentials)", flush=True)
+            print("API PROXY [emulator]: Skipping start (Mock mode or no HA credentials)", flush=True)
             
-        return create_emulator_stream(session_id, "started")
+        return jsonify({"status": "started", "pid": proc.pid})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-def _stop_session(session_id):
-    """Stops all processes associated with a session."""
-    with sessions_lock:
-        if session_id not in sessions:
-            return
-        session = sessions[session_id]
-        pid = session.get('pid')
-        pid_file = session.get('pid_file')
-        user_config_path = session.get('user_config_path')
-        display = session.get('display')
-        
-        if pid:
-            try:
-                os.killpg(os.getpgid(pid), signal.SIGTERM)
-            except (ProcessLookupError, OSError):
-                pass
-        
-        # Cleanup files
-        if pid_file and os.path.exists(pid_file):
-            os.remove(pid_file)
-        # We might want to keep the config or logs for a bit, but for now let's clean up
-        if user_config_path and os.path.exists(user_config_path):
-            os.remove(user_config_path)
-            
-        # Explicit cleanup for display locks
-        if display:
-            for lock in [f'/tmp/.X{display}-lock', f'/tmp/.X11-unix/X{display}']:
-                if os.path.exists(lock):
-                    try:
-                        if os.path.isdir(lock):
-                            os.rmdir(lock)
-                        else:
-                            os.remove(lock)
-                    except:
-                        pass
-
-        del sessions[session_id]
-
 @app.route('/api/emulator/stop', methods=['POST'])
 def stop_emulator():
-    session_id = get_session_id()
-    _stop_session(session_id)
+    _stop_emulator()
     return jsonify({"status": "stopped"})
 
 
 @app.route('/api/debug/emulator', methods=['GET'])
 def debug_emulator():
     """Diagnostic endpoint: returns emulator + seed-dir state for debugging."""
-    import glob as _glob, platform as _platform
+    import platform as _platform
     seed_dir = os.path.join(
         '/app/esphome' if os.path.isdir('/app/esphome') else
         os.path.abspath(os.path.join(os.path.dirname(__file__), '../esphome')),
@@ -516,63 +388,50 @@ def debug_emulator():
         except Exception:
             return None
 
-    with sessions_lock:
-        sessions_snapshot = {
-            sid: {
-                'pid': s.get('pid'),
-                'running': is_process_running(s.get('pid')),
-                'display': s.get('display'),
-                'vnc_port': s.get('vnc_port'),
-                'websockify_port': s.get('websockify_port'),
-                'screen_type': s.get('screen_type'),
+    with emulator_lock:
+        emulator_snapshot = None
+        if emulator_state:
+            emulator_snapshot = {
+                'pid': emulator_state.get('pid'),
+                'running': is_process_running(emulator_state.get('pid')),
+                'screen_type': emulator_state.get('screen_type'),
             }
-            for sid, s in sessions.items()
-        }
 
-    # Recent logs for each session
-    log_files = {}
-    for f in _glob.glob('/tmp/emulator_*.log'):
+    recent_log = None
+    if os.path.exists(EMULATOR_LOG_FILE):
         try:
-            result = subprocess.run(['tail', '-n', '20', f], capture_output=True, text=True)
-            log_files[os.path.basename(f)] = result.stdout
+            result = subprocess.run(['tail', '-n', '20', EMULATOR_LOG_FILE], capture_output=True, text=True)
+            recent_log = result.stdout
         except Exception:
             pass
 
     return jsonify({
         'arch': _platform.machine(),
-        'sessions': sessions_snapshot,
+        'emulator': emulator_snapshot,
         'seed_dir': {'path': seed_dir, 'exists': os.path.isdir(seed_dir), 'size': _dir_size_mb(seed_dir) if os.path.isdir(seed_dir) else None},
         'emulator_marker': {'exists': os.path.exists(emulator_marker), 'content': _read_file(emulator_marker)},
         'ccache_dir': {'exists': os.path.isdir(ccache_dir), 'size': _dir_size_mb(ccache_dir) if os.path.isdir(ccache_dir) else None},
         'setup_marker': os.path.exists(setup_marker),
         'generate_script': os.path.exists(_GENERATE_SCRIPT),
         'base_dir': BASE_DIR,
-        'recent_emulator_logs': log_files,
+        'recent_emulator_log': recent_log,
         'memory_mb': _read_file('/proc/meminfo').split('\n')[0] if os.path.exists('/proc/meminfo') else None,
     })
 
 @app.route('/api/emulator/status', methods=['GET'])
 def emulator_status():
-    session_id = get_session_id()
-    with sessions_lock:
-        if session_id in sessions:
-            session = sessions[session_id]
-            if is_process_running(session.get('pid')):
-                return jsonify({
-                    "status": "running",
-                    "websockify_port": session.get('websockify_port')
-                })
+    with emulator_lock:
+        if emulator_state and is_process_running(emulator_state.get('pid')):
+            return jsonify({"status": "running"})
     return jsonify({"status": "stopped"})
 
 @app.route('/api/emulator/logs', methods=['GET'])
 def emulator_logs():
-    session_id = get_session_id()
-    log_path = f'/tmp/emulator_{session_id}.log'
-    if os.path.exists(log_path):
+    if os.path.exists(EMULATOR_LOG_FILE):
         try:
             # Read the last 2000 lines to avoid sending too much data
             # Using tail command for efficiency
-            result = subprocess.run(['tail', '-n', '2000', log_path], capture_output=True, text=True)
+            result = subprocess.run(['tail', '-n', '2000', EMULATOR_LOG_FILE], capture_output=True, text=True)
             return result.stdout
         except Exception as e:
             return f"Error reading logs: {e}"
@@ -2661,51 +2520,6 @@ def websockify_proxy():
     # This won't work for actual websocket upgrade - we need a different approach
     # Return info for debugging
     return jsonify({"error": "Websocket proxy - this endpoint requires websocket upgrade"}), 400
-
-@app.route('/api/emulator/activity', methods=['POST'])
-def track_activity():
-    """Track user activity for the current session - reset inactivity timer."""
-    session_id = get_session_id()
-    
-    with sessions_lock:
-        if session_id in sessions:
-            # Reset the inactivity timer on user activity
-            sessions[session_id]['last_activity'] = time.time()
-    
-    return jsonify({"status": "ok"})
-
-def monitor_activity():
-    while True:
-        time.sleep(10)
-        now = time.time()
-        
-        with sessions_lock:
-            active_sessions = list(sessions.keys())
-            
-        for sid in active_sessions:
-            with sessions_lock:
-                if sid not in sessions: continue
-                session = sessions[sid]
-                last_act = session.get('last_activity')
-                session_start = session.get('session_start_time', now)
-                log_path = session.get('log_path')
-            
-            # Check for hard session timeout (30 minutes max)
-            if now - session_start > EMULATOR_MAX_SESSION_TIME:
-                print(f"Session {sid} reached maximum duration ({EMULATOR_MAX_SESSION_TIME}s). Stopping...", flush=True)
-                _stop_session(sid)
-                continue
-            
-            # Check for inactivity timeout (10 minutes with no clicks)
-            # Only check if activity timer has been started (VNC connected)
-            if last_act is not None:
-                if now - last_act > EMULATOR_TIMEOUT:
-                    print(f"Session {sid} inactivity timeout reached ({EMULATOR_TIMEOUT}s). Stopping...", flush=True)
-                    _stop_session(sid)
-
-# Start monitoring thread
-monitor_thread = threading.Thread(target=monitor_activity, daemon=True)
-monitor_thread.start()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8099)

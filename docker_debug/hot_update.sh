@@ -18,8 +18,7 @@ echo "Updating Python backend scripts..."
 docker cp ../configurator/server.py "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/generate_tiles_api.py "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/run_emulator.sh "${CONTAINER_NAME}:/app/configurator/"
-docker cp ../configurator/run_session.sh "${CONTAINER_NAME}:/app/configurator/"
-docker exec $CONTAINER_NAME chmod +x /app/configurator/run_session.sh
+docker exec $CONTAINER_NAME chmod +x /app/configurator/run_emulator.sh
 
 echo "Updating toolchain setup script..."
 docker cp ../container/toolchain_setup.py "${CONTAINER_NAME}:/app/toolchain_setup.py"
