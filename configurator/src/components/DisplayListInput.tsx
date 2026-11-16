@@ -139,7 +139,7 @@ export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], 
                                     value={currentValue}
                                     onChange={e => {
                                         const newParams = { ...params, [p.name]: e.target.value };
-                                        if (scriptId === 'tile_ac' && p.name === 'size' && !e.target.value) {
+                                        if ((scriptId === 'tile_ac' || scriptId === 'tile_fan') && p.name === 'size' && !e.target.value) {
                                             delete newParams.size;
                                         }
                                         const newValues = [...safeValue];

@@ -286,7 +286,10 @@ dynamic_entities: [FAN]
 ```
 
 The power tile toggles on a short release; holding it for two seconds opens
-settings even when the fan is off. Speed cycles through nonzero steps reported
+settings even when the fan is off. Its fan icon is yellow when on and gray
+when off. To change its size, use `display: [{tile_fan: {size: small}}]`;
+the default is `big`, and `tiny`, `small`, `medium`, and `big` are available.
+Speed cycles through nonzero steps reported
 by Home Assistant and wraps to the lowest speed. Direction toggles between
 forward and reverse. Unsupported or unavailable controls show `--` and do
 not send an action. Applying a speed while off may turn the fan on.

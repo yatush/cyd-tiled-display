@@ -122,7 +122,7 @@ def _are_types_compatible(actual, expected):
 def script_parameter_defaults(script_id, script_info):
     """Defaults for built-in script parameters added after their original signature."""
     params = script_info.get('parameters', {})
-    if script_id == 'tile_ac' and params.get('size') == 'esphome::display::BaseFont*':
+    if script_id in ('tile_ac', 'tile_fan') and params.get('size') == 'esphome::display::BaseFont*':
         return {'size': 'big'}
     return {}
 

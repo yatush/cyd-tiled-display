@@ -37,6 +37,72 @@ class FanActionsTest(unittest.TestCase):
             for tile in screen["tiles"]:
                 self.assertIn("new ", generate_tile_cpp(tile, scripts))
 
+    def test_fan_display_rendering(self):
+        class Loader(yaml.SafeLoader):
+            pass
+        Loader.add_multi_constructor("!", lambda loader, tag, node: loader.construct_scalar(node))
+        library = yaml.load((ROOT / "esphome/lib/lib_common.yaml").read_text(), Loader=Loader)
+        scripts = {script["id"]: script for script in library["script"]}
+        glyphs = yaml.safe_load((ROOT / "esphome/lib/mdi_glyphs.yaml").read_text())
+        self.assertIn("\uf168", glyphs)
+        code = r"""
+#include <cassert>
+#include <cmath>
+#include <optional>
+#include <string>
+#include <vector>
+#define id(x) x
+enum TextAlign { CENTER, TOP_LEFT };
+enum Font { big, small, tiny, text_small, text_bold };
+enum Color { yellow, gray, white, light_blue };
+struct Draw { int x, y; Font font; Color color; TextAlign align; std::string text; };
+std::vector<Draw> draws;
+void print(int x, int y, Font font, Color color, TextAlign align, const char* text) {
+  draws.push_back({x, y, font, color, align, text});
+}
+std::string state = "on";
+std::string GetSensor(const std::string& value) { return value; }
+std::string GetTextSensorValue(const std::string&) { return state; }
+bool FanSupports(const std::string&, int) { return true; }
+std::string GetFanAttribute(const std::string& key) {
+  return key.find("percentage") != std::string::npos ? "66" : "forward";
+}
+namespace esphome {
+template<class T> std::optional<T> parse_number(const std::string& value) {
+  return static_cast<T>(std::stof(value));
+}
+}
+"""
+        for name in ("tile_fan", "tile_fan_speed", "tile_fan_direction"):
+            size_parameter = ", Font size" if name == "tile_fan" else ""
+            code += (
+                f"\nvoid {name}(int x_start, int x_end, int y_start, int y_end, "
+                f"std::vector<std::string> entities{size_parameter}) {{\n"
+                + scripts[name]["then"][0]["lambda"] + "\n}\n"
+            )
+        code += r"""
+int main() {
+  tile_fan(10, 110, 20, 120, {"fan.test"}, small);
+  assert(draws.size() == 1 && draws[0].font == small && draws[0].color == yellow);
+  assert(draws[0].text == "\U0000f168" && draws[0].align == CENTER);
+  draws.clear(); state = "off";
+  tile_fan(10, 110, 20, 120, {"fan.test"}, big);
+  assert(draws.size() == 1 && draws[0].font == big && draws[0].color == gray);
+  draws.clear(); state = "unavailable";
+  tile_fan(10, 110, 20, 120, {"fan.test"}, big);
+  assert(draws.size() == 2 && draws[0].color == gray && draws[1].text == "--");
+  state = "on";
+  for (auto draw : {tile_fan_speed, tile_fan_direction}) {
+    draws.clear(); draw(10, 110, 20, 120, {"fan.test"});
+    assert(draws.size() == 2);
+    assert(draws[0].x == 12 && draws[0].y == 22 && draws[0].font == tiny);
+    assert(draws[0].color == white && draws[0].align == TOP_LEFT && draws[0].text == "\U0000f168");
+    assert(draws[1].x == 60 && draws[1].y == 70 && draws[1].color == light_blue);
+  }
+}
+"""
+        compile_and_run(code)
+
     def test_fan_speed_and_direction(self):
         source = (ROOT / "esphome/lib/utils.h").read_text()
         pending = source.split("struct PendingFanAttribute {", 1)[1].split(

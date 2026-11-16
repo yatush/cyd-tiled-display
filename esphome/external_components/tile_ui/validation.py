@@ -630,10 +630,10 @@ def _validate_script_parameters(script_id, script_info, provided_params, context
                 f"Valid parameters are: {', '.join(sorted(script_params.keys()))}"
             )
 
-    if script_id == 'tile_ac' and 'size' in provided_params:
+    if script_id in ('tile_ac', 'tile_fan') and 'size' in provided_params:
         size = provided_params['size']
         if not isinstance(size, str) or not size.strip() or size.strip() == 'nullptr':
-            raise ValueError(f"{context}: Script 'tile_ac' requires a valid font for 'size'.")
+            raise ValueError(f"{context}: Script '{script_id}' requires a valid font for 'size'.")
     
     # Check for missing required parameters
     # Implicit parameters are those that are automatically provided by the system

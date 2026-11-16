@@ -119,6 +119,34 @@ class TestScriptValidation(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "valid font"):
                 validate_tiles_config(screens, scripts)
 
+    def test_fan_icon_size_and_legacy_default(self):
+        from tile_ui.tile_generation import generate_tile_cpp
+
+        params = dict(self.available_scripts["display_std"]["parameters"])
+        params["size"] = "esphome::display::BaseFont*"
+        scripts = {"tile_fan": {"parameters": params},
+                   "action": {"parameters": {"entities": "string[]"}}}
+        tile = {"ha_action": {
+            "x": 0, "y": 0, "entities": [{"entity": "fan.office"}],
+            "display": ["tile_fan"], "perform": ["action"],
+        }}
+        screens = [{"id": "main", "flags": ["BASE"], "tiles": [tile]}]
+        for display, expected in [
+            (["tile_fan"], "&id(big)"),
+            ([{"tile_fan": {}}], "&id(big)"),
+            ([{"tile_fan": {"size": "tiny"}}], "&id(tiny)"),
+            ([{"tile_fan": {"size": "id(small)"}}], "&id(small)"),
+        ]:
+            with self.subTest(display=display):
+                tile["ha_action"]["display"] = display
+                validate_tiles_config(screens, scripts)
+                cpp = generate_tile_cpp(tile, scripts, "main")
+                self.assertIn(f"id(tile_fan).execute(arg0, arg1, arg2, arg3, arg4, {expected})", cpp)
+        for size in ("", "nullptr"):
+            tile["ha_action"]["display"] = [{"tile_fan": {"size": size}}]
+            with self.assertRaisesRegex(ValueError, "valid font"):
+                validate_tiles_config(screens, scripts)
+
     def test_validate_script_type_toggle(self):
         validate_script_type("display_toggle", self.available_scripts["display_toggle"], "display_toggle", "test")
 
