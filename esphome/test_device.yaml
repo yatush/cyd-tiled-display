@@ -135,7 +135,8 @@ tile_ui:
             entities:
               - dynamic_entity: COVER
             perform:
-              - action_blinds_mid
+              - action_blinds_position:
+                  position: 40
             x: 2
             y: 1
     - id: pref

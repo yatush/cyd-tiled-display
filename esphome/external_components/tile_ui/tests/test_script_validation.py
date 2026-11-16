@@ -116,6 +116,45 @@ class TestScriptValidation(unittest.TestCase):
         cpp = generate_tile_cpp(tile, scripts, "blinds")
         self.assertIn('id(tile_choose_text).execute(arg0, arg1, arg2, arg3, arg4, arg5, "Living Room", &id(text_small))', cpp)
 
+    def test_sized_blinds_display_accepts_font_parameter(self):
+        from tile_ui.tile_generation import generate_tile_cpp
+
+        params = dict(self.available_scripts["display_std"]["parameters"])
+        params["size"] = "esphome::display::BaseFont*"
+        scripts = {
+            "tile_blinds_up_down_sized": {"parameters": params},
+            "action_blinds_up_down": self.available_scripts["location_action"],
+        }
+        tile = {"ha_action": {
+            "x": 0, "y": 0, "entities": [{"dynamic_entity": "BLINDS"}],
+            "display": [{"tile_blinds_up_down_sized": {"size": "tiny"}}],
+            "location_perform": ["action_blinds_up_down"],
+        }}
+        screens = [{"id": "blinds", "flags": ["BASE"], "tiles": [tile]}]
+        validate_tiles_config(screens, scripts, declared_dynamic_entities=["BLINDS"])
+        cpp = generate_tile_cpp(tile, scripts, "blinds")
+        self.assertIn("id(tile_blinds_up_down_sized).execute(arg0, arg1, arg2, arg3, arg4, &id(tiny))", cpp)
+
+    def test_blinds_position_action_accepts_position(self):
+        from tile_ui.tile_generation import generate_tile_cpp
+
+        scripts = {
+            "display_std": self.available_scripts["display_std"],
+            "action_blinds_position": {"parameters": {"entities": "string[]", "position": "int"}},
+        }
+        tile = {"ha_action": {
+            "x": 0, "y": 0, "entities": [{"dynamic_entity": "BLINDS"}],
+            "display": ["display_std"],
+            "perform": [{"action_blinds_position": {"position": 40}}],
+        }}
+        screens = [{"id": "blinds", "flags": ["BASE"], "tiles": [tile]}]
+        validate_tiles_config(screens, scripts, declared_dynamic_entities=["BLINDS"])
+        cpp = generate_tile_cpp(tile, scripts, "blinds")
+        self.assertIn("id(action_blinds_position).execute(arg0, 40)", cpp)
+        tile["ha_action"]["perform"] = [{"action_blinds_position": {}}]
+        with self.assertRaisesRegex(ValueError, "Missing required parameter 'position'"):
+            validate_tiles_config(screens, scripts, declared_dynamic_entities=["BLINDS"])
+
     def test_validate_script_type_cycle(self):
         validate_script_type("display_cycle", self.available_scripts["display_cycle"], "display_cycle", "test")
 

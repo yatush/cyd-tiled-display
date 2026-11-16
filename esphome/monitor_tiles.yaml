@@ -74,7 +74,8 @@ screens:
                 color: id(light_purple)
                 size: id(big)
           perform:
-            - action_blinds_mid
+            - action_blinds_position:
+                position: 40
           display_page_if_no_entity: cover_settings
   - id: pref
     rows: 3

@@ -568,19 +568,6 @@ script:
             PerformHaAction(blind, down ? STOP_COVER : CLOSE_COVER);
           }
 
-  - id: action_blinds_mid
-    parameters:
-      entities: string[]
-    then:
-      - lambda: |-
-          static std::string set_cover_position = "set_cover_position";
-          static const char* SET_COVER_POSITION = "set_cover_position";
-          static const char* POSITION = "position";
-          static const char* FOURTY = "40";
-          for (const std::string& blind : entities) {
-            PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, FOURTY}});
-          }
-  
   - id: action_blinds_location
     parameters:
       entities: string[]
@@ -593,6 +580,27 @@ script:
           for (const std::string& blind : entities) {
             PerformHaAction(blind, SET_COVER_POSITION, {{POSITION, location}});
           }
+
+  - id: action_blinds_position
+    parameters:
+      entities: string[]
+      position: int
+    then:
+      - lambda: |-
+          if (position < 0 || position > 100) {
+            ESP_LOGE("action_blinds_position", "Position must be between 0 and 100: %d", position);
+            return;
+          }
+          id(action_blinds_location).execute(entities, std::to_string(position));
+
+  - id: action_blinds_mid
+    parameters:
+      entities: string[]
+    then:
+      - script.execute:
+          id: action_blinds_position
+          entities: !lambda return entities;
+          position: 40
 
   - id: action_blinds_up_down
     parameters:
@@ -614,13 +622,14 @@ script:
             }
           }
 
-  - id: tile_blinds_up_down
+  - id: _tile_blinds_up_down
     parameters:
       x_start: int
       x_end: int
       y_start: int
       y_end: int
       entities: string[]
+      idle_size: esphome::display::BaseFont*
     then:
       - lambda: |-
           bool up = RUN_SCRIPT(id(blinds_moving_up_fn), entities);
@@ -642,27 +651,54 @@ script:
           int text_y = y_mid + (show_up ? -1 : 1) * delta_y;
           auto color = show_up ? id(blue) : id(red);
           const char* symbol = show_up ? "\U0000eacf" : "\U0000ead0";
-          print(text_x, text_y, one ? id(big) : id(small), color, TextAlign::CENTER, symbol);
+          print(text_x, text_y, any ? id(big) : idle_size, color, TextAlign::CENTER, symbol);
 
           if (show_up) {
-            if (one) {
-              print(x_mid - delta_x, y_mid - delta_y, id(big), id(blue), TextAlign::CENTER, "\U0000eacf");
-            } else {
-              print(x_mid - delta_x, y_mid - delta_y, id(small), id(blue), TextAlign::CENTER, "\U0000eacf");
-            }
+            print(x_mid - delta_x, y_mid - delta_y, any ? id(big) : idle_size, id(blue), TextAlign::CENTER, "\U0000eacf");
           }
           if (show_down) {
-            if (one) {
-              print(x_mid + delta_x, y_mid + delta_y, id(big), id(red), TextAlign::CENTER, "\U0000ead0");
-            } else {
-              print(x_mid + delta_x, y_mid + delta_y, id(small), id(red), TextAlign::CENTER, "\U0000ead0");
-            }
+            print(x_mid + delta_x, y_mid + delta_y, any ? id(big) : idle_size, id(red), TextAlign::CENTER, "\U0000ead0");
           }
 
           if (!any) {
             int gap = x_rect / 6;
             line(x_start + gap, y_start + y_rect - gap, x_start + x_rect - gap, y_start + gap, id(gray));
           }
+
+  - id: tile_blinds_up_down
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+    then:
+      - script.execute:
+          id: _tile_blinds_up_down
+          x_start: !lambda return x_start;
+          x_end: !lambda return x_end;
+          y_start: !lambda return y_start;
+          y_end: !lambda return y_end;
+          entities: !lambda return entities;
+          idle_size: !lambda return id(small);
+
+  - id: tile_blinds_up_down_sized
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+      size: esphome::display::BaseFont*
+    then:
+      - script.execute:
+          id: _tile_blinds_up_down
+          x_start: !lambda return x_start;
+          x_end: !lambda return x_end;
+          y_start: !lambda return y_start;
+          y_end: !lambda return y_end;
+          entities: !lambda return entities;
+          idle_size: !lambda return size;
 
   - id: is_lights_on
     parameters:

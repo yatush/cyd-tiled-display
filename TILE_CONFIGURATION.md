@@ -159,6 +159,36 @@ Displays entity state and performs an action (typically toggle) when pressed.
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
+For a blinds up/down control with configurable arrow size:
+
+```yaml
+- ha_action:
+    x: 0
+    y: 0
+    entities:
+      - dynamic_entity: BLINDS
+    display:
+      - tile_blinds_up_down_sized:
+          size: tiny
+    location_perform:
+      - action_blinds_up_down
+```
+
+`size` is an icon font ID (`tiny`, `small`, `medium`, or `big`) used for idle
+arrows. Moving arrows always use `big`. The original `tile_blinds_up_down`
+uses `small` when idle.
+
+To set the selected blinds to a specific position, use:
+
+```yaml
+perform:
+  - action_blinds_position:
+      position: 40
+```
+
+`position` is an integer from 0 (closed) to 100 (open). The existing
+`action_blinds_mid` remains available and sets the position to 40.
+
 ### 3. Move Page Tile (Navigation)
 
 Navigates to another screen when pressed.
