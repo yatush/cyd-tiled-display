@@ -379,7 +379,7 @@ protected:
               std::to_string(low) + "-" + std::to_string(high) + "%";
       mixed = low != high;
     }
-    auto* font = measure(id(text_bold), label.c_str()).first <= width ? id(text_bold) : id(text_small);
+    auto& font = measure(id(text_bold), label.c_str()).first <= width ? id(text_bold) : id(text_small);
     if (mixed) {
       print((left + right) / 2, (top + bottom) / 2 - 10, id(text_small), id(white),
             TextAlign::CENTER, "Mixed");

@@ -41,12 +41,15 @@ struct Display {
   void filled_rectangle(int, int, int, int height, int color) { fills.emplace_back(height, color); }
 } disp;
 int last_y = 0, light_blue = 1, dark_gray = 2, white = 3, tile_border_width = 1;
-int font1 = 4, font2 = 5, *text_bold = &font1, *text_small = &font2;
+int text_bold = 4, text_small = 5, measured_width = 50;
+int* last_font = nullptr;
 enum class TextAlign { CENTER };
 std::string label;
 std::vector<std::string> labels;
-std::pair<int, int> measure(int*, const char*) { return {50, 10}; }
-void print(int, int, int*, int, TextAlign, const char* text) { label = text; labels.push_back(text); }
+std::pair<int, int> measure(int&, const char*) { return {measured_width, 10}; }
+void print(int, int, int& font, int, TextAlign, const char* text) {
+  label = text; labels.push_back(text); last_font = &font;
+}
 int x_start(int x) { return x * 100; }
 int y_start(int y) { return y * 100; }
 int x_rect() { return 100; }
@@ -112,6 +115,10 @@ int main() {
   values = {{"cover.a|current_position", "100"}, {"cover.b|current_position", "0"}};
   t.start(); t.decodeEntities();
   t.draw(); assert(label == "0-100%"); assert(labels[0] == "Mixed");
+  assert(last_font == &text_bold);
+  measured_width = 500; t.draw(); assert(last_font == &text_small);
+  measured_width = 50;
+  disp.fills.clear(); t.draw();
   assert(disp.fills.size() == 1 && disp.fills[0].second == dark_gray);
   values["cover.a|current_position"] = "30"; values["cover.b|current_position"] = "70";
   disp.fills.clear(); t.draw(); assert(label == "30-70%");
