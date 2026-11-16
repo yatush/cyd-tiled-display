@@ -22,6 +22,47 @@ def extract_function(source, signature):
 
 
 class ClimateModeTest(unittest.TestCase):
+    def test_ac_icon_colors(self):
+        yaml = (ROOT / "esphome/lib/lib_common.yaml").read_text()
+        display = yaml.split("  - id: tile_ac\n", 1)[1].split(
+            "\n  - id:", 1
+        )[0].split("      - lambda: |-\n", 1)[1]
+        source = """
+#include <cassert>
+#include <string>
+#include <vector>
+#define id(name) name
+enum { big, blue, red, light_purple, gray, white };
+enum class TextAlign { CENTER };
+std::string state;
+int color;
+std::string GetTextSensorValue(const std::string&) { return state; }
+void print(int, int, int, int chosen, TextAlign, const char*) { color = chosen; }
+void draw(const std::vector<std::string>& entities) {
+  int x_start = 0, x_end = 10, y_start = 0, y_end = 10;
+""" + display + """
+}
+int main() {
+  state = "off"; draw({"climate.ac"}); assert(color == gray);
+  state = "unknown"; draw({"climate.ac"}); assert(color == white);
+  state = "unavailable"; draw({"climate.ac"}); assert(color == white);
+  state = "auto"; draw({"climate.ac"}); assert(color == white);
+  state = "cool"; draw({"climate.ac"}); assert(color == blue);
+  state = "heat"; draw({"climate.ac"}); assert(color == red);
+  state = "heat_cool"; draw({"climate.ac"}); assert(color == light_purple);
+  draw({}); assert(color == white);
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "test.cpp").write_text(source)
+            subprocess.run(
+                ["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                 str(path / "test.cpp"), "-o", str(path / "test")],
+                check=True,
+            )
+            subprocess.run([str(path / "test")], check=True)
+
     def test_mode_cycle_and_action(self):
         utils = (ROOT / "esphome/lib/utils.h").read_text()
         yaml = (ROOT / "esphome/lib/lib_common.yaml").read_text()

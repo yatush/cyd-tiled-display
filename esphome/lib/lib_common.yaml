@@ -735,7 +735,7 @@ script:
           int y_mid = (y_start + y_end) / 2;
           std::string state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0));
           print(x_mid, y_mid, id(big),
-                      state == "cool" ? id(blue) : state == "heat" ? id(red) : state == "heat_cool" ? id(light_purple) : id(gray),
+                      state == "cool" ? id(blue) : state == "heat" ? id(red) : state == "heat_cool" ? id(light_purple) : state == "off" ? id(gray) : id(white),
                       TextAlign::CENTER, "\U0000f154");
 
   - id: action_ac
