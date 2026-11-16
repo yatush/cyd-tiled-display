@@ -884,15 +884,16 @@ script:
           int y_mid = (y_start + y_end) / 2;
 
           std::string icon = "\U0000f02a";
-          // Sizes
-          auto icon_size = measure(id(medium), icon.c_str());
-          auto text_size = measure(id(text_bold), "0");
-
-          int icon_y = y_mid - text_size.second / 2;
-          int text_y = y_mid + icon_size.second / 2;
-
-          print(x_mid, icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
-          print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          if (cur_name.empty()) {
+            print(x_mid, y_mid, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          } else {
+            auto icon_size = measure(id(medium), icon.c_str());
+            auto text_size = measure(id(text_bold), "0");
+            int icon_y = y_mid - text_size.second / 2;
+            int text_y = y_mid + icon_size.second / 2;
+            print(x_mid, icon_y, id(medium), cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+            print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          }
 
   - id: tile_choose_cover_sized
     parameters:
@@ -912,15 +913,22 @@ script:
           int y_mid = (y_start + y_end) / 2;
 
           std::string icon = "\U0000e286";
-          // Sizes
-          auto icon_size = measure(size, icon.c_str());
-          auto text_size = measure(id(text_bold), "0");
-
-          int icon_y = y_mid - text_size.second / 2;
-          int text_y = y_mid + icon_size.second / 2;
-
-          print(x_mid, icon_y, size, cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
-          print(x_mid, text_y, id(text_bold), Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          if (cur_name.empty()) {
+            print(x_mid, y_mid, size, cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+          } else {
+            esphome::display::BaseFont* name_font = id(text_bold);
+            if (size == id(tiny) || size == id(small)) {
+              name_font = id(text_small);
+            } else if (size == id(big)) {
+              name_font = id(text_big_bold);
+            }
+            auto icon_size = measure(size, icon.c_str());
+            auto text_size = measure(name_font, "0");
+            int icon_y = y_mid - text_size.second / 2;
+            int text_y = y_mid + icon_size.second / 2;
+            print(x_mid, icon_y, size, cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
+            print(x_mid, text_y, name_font, Color::WHITE, TextAlign::CENTER, cur_name.c_str());
+          }
 
   - id: tile_choose_cover
     parameters:

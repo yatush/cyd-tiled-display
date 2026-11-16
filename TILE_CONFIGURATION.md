@@ -290,7 +290,9 @@ For a cover selection icon with a configurable size, use the
 
 `size` is a font ID, such as `tiny`, `small`, `medium`, or `big`.
 The icon is yellow when selected and gray otherwise. The existing
-`tile_choose_cover` script continues to use `medium`.
+`tile_choose_cover` script continues to use `medium`. When a presentation name
+is present, `tiny` and `small` use `text_small`, `medium` uses `text_bold`,
+and `big` uses `text_big_bold`. Other icon font IDs use `text_bold`.
 
 To display text instead of an icon, use `tile_choose_text`:
 

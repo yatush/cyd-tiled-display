@@ -110,6 +110,7 @@ font:
   - file: "gfonts://Roboto@900"
     id: text_small
     size: 18
+    glyphsets: [GF_Latin_Kernel]
     glyphs: !include roboto_glyphs.yaml
 
 display:

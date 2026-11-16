@@ -118,6 +118,7 @@ font:
   - file: "gfonts://Roboto@900"
     id: text_small
     size: ${font_text_small}
+    glyphsets: [GF_Latin_Kernel]
     glyphs: !include roboto_glyphs.yaml
     
 tile_ui:
