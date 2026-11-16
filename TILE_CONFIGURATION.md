@@ -303,7 +303,7 @@ Allows user to set the value of a dynamic_entity to an entity when tapping the t
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
-For a cover selection icon with a configurable size, use the
+For a cover selection icon with a configurable icon and size, use the
 `tile_choose_cover_sized` display script:
 
 ```yaml
@@ -316,8 +316,10 @@ For a cover selection icon with a configurable size, use the
     display:
       - tile_choose_cover_sized:
           size: tiny
+          icon: '"\U0000ec0e"'
 ```
 
+`icon` is a Material Symbols glyph, selectable in the Configurator.
 `size` is a font ID, such as `tiny`, `small`, `medium`, or `big`.
 The icon is yellow when selected and gray otherwise. The existing
 `tile_choose_cover` script continues to use `medium`. When a presentation name

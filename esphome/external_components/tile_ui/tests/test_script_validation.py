@@ -83,21 +83,25 @@ class TestScriptValidation(unittest.TestCase):
     def test_validate_script_type_toggle(self):
         validate_script_type("display_toggle", self.available_scripts["display_toggle"], "display_toggle", "test")
 
-    def test_sized_cover_display_accepts_font_parameter(self):
+    def test_sized_cover_display_accepts_font_and_icon(self):
         from tile_ui.tile_generation import generate_tile_cpp
 
         params = dict(self.available_scripts["display_toggle"]["parameters"])
         params["is_on"] = params.pop("state")
         params["size"] = "esphome::display::BaseFont*"
+        params["icon"] = "string"
         scripts = {"tile_choose_cover_sized": {"parameters": params}}
         tile = {"toggle_entity": {
             "x": 0, "y": 0, "dynamic_entity": "BLINDS", "entity": "cover.lr1",
-            "display": [{"tile_choose_cover_sized": {"size": "tiny"}}],
+            "display": [{"tile_choose_cover_sized": {"size": "tiny", "icon": '"\\U0000ec0e"'}}],
         }}
         screens = [{"id": "blinds", "flags": ["BASE"], "tiles": [tile]}]
         validate_tiles_config(screens, scripts, declared_dynamic_entities=["BLINDS"])
         cpp = generate_tile_cpp(tile, scripts, "blinds")
-        self.assertIn("id(tile_choose_cover_sized).execute(arg0, arg1, arg2, arg3, arg4, arg5, &id(tiny))", cpp)
+        self.assertIn('id(tile_choose_cover_sized).execute(arg0, arg1, arg2, arg3, arg4, arg5, &id(tiny), "\\U0000ec0e")', cpp)
+        tile["toggle_entity"]["display"] = [{"tile_choose_cover_sized": {"size": "tiny"}}]
+        with self.assertRaisesRegex(ValueError, "Missing required parameter 'icon'"):
+            validate_tiles_config(screens, scripts, declared_dynamic_entities=["BLINDS"])
 
     def test_text_selection_display_accepts_text_and_font(self):
         from tile_ui.tile_generation import generate_tile_cpp

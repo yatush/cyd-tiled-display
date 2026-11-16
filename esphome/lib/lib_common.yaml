@@ -930,6 +930,7 @@ script:
       name: string
       is_on: bool
       size: esphome::display::BaseFont*
+      icon: string
     then:
       - lambda: |-
           std::string cur_name = name;
@@ -938,7 +939,6 @@ script:
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
 
-          std::string icon = "\U0000e286";
           if (cur_name.empty()) {
             print(x_mid, y_mid, size, cur_is_on ? id(yellow) : id(gray), TextAlign::CENTER, icon.c_str());
           } else {
@@ -974,6 +974,7 @@ script:
           name: !lambda return name;
           is_on: !lambda return is_on;
           size: !lambda return id(medium);
+          icon: !lambda return "\U0000e286";
 
   - id: tile_choose_text
     parameters:
