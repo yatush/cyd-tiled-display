@@ -577,7 +577,8 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
   <div className="mb-4">
     <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
     <div className="space-y-2">
-      {safeValues.map((item, i) => {
+      {safeValues.map((rawItem, i) => {
+        const item = typeof rawItem === 'string' ? { entity: rawItem } : rawItem;
         const isDynamic = 'dynamic_entity' in item;
         const type = isDynamic ? 'dynamic' : 'static';
         

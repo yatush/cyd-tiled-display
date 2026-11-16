@@ -186,6 +186,7 @@ The Configurator is designed to be intuitive:
 
 1.  **Tile Configuration**:
     *   Click on any tile in the grid to open the **Properties Sidebar**.
+    *   Select **YAML** to edit or paste a single tile instead of using the form. Common leading indentation is removed automatically; relative YAML indentation must be valid. Use **Apply** to update the tile or **Cancel** to discard the draft. Drafts remain available when switching tiles or modes, but are not saved to the project until applied. YAML comments and formatting are not preserved.
     *   Click **Duplicate Tile** in the tile properties to copy all settings to the current page. The copy uses the first free area that fits its size, or appears in Unplaced Tiles if none fits.
     *   **Entity**: Select the Home Assistant entity to control or monitor.
     *   **Label**: Set a custom label (or leave blank to use the entity's friendly name).

@@ -51,7 +51,7 @@ function _migrateStep(step: any): any {
 function _migrateAnimation(anim: any): any {
     if (!anim || typeof anim !== 'object') return anim;
     if (Array.isArray(anim.steps)) {
-        return { steps: anim.steps.map(_migrateStep) };
+        return { ...anim, steps: anim.steps.map(_migrateStep) };
     }
     return _migrateStep(anim);
 }
@@ -97,6 +97,12 @@ const scanForDynamicEntities = (obj: any, set: Set<string>) => {
             if (match) set.add(match[1]);
         }
     });
+};
+
+export const getTileDynamicEntities = (tile: Tile): string[] => {
+    const entities = new Set<string>();
+    scanForDynamicEntities(tile, entities);
+    return Array.from(entities);
 };
 
 export const convertParsedYamlToConfig = (parsed: any): Config => {

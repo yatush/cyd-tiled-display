@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import type { Config } from '../types';
+import type { Config, Tile } from '../types';
 
 // ---------------------------------------------------------------------------
 // Known-field allowlists derived from schema.json.
@@ -23,6 +23,12 @@ const TYPE_SPECIFIC_FIELDS: Record<string, Set<string>> = {
   cycle_entity:  new Set(['dynamic_entity', 'options', 'reset_on_leave']),
   function:      new Set(['on_press', 'on_release']),
 };
+
+export function unknownTileFields(tile: Record<string, unknown>, type: string): string[] {
+  if (!Object.prototype.hasOwnProperty.call(TYPE_SPECIFIC_FIELDS, type)) throw new Error(`Unknown tile type: ${type}`);
+  const typeFields = TYPE_SPECIFIC_FIELDS[type];
+  return Object.keys(tile).filter(key => !COMMON_TILE_FIELDS.has(key) && !typeFields.has(key));
+}
 
 /** Strip any tile fields not recognised by the current schema, logging a warning for each. */
 function stripUnknownTileFields(tile: Record<string, any>, type: string): Record<string, any> {
@@ -70,26 +76,7 @@ const transformConditionLogic = (value: any): any => {
     return value;
 };
 
-export const generateYaml = (config: Config, includeIds: boolean = false, includeInternalKeys: boolean = true) => {
-    // Convert internal model to YAML structure expected by Python script
-    const screens = config.pages.map(page => ({
-      id: page.id,
-      rows: page.rows,
-      cols: page.cols,
-      flags: page.flags && page.flags.length > 0 ? page.flags : undefined,
-      time_color: page.time_color || undefined,
-      background: page.background && page.background.length > 0 ? page.background.map((entry: any) => {
-        const result: any = {};
-        if ('color' in entry && entry.color) result.color = entry.color;
-        if ('image' in entry && entry.image) result.image = entry.image;
-        if ('condition' in entry && entry.condition !== '' && entry.condition != null) {
-          result.condition = transformConditionLogic(entry.condition);
-        }
-        return result;
-      }).filter(e => 'color' in e || 'image' in e) : undefined,
-      tiles: page.tiles
-        .filter(tile => tile.x < page.cols && tile.y < page.rows)
-        .map(({ id, ...rest }) => {
+const serializeTile = ({ id, ...rest }: Tile, includeIds: boolean, retainUnknown = false) => {
         // Clean up empty fields
         const tile: any = { ...rest };
         if (includeIds) tile.__id = id; // Internal ID for preview highlighting
@@ -113,7 +100,7 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
         }
 
         // Remove deprecated legacy fields that are superseded by the 'display_assets' list.
-        delete tile.state_images;
+        if (!retainUnknown) delete tile.state_images;
 
         // Transform condition logic inside display_assets entries
         if (Array.isArray(tile.display_assets)) {
@@ -177,10 +164,37 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
         delete tile.type;
 
         // Strip any stale/removed fields before serializing
-        const cleanedTile = stripUnknownTileFields(tile, type);
+        const cleanedTile = retainUnknown ? tile : stripUnknownTileFields(tile, type);
 
         return { [type]: cleanedTile };
-      })
+};
+
+const formatIcons = (text: string) =>
+    text.replace(/icon:\s*['"]?(\\U[0-9a-fA-F]+)['"]?/g, "icon: '\"$1\"'");
+
+export const generateTileYaml = (tile: Tile): string =>
+    formatIcons(yaml.dump([serializeTile(tile, false, true)], { lineWidth: -1, noCompatMode: true, sortKeys: false }));
+
+export const generateYaml = (config: Config, includeIds: boolean = false, includeInternalKeys: boolean = true) => {
+    // Convert internal model to YAML structure expected by Python script
+    const screens = config.pages.map(page => ({
+      id: page.id,
+      rows: page.rows,
+      cols: page.cols,
+      flags: page.flags && page.flags.length > 0 ? page.flags : undefined,
+      time_color: page.time_color || undefined,
+      background: page.background && page.background.length > 0 ? page.background.map((entry: any) => {
+        const result: any = {};
+        if ('color' in entry && entry.color) result.color = entry.color;
+        if ('image' in entry && entry.image) result.image = entry.image;
+        if ('condition' in entry && entry.condition !== '' && entry.condition != null) {
+          result.condition = transformConditionLogic(entry.condition);
+        }
+        return result;
+      }).filter(e => 'color' in e || 'image' in e) : undefined,
+      tiles: page.tiles
+        .filter(tile => tile.x < page.cols && tile.y < page.rows)
+        .map(tile => serializeTile(tile, includeIds))
     }));
     
     const yamlString = yaml.dump({ 
@@ -190,5 +204,5 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
         screen_images: config.screen_images && Object.keys(config.screen_images).length > 0 ? config.screen_images : undefined
     }, { lineWidth: -1, noCompatMode: true, sortKeys: false });
     // Ensure icons are formatted as '"\U..."' for ESPHome compatibility
-    return yamlString.replace(/icon:\s*['"]?(\\U[0-9a-fA-F]+)['"]?/g, "icon: '\"$1\"'");
+    return formatIcons(yamlString);
 };

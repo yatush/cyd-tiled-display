@@ -17,10 +17,14 @@ import {
 import { DisplayListInput } from './DisplayListInput';
 import { ColorPicker } from './Pickers';
 import { apiFetch } from '../utils/api';
+import { generateTileYaml } from '../utils/yamlGenerator';
+import { parseTileYaml } from '../utils/tileYaml';
+
+type YamlDraft = { text: string; initialText: string; baseTile: string };
 
 export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: {
   selectedTile: Tile | null, 
-  onUpdate: (t: Tile) => void, 
+  onUpdate: (t: Tile, discoverDynamicEntities?: boolean) => void,
   onDelete: () => void,
   onDuplicate: (id: string) => void,
   config: Config,
@@ -33,10 +37,15 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   screenImages?: Record<string, ScreenImageEntry>
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
+  const [tileEditor, setTileEditor] = useState<'form' | 'yaml'>('form');
+  const [yamlDrafts, setYamlDrafts] = useState<Record<string, YamlDraft>>({});
+  const [yamlError, setYamlError] = useState('');
 
   const dynamicEntities = config.dynamic_entities || [];
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
   const images = config.images || {};
+  const tileIds = new Set(config.pages.flatMap(page => page.tiles.map(tile => tile.id)));
+  const orphanDrafts = Object.entries(yamlDrafts).filter(([id]) => !tileIds.has(id));
 
   const [colorList, setColorList] = useState<{id: string, value: string}[]>([]);
 
@@ -45,7 +54,18 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
     if (selectedTile) {
       setActiveTab('tile');
     }
+    setYamlError('');
   }, [selectedTile?.id]);
+
+  useEffect(() => {
+    if (Object.keys(yamlDrafts).length === 0) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [yamlDrafts]);
 
   useEffect(() => {
     apiFetch('/scripts').then(async res => {
@@ -55,6 +75,51 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
       }
     }).catch(() => {});
   }, []);
+
+  const draft = selectedTile ? yamlDrafts[selectedTile.id] : undefined;
+  const yamlText = selectedTile && tileEditor === 'yaml' ? draft?.text ?? generateTileYaml(selectedTile) : '';
+  const updateYamlText = (text: string) => {
+    if (!selectedTile) return;
+    const initialText = draft?.initialText ?? generateTileYaml(selectedTile);
+    setYamlDrafts(current => {
+      const next = { ...current };
+      if (text === initialText) delete next[selectedTile.id];
+      else next[selectedTile.id] = {
+        text,
+        initialText,
+        baseTile: draft?.baseTile ?? JSON.stringify(selectedTile)
+      };
+      return next;
+    });
+    setYamlError('');
+  };
+  const discardYamlDraft = () => {
+    if (!selectedTile) return;
+    setYamlDrafts(current => {
+      const next = { ...current };
+      delete next[selectedTile.id];
+      return next;
+    });
+    setYamlError('');
+  };
+  const applyYamlDraft = () => {
+    if (!selectedTile) return;
+    if (draft && draft.baseTile !== JSON.stringify(selectedTile)) {
+      setYamlError('The tile changed since this draft was started. Cancel the draft and reopen YAML to edit the current tile.');
+      return;
+    }
+    try {
+      const tile = parseTileYaml(yamlText, selectedTile.id);
+      if (tile.x >= activePage.cols || tile.y >= activePage.rows) {
+        throw new Error('The tile position must be within the current page grid.');
+      }
+      onUpdate(tile, true);
+      discardYamlDraft();
+      setTileEditor('form');
+    } catch (error) {
+      setYamlError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const renderPageProperties = () => (
     <div className="space-y-6">
@@ -356,6 +421,25 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
         </button>
       </div>
 
+      {orphanDrafts.length > 0 && (
+        <div className="p-3 bg-amber-50 text-xs text-amber-800 space-y-2">
+          <p>These YAML drafts belong to tiles no longer in the project. Copy or discard them before leaving.</p>
+          {orphanDrafts.map(([id, orphan]) => (
+            <details key={id}>
+              <summary className="cursor-pointer">Draft for removed tile {id}</summary>
+              <textarea aria-label={`Draft for removed tile ${id}`} readOnly value={orphan.text} className="w-full min-h-[100px] mt-1 p-1 font-mono border rounded bg-white" />
+              <button type="button" className="underline" onClick={() => {
+                if (!confirm('Discard this YAML draft?')) return;
+                setYamlDrafts(current => {
+                  const next = { ...current };
+                  delete next[id];
+                  return next;
+                });
+              }}>Discard draft</button>
+            </details>
+          ))}
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'page' ? (
           renderPageProperties()
@@ -377,6 +461,72 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
               </div>
             </div>
 
+            <div className="flex gap-2" aria-label="Tile editor mode">
+              <button
+                type="button"
+                onClick={() => setTileEditor('form')}
+                className={`px-3 py-1 rounded text-sm ${tileEditor === 'form' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+              >Form</button>
+              <button
+                type="button"
+                onClick={() => setTileEditor('yaml')}
+                className={`px-3 py-1 rounded text-sm ${tileEditor === 'yaml' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+              >YAML{draft ? ' *' : ''}</button>
+            </div>
+            {tileEditor === 'yaml' ? (
+              <div className="space-y-2">
+                <label htmlFor="tile-yaml" className="block text-xs font-medium text-slate-700">Tile YAML</label>
+                <p className="text-xs text-slate-500">Paste one tile. Common leading indentation is removed; relative indentation must be valid. Comments and formatting are not saved.</p>
+                <textarea
+                  id="tile-yaml"
+                  spellCheck={false}
+                  value={yamlText}
+                  onChange={event => updateYamlText(event.target.value)}
+                  onKeyDown={event => {
+                    if ((event.key !== 'Enter' && event.key !== 'Tab') || event.ctrlKey || event.metaKey || event.altKey) return;
+                    const input = event.currentTarget;
+                    const start = input.selectionStart;
+                    const end = input.selectionEnd;
+                    if (event.shiftKey && (event.key !== 'Tab' || start === end)) return;
+                    if (event.key === 'Tab' && start !== end) {
+                      const lineStart = yamlText.lastIndexOf('\n', start - 1) + 1;
+                      const lastSelected = yamlText[end - 1] === '\n' ? end - 1 : end;
+                      const lineEnd = yamlText.indexOf('\n', lastSelected);
+                      const blockEnd = lineEnd === -1 ? yamlText.length : lineEnd;
+                      const block = yamlText.slice(lineStart, blockEnd).split('\n')
+                        .map(line => event.shiftKey ? line.replace(/^ {1,2}/, '') : `  ${line}`).join('\n');
+                      event.preventDefault();
+                      updateYamlText(yamlText.slice(0, lineStart) + block + yamlText.slice(blockEnd));
+                      requestAnimationFrame(() => {
+                        input.selectionStart = lineStart;
+                        input.selectionEnd = lineStart + block.length;
+                      });
+                      return;
+                    }
+                    let insertion = '  ';
+                    if (event.key === 'Enter') {
+                      const line = yamlText.slice(yamlText.lastIndexOf('\n', start - 1) + 1, start);
+                      const spaces = line.match(/^ */)?.[0] ?? '';
+                      const extra = /:\s*$/.test(line) ? (/^\s*-\s+/.test(line) ? '    ' : '  ') : '';
+                      insertion = `\n${spaces}${extra}`;
+                    }
+                    event.preventDefault();
+                    updateYamlText(yamlText.slice(0, start) + insertion + yamlText.slice(end));
+                    requestAnimationFrame(() => {
+                      input.selectionStart = input.selectionEnd = start + insertion.length;
+                    });
+                  }}
+                  className="w-full min-h-[300px] border-2 border-slate-200 rounded-lg p-2 text-xs font-mono focus:border-blue-500 outline-none"
+                />
+                {yamlError && <p role="alert" className="text-xs text-red-600 whitespace-pre-wrap">{yamlError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={applyYamlDraft} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm">Apply</button>
+                  <button type="button" onClick={() => { discardYamlDraft(); setTileEditor('form'); }} className="px-3 py-1.5 rounded bg-slate-100 text-slate-700 text-sm">Cancel</button>
+                </div>
+              </div>
+            ) : (
+            <>
+            {draft && <p className="text-xs text-amber-700">A YAML draft is pending. Return to YAML to apply or cancel it.</p>}
             {/* Position & Size */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Position & Size</label>
@@ -1056,6 +1206,8 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                   })}
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         ) : null}

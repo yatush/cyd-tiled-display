@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Config, Tile, Page } from '../types';
 import { duplicateTile } from '../utils/tileUtils';
+import { getTileDynamicEntities } from '../utils/yamlParser';
 
 const DEFAULT_CONFIG: Config = {
   project_path: 'tiles.yaml',
@@ -204,7 +205,7 @@ export function useTileConfig() {
     setSelectedTileId(newTile.id);
   };
 
-  const handleUpdateTile = (updatedTile: Tile) => {
+  const handleUpdateTile = (updatedTile: Tile, discoverDynamicEntities = false) => {
     setConfig(prev => {
       const currentPage = prev.pages.find(p => p.id === activePage.id) || activePage;
       const updatedPage = {
@@ -213,7 +214,10 @@ export function useTileConfig() {
       };
       const next = {
         ...prev,
-        pages: prev.pages.map(p => p.id === activePage.id ? updatedPage : p)
+        pages: prev.pages.map(p => p.id === activePage.id ? updatedPage : p),
+        ...(discoverDynamicEntities ? {
+          dynamic_entities: Array.from(new Set([...(prev.dynamic_entities || []), ...getTileDynamicEntities(updatedTile)]))
+        } : {})
       };
       return next;
     });
