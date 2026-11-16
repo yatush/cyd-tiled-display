@@ -132,6 +132,10 @@ The status shows the HVAC mode and target temperature, for example `off 26°`.
 The font shrinks when needed for longer modes such as `heat_cool`.
 The `action_temp_up` and `action_temp_down` actions accept the climate entity
 with or without `sensor: temperature` and adjust its target by one degree.
+`action_ac_mode` cycles through every mode in the climate entity's
+`hvac_modes` attribute, in the order reported by Home Assistant. If the
+current state or mode list is unavailable, it logs a warning and sends no
+action until they are available.
 
 ### 2. HA Action Tile (Entity Control)
 

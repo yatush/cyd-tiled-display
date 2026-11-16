@@ -1108,12 +1108,14 @@ script:
     then:
       - lambda: |-
           for (const std::string& ac : entities) {
-            std::string current = GetTextSensorValue(ac);
-            static const char* OFF = "off";
-            static const char* COOL = "cool";
-            static const char* HEAT = "heat";
-            const char* next = (current == OFF) ? COOL : (current == COOL) ? HEAT : OFF;
-            PerformHaAction(GetSensor(ac), "set_hvac_mode", {{"hvac_mode", std::string(next)}});
+            const std::string entity = GetSensor(ac);
+            const std::string modes = GetTextSensorValue(entity + "|hvac_modes");
+            const std::string next = NextClimateMode(GetTextSensorValue(entity), modes);
+            if (next.empty()) {
+              ESP_LOGW("ActionAcMode", "Cannot select a supported HVAC mode for %s (hvac_modes: %s)", entity.c_str(), modes.c_str());
+              continue;
+            }
+            PerformHaAction(entity, "set_hvac_mode", {{"hvac_mode", next}});
           }
 
   - id: tile_ac_status

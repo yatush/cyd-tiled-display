@@ -2,6 +2,7 @@
 #define UTILS_H_
 
 #include <iostream>
+#include <algorithm>
 #include <cmath>
 #include <regex>
 #include <set>
@@ -276,7 +277,7 @@ bool IsBinSensor(const std::string& key) {
 // Returns a vector of required attributes for a given sensor.
 std::vector<std::string> getRequiredAttributes(const std::string& sensor) {
   if (sensor.substr(0, 7) == "climate") {
-    return {"temperature"};
+    return {"temperature", "hvac_modes"};
   }
   if (sensor.substr(0, 5) == "cover") {
     return {"current_position"};
@@ -328,6 +329,9 @@ void InitSensor(const std::string& key, const std::string& sensor,
 void InitSensor(const std::string& sensor) {
   const std::string entity = GetSensor(sensor);
   InitSensor(sensor, entity, GetAtt(sensor));
+  if (entity.find("climate.") == 0) {
+    InitSensor(entity, entity);
+  }
   for (const std::string& att : getRequiredAttributes(entity)) {
     InitSensor(entity + "|" + att, entity, att);
   }
@@ -416,6 +420,35 @@ void AdjustClimateTemperature(const std::string& ac, float adjustment, const cha
     return;
   }
   PerformHaAction(entity, "set_temperature", {{"temperature", std::to_string(*temperature + adjustment)}});
+}
+
+// Home Assistant sends list attributes as Python-style strings (or JSON).
+std::string NextClimateMode(const std::string& current, const std::string& modes) {
+  if (current.empty() || current == "unknown" || current == "unavailable") {
+    return "";
+  }
+  const auto first = modes.find_first_not_of(" \t\r\n");
+  const auto last = modes.find_last_not_of(" \t\r\n");
+  if (first == std::string::npos || modes[first] != '[' || modes[last] != ']') {
+    return "";
+  }
+  std::vector<std::string> cycle;
+  std::istringstream input(modes.substr(first + 1, last - first - 1));
+  std::string item;
+  while (std::getline(input, item, ',')) {
+    const auto start = item.find_first_not_of(" \t\r\n");
+    const auto end = item.find_last_not_of(" \t\r\n");
+    if (start == std::string::npos || end <= start + 1 ||
+        (item[start] != '\'' && item[start] != '"') || item[end] != item[start]) {
+      return "";
+    }
+    cycle.push_back(item.substr(start + 1, end - start - 1));
+  }
+  if (cycle.empty()) {
+    return "";
+  }
+  auto current_it = std::find(cycle.begin(), cycle.end(), current);
+  return current_it == cycle.end() || ++current_it == cycle.end() ? cycle.front() : *current_it;
 }
 
 // Extracts an ID from a string using a regular expression.
