@@ -730,9 +730,10 @@ script:
       y_start: int
       y_end: int
       entities: string[]
+      size: esphome::display::BaseFont*
     then:
       - lambda: |-
-          DrawAcIcon(x_start, x_end, y_start, y_end, entities, "\U0000f154");
+          DrawAcIcon(x_start, x_end, y_start, y_end, entities, "\U0000f154", size);
 
   - id: tile_ac_power
     parameters:
@@ -743,7 +744,7 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          DrawAcIcon(x_start, x_end, y_start, y_end, entities, "\U0000f418");
+          DrawAcIcon(x_start, x_end, y_start, y_end, entities, "\U0000f418", &id(big));
 
   - id: action_ac
     parameters:

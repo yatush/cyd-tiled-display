@@ -119,6 +119,14 @@ def _are_types_compatible(actual, expected):
     
     return False
 
+def script_parameter_defaults(script_id, script_info):
+    """Defaults for built-in script parameters added after their original signature."""
+    params = script_info.get('parameters', {})
+    if script_id == 'tile_ac' and params.get('size') == 'esphome::display::BaseFont*':
+        return {'size': 'big'}
+    return {}
+
+
 def validate_script_type(script_id, script_info, expected_type, context, provided_params=None):
     """Validate that a script has the expected type.
     

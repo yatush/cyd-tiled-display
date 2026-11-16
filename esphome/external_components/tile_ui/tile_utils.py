@@ -2,6 +2,7 @@
 Tile utilities - helper functions for formatting and building C++ expressions.
 """
 from typing import Any
+from .script_types import script_parameter_defaults
 
 __all__ = [
     "format_display_list",
@@ -57,6 +58,7 @@ def _generate_lambda(script_id, available_scripts, expected_params, static_param
     script_info = available_scripts.get(script_id) if available_scripts else None
     
     if script_info:
+        static_params = {**script_parameter_defaults(script_id, script_info), **(static_params or {})}
         script_params = script_info.get('parameters', {})
         
         for param_name, param_type in script_params.items():

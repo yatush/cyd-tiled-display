@@ -9,7 +9,7 @@ This module handles all validation logic including:
 """
 from typing import Any
 
-from .script_types import validate_script_type
+from .script_types import script_parameter_defaults, validate_script_type
 from .data_collection import (
     collect_referenced_scripts,
     collect_referenced_globals,
@@ -590,11 +590,14 @@ def _validate_script_references(screens, available_scripts):
                 f"Screen '{usage['screen']}', {usage['tile_type']} tile at ({usage['x']}, {usage['y']}), "
                 f"{usage.get('usage', 'display')}"
             )
-            provided_params = usage.get('params', {})
+            provided_params = {
+                **script_parameter_defaults(script_id, script_info),
+                **(usage.get('params') or {}),
+            }
             
             # Validate parameters if provided (check for missing/unknown params first)
             if 'params' in usage:
-                _validate_script_parameters(script_id, script_info, usage['params'], context)
+                _validate_script_parameters(script_id, script_info, provided_params, context)
             
             validate_script_type(script_id, script_info, expected_type, context, provided_params)
 
@@ -611,6 +614,11 @@ def _validate_script_parameters(script_id, script_info, provided_params, context
                 f"{context}: Unknown parameter '{param}' provided for script '{script_id}'. "
                 f"Valid parameters are: {', '.join(sorted(script_params.keys()))}"
             )
+
+    if script_id == 'tile_ac' and 'size' in provided_params:
+        size = provided_params['size']
+        if not isinstance(size, str) or not size.strip() or size.strip() == 'nullptr':
+            raise ValueError(f"{context}: Script 'tile_ac' requires a valid font for 'size'.")
     
     # Check for missing required parameters
     # Implicit parameters are those that are automatically provided by the system

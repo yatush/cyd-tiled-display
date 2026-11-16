@@ -91,6 +91,34 @@ class TestScriptValidation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not declared"):
             validate_tiles_config(screens, self.available_scripts, declared_dynamic_entities=[])
 
+    def test_ac_icon_size_and_legacy_default(self):
+        from tile_ui.tile_generation import generate_tile_cpp
+
+        params = dict(self.available_scripts["display_std"]["parameters"])
+        params["size"] = "esphome::display::BaseFont*"
+        scripts = {"tile_ac": {"parameters": params}}
+        tile = {"move_page": {
+            "x": 0, "y": 0, "destination": "main",
+            "entities": [{"entity": "climate.living"}],
+            "display": ["tile_ac"],
+        }}
+        screens = [{"id": "main", "flags": ["BASE"], "tiles": [tile]}]
+        for display, expected in [
+            (["tile_ac"], "&id(big)"),
+            ([{"tile_ac": {}}], "&id(big)"),
+            ([{"tile_ac": {"size": "tiny"}}], "&id(tiny)"),
+            ([{"tile_ac": {"size": "id(small)"}}], "&id(small)"),
+        ]:
+            with self.subTest(display=display):
+                tile["move_page"]["display"] = display
+                validate_tiles_config(screens, scripts)
+                cpp = generate_tile_cpp(tile, scripts, "main")
+                self.assertIn(f"id(tile_ac).execute(arg0, arg1, arg2, arg3, arg4, {expected})", cpp)
+        for size in ("", "nullptr"):
+            tile["move_page"]["display"] = [{"tile_ac": {"size": size}}]
+            with self.assertRaisesRegex(ValueError, "valid font"):
+                validate_tiles_config(screens, scripts)
+
     def test_validate_script_type_toggle(self):
         validate_script_type("display_toggle", self.available_scripts["display_toggle"], "display_toggle", "test")
 

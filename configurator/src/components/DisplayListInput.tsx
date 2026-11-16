@@ -139,8 +139,11 @@ export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], 
                                     value={currentValue}
                                     onChange={e => {
                                         const newParams = { ...params, [p.name]: e.target.value };
+                                        if (scriptId === 'tile_ac' && p.name === 'size' && !e.target.value) {
+                                            delete newParams.size;
+                                        }
                                         const newValues = [...safeValue];
-                                        newValues[i] = { [scriptId]: newParams };
+                                        newValues[i] = Object.keys(newParams).length ? { [scriptId]: newParams } : scriptId;
                                         onChange(newValues);
                                     }}
                                     onFocus={fetchScripts}

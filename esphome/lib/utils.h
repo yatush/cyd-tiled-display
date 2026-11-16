@@ -659,9 +659,9 @@ void print (int x, int y, BaseFont &font, Color color, const char *text) {
 }
 
 void DrawAcIcon(int x_start, int x_end, int y_start, int y_end,
-                const std::vector<std::string>& entities, const char* icon) {
+                const std::vector<std::string>& entities, const char* icon, BaseFont* size) {
   const std::string state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0));
-  print((x_start + x_end) / 2, (y_start + y_end) / 2, id(big),
+  print((x_start + x_end) / 2, (y_start + y_end) / 2, size,
         state == "cool" ? id(blue) : state == "heat" ? id(red) :
         state == "heat_cool" ? id(light_purple) : state == "off" ? id(gray) : id(white),
         TextAlign::CENTER, icon);
