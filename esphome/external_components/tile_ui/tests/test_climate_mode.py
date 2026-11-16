@@ -193,7 +193,9 @@ int main() {
 #include <vector>
 #define id(name) name
 using BaseFont = int;
-int big, small;
+BaseFont big_font, small_font;
+BaseFont* const big = &big_font;
+BaseFont* const small = &small_font;
 enum { blue = 1, red, light_purple, gray, white };
 enum class TextAlign { CENTER };
 std::string state;
@@ -209,7 +211,7 @@ void print(int, int, BaseFont* chosen_font, int chosen, TextAlign, const char* g
 """ + extract_function(utils, "void DrawAcIcon(") + """
 void draw_air(const std::vector<std::string>& entities) {
   int x_start = 0, x_end = 10, y_start = 0, y_end = 10;
-  BaseFont* size = &small;
+  BaseFont* size = small;
 """ + displays[0] + """
 }
 void draw_power(const std::vector<std::string>& entities) {
@@ -220,7 +222,7 @@ int main() {
   for (auto draw : {draw_air, draw_power}) {
     const std::string expected_icon = draw == draw_air ? "\\U0000f154" : "\\U0000f418";
     state = "off"; draw({"climate.ac"}); assert(color == gray); assert(icon == expected_icon);
-    assert(font == (draw == draw_air ? &small : &big));
+    assert(font == (draw == draw_air ? small : big));
     state = "unknown"; draw({"climate.ac"}); assert(color == white);
     state = "unavailable"; draw({"climate.ac"}); assert(color == white);
     state = "auto"; draw({"climate.ac"}); assert(color == white);
