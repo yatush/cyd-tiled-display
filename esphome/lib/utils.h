@@ -260,7 +260,7 @@ std::string GetAtt(const std::string& text) {
  * @return false Otherwise
  */
 bool IsTextSensor(const std::string& key) {
-  return key.find("climate.") == 0 || key.find("cover.") == 0;
+  return key.find("climate.") == 0 || key.find("cover.") == 0 || key.find("fan.") == 0;
 }
 
 /**
@@ -282,6 +282,9 @@ std::vector<std::string> getRequiredAttributes(const std::string& sensor) {
   if (sensor.substr(0, 5) == "cover") {
     return {"current_position"};
   }
+  if (sensor.substr(0, 4) == "fan.") {
+    return {"percentage", "percentage_step", "direction", "supported_features"};
+  }
   return {};
 }
 
@@ -300,6 +303,29 @@ struct PendingClimateMode {
   uint32_t request_id;
   bool sent;
 };
+
+struct PendingFanAttribute {
+  std::string target;
+  std::vector<std::string> previous_targets;
+  uint32_t request_id;
+};
+std::map<std::string, PendingFanAttribute> pending_fan_attributes;
+uint32_t fan_request_id = 0;
+
+void ReconcileFanAttribute(const std::string& key, const std::string& value) {
+  auto pending = pending_fan_attributes.find(key);
+  if (pending == pending_fan_attributes.end()) return;
+  if (value != pending->second.target) {
+    auto previous = std::find(pending->second.previous_targets.begin(),
+                              pending->second.previous_targets.end(), value);
+    if (previous != pending->second.previous_targets.end()) {
+      pending->second.previous_targets.erase(pending->second.previous_targets.begin(), previous + 1);
+      return;
+    }
+    ESP_LOGW("Fan", "Requested value for %s was not confirmed: %s", key.c_str(), value.c_str());
+  }
+  pending_fan_attributes.erase(pending);
+}
 
 std::map<std::string, PendingClimateMode> pending_climate_modes;
 uint32_t climate_mode_request_id = 0;
@@ -388,6 +414,7 @@ void InitSensor(const std::string& key, const std::string& sensor,
         [key](std::string x) {
           ReconcileClimateTemperature(key, x);
           ReconcileClimateMode(key, x);
+          ReconcileFanAttribute(key, x);
           id(disp).update();
         });
     if (attribute != "") {
@@ -404,7 +431,7 @@ void InitSensor(const std::string& key, const std::string& sensor,
 void InitSensor(const std::string& sensor) {
   const std::string entity = GetSensor(sensor);
   InitSensor(sensor, entity, GetAtt(sensor));
-  if (entity.find("climate.") == 0) {
+  if (entity.find("climate.") == 0 || entity.find("fan.") == 0) {
     InitSensor(entity, entity);
   }
   for (const std::string& att : getRequiredAttributes(entity)) {
@@ -498,6 +525,74 @@ void PerformHaAction(
   }
   
   id(api_server).send_homeassistant_action(request);
+}
+
+std::string GetFanAttribute(const std::string& key) {
+  auto pending = pending_fan_attributes.find(key);
+  return pending == pending_fan_attributes.end() ? GetTextSensorValue(key) : pending->second.target;
+}
+
+void SetFanAttribute(const std::string& entity, const std::string& attribute,
+                     const std::string& value, const std::string& action) {
+  const std::string key = entity + "|" + attribute;
+  auto pending = pending_fan_attributes.find(key);
+  if (pending == pending_fan_attributes.end()) {
+    pending = pending_fan_attributes.emplace(key, PendingFanAttribute{value, {}, ++fan_request_id}).first;
+  } else {
+    pending->second.previous_targets.push_back(pending->second.target);
+    pending->second.target = value;
+    pending->second.request_id = ++fan_request_id;
+  }
+  const uint32_t request_id = pending->second.request_id;
+  esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 10000, [key, request_id]() {
+    auto pending = pending_fan_attributes.find(key);
+    if (pending != pending_fan_attributes.end() && pending->second.request_id == request_id) {
+      ESP_LOGW("Fan", "No confirmation for %s", key.c_str());
+      pending_fan_attributes.erase(pending);
+      id(disp).update();
+    }
+  });
+  PerformHaAction(entity, action, {{attribute, value}});
+  id(disp).update();
+}
+
+bool FanSupports(const std::string& entity, int feature) {
+  auto value = esphome::parse_number<int>(GetTextSensorValue(entity + "|supported_features"));
+  return value.has_value() && (*value & feature) != 0;
+}
+
+void CycleFanSpeed(const std::string& item) {
+  const std::string entity = GetSensor(item);
+  const std::string state = GetTextSensorValue(entity);
+  if (entity.find("fan.") != 0 || (state != "on" && state != "off") || !FanSupports(entity, 1)) {
+    ESP_LOGW("Fan", "Speed control unavailable for %s", entity.c_str());
+    return;
+  }
+  auto step = esphome::parse_number<float>(GetTextSensorValue(entity + "|percentage_step"));
+  auto current = esphome::parse_number<float>(GetFanAttribute(entity + "|percentage"));
+  if (!step.has_value() || !current.has_value() || !std::isfinite(*step) ||
+      !std::isfinite(*current) || *step <= 0 || *step > 100 || *current < 0 || *current > 100) {
+    ESP_LOGW("Fan", "Invalid speed or step for %s", entity.c_str());
+    return;
+  }
+  const float next = *current >= 100 ? *step : (std::floor((*current + 0.999f) / *step) + 1) * *step;
+  const int percentage = std::max(1, std::min(100, static_cast<int>(std::floor((next > 100.001f ? *step : next) + 0.001f))));
+  SetFanAttribute(entity, "percentage", std::to_string(percentage), "set_percentage");
+}
+
+void CycleFanDirection(const std::string& item) {
+  const std::string entity = GetSensor(item);
+  const std::string state = GetTextSensorValue(entity);
+  if (entity.find("fan.") != 0 || (state != "on" && state != "off") || !FanSupports(entity, 4)) {
+    ESP_LOGW("Fan", "Direction control unavailable for %s", entity.c_str());
+    return;
+  }
+  const std::string direction = GetFanAttribute(entity + "|direction");
+  if (direction != "forward" && direction != "reverse") {
+    ESP_LOGW("Fan", "Invalid direction for %s: %s", entity.c_str(), direction.c_str());
+    return;
+  }
+  SetFanAttribute(entity, "direction", direction == "forward" ? "reverse" : "forward", "set_direction");
 }
 
 void AdjustClimateTemperature(const std::string& ac, float adjustment, const char* log_tag) {

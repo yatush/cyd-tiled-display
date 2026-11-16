@@ -74,3 +74,11 @@ test('unsupported existing fields are visible instead of silently discarded in t
   assert.match(text, /old_field: value/);
   assert.throws(() => parseTileYaml(text, 'one'), /Unsupported field.*old_field/);
 });
+
+test('long-press configuration and dynamic destination survive tile YAML', () => {
+  const tile = { id: 'one', type: 'ha_action', x: 0, y: 0, entities: [{ entity: 'fan.office' }],
+    display: ['tile_fan'], perform: ['action_fan_power'], long_destination: 'fan_settings',
+    long_dynamic_entity: 'FAN', long_perform: ['custom_action'] };
+  assert.deepEqual(parseTileYaml(generateTileYaml(tile), tile.id), tile);
+  assert.deepEqual(getTileDynamicEntities(tile), ['FAN']);
+});

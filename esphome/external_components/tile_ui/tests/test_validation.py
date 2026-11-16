@@ -260,6 +260,27 @@ class TestValidationScreenStructure(unittest.TestCase):
             validate_tiles_config([screen])
         self.assertIn("nonexistent", str(cm.exception))
 
+    def test_ha_action_long_destination_and_dynamic_entity(self):
+        action = {"x": 0, "y": 0, "display": ["tile_fan"], "perform": ["action_fan_power"],
+                  "entities": [{"entity": "fan.office"}], "long_destination": "settings",
+                  "long_dynamic_entity": "FAN"}
+        screens = [
+            {"id": "main", "flags": ["BASE"], "tiles": [{"ha_action": action}]},
+            {"id": "settings", "flags": ["TEMPORARY"],
+             "tiles": [{"ha_action": {"x": 0, "y": 0, "display": ["tile_fan_speed"],
+                                      "perform": ["action_fan_speed"],
+                                      "entities": [{"dynamic_entity": "FAN"}]}}]},
+        ]
+        validate_tiles_config(screens, declared_dynamic_entities=["FAN"])
+        with self.assertRaisesRegex(ValueError, "not declared"):
+            validate_tiles_config(screens, declared_dynamic_entities=[])
+        action["long_destination"] = "missing"
+        with self.assertRaisesRegex(ValueError, "long_destination 'missing'"):
+            validate_tiles_config(screens)
+        del action["long_destination"]
+        with self.assertRaisesRegex(ValueError, "requires long_destination"):
+            validate_tiles_config(screens)
+
 
 class TestValidationTilePositions(unittest.TestCase):
     """Tests for tile position overlap and stacking rules."""

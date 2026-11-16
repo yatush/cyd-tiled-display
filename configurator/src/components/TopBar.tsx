@@ -11,7 +11,6 @@ import {
   Play,
   Activity,
   Download,
-  Upload,
   RefreshCw,
   FolderOpen,
   Monitor,
@@ -34,9 +33,7 @@ interface TopBarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onGenerate: () => void;
   onOpenFileManagement: () => void;
-  isGenerating: boolean;
   updateAvailable?: boolean;
   emulatorStatus: 'stopped' | 'running' | 'starting' | 'error';
   onStartEmulator: () => void;
@@ -66,9 +63,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   canRedo,
   onUndo,
   onRedo,
-  onGenerate,
   onOpenFileManagement,
-  isGenerating,
   updateAvailable,
   emulatorStatus,
   onStartEmulator,

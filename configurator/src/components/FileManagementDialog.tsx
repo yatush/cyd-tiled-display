@@ -1,6 +1,5 @@
 import React from 'react';
 import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap, Settings } from 'lucide-react';
-import { ConnectionType } from '../hooks/useHaConnection';
 import { isAddon } from '../utils/api';
 
 interface FileManagementDialogProps {
@@ -14,7 +13,6 @@ interface FileManagementDialogProps {
   onLoadDevice: () => void;
   onInstallDevice: () => void;
   onHwOverrides: () => void;
-  connectionType: ConnectionType;
 }
 
 export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
@@ -27,8 +25,7 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
   onSaveDevice,
   onLoadDevice,
   onInstallDevice,
-  onHwOverrides,
-  connectionType
+  onHwOverrides
 }) => {
   if (!isOpen) return null;
 

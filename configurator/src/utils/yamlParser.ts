@@ -78,6 +78,9 @@ const scanForDynamicEntities = (obj: any, set: Set<string>) => {
     if (obj.dynamic_entity && typeof obj.dynamic_entity === 'string') {
         set.add(obj.dynamic_entity);
     }
+    if (obj.long_dynamic_entity && typeof obj.long_dynamic_entity === 'string') {
+        set.add(obj.long_dynamic_entity);
+    }
     
     Object.values(obj).forEach(val => {
         if (Array.isArray(val)) {

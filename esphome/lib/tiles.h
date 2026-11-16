@@ -449,6 +449,16 @@ private:
 // A tile that performs actions on Home Assistant entities when pressed.
 class HAActionTile : public Tile {
 public:
+  HAActionTile* setLongPress(
+      std::vector<std::function<void(std::vector<std::string>)>> actions,
+      esphome::display::DisplayPage* destination, const std::string& dynamic_entity) {
+    long_press_enabled_ = true;
+    long_action_funcs_ = actions;
+    long_destination_ = destination;
+    long_dynamic_entity_ = dynamic_entity;
+    return this;
+  }
+
   HAActionTile(
       int x, int y,
       std::vector<std::function<void(int, int, int, int, std::vector<std::string>)>>
@@ -499,9 +509,12 @@ public:
   };
 
   void decodeEntities() override {
-    this->decoded_entities_ = HasDynamicEntity(this->entities_)
+    auto decoded = HasDynamicEntity(this->entities_)
                                   ? ReplaceDynamicEntities(this->entities_)
                                   : this->entities_;
+    if (decoded != this->decoded_entities_) onScreenLeave();
+    this->decoded_entities_ = decoded;
+    for (const auto* entity : this->decoded_entities_) InitSensor(*entity);
   }
 
   bool updateOnEntitiesMapChange() override { return true; }
@@ -527,22 +540,66 @@ protected:
   void customInit() override {
     if (this->binary_sensor_ != nullptr) {
       this->binary_sensor_->add_on_state_callback([&](bool x) {
-        if (!x) {
+        if (!long_press_enabled_) {
+          if (x) runShortAction(Deref(decoded_entities_), id(last_x), id(last_y));
           return;
         }
-        auto entities_vec = Deref(this->decoded_entities_);
-        ExecuteScripts(this->action_funcs_, entities_vec);
-        if (this->location_action_funcs_.size() > 0) {
-          int x_end_idx = this->x_ + this->x_span_ - 1;
-          int y_end_idx = this->y_ + this->y_span_ - 1;
-          int total_width = (x_start(x_end_idx) + x_rect()) - x_start(this->x_);
-          int total_height = (y_start(y_end_idx) + y_rect()) - y_start(this->y_);
-          
-          float x_precent = 1.0 * (id(last_x) - x_start(this->x_)) / total_width;
-          float y_precent = 1.0 * (id(last_y) - y_start(this->y_)) / total_height;
-          ExecuteScripts(this->location_action_funcs_, x_precent, y_precent, entities_vec);
+        if (x) {
+          pressed_ = true;
+          long_fired_ = false;
+          press_started_ = millis();
+          press_entities_ = Deref(decoded_entities_);
+          press_x_ = id(last_x);
+          press_y_ = id(last_y);
+          const uint32_t generation = ++press_generation_;
+          esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 2000, [this, generation]() {
+            if (pressed_ && generation == press_generation_ && display_page_ == id(disp).get_active_page() &&
+                checkActivationMaybeToggle()) fireLongPress();
+          });
+        } else if (pressed_) {
+          if (!long_fired_ && display_page_ == id(disp).get_active_page() && checkActivationMaybeToggle()) {
+            if (millis() - press_started_ >= 2000) fireLongPress();
+            else runShortAction(press_entities_, press_x_, press_y_);
+          }
+          pressed_ = false;
+          ++press_generation_;
         }
       });
+    }
+  }
+
+  void onScreenLeave() override {
+    pressed_ = false;
+    ++press_generation_;
+  }
+
+  void runShortAction(const std::vector<std::string>& entities_vec, int touch_x, int touch_y) {
+    ExecuteScripts(this->action_funcs_, entities_vec);
+    if (this->location_action_funcs_.size() > 0) {
+      int x_end_idx = this->x_ + this->x_span_ - 1;
+      int y_end_idx = this->y_ + this->y_span_ - 1;
+      int total_width = (x_start(x_end_idx) + x_rect()) - x_start(this->x_);
+      int total_height = (y_start(y_end_idx) + y_rect()) - y_start(this->y_);
+      float x_precent = 1.0 * (touch_x - x_start(this->x_)) / total_width;
+      float y_precent = 1.0 * (touch_y - y_start(this->y_)) / total_height;
+      ExecuteScripts(this->location_action_funcs_, x_precent, y_precent, entities_vec);
+    }
+  }
+
+  void fireLongPress() {
+    long_fired_ = true;
+    ExecuteScripts(long_action_funcs_, press_entities_);
+    if (long_destination_ && display_page_ == id(disp).get_active_page()) {
+      if (!long_dynamic_entity_.empty()) {
+        std::vector<std::string> entities;
+        for (const auto& entity : press_entities_) entities.push_back(GetSensor(entity));
+        EMSet(Pointer(long_dynamic_entity_), Pointer(entities));
+        change_entities_callback_();
+      }
+      change_screen_callback_();
+      id(disp).show_page(long_destination_);
+      id(ignore_touch) = true;
+      id(disp).update();
     }
   }
 
@@ -565,6 +622,13 @@ private:
   std::vector<const std::string*> entities_;
   // Vector of decoded entities (after dynamic replacement).
   std::vector<const std::string*> decoded_entities_;
+  std::vector<std::function<void(std::vector<std::string>)>> long_action_funcs_;
+  esphome::display::DisplayPage* long_destination_ = nullptr;
+  std::string long_dynamic_entity_;
+  std::vector<std::string> press_entities_;
+  uint32_t press_started_ = 0, press_generation_ = 0;
+  int press_x_ = 0, press_y_ = 0;
+  bool long_press_enabled_ = false, pressed_ = false, long_fired_ = false;
 };
 
 // A tile that navigates to a different page when pressed.

@@ -1001,6 +1001,9 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
             {tileSchema?.fields?.length > 0 && (
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">{tileSchema.label} Properties</label>
+                {selectedTile.type === 'ha_action' && (
+                  <p className="text-xs text-slate-500 mb-2">A long-press action or destination enables two-second holds. Short actions then run on release instead of touch.</p>
+                )}
                 <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
                   {tileSchema.fields.map((field: any) => {
                     if (field.type === 'string' || field.type === 'ha_entity') {
@@ -1193,7 +1196,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           <label className="block text-xs font-medium text-slate-600 mb-1">{field.label}</label>
                           <select
                             value={selectedTile[field.name] || ''}
-                            onChange={e => onUpdate({...selectedTile, [field.name]: e.target.value})}
+                            onChange={e => {
+                              const updated: Tile = {...selectedTile, [field.name]: e.target.value};
+                              if (field.optional && !e.target.value) delete updated[field.name];
+                              onUpdate(updated);
+                            }}
                             className="w-full border rounded p-1 text-sm bg-white"
                           >
                             <option value="">Select variable...</option>

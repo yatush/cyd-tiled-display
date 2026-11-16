@@ -6,12 +6,11 @@ import { apiFetch } from '../utils/api';
 interface EmulatorDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onStop?: () => void;
   /** True while the server is validating/generating (before the emulator process starts) */
   isStarting?: boolean;
 }
 
-export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose, onStop, isStarting }) => {
+export const EmulatorDialog: React.FC<EmulatorDialogProps> = ({ isOpen, onClose, isStarting }) => {
   const [logs, setLogs] = useState<string>('');
   const [filterHa, setFilterHa] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);

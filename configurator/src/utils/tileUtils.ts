@@ -98,6 +98,9 @@ export function applyDynamicEntityListChange(
       if (typeof tile.dynamic_entity === 'string' && tile.dynamic_entity !== '') {
         updated.dynamic_entity = patchValue(tile.dynamic_entity);
       }
+      if (typeof tile.long_dynamic_entity === 'string' && tile.long_dynamic_entity !== '') {
+        updated.long_dynamic_entity = patchValue(tile.long_dynamic_entity);
+      }
 
       // tile.dynamic_entry.dynamic_entity (move_page)
       if (

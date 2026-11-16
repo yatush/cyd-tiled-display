@@ -91,7 +91,7 @@ export function parseTileYaml(text: string, id: string): Tile {
     if (Array.isArray(value) && value.some(item => !isMapping(item))) {
       throw new Error(`Each ${key} entry must be a mapping.`);
     }
-    for (const key of ['dynamic_entity', 'destination', 'presentation_name', 'display_page_if_no_entity']) {
+    for (const key of ['dynamic_entity', 'destination', 'long_destination', 'long_dynamic_entity', 'presentation_name', 'display_page_if_no_entity']) {
       if (props[key] !== undefined && typeof props[key] !== 'string') {
         throw new Error(`${key} must be a string.`);
       }

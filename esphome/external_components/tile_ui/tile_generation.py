@@ -1,5 +1,6 @@
 """Tile generation functions - converts YAML tile configs to C++ code."""
 import copy
+import json
 from typing import Any
 
 from .tile_utils import (
@@ -548,6 +549,13 @@ def generate_action_tile(config, available_scripts, screen_id=None):
     
     modifiers = []
     # Apply specific modifiers before common ones
+    long_perform = config.get("long_perform", [])
+    long_destination = config.get("long_destination")
+    if long_perform or long_destination:
+        long_cpp = format_functions_list(long_perform, available_scripts, [('entities', 'string[]')])
+        destination_cpp = f'&id({long_destination})' if long_destination else 'nullptr'
+        dynamic_entity = config.get("long_dynamic_entity", "")
+        modifiers.append(f'setLongPress({long_cpp}, {destination_cpp}, {json.dumps(dynamic_entity, ensure_ascii=True)})')
     if display_page:
         modifiers.append(f'setDisplayPageIfNoEntity(&id({display_page}))')
     

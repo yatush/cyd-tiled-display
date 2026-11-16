@@ -169,6 +169,8 @@ def validate_tiles_config(
             if tile_type in (TileType.HA_ACTION.value, TileType.TITLE.value, TileType.BLIND_POSITION.value):
                 entities_config = config.get("entities", "")
                 collect_dynamic_entities(entities_config, valid_dynamic_entities)
+            if tile_type == TileType.HA_ACTION.value and config.get("long_dynamic_entity"):
+                valid_dynamic_entities.add(config["long_dynamic_entity"])
             
             if tile_type == TileType.TOGGLE_ENTITY.value:
                 dynamic_entity = config.get("dynamic_entity", "")
@@ -237,6 +239,13 @@ def validate_tiles_config(
                         f"Valid dynamic entities are: {', '.join(sorted(valid_dynamic_entities))}"
                     )
             
+            if tile_type == TileType.HA_ACTION.value:
+                if config.get("long_dynamic_entity") and not config.get("long_destination"):
+                    raise ValueError(f"Screen '{screen_id}', ha_action tile at ({x}, {y}): long_dynamic_entity requires long_destination")
+                destination = config.get("long_destination")
+                if destination and destination not in valid_screen_ids:
+                    raise ValueError(f"Screen '{screen_id}', ha_action tile at ({x}, {y}): long_destination '{destination}' is not a valid screen ID")
+
             # Validate move_page destination is a valid screen ID
             if tile_type == TileType.MOVE_PAGE.value:
                 destination = config.get("destination", "")
@@ -371,6 +380,8 @@ def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[s
             direct = config.get("dynamic_entity", "")
             if direct:
                 _check(direct, "dynamic_entity")
+            if config.get("long_dynamic_entity"):
+                _check(config["long_dynamic_entity"], "long_dynamic_entity")
 
             # entities list
             for i, entry in enumerate(config.get("entities", [])):
@@ -513,6 +524,10 @@ def _validate_base_screen_reachability(screens, base_screen_id, valid_screen_ids
             if tile_type == TileType.MOVE_PAGE.value:
                 config = tile[tile_type]
                 destination = config.get("destination", "")
+                if destination and destination in valid_screen_ids:
+                    navigation_graph[screen_id].add(destination)
+            elif tile_type == TileType.HA_ACTION.value:
+                destination = tile[tile_type].get("long_destination", "")
                 if destination and destination in valid_screen_ids:
                     navigation_graph[screen_id].add(destination)
     

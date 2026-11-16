@@ -219,10 +219,77 @@ Displays entity state and performs an action (typically toggle) when pressed.
     - `x_percent`: Float - Touch position as percentage (0.0-1.0) of tile width
     - `y_percent`: Float - Touch position as percentage (0.0-1.0) of tile height
     - `entities`: String array - The resolved entity values
+- **long_perform**: (Optional) Action scripts run after a two-second hold.
+- **long_destination**: (Optional) Screen to open after a two-second hold.
+- **long_dynamic_entity**: (Optional) Dynamic entity variable populated with the tile's resolved entities when opening `long_destination`. Attributes are removed from the entity IDs.
 - **display_page_if_no_entity**: (Optional) Navigate to screen if entity is not available (requires dynamic_entity)
 - **requires_fast_refresh**: (Optional) Condition (see [Conditions](#conditions) section) determining if fast refresh is needed
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
+
+Setting `long_perform` or `long_destination` opts this tile into short/long
+press handling: a short press runs `perform`/`location_perform` on release,
+and a two-second hold runs `long_perform` and opens `long_destination` without
+running the short action. Existing HA Action tiles still act immediately on touch.
+The same long-press behavior applies whether an entity is on or off.
+
+#### Fan controls
+
+Use the existing HA Action tile with the fan scripts below. Create a `FAN`
+dynamic entity and a `fan_settings` page in the configurator, then configure:
+
+```yaml
+screens:
+  - id: main
+    flags: [BASE]
+    rows: 1
+    cols: 1
+    tiles:
+      - ha_action:
+          x: 0
+          y: 0
+          entities:
+            - entity: fan.office
+          display: [tile_fan]
+          perform: [action_fan_power]
+          long_destination: fan_settings
+          long_dynamic_entity: FAN
+  - id: fan_settings
+    flags: [TEMPORARY]
+    rows: 1
+    cols: 3
+    tiles:
+      - ha_action:
+          x: 0
+          y: 0
+          entities:
+            - dynamic_entity: FAN
+          display: [tile_fan_speed]
+          perform: [action_fan_speed]
+      - ha_action:
+          x: 1
+          y: 0
+          entities:
+            - dynamic_entity: FAN
+          display: [tile_fan_direction]
+          perform: [action_fan_direction]
+      - move_page:
+          x: 2
+          y: 0
+          destination: main
+          display:
+            - tile_icon:
+                icon: '"\U0000e5c4"'
+                color: id(gray)
+                size: id(medium)
+dynamic_entities: [FAN]
+```
+
+The power tile toggles on a short release; holding it for two seconds opens
+settings even when the fan is off. Speed cycles through nonzero steps reported
+by Home Assistant and wraps to the lowest speed. Direction toggles between
+forward and reverse. Unsupported or unavailable controls show `--` and do
+not send an action. Applying a speed while off may turn the fan on.
 
 For a blinds up/down control with configurable arrow size:
 

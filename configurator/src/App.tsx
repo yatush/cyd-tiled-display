@@ -384,9 +384,7 @@ function App() {
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
-        onGenerate={() => handleGenerate(() => setActiveTab('output'))}
         onOpenFileManagement={() => setIsFileManagementOpen(true)}
-        isGenerating={isGenerating}
         updateAvailable={updateAvailable}
         emulatorStatus={emulatorStatus}
         onStartEmulator={() => setIsEmulatorDevicePickerOpen(true)}
@@ -547,7 +545,6 @@ function App() {
           setIsFileManagementOpen(false);
           setIsHwOverridesOpen(true);
         }}
-        connectionType={connectionType}
       />
 
       <SaveDeviceDialog 
@@ -606,7 +603,6 @@ function App() {
       <EmulatorDialog 
         isOpen={isEmulatorOpen} 
         onClose={() => setIsEmulatorOpen(false)}
-        onStop={handleStopEmulator}
         isStarting={emulatorStatus === 'starting'}
       />
 

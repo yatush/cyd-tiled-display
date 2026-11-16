@@ -723,6 +723,83 @@ script:
             PerformHaAction(light, action);
           }
 
+  - id: action_fan_power
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          for (const auto& item : entities) {
+            const auto fan = GetSensor(item);
+            const auto state = GetTextSensorValue(fan);
+            if (fan.find("fan.") != 0 || (state != "on" && state != "off")) {
+              ESP_LOGW("Fan", "Power state unavailable for %s", fan.c_str());
+              continue;
+            }
+            PerformHaAction(fan, "toggle");
+          }
+
+  - id: action_fan_speed
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          for (const auto& fan : entities) CycleFanSpeed(fan);
+
+  - id: action_fan_direction
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          for (const auto& fan : entities) CycleFanDirection(fan);
+
+  - id: tile_fan
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+    then:
+      - lambda: |-
+          std::string state = entities.empty() ? "" : GetTextSensorValue(GetSensor(entities.front()));
+          auto color = state == "on" ? id(light_blue) : id(gray);
+          int x = (x_start + x_end) / 2, y = (y_start + y_end) / 2;
+          print(x, y, id(big), color, TextAlign::CENTER, "\U0000f154");
+          if (state != "on" && state != "off")
+            print(x, y_end - 10, id(text_small), id(gray), TextAlign::CENTER, "--");
+
+  - id: tile_fan_speed
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+    then:
+      - lambda: |-
+          const std::string fan = entities.empty() ? "" : GetSensor(entities.front());
+          const std::string state = GetTextSensorValue(fan);
+          const std::string value = (state == "on" || state == "off") && FanSupports(fan, 1) ? GetFanAttribute(fan + "|percentage") : "";
+          auto percentage = esphome::parse_number<float>(value);
+          std::string label = percentage.has_value() && std::isfinite(*percentage) && *percentage >= 0 && *percentage <= 100
+              ? std::to_string(static_cast<int>(std::round(*percentage))) + "%" : "--";
+          print((x_start + x_end) / 2, (y_start + y_end) / 2, id(text_bold), id(light_blue), TextAlign::CENTER, label.c_str());
+
+  - id: tile_fan_direction
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+    then:
+      - lambda: |-
+          const std::string fan = entities.empty() ? "" : GetSensor(entities.front());
+          const std::string state = GetTextSensorValue(fan);
+          const std::string direction = (state == "on" || state == "off") && FanSupports(fan, 4) ? GetFanAttribute(fan + "|direction") : "";
+          const char* label = direction == "forward" ? "Forward" : direction == "reverse" ? "Reverse" : "--";
+          print((x_start + x_end) / 2, (y_start + y_end) / 2, id(text_small), id(light_blue), TextAlign::CENTER, label);
+
   - id: tile_ac
     parameters:
       x_start: int

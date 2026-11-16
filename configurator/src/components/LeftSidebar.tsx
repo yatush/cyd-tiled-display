@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, Upload, ImageIcon, Copy, Home, Bluetooth } from 'lucide-react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth } from 'lucide-react';
 import { Config, Tile, ImageEntry, ScreenImageEntry } from '../types';
 import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange } from '../utils/tileUtils';
-import { isAddon } from '../utils/api';
-import { FileExplorer } from './FileExplorer';
 
 interface LeftSidebarProps {
   width: number;
@@ -77,7 +75,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   handleLoadProject,
   handleClearConfig,
 }) => {
-  const [showExplorer, setShowExplorer] = useState(false);
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
 
   useEffect(() => {
@@ -268,7 +265,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                       </button>
                                       <span className="text-xs truncate font-medium">{p.id}</span>
                                       {p.flags?.includes('BASE') && (
-                                          <Home size={12} className="text-amber-500 flex-shrink-0" title="Base Screen" />
+                                          <span title="Base Screen" aria-label="Base Screen" className="flex-shrink-0">
+                                            <Home size={12} className="text-amber-500" aria-hidden="true" />
+                                          </span>
                                       )}
                                   </div>
                                   {config.pages.length > 1 && !p.flags?.includes('BASE') && (

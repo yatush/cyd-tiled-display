@@ -287,6 +287,9 @@ export function useTileConfig() {
             if (tile.type === 'move_page' && tile.destination === oldId) {
                 updatedTile.destination = newId;
             }
+            if (tile.type === 'ha_action' && tile.long_destination === oldId) {
+                updatedTile.long_destination = newId;
+            }
             
             // Update ha_action display_page_if_no_entity
             if (tile.type === 'ha_action' && tile.display_page_if_no_entity === oldId) {

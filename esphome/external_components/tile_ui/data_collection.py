@@ -158,7 +158,8 @@ def collect_referenced_scripts(screens):
     TILE_SCRIPT_FIELDS = {
         "ha_action": {
             "perform": ("perform", "action"),
-            "location_perform": ("location_perform", "location_action")
+            "location_perform": ("location_perform", "location_action"),
+            "long_perform": ("long_perform", "action")
         },
         "function": {
             "on_press": ("on_press", "action"),

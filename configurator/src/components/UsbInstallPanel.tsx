@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Usb, RefreshCw, ChevronDown, ChevronUp, Square, AlertTriangle, Key, Monitor, Plus, FolderOpen, Wifi, Eye, EyeOff } from 'lucide-react';
 import { apiFetch, isAddon } from '../utils/api';
+import type { Before } from 'esptool-js';
 
 // Types for Web Serial API (not in standard TS lib)
 declare global {
@@ -417,7 +418,7 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
       write: (data: string) => { if (data.trim()) setLogs(prev => [...prev, data]); },
     });
 
-    const tryConnect = async (mode: string, attempts: number): Promise<{ loader: InstanceType<typeof ESPLoader>; transport: InstanceType<typeof Transport>; chip: string } | null> => {
+    const tryConnect = async (mode: Before): Promise<{ loader: InstanceType<typeof ESPLoader>; transport: InstanceType<typeof Transport>; chip: string } | null> => {
       await closePort();
       const t = new Transport(port, false);
       const loader = new ESPLoader({
@@ -438,9 +439,9 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
 
     let result: { loader: InstanceType<typeof ESPLoader>; transport: InstanceType<typeof Transport>; chip: string } | null = null;
 
-    // Phase 1: Auto-reset (quick — 3 attempts)
+    // Phase 1: Auto-reset
     setLogs(prev => [...prev, 'Phase 1: Trying automatic reset into bootloader...']);
-    result = await tryConnect('default_reset', 3);
+    result = await tryConnect('default_reset');
 
     // Phase 2: Manual bootloader entry
     if (!result) {
@@ -470,7 +471,7 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
       }
 
       setLogs(prev => [...prev, 'Phase 2: Connecting in no-reset mode...']);
-      result = await tryConnect('no_reset', 5);
+      result = await tryConnect('no_reset');
     }
 
     if (!result) {
@@ -518,7 +519,7 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
       // Attempt auto-reset (best-effort, won't work on most CYD boards)
       try {
         const resetTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
-        await Promise.race([loader.hardReset(), resetTimeout]);
+        await Promise.race([loader.after('hard_reset'), resetTimeout]);
         setLogs(prev => [...prev, 'Device reset automatically.']);
       } catch {
         setLogs(prev => [...prev, '⚠ Auto-reset not supported on this board.', '  → Unplug and re-plug the USB cable to start the new firmware.']);

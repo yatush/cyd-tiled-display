@@ -69,6 +69,17 @@ class TestTileGeneration(unittest.TestCase):
         expected_args = "1, 1, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(icon).execute(arg0, arg1, arg2, arg3, arg4); } }, { [](std::vector<std::string> arg0) { id(p1).execute(arg0); } }, { [](float arg0, float arg1, std::vector<std::string> arg2) { id(l1).execute(arg0, arg1, arg2); } }, {\"#{dyn}\"}"
         self.assertIn(f"new HAActionTile({expected_args})", cpp)
 
+    def test_ha_action_long_press_generation(self):
+        tile = {"ha_action": {
+            "x": 0, "y": 0, "display": ["tile_fan"], "perform": ["action_fan_power"],
+            "entities": [{"entity": "fan.office"}], "long_perform": ["after_hold"],
+            "long_destination": "fan_settings", "long_dynamic_entity": "FAN",
+        }}
+        cpp = generate_tile_cpp(tile)
+        self.assertIn("id(after_hold).execute(arg0)", cpp)
+        self.assertIn('&id(fan_settings), "FAN")', cpp)
+        self.assertIn("->setLongPress(", cpp)
+
     def test_title_tile(self):
         config = {
             "title": {
