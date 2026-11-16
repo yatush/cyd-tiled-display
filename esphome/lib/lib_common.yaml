@@ -733,9 +733,9 @@ script:
       - lambda: |-
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
-          auto state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0)).c_str();
+          std::string state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0));
           print(x_mid, y_mid, id(big),
-                      strcmp(state, "cool") == 0   ? id(blue) : strcmp(state, "heat") == 0 ? id(red) : id(gray),
+                      state == "cool" ? id(blue) : state == "heat" ? id(red) : state == "heat_cool" ? id(light_purple) : id(gray),
                       TextAlign::CENTER, "\U0000f154");
 
   - id: action_ac
@@ -1144,7 +1144,15 @@ script:
           std::string entity = entities[1];
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
-          print(x_mid, y_mid, id(text_big_bold), id(gray), TextAlign::CENTER, (GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°").c_str());
+          std::string status = GetTextSensorValue(state) + " " + GetTextSensorValue(entity) + "°";
+          auto* font = id(text_big_bold);
+          if (measure(font, status.c_str()).first > x_end - x_start) {
+            font = id(text_bold);
+          }
+          if (measure(font, status.c_str()).first > x_end - x_start) {
+            font = id(text_small);
+          }
+          print(x_mid, y_mid, font, id(gray), TextAlign::CENTER, status.c_str());
 
   - id: _draw_page
     then:

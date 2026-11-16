@@ -113,6 +113,24 @@ Displays entity values with optional sensor attributes. Read-only (cannot be int
     ```
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
 
+For an AC status, pass the climate entity followed by its `temperature`
+attribute (the target temperature):
+
+```yaml
+- title:
+    x: 1
+    y: 1
+    entities:
+      - entity: climate.example
+      - entity: climate.example
+        sensor: temperature
+    display:
+      - tile_ac_status
+```
+
+The status shows the HVAC mode and target temperature, for example `off 26°`.
+The font shrinks when needed for longer modes such as `heat_cool`.
+
 ### 2. HA Action Tile (Entity Control)
 
 Displays entity state and performs an action (typically toggle) when pressed.
