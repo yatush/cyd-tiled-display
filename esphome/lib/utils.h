@@ -298,6 +298,7 @@ struct PendingClimateMode {
   std::string target;
   std::vector<std::string> previous_targets;
   uint32_t request_id;
+  bool sent;
 };
 
 std::map<std::string, PendingClimateMode> pending_climate_modes;
@@ -333,6 +334,15 @@ void ReconcileClimateTemperature(const std::string& key, const std::string& valu
 void ReconcileClimateMode(const std::string& key, const std::string& value) {
   auto pending = pending_climate_modes.find(key);
   if (pending == pending_climate_modes.end()) return;
+
+  if (!pending->second.sent) {
+    auto previous = std::find(pending->second.previous_targets.begin(),
+                              pending->second.previous_targets.end(), value);
+    if (previous != pending->second.previous_targets.end()) {
+      pending->second.previous_targets.erase(pending->second.previous_targets.begin(), previous + 1);
+    }
+    return;
+  }
 
   if (value != pending->second.target) {
     auto previous = std::find(pending->second.previous_targets.begin(),
@@ -561,23 +571,36 @@ void SetClimateMode(const std::string& entity, const std::string& mode) {
   auto pending = pending_climate_modes.find(entity);
   if (pending == pending_climate_modes.end()) {
     pending = pending_climate_modes.emplace(
-        entity, PendingClimateMode{mode, {}, ++climate_mode_request_id}).first;
+        entity, PendingClimateMode{mode, {}, ++climate_mode_request_id, false}).first;
   } else {
-    pending->second.previous_targets.push_back(pending->second.target);
+    if (pending->second.sent) {
+      pending->second.previous_targets.push_back(pending->second.target);
+    }
     pending->second.target = mode;
     pending->second.request_id = ++climate_mode_request_id;
+    pending->second.sent = false;
   }
   const uint32_t request_id = pending->second.request_id;
-  esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 10000, [entity, request_id]() {
+  esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 3000, [entity, request_id]() {
     auto pending = pending_climate_modes.find(entity);
-    if (pending != pending_climate_modes.end() && pending->second.request_id == request_id) {
-      ESP_LOGW("ClimateMode", "No mode confirmation for %s", entity.c_str());
-      pending_climate_modes.erase(pending);
-      id(disp).update();
-    }
+    if (pending == pending_climate_modes.end() || pending->second.request_id != request_id) return;
+    pending->second.sent = true;
+    const std::string target = pending->second.target;
+    esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 10000, [entity, request_id]() {
+      auto pending = pending_climate_modes.find(entity);
+      if (pending != pending_climate_modes.end() && pending->second.request_id == request_id) {
+        ESP_LOGW("ClimateMode", "No mode confirmation for %s", entity.c_str());
+        pending_climate_modes.erase(pending);
+        id(disp).update();
+      }
+    });
+    PerformHaAction(entity, "set_hvac_mode", {{"hvac_mode", target}});
   });
-  PerformHaAction(entity, "set_hvac_mode", {{"hvac_mode", mode}});
   id(disp).update();
+}
+
+void CancelClimateMode(const std::string& entity) {
+  if (pending_climate_modes.erase(entity) != 0) id(disp).update();
 }
 
 // Extracts an ID from a string using a regular expression.

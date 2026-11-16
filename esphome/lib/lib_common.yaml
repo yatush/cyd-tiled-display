@@ -755,6 +755,7 @@ script:
           static const char* TURN_OFF = "turn_off";
           std::string action = IsAnyOn(entities) ? TURN_OFF : TURN_ON;
           for (const std::string& ac : entities) {
+            CancelClimateMode(GetSensor(ac));
             PerformHaAction(ac, action);
           }
 

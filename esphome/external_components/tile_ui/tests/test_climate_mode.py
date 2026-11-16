@@ -34,6 +34,9 @@ class ClimateModeTest(unittest.TestCase):
         mode_action = yaml.split("  - id: action_ac_mode\n", 1)[1].split(
             "\n  - id:", 1
         )[0].split("      - lambda: |-\n", 1)[1]
+        power_action = yaml.split("  - id: action_ac\n", 1)[1].split(
+            "\n  - id:", 1
+        )[0].split("     - lambda: |-\n", 1)[1]
         source = r"""
 #include <algorithm>
 #include <cassert>
@@ -58,9 +61,27 @@ template<class T> std::optional<T> parse_number(const std::string& value) {
 }
 struct Api {};
 struct Scheduler {
-  std::vector<std::function<void()>> timeouts;
+  struct Timeout { uint32_t due; std::function<void()> callback; };
+  uint32_t now = 0;
+  std::vector<Timeout> timeouts;
   void set_timeout(Api* component, const char*, uint32_t delay, std::function<void()> callback) {
-    assert(component == nullptr && delay == 10000); timeouts.push_back(callback);
+    assert(component == nullptr && (delay == 3000 || delay == 10000));
+    timeouts.push_back({now + delay, callback});
+  }
+  void advance(uint32_t duration) {
+    uint32_t end = now + duration;
+    while (true) {
+      auto next = timeouts.end();
+      for (auto it = timeouts.begin(); it != timeouts.end(); ++it) {
+        if (it->due <= end && (next == timeouts.end() || it->due < next->due)) next = it;
+      }
+      if (next == timeouts.end()) break;
+      now = next->due;
+      auto callback = next->callback;
+      timeouts.erase(next);
+      callback();
+    }
+    now = end;
   }
 };
 struct Application { Scheduler scheduler; } App;
@@ -103,13 +124,15 @@ std::string GetTextSensorValue(const std::string& key) { return values[key]; }
         ) + r"""
 std::vector<std::pair<std::string, std::string>> calls;
 void PerformHaAction(const std::string& entity, const std::string& action,
-                     std::vector<std::pair<std::string, std::string>> data) {
-  assert(action == "set_temperature" || action == "set_hvac_mode");
-  calls.emplace_back(entity, data.at(0).second);
+                     std::vector<std::pair<std::string, std::string>> data = {}) {
+  assert(action == "set_temperature" || action == "set_hvac_mode" ||
+         action == "turn_on" || action == "turn_off");
+  calls.emplace_back(entity, data.empty() ? action : data.at(0).second);
 }
 """ + "\n".join(
             extract_function(utils, signature)
-            for signature in ("void AdjustClimateTemperature(", "std::string NextClimateMode(", "void SetClimateMode(")
+            for signature in ("void AdjustClimateTemperature(", "std::string NextClimateMode(",
+                              "void SetClimateMode(", "void CancelClimateMode(")
         ) + r"""
 using BaseFont = int;
 int large_font, bold_font, small_font;
@@ -129,6 +152,10 @@ void draw(const std::vector<std::string>& entities) {
 void change_mode(const std::vector<std::string>& entities) {
 """ + mode_action + r"""
 }
+bool IsAnyOn(const std::vector<std::string>&) { return true; }
+void power(const std::vector<std::string>& entities) {
+""" + power_action + r"""
+}
 void report(const std::string& key, const std::string& value) {
   values[key] = value;
   text_sensors.at(key)->callback(value);
@@ -146,13 +173,13 @@ int main() {
 
   AdjustClimateTemperature(key, 1, "test");
   assert(std::stof(calls.back().second) == 22.5f);
-  esphome::App.scheduler.timeouts[0]();
+  esphome::App.scheduler.timeouts[0].callback();
   report(key, "21.5");
   draw({ac, key}); assert(rendered == "cool 22.5°");
   report(key, "22.5");
   draw({ac, key}); assert(rendered == "cool 22.5°");
   assert(pending_climate_temperatures.empty());
-  esphome::App.scheduler.timeouts[1]();
+  esphome::App.scheduler.timeouts[1].callback();
   assert(GetClimateTemperatureValue(ac) == "22.5");
 
   AdjustClimateTemperature(ac, 1, "test");
@@ -173,7 +200,7 @@ int main() {
   assert(GetClimateTemperatureValue(ac) == "19");
   assert(GetClimateTemperatureValue("climate.other") == "17");
   const int updates_before_timeout = disp.updates;
-  esphome::App.scheduler.timeouts.back()();
+  esphome::App.scheduler.timeouts.back().callback();
   assert(GetClimateTemperatureValue("climate.other") == "18");
   assert(disp.updates == updates_before_timeout + 1);
 
@@ -184,16 +211,21 @@ int main() {
   values["climate.other"] = "heat";
   values["climate.other|hvac_modes"] = "['off', 'cool', 'heat']";
   calls.clear();
+  esphome::App.scheduler.timeouts.clear();
   change_mode({ac});
-  assert(calls.size() == 1 && calls.back().second == "heat_cool");
+  assert(calls.empty());
   draw({ac, key}); assert(rendered == "heat_cool 19°");
   DrawAcIcon(0, 100, 0, 100, {ac}, "icon", &large_font); assert(printed_color == light_purple);
-  const auto first_timeout = esphome::App.scheduler.timeouts.size() - 1;
+  esphome::App.scheduler.advance(2000);
   change_mode({ac + "|temperature"});
-  assert(calls.back().second == "cool");
-  esphome::App.scheduler.timeouts[first_timeout]();
-  report(ac, "heat_cool");
+  report(ac, "off");
   assert(GetClimateModeValue(ac) == "cool");
+  report(ac, "cool");
+  assert(GetClimateModeValue(ac) == "cool" && !pending_climate_modes.empty());
+  esphome::App.scheduler.advance(2999);
+  assert(calls.empty());
+  esphome::App.scheduler.advance(1);
+  assert(calls.size() == 1 && calls.back() == std::make_pair(ac, std::string("cool")));
   report(ac, "cool");
   assert(pending_climate_modes.empty());
   draw({ac, key}); assert(rendered == "cool 19°");
@@ -201,13 +233,40 @@ int main() {
   change_mode({ac, "climate.other"});
   assert(GetClimateModeValue(ac) == "heat");
   assert(GetClimateModeValue("climate.other") == "cool");
+  esphome::App.scheduler.advance(3000);
+  assert(calls.size() == 3 && calls[1].second == "heat" && calls[2].second == "cool");
+  change_mode({ac});
+  assert(GetClimateModeValue(ac) == "heat_cool");
+  report(ac, "cool");
+  assert(GetClimateModeValue(ac) == "heat_cool");
+  esphome::App.scheduler.advance(3000);
+  assert(calls.size() == 4 && calls.back().second == "heat_cool");
+  report(ac, "heat");
+  assert(GetClimateModeValue(ac) == "heat_cool");
   report(ac, "off");
   assert(GetClimateModeValue(ac) == "off");
   DrawAcIcon(0, 100, 0, 100, {ac}, "icon", &large_font); assert(printed_color == gray);
   assert(GetClimateModeValue("climate.other") == "cool");
-  esphome::App.scheduler.timeouts.back()();
+  esphome::App.scheduler.advance(6999);
+  assert(GetClimateModeValue("climate.other") == "cool");
+  esphome::App.scheduler.advance(1);
   assert(GetClimateModeValue("climate.other") == "heat");
   assert(pending_climate_modes.empty());
+  change_mode({ac});
+  assert(GetClimateModeValue(ac) == "heat_cool");
+  power({ac});
+  assert(GetClimateModeValue(ac) == "off");
+  assert(calls.back().second == "turn_off");
+  const auto calls_after_power = calls.size();
+  esphome::App.scheduler.advance(3000);
+  assert(calls.size() == calls_after_power);
+  change_mode({ac});
+  esphome::App.scheduler.advance(3000);
+  assert(calls.back().second == "heat_cool");
+  esphome::App.scheduler.advance(9999);
+  assert(GetClimateModeValue(ac) == "heat_cool");
+  esphome::App.scheduler.advance(1);
+  assert(GetClimateModeValue(ac) == "off");
   values[ac] = "unavailable";
   const auto mode_calls = calls.size();
   change_mode({ac}); assert(calls.size() == mode_calls);
