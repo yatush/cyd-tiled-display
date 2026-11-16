@@ -37,6 +37,13 @@
   ],
   "types": [
     {
+      "type": "blind_position",
+      "label": "Blind Position",
+      "fields": [
+        { "name": "entities", "type": "entity_list", "label": "Blinds" }
+      ]
+    },
+    {
       "type": "ha_action",
       "label": "HA Action",
       "fields": [

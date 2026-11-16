@@ -166,7 +166,7 @@ def validate_tiles_config(
                     )
             
             # Collect dynamic entities from various tile types
-            if tile_type == TileType.HA_ACTION.value or tile_type == TileType.TITLE.value:
+            if tile_type in (TileType.HA_ACTION.value, TileType.TITLE.value, TileType.BLIND_POSITION.value):
                 entities_config = config.get("entities", "")
                 collect_dynamic_entities(entities_config, valid_dynamic_entities)
             
@@ -793,6 +793,10 @@ def validate_tile_schema(tile_type: str, tile_config: dict, screen_id: str) -> N
     # Cross-field: exactly one of 'display' or 'display_assets' must be present
     has_display = bool(tile_config.get('display'))
     has_images = bool(tile_config.get('display_assets'))
+    if tile_type == TileType.BLIND_POSITION.value:
+        if any(name in tile_config for name in ('display', 'display_assets', 'requires_fast_refresh')):
+            raise ValueError(f"{context}: Blind position tiles use a built-in display")
+        return
     if has_display and has_images:
         raise ValueError(
             f"{context}: Cannot have both 'display' scripts and 'display_assets'. Use one or the other."

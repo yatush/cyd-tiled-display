@@ -21,6 +21,7 @@ except FileNotFoundError:
 class TileType(Enum):
     """Enumeration of valid tile types."""
     HA_ACTION = "ha_action"
+    BLIND_POSITION = "blind_position"
     MOVE_PAGE = "move_page"
     TITLE = "title"
     FUNCTION = "function"
@@ -326,6 +327,10 @@ def build_tile_schema(tile_type_def):
     
     # Add common fields
     for field in SCHEMA_DEF['common']:
+        if tile_type_def['type'] == 'blind_position' and field['name'] in (
+            'display', 'display_assets', 'requires_fast_refresh'
+        ):
+            continue
         validator = get_validator(field['type'])
         if field.get('optional'):
             schema_dict[Optional(field['name'])] = validator

@@ -706,7 +706,14 @@ def generate_cycle_entity_tile(config, available_scripts, screen_id=None):
 
 def generate_tile_cpp(tile: dict, available_scripts=None, screen_id=None) -> str:
     """Generate C++ code for a single tile."""
-    if TileType.HA_ACTION.value in tile:
+    if TileType.BLIND_POSITION.value in tile:
+        config = tile[TileType.BLIND_POSITION.value]
+        entities = format_entity_cpp(format_entity_value(config.get("entities", [])))
+        return _apply_modifiers(
+            f'new BlindPositionTile({config["x"]}, {config["y"]}, {entities})',
+            config, screen_id=screen_id
+        ) + ','
+    elif TileType.HA_ACTION.value in tile:
         return generate_action_tile(tile[TileType.HA_ACTION.value], available_scripts, screen_id)
     elif TileType.MOVE_PAGE.value in tile:
         return generate_move_page_tile(tile[TileType.MOVE_PAGE.value], available_scripts, screen_id)

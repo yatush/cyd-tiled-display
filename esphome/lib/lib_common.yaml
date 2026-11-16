@@ -248,6 +248,7 @@ script:
   - id: _handle_touch_release
     then:
       - lambda: |-
+          BlindPositionTile::releaseTouch();
           id(ignore_touch) = false;
 
   - id: _handle_touch

@@ -269,6 +269,152 @@ private:
   }
 };
 
+// A drag-controlled cover position meter. Home Assistant uses 100 for open.
+class BlindPositionTile : public Tile {
+public:
+  BlindPositionTile(int x, int y, std::vector<std::string> entities)
+      : Tile(x, y), entities_(Pointer(entities)) {}
+
+  void initSensors() override {
+    for (const auto* entity : entities_) InitSensor(*entity);
+  }
+
+  void decodeEntities() override {
+    auto decoded = HasDynamicEntity(entities_) ? ReplaceDynamicEntities(entities_) : entities_;
+    if (decoded != decoded_entities_) cancel();
+    decoded_entities_ = decoded;
+    for (const auto* entity : decoded_entities_) InitSensor(*entity);
+  }
+
+  bool updateOnEntitiesMapChange() override { return true; }
+
+  static void updateTouch(const std::vector<esphome::touchscreen::TouchPoint>& touches) {
+    if (touches.size() > 1) {
+      multi_touch_ = true;
+      if (active_) active_->cancel();
+      return;
+    }
+    if (active_ && !touches.empty()) {
+      if (active_->display_page_ != id(disp).get_active_page() || !active_->checkActivationMaybeToggle()) {
+        active_->cancel();
+      } else {
+        active_->updatePosition(touches[0].y);
+      }
+    }
+  }
+
+  static void releaseTouch() {
+    multi_touch_ = false;
+    if (!active_) return;
+    auto* tile = active_;
+    if (tile->display_page_ != id(disp).get_active_page() || !tile->checkActivationMaybeToggle()) {
+      tile->cancel();
+      return;
+    }
+    const int position = tile->preview_;
+    const auto entities = Deref(tile->decoded_entities_);
+    tile->cancel();
+    std::set<std::string> sent;
+    for (const auto& item : entities) {
+      const auto entity = GetSensor(item);
+      if (entity.find("cover.") != 0) {
+        ESP_LOGW("BlindPosition", "Not a cover entity: %s", entity.c_str());
+      } else if (sent.insert(entity).second) {
+        PerformHaAction(entity, "set_cover_position", {{"position", std::to_string(position)}});
+      }
+    }
+    if (sent.empty()) ESP_LOGW("BlindPosition", "No cover entities selected");
+  }
+
+protected:
+  void customInit() override {
+    binary_sensor_->add_on_state_callback([this](bool pressed) {
+      if (pressed && !multi_touch_ && !active_) {
+        active_ = this;
+        updatePosition(id(last_y));
+      }
+    });
+  }
+
+  void onScreenLeave() override { cancel(); }
+
+  void customDraw() override {
+    int border = getEffectiveBorderWidth();
+    if (border < 0) border = id(tile_border_width);
+    const int inset = std::max(3, border + 1);
+    const int left = x_start(x_) + inset;
+    const int top = y_start(y_) + inset;
+    const int right = x_start(x_ + x_span_ - 1) + x_rect() - inset;
+    const int bottom = y_start(y_ + y_span_ - 1) + y_rect() - inset;
+    const int width = std::max(0, right - left);
+    const int height = std::max(0, bottom - top);
+    int low = 100, high = 0;
+    bool valid = !decoded_entities_.empty();
+    if (active_ == this) {
+      low = high = preview_;
+      valid = true;
+    } else {
+      for (const auto* item : decoded_entities_) {
+        const auto entity = GetSensor(*item);
+        const auto value = GetTextSensorValue(entity + "|current_position");
+        auto position = esphome::parse_number<float>(value);
+        if (entity.find("cover.") != 0 || !position.has_value() ||
+            !std::isfinite(*position) || *position < 0 || *position > 100) {
+          valid = false;
+          break;
+        }
+        int rounded = static_cast<int>(std::round(*position));
+        low = std::min(low, rounded);
+        high = std::max(high, rounded);
+      }
+    }
+    std::string label = "--";
+    bool mixed = false;
+    if (valid) {
+      const int solid = height * (100 - high) / 100;
+      const int range = height * (100 - low) / 100;
+      if (solid > 0) id(disp).filled_rectangle(left, top, width, solid, id(light_blue));
+      if (range > solid) id(disp).filled_rectangle(left, top + solid, width, range - solid, id(dark_gray));
+      label = low == high ? std::to_string(low) + "%" :
+              std::to_string(low) + "-" + std::to_string(high) + "%";
+      mixed = low != high;
+    }
+    auto* font = measure(id(text_bold), label.c_str()).first <= width ? id(text_bold) : id(text_small);
+    if (mixed) {
+      print((left + right) / 2, (top + bottom) / 2 - 10, id(text_small), id(white),
+            TextAlign::CENTER, "Mixed");
+    }
+    print((left + right) / 2, (top + bottom) / 2 + (mixed ? 10 : 0), font, id(white),
+          TextAlign::CENTER, label.c_str());
+  }
+
+private:
+  void updatePosition(int y) {
+    const int top = y_start(y_);
+    const int bottom = y_start(y_ + y_span_ - 1) + y_rect();
+    if (bottom <= top) return;
+    int position = std::max(0, std::min(100, (bottom - y) * 100 / (bottom - top)));
+    if (position != preview_) {
+      preview_ = position;
+      id(disp).update();
+    }
+  }
+
+  void cancel() {
+    if (active_ == this) {
+      active_ = nullptr;
+      preview_ = -1;
+      id(disp).update();
+    }
+  }
+
+  std::vector<const std::string*> entities_;
+  std::vector<const std::string*> decoded_entities_;
+  int preview_ = -1;
+  inline static BlindPositionTile* active_ = nullptr;
+  inline static bool multi_touch_ = false;
+};
+
 // A tile that performs actions on Home Assistant entities when pressed.
 class HAActionTile : public Tile {
 public:

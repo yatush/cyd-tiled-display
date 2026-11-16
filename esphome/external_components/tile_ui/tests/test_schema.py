@@ -82,7 +82,8 @@ class TestSchema(unittest.TestCase):
     def test_tile_types(self):
         self.assertIn("ha_action", VALID_TILE_TYPES)
         self.assertIn("move_page", VALID_TILE_TYPES)
-        self.assertEqual(len(VALID_TILE_TYPES), 6)
+        self.assertIn("blind_position", VALID_TILE_TYPES)
+        self.assertEqual(len(VALID_TILE_TYPES), 7)
 
     # --- display_list ---
 

@@ -441,7 +441,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
             </div>
 
             {/* Display */}
-            {schema?.common?.some((f: any) => f.type === 'display_list') && (() => {
+            {selectedTile.type !== 'blind_position' && schema?.common?.some((f: any) => f.type === 'display_list') && (() => {
               const field = schema.common.find((f: any) => f.type === 'display_list');
               const imagesField = schema?.common?.find((f: any) => f.type === 'assets_list');
               const hasImages = Array.isArray(selectedTile.display_assets) && selectedTile.display_assets.length > 0;
@@ -795,7 +795,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Behavior</label>
                 <div className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-3">
-                  {schema.common.filter((f: any) => f.type === 'condition_logic' || (f.type === 'object' && f.optional)).map((field: any) => {
+                  {schema.common.filter((f: any) => (f.type === 'condition_logic' || (f.type === 'object' && f.optional)) && !(selectedTile.type === 'blind_position' && f.name === 'requires_fast_refresh')).map((field: any) => {
                     const isEnabled = selectedTile[field.name] !== undefined;
                     const toggle = (enabled: boolean) => {
                       if (enabled) {

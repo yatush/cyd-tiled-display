@@ -140,6 +140,28 @@ reported by Home Assistant, excluding `off`. If currently off, it selects
 current state or active mode list is unavailable, it logs a warning and sends
 no action.
 
+### Blind Position Tile
+
+Use a `blind_position` tile to control one or more covers:
+
+```yaml
+- blind_position:
+    x: 0
+    y: 0
+    y_span: 2
+    entities:
+      - dynamic_entity: BLINDS
+      # Or use: entity: cover.living_room
+```
+
+The meter is empty at 100% open and full at 0% open. When selected blinds
+have different positions, it shows **Mixed** and their range; missing or
+invalid positions show `--`. Touch or drag vertically to preview a position:
+the top is fully open and the bottom fully closed. Releasing sends the chosen
+position to each selected cover once. Leaving the page, changing the dynamic
+selection, or a multi-touch gesture cancels the preview without sending.
+Covers must support Home Assistant's `set_cover_position` action.
+
 ### 2. HA Action Tile (Entity Control)
 
 Displays entity state and performs an action (typically toggle) when pressed.

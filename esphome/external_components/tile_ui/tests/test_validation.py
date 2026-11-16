@@ -9,6 +9,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from tile_ui.validation import validate_tiles_config
 
 class TestValidation(unittest.TestCase):
+
+    def test_blind_position_without_display(self):
+        tile = {"blind_position": {"x": 0, "y": 0, "entities": [{"dynamic_entity": "BLINDS"}]}}
+        screens = [{"id": "main", "flags": ["BASE"], "tiles": [tile]}]
+        validate_tiles_config(screens, declared_dynamic_entities=["BLINDS"])
+        tile["blind_position"]["display"] = ["other"]
+        with self.assertRaisesRegex(ValueError, "built-in display"):
+            validate_tiles_config(screens, declared_dynamic_entities=["BLINDS"])
     
     def setUp(self):
         self.valid_screen = {

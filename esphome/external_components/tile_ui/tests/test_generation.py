@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import MagicMock
 import sys
 import os
+from pathlib import Path
+import yaml
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -24,6 +26,20 @@ from tile_ui.tile_generation import generate_tile_cpp
 from tile_ui import generate_init_tiles_cpp
 
 class TestTileGeneration(unittest.TestCase):
+    def test_blind_position_tile(self):
+        tile = {"blind_position": {
+            "x": 1, "y": 2, "y_span": 2,
+            "entities": [{"dynamic_entity": "BLINDS"}, {"entity": "cover.office"}],
+        }}
+        cpp = generate_tile_cpp(tile)
+        self.assertIn('new BlindPositionTile(1, 2, {"#{BLINDS}", "cover.office"})', cpp)
+        self.assertIn("->setSpan(1, 2)", cpp)
+
+    def test_blind_position_fixture(self):
+        fixture = Path(__file__).parent / "fixtures" / "blind_position.yaml"
+        tiles = yaml.safe_load(fixture.read_text())["screens"][0]["tiles"]
+        self.assertIn('"cover.example"', generate_tile_cpp(tiles[0]))
+        self.assertIn('"#{BLINDS}"', generate_tile_cpp(tiles[1]))
     
     def test_ha_action_tile(self):
         config = {

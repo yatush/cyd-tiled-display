@@ -140,3 +140,6 @@ touchscreen:
   on_release:
     then:
       - script.execute: _handle_touch_release
+  on_update:
+    then:
+      - lambda: BlindPositionTile::updateTouch(touches);

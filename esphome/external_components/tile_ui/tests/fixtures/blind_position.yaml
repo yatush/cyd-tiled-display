@@ -1,0 +1,17 @@
+screens:
+  - id: main
+    flags: [BASE]
+    rows: 1
+    cols: 2
+    tiles:
+      - blind_position:
+          x: 0
+          y: 0
+          entities:
+            - entity: cover.example
+      - blind_position:
+          x: 1
+          y: 0
+          entities:
+            - dynamic_entity: BLINDS
+dynamic_entities: [BLINDS]
