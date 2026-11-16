@@ -345,7 +345,7 @@ def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[s
 
     Checks the following locations where a dynamic_entity name can appear:
     - toggle_entity / cycle_entity  -> tile.dynamic_entity
-    - ha_action / title             -> tile.entities[i].dynamic_entity
+    - entity-list tiles             -> tile.entities[i].dynamic_entity
     - any tile type                 -> tile.activation_var.dynamic_entity
     - move_page                     -> tile.dynamic_entry.dynamic_entity
     """
@@ -372,7 +372,7 @@ def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[s
             if direct:
                 _check(direct, "dynamic_entity")
 
-            # entities list (ha_action, title)
+            # entities list
             for i, entry in enumerate(config.get("entities", [])):
                 if isinstance(entry, dict):
                     de = entry.get("dynamic_entity", "")

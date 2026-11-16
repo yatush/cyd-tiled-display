@@ -219,7 +219,7 @@ def collect_referenced_scripts(screens):
                         
                         # Determine expected type based on tile type
                         expected_type = 'display'
-                        if tile_type == 'move_page' or tile_type == 'function':
+                        if tile_type == 'function':
                             expected_type = 'display_simple'
                         elif tile_type == 'toggle_entity':
                             expected_type = 'display_toggle'

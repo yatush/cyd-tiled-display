@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import { Config, Page, Tile } from '../types';
+import type { Config, Page, Tile } from '../types';
 
 /** Map legacy 'direction' string to from/to position pair. */
 const _DIRECTION_TO_FROM_TO: Record<string, { from: [number,number]; to: [number,number] }> = {

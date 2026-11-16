@@ -593,7 +593,6 @@ def generate_title_tile(config, available_scripts, screen_id=None):
 
 def generate_move_page_tile(config, available_scripts, screen_id=None):
     """Generate C++ for a move page tile."""
-    # MovePageTile display: int, int, string, Color, font
     _display_params = [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), ('entities', 'string[]')]
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, _display_params)
     display_cpp = _override_display_with_image(display_cpp, config, _display_params)
@@ -601,7 +600,9 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
     destination = config.get("destination", "")
     dynamic_entry = config.get("dynamic_entry", None)
     
-    tile_cpp = f'new MovePageTile({x}, {y}, {display_cpp}, &id({destination}))'
+    entities = config.get("entities")
+    entity_arg = f', {format_entity_cpp(format_entity_value(entities))}' if entities else ''
+    tile_cpp = f'new MovePageTile({x}, {y}, {display_cpp}, &id({destination}){entity_arg})'
     
     modifiers = []
     if dynamic_entry:

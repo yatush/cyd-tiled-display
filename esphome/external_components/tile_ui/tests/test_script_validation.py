@@ -80,6 +80,17 @@ class TestScriptValidation(unittest.TestCase):
     def test_validate_script_type_simple(self):
         validate_script_type("display_simple", self.available_scripts["display_simple"], "display_simple", "test")
 
+    def test_move_page_accepts_entity_and_simple_display_scripts(self):
+        tile = {"move_page": {
+            "x": 0, "y": 0, "destination": "main",
+            "entities": [{"dynamic_entity": "AC"}],
+            "display": ["display_std", "display_simple"],
+        }}
+        screens = [{"id": "main", "flags": ["BASE"], "tiles": [tile]}]
+        validate_tiles_config(screens, self.available_scripts, declared_dynamic_entities=["AC"])
+        with self.assertRaisesRegex(ValueError, "not declared"):
+            validate_tiles_config(screens, self.available_scripts, declared_dynamic_entities=[])
+
     def test_validate_script_type_toggle(self):
         validate_script_type("display_toggle", self.available_scripts["display_toggle"], "display_toggle", "test")
 

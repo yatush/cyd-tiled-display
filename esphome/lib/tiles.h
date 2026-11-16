@@ -574,8 +574,10 @@ public:
       int x, int y,
       std::vector<DrawImageFunc>
           draw_funcs,
-      esphome::display::DisplayPage* target_display_page)
-      : Tile(x, y), draw_funcs_(draw_funcs), target_display_page_(target_display_page) {}
+      esphome::display::DisplayPage* target_display_page,
+      const std::vector<std::string>& entities = {})
+      : Tile(x, y), draw_funcs_(draw_funcs), target_display_page_(target_display_page),
+        entities_(Pointer(entities)) {}
 
   // Sets dynamic entities to the tile and a callback to update the entities map.
   MovePageTile* setDynamicEntry(const std::string& key,
@@ -597,7 +599,21 @@ public:
     for (const std::string* entity : this->dynamic_entities_) {
       InitSensor(*entity);
     }
+    for (const std::string* entity : this->entities_) {
+      InitSensor(*entity);
+    }
   };
+
+  void decodeEntities() override {
+    this->decoded_entities_ = HasDynamicEntity(this->entities_)
+                                  ? ReplaceDynamicEntities(this->entities_)
+                                  : this->entities_;
+    for (const std::string* entity : this->decoded_entities_) {
+      InitSensor(*entity);
+    }
+  }
+
+  bool updateOnEntitiesMapChange() override { return true; }
 
 protected:
   void customInit() override {
@@ -615,7 +631,7 @@ protected:
   void customDraw() override {
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), std::vector<std::string>{});
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), Deref(this->decoded_entities_));
   }
 
 private:
@@ -625,6 +641,8 @@ private:
   esphome::display::DisplayPage* target_display_page_;
   // Vector of dynamic entities associated with the tile.
   std::vector<const std::string*> dynamic_entities_;
+  std::vector<const std::string*> entities_;
+  std::vector<const std::string*> decoded_entities_;
 };
 
 // A tile that executes functions when pressed and/or released.

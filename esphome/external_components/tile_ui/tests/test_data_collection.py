@@ -203,7 +203,7 @@ class TestCollectReferencedScripts(unittest.TestCase):
             {'move_page': {'x': 0, 'y': 0, 'display': 'arrow', 'destination': 'p2'}}
         ]}]
         refs = collect_referenced_scripts(screens)
-        self.assertEqual(refs['arrow'][0]['type'], 'display_simple')
+        self.assertEqual(refs['arrow'][0]['type'], 'display')
 
     def test_display_type_for_toggle_entity(self):
         screens = [{'id': 'main', 'flags': ['BASE'], 'tiles': [

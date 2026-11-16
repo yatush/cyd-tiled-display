@@ -108,6 +108,16 @@ class TestTileGeneration(unittest.TestCase):
         cpp = generate_tile_cpp(config)
         self.assertIn('setDynamicEntry("var", {"val1", "val2"})', cpp)
 
+    def test_move_page_display_entities(self):
+        tile = {"move_page": {
+            "x": 0, "y": 0, "destination": "screen2", "display": ["tile_ac"],
+            "entities": [{"entity": "climate.living"}, {"dynamic_entity": "AC"}],
+            "dynamic_entry": {"dynamic_entity": "AC", "value": "climate.living"},
+        }}
+        cpp = generate_tile_cpp(tile)
+        self.assertIn('&id(screen2), {"climate.living", "#{AC}"})', cpp)
+        self.assertIn('setDynamicEntry("AC", {"climate.living"})', cpp)
+
     def test_function_tile(self):
         config = {
             "function": {

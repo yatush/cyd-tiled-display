@@ -270,15 +270,30 @@ Navigates to another screen when pressed.
 - **x, y**: *(Required)* Position on screen (non-negative integers)
 - **x_span, y_span**: (Optional) Tile dimensions (default: 1)
 - **display**: *(Required)* List of display scripts
-  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end}` (coordinates are required) where:
+  - **Draw Function Arguments**: The display scripts can receive `{x_start, x_end, y_start, y_end, entities}` (coordinates are required) where:
     - `x_start`: Integer - Pixel x-coordinate of the left edge
     - `x_end`: Integer - Pixel x-coordinate of the right edge
     - `y_start`: Integer - Pixel y-coordinate of the top edge
     - `y_end`: Integer - Pixel y-coordinate of the bottom edge
+    - `entities`: Optional list of resolved display entities
 - **destination**: *(Required)* Screen ID to navigate to (must be valid screen ID)
+- **entities**: (Optional) Static or dynamic entities passed to the display scripts. Independent of `dynamic_entry`.
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **dynamic_entry**: (Optional) See [Common Modifiers](#dynamic-entry)
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
+
+For example, show an AC's current state while navigating to its settings:
+
+```yaml
+- move_page:
+    x: 0
+    y: 0
+    destination: ac_settings
+    entities:
+      - entity: climate.living_room
+    display:
+      - tile_ac
+```
 
 ### 4. Function Tile (Script Execution)
 

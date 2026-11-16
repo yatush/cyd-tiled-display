@@ -58,6 +58,7 @@
       "label": "Move Page",
       "fields": [
         { "name": "destination", "type": "page_select", "label": "Destination Page ID" },
+        { "name": "entities", "type": "entity_list", "label": "Display Entities", "optional": true },
         { 
           "name": "dynamic_entry", 
           "type": "object", 

@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import { Config } from '../types';
+import type { Config } from '../types';
 
 // ---------------------------------------------------------------------------
 // Known-field allowlists derived from schema.json.
@@ -17,7 +17,7 @@ const COMMON_TILE_FIELDS = new Set([
 const TYPE_SPECIFIC_FIELDS: Record<string, Set<string>> = {
   ha_action:     new Set(['entities', 'perform', 'location_perform', 'display_page_if_no_entity']),
   blind_position: new Set(['entities']),
-  move_page:     new Set(['destination', 'dynamic_entry']),
+  move_page:     new Set(['destination', 'dynamic_entry', 'entities']),
   toggle_entity: new Set(['dynamic_entity', 'entity', 'presentation_name', 'initially_chosen']),
   title:         new Set(['entities']),
   cycle_entity:  new Set(['dynamic_entity', 'options', 'reset_on_leave']),

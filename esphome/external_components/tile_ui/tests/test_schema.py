@@ -306,6 +306,15 @@ class TestTileSchemaStaleKeys(unittest.TestCase):
         cfg['fill_color'] = '#112233'
         tile_schema({'move_page': cfg})
 
+    def test_move_page_display_entities_optional(self):
+        cfg = self._valid('move_page')
+        tile_schema({'move_page': cfg})
+        cfg['entities'] = [{'entity': 'climate.living'}, {'dynamic_entity': 'AC'}]
+        self.assertEqual(tile_schema({'move_page': cfg})['move_page']['entities'], cfg['entities'])
+        cfg['entities'] = [{'entity': ''}]
+        with self.assertRaises(Exception):
+            tile_schema({'move_page': cfg})
+
     def test_border_color_accepted(self):
         cfg = self._valid('cycle_entity')
         cfg['border_color'] = '#ffffff'
