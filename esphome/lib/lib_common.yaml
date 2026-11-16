@@ -736,7 +736,7 @@ script:
           std::string state = entities.empty() ? "none" : GetTextSensorValue(entities.at(0));
           print(x_mid, y_mid, id(big),
                       state == "cool" ? id(blue) : state == "heat" ? id(red) : state == "heat_cool" ? id(light_purple) : state == "off" ? id(gray) : id(white),
-                      TextAlign::CENTER, "\U0000f154");
+                      TextAlign::CENTER, "\U0000f418");
 
   - id: action_ac
     parameters:

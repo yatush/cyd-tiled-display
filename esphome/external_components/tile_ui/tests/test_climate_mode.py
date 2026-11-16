@@ -27,6 +27,8 @@ class ClimateModeTest(unittest.TestCase):
         display = yaml.split("  - id: tile_ac\n", 1)[1].split(
             "\n  - id:", 1
         )[0].split("      - lambda: |-\n", 1)[1]
+        glyphs = (ROOT / "esphome/lib/mdi_glyphs.yaml").read_text()
+        self.assertIn(r'"\U0000f418"', glyphs)
         source = """
 #include <cassert>
 #include <string>
@@ -35,15 +37,19 @@ class ClimateModeTest(unittest.TestCase):
 enum { big, blue, red, light_purple, gray, white };
 enum class TextAlign { CENTER };
 std::string state;
+std::string icon;
 int color;
 std::string GetTextSensorValue(const std::string&) { return state; }
-void print(int, int, int, int chosen, TextAlign, const char*) { color = chosen; }
+void print(int, int, int, int chosen, TextAlign, const char* glyph) {
+  color = chosen;
+  icon = glyph;
+}
 void draw(const std::vector<std::string>& entities) {
   int x_start = 0, x_end = 10, y_start = 0, y_end = 10;
 """ + display + """
 }
 int main() {
-  state = "off"; draw({"climate.ac"}); assert(color == gray);
+  state = "off"; draw({"climate.ac"}); assert(color == gray); assert(icon == "\\U0000f418");
   state = "unknown"; draw({"climate.ac"}); assert(color == white);
   state = "unavailable"; draw({"climate.ac"}); assert(color == white);
   state = "auto"; draw({"climate.ac"}); assert(color == white);
