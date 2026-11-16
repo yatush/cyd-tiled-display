@@ -1078,13 +1078,7 @@ script:
     then:
       - lambda: |-
           for (const std::string& ac : entities) {
-            std::string temp = GetTextSensorValue(ac);
-            if (IsInteger(temp)) {
-              int new_temp = stoi(temp) + 1;
-              PerformHaAction(GetSensor(ac), "set_temperature", {{"temperature", std::to_string(new_temp)}});
-            } else {
-              ESP_LOGE("ActionTempUp", "Failed getting temp for %s", ac.c_str());
-            }
+            AdjustClimateTemperature(ac, 1, "ActionTempUp");
           }
 
   - id: action_temp_down
@@ -1093,13 +1087,7 @@ script:
     then:
       - lambda: |-
           for (const std::string& ac : entities) {
-            std::string temp = GetTextSensorValue(ac);
-            if (IsInteger(temp)) {
-              int new_temp = stoi(temp) - 1;
-              PerformHaAction(GetSensor(ac), "set_temperature", {{"temperature", std::to_string(new_temp)}});
-            } else {
-              ESP_LOGE("ActionTempDown", "Failed getting temp for %s", ac.c_str());
-            }
+            AdjustClimateTemperature(ac, -1, "ActionTempDown");
           }
 
   - id: tile_ac_mode

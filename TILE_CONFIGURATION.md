@@ -130,6 +130,8 @@ attribute (the target temperature):
 
 The status shows the HVAC mode and target temperature, for example `off 26°`.
 The font shrinks when needed for longer modes such as `heat_cool`.
+The `action_temp_up` and `action_temp_down` actions accept the climate entity
+with or without `sensor: temperature` and adjust its target by one degree.
 
 ### 2. HA Action Tile (Entity Control)
 

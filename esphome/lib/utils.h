@@ -2,6 +2,7 @@
 #define UTILS_H_
 
 #include <iostream>
+#include <cmath>
 #include <regex>
 #include <set>
 #include <string>
@@ -325,9 +326,10 @@ void InitSensor(const std::string& key, const std::string& sensor,
 
 // Initializes a sensor and its required attributes.
 void InitSensor(const std::string& sensor) {
-  InitSensor(sensor, sensor, "");
-  for (const std::string& att : getRequiredAttributes(sensor)) {
-    InitSensor(sensor + "|" + att, sensor, att);
+  const std::string entity = GetSensor(sensor);
+  InitSensor(sensor, entity, GetAtt(sensor));
+  for (const std::string& att : getRequiredAttributes(entity)) {
+    InitSensor(entity + "|" + att, entity, att);
   }
 }
 
@@ -402,6 +404,18 @@ void PerformHaAction(
   }
   
   id(api_server).send_homeassistant_action(request);
+}
+
+void AdjustClimateTemperature(const std::string& ac, float adjustment, const char* log_tag) {
+  const std::string entity = GetSensor(ac);
+  const std::string key = GetAtt(ac).empty() ? entity + "|temperature" : ac;
+  const std::string value = GetTextSensorValue(key);
+  auto temperature = esphome::parse_number<float>(value);
+  if (!temperature.has_value() || !std::isfinite(*temperature) || !std::isfinite(*temperature + adjustment)) {
+    ESP_LOGE(log_tag, "Failed getting temp for %s: %s", key.c_str(), value.c_str());
+    return;
+  }
+  PerformHaAction(entity, "set_temperature", {{"temperature", std::to_string(*temperature + adjustment)}});
 }
 
 // Extracts an ID from a string using a regular expression.
