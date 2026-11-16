@@ -281,7 +281,10 @@ public:
 
   void decodeEntities() override {
     auto decoded = HasDynamicEntity(entities_) ? ReplaceDynamicEntities(entities_) : entities_;
-    if (decoded != decoded_entities_) cancel();
+    if (decoded != decoded_entities_) {
+      target_ = -1;
+      cancel();
+    }
     decoded_entities_ = decoded;
     for (const auto* entity : decoded_entities_) InitSensor(*entity);
   }
@@ -323,7 +326,12 @@ public:
         PerformHaAction(entity, "set_cover_position", {{"position", std::to_string(position)}});
       }
     }
-    if (sent.empty()) ESP_LOGW("BlindPosition", "No cover entities selected");
+    if (sent.empty()) {
+      ESP_LOGW("BlindPosition", "No cover entities selected");
+    } else {
+      tile->target_ = position;
+      id(disp).update();
+    }
   }
 
 protected:
@@ -368,24 +376,46 @@ protected:
         high = std::max(high, rounded);
       }
     }
+    if (active_ != this && valid && low == high && low == target_) target_ = -1;
+
     std::string label = "--";
-    bool mixed = false;
     if (valid) {
       const int solid = height * (100 - high) / 100;
       const int range = height * (100 - low) / 100;
       if (solid > 0) id(disp).filled_rectangle(left, top, width, solid, id(light_blue));
       if (range > solid) id(disp).filled_rectangle(left, top + solid, width, range - solid, id(dark_gray));
-      label = low == high ? std::to_string(low) + "%" :
-              std::to_string(low) + "-" + std::to_string(high) + "%";
-      mixed = low != high;
+      label = std::to_string(low) + "%";
     }
-    auto& font = measure(id(text_bold), label.c_str()).first <= width ? id(text_bold) : id(text_small);
-    if (mixed) {
-      print((left + right) / 2, (top + bottom) / 2 - 10, id(text_small), id(white),
-            TextAlign::CENTER, "Mixed");
+    const int center_x = (left + right) / 2;
+    int current_top = top;
+    if (active_ != this && target_ >= 0 && width > 0 && height > 0) {
+      const int marker_y = top + (height - 1) * (100 - target_) / 100;
+      line(left, marker_y, right - 1, marker_y, id(yellow));
+      const std::string target_label = std::to_string(target_) + "%";
+      const auto target_size = measure(id(text_small), target_label.c_str());
+      print(center_x, top + target_size.second / 2, id(text_small), id(yellow),
+            TextAlign::CENTER, target_label.c_str());
+      current_top = std::min(bottom, top + target_size.second + 4);
     }
-    print((left + right) / 2, (top + bottom) / 2 + (mixed ? 10 : 0), font, id(white),
-          TextAlign::CENTER, label.c_str());
+    const int center_y = (current_top + bottom) / 2;
+    if (valid && low != high) {
+      const std::string high_label = std::to_string(high) + "%";
+      const auto low_size = measure(id(text_bold), label.c_str());
+      const auto high_size = measure(id(text_bold), high_label.c_str());
+      const auto dash_size = measure(id(text_bold), "-");
+      const int bold_width = std::max({low_size.first, high_size.first, dash_size.first});
+      const int bold_line_height = std::max({low_size.second, high_size.second, dash_size.second}) + 2;
+      auto& font = bold_width <= width && 3 * bold_line_height <= bottom - current_top ? id(text_bold) : id(text_small);
+      const int line_height = std::max({measure(font, label.c_str()).second,
+                                        measure(font, high_label.c_str()).second,
+                                        measure(font, "-").second}) + 2;
+      print(center_x, center_y - line_height, font, id(white), TextAlign::CENTER, label.c_str());
+      print(center_x, center_y, font, id(white), TextAlign::CENTER, "-");
+      print(center_x, center_y + line_height, font, id(white), TextAlign::CENTER, high_label.c_str());
+    } else {
+      auto& font = measure(id(text_bold), label.c_str()).first <= width ? id(text_bold) : id(text_small);
+      print(center_x, center_y, font, id(white), TextAlign::CENTER, label.c_str());
+    }
   }
 
 private:
@@ -411,6 +441,7 @@ private:
   std::vector<const std::string*> entities_;
   std::vector<const std::string*> decoded_entities_;
   int preview_ = -1;
+  int target_ = -1;
   inline static BlindPositionTile* active_ = nullptr;
   inline static bool multi_touch_ = false;
 };

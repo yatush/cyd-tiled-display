@@ -155,12 +155,16 @@ Use a `blind_position` tile to control one or more covers:
 ```
 
 The meter is empty at 100% open and full at 0% open. When selected blinds
-have different positions, it shows **Mixed** and their range; missing or
+have different positions, it shows their range on three lines; missing or
 invalid positions show `--`. Touch or drag vertically to preview a position:
 the top is fully open and the bottom fully closed. Releasing sends the chosen
 position to each selected cover once. Leaving the page, changing the dynamic
 selection, or a multi-touch gesture cancels the preview without sending.
-Covers must support Home Assistant's `set_cover_position` action.
+After release, a yellow line marks the chosen position and its yellow label
+appears above the current position or range. The marker remains until all
+selected covers report that position, a new position is chosen, or the dynamic
+selection changes. Covers must support Home Assistant's `set_cover_position`
+action.
 
 ### 2. HA Action Tile (Entity Control)
 

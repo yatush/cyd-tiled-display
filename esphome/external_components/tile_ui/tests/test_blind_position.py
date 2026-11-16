@@ -40,19 +40,25 @@ struct Display {
   void update() {}
   void filled_rectangle(int, int, int, int height, int color) { fills.emplace_back(height, color); }
 } disp;
-int last_y = 0, light_blue = 1, dark_gray = 2, white = 3, tile_border_width = 1;
-int text_bold = 4, text_small = 5, measured_width = 50;
+int last_y = 0, light_blue = 1, dark_gray = 2, white = 3, yellow = 6, tile_border_width = 1;
+int text_bold = 4, text_small = 5, measured_width = 50, measured_height = 10, rect_width = 100;
 int* last_font = nullptr;
 enum class TextAlign { CENTER };
 std::string label;
 std::vector<std::string> labels;
-std::pair<int, int> measure(int&, const char*) { return {measured_width, 10}; }
-void print(int, int, int& font, int, TextAlign, const char* text) {
-  label = text; labels.push_back(text); last_font = &font;
+std::vector<int> label_x, label_y, label_colors;
+std::vector<int> markers;
+std::pair<int, int> measure(int& font, const char*) {
+  return &font == &text_bold ? std::make_pair(measured_width, measured_height) : std::make_pair(20, 10);
 }
-int x_start(int x) { return x * 100; }
+void print(int x, int y, int& font, int color, TextAlign, const char* text) {
+  label = text; labels.push_back(text); label_x.push_back(x); label_y.push_back(y);
+  label_colors.push_back(color); last_font = &font;
+}
+void line(int, int y, int, int, int color) { assert(color == yellow); markers.push_back(y); }
+int x_start(int x) { return x * rect_width; }
 int y_start(int y) { return y * 100; }
-int x_rect() { return 100; }
+int x_rect() { return rect_width; }
 int y_rect() { return 100; }
 struct Sensor {
   std::function<void(bool)> callback;
@@ -114,14 +120,23 @@ int main() {
   dynamic = Pointer({"cover.a", "cover.b"});
   values = {{"cover.a|current_position", "100"}, {"cover.b|current_position", "0"}};
   t.start(); t.decodeEntities();
-  t.draw(); assert(label == "0-100%"); assert(labels[0] == "Mixed");
+  t.draw();
+  assert((labels == std::vector<std::string>{"0%", "-", "100%"}));
+  assert(label_y[0] < label_y[1] && label_y[1] < label_y[2]);
   assert(last_font == &text_bold);
-  measured_width = 500; t.draw(); assert(last_font == &text_small);
-  measured_width = 50;
+  labels.clear(); label_x.clear(); label_y.clear();
+  rect_width = 50; t.draw(); assert(last_font == &text_small);
+  assert((labels == std::vector<std::string>{"0%", "-", "100%"}));
+  for (int x : label_x) assert(x - 10 >= 3 && x + 10 <= rect_width - 3);
+  assert(label_y[0] - 5 >= 3 && label_y[2] + 5 <= 97);
+  rect_width = 100; measured_height = 40; t.draw(); assert(last_font == &text_small);
+  measured_height = 10;
   disp.fills.clear(); t.draw();
   assert(disp.fills.size() == 1 && disp.fills[0].second == dark_gray);
   values["cover.a|current_position"] = "30"; values["cover.b|current_position"] = "70";
-  disp.fills.clear(); t.draw(); assert(label == "30-70%");
+  labels.clear(); label_y.clear(); disp.fills.clear(); t.draw();
+  assert((labels == std::vector<std::string>{"30%", "-", "70%"}));
+  assert(label_y[0] < label_y[1] && label_y[1] < label_y[2]);
   assert(disp.fills.size() == 2 && disp.fills[0].second == light_blue && disp.fills[1].second == dark_gray);
   values["cover.a|current_position"] = "100"; values["cover.b|current_position"] = "100";
   disp.fills.clear(); t.draw(); assert(label == "100%"); assert(disp.fills.empty());
@@ -134,6 +149,36 @@ int main() {
   assert(calls.empty()); BlindPositionTile::releaseTouch();
   assert(calls.size() == 2 && calls[0].second == "0" && calls[1].second == "0");
   BlindPositionTile::releaseTouch(); assert(calls.size() == 2);
+  labels.clear(); label_colors.clear(); markers.clear(); t.draw();
+  assert((labels == std::vector<std::string>{"0%", "--"}));
+  assert((label_colors == std::vector<int>{yellow, white}));
+  assert((markers == std::vector<int>{196}));
+  values["cover.a|current_position"] = "25"; values["cover.b|current_position"] = "60";
+  labels.clear(); label_y.clear(); label_colors.clear(); markers.clear(); t.draw();
+  assert((labels == std::vector<std::string>{"0%", "25%", "-", "60%"}));
+  assert((label_colors == std::vector<int>{yellow, white, white, white}));
+  assert(label_y[0] + 5 < label_y[1] - 5);
+  assert(markers.size() == 1);
+  t.decodeEntities(); markers.clear(); t.draw(); assert(markers.size() == 1);
+  last_y = 200; t.press(); t.draw(); assert(label == "0%");
+  t.leave(); markers.clear(); t.draw(); assert(markers.size() == 1);
+  values["cover.a|current_position"] = "0"; t.draw();
+  markers.clear(); t.draw(); assert(markers.size() == 1);
+  values["cover.b|current_position"] = "0";
+  labels.clear(); markers.clear(); t.draw();
+  assert((labels == std::vector<std::string>{"0%"})); assert(markers.empty());
+  last_y = 100; t.press(); BlindPositionTile::releaseTouch();
+  labels.clear(); markers.clear(); t.draw();
+  assert((labels == std::vector<std::string>{"50%", "0%"}));
+  assert((markers == std::vector<int>{99}));
+  last_y = 0; t.press(); BlindPositionTile::releaseTouch();
+  labels.clear(); markers.clear(); t.draw();
+  assert((labels == std::vector<std::string>{"100%", "0%"}));
+  assert((markers == std::vector<int>{3}));
+  t.leave(); labels.clear(); markers.clear(); t.draw(); assert(markers.size() == 1);
+  dynamic = Pointer({"cover.c"}); t.decodeEntities();
+  markers.clear(); t.draw(); assert(markers.empty());
+  dynamic = Pointer({"cover.a", "cover.b"}); t.decodeEntities();
   calls.clear(); last_y = 0; t.press(); t.draw(); assert(label == "100%");
   t.leave(); BlindPositionTile::releaseTouch(); assert(calls.empty());
   last_y = 0; t.press(); BlindPositionTile::updateTouch({{1}, {2}});
