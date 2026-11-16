@@ -114,11 +114,12 @@ int main() {
   assert(std::find(subscriptions.begin(), subscriptions.end(), "climate.one") != subscriptions.end());
   assert(std::find(subscriptions.begin(), subscriptions.end(), "climate.one|hvac_modes") != subscriptions.end());
   const std::string all = "['off', 'cool', 'heat', 'heat_cool']";
-  assert(NextClimateMode("off", all) == "cool");
+  assert(NextClimateMode("off", all) == "heat_cool");
   assert(NextClimateMode("cool", all) == "heat");
   assert(NextClimateMode("heat", all) == "heat_cool");
-  assert(NextClimateMode("heat_cool", all) == "off");
+  assert(NextClimateMode("heat_cool", all) == "cool");
   assert(NextClimateMode("off", "['off', 'heat_cool']") == "heat_cool");
+  assert(NextClimateMode("off", "['heat', 'off', 'heat_cool', 'cool']") == "heat_cool");
   assert(NextClimateMode("off", "[\\"off\\", \\"heat\\"]") == "heat");
   assert(NextClimateMode("cool", "['heat_cool']") == "heat_cool");
   assert(NextClimateMode("auto", "['heat', 'off']") == "heat");
@@ -126,7 +127,11 @@ int main() {
   assert(NextClimateMode("auto", extra) == "dry");
   assert(NextClimateMode("dry", extra) == "fan_only");
   assert(NextClimateMode("fan_only", extra) == "cool");
+  assert(NextClimateMode("cool", extra) == "auto");
   assert(NextClimateMode("off", extra) == "auto");
+  assert(NextClimateMode("cool", "['cool', 'off', 'heat']") == "heat");
+  assert(NextClimateMode("off", "['off']").empty());
+  assert(NextClimateMode("heat", "['off', 'heat']") == "heat");
   assert(NextClimateMode("heat", "['custom_mode', 'heat']") == "custom_mode");
   assert(NextClimateMode("unavailable", all).empty());
   assert(NextClimateMode("off", "").empty());
@@ -135,7 +140,7 @@ int main() {
   assert(NextClimateMode("off", "['cool', bad]").empty());
   values = {{"climate.one", "heat"}, {"climate.one|hvac_modes", all},
             {"climate.two", "off"}, {"climate.two|hvac_modes", "['off', 'dry']"},
-            {"climate.three", "off"}};
+            {"climate.three", "off"}, {"climate.three|hvac_modes", "['off']"}};
   run({"climate.one|temperature", "climate.two", "climate.three"});
   assert(calls.size() == 2);
   assert(calls[0] == std::make_pair(std::string("climate.one"), std::string("heat_cool")));

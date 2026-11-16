@@ -442,10 +442,16 @@ std::string NextClimateMode(const std::string& current, const std::string& modes
         (item[start] != '\'' && item[start] != '"') || item[end] != item[start]) {
       return "";
     }
-    cycle.push_back(item.substr(start + 1, end - start - 1));
+    const std::string mode = item.substr(start + 1, end - start - 1);
+    if (mode != "off") {
+      cycle.push_back(mode);
+    }
   }
   if (cycle.empty()) {
     return "";
+  }
+  if (current == "off" && std::find(cycle.begin(), cycle.end(), "heat_cool") != cycle.end()) {
+    return "heat_cool";
   }
   auto current_it = std::find(cycle.begin(), cycle.end(), current);
   return current_it == cycle.end() || ++current_it == cycle.end() ? cycle.front() : *current_it;
