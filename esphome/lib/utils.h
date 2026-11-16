@@ -561,38 +561,106 @@ bool FanSupports(const std::string& entity, int feature) {
   return value.has_value() && (*value & feature) != 0;
 }
 
-void CycleFanSpeed(const std::string& item) {
-  const std::string entity = GetSensor(item);
-  const std::string state = GetTextSensorValue(entity);
-  if (entity.find("fan.") != 0 || (state != "on" && state != "off") || !FanSupports(entity, 1)) {
-    ESP_LOGW("Fan", "Speed control unavailable for %s", entity.c_str());
-    return;
+struct FanPowerGroup {
+  std::vector<std::string> fans;
+  bool all_on = true;
+};
+
+FanPowerGroup GetFanPowerGroup(const std::vector<std::string>& entities) {
+  FanPowerGroup group;
+  for (const auto& item : entities) {
+    const std::string entity = GetSensor(item);
+    const std::string state = GetTextSensorValue(entity);
+    if (entity.find("fan.") != 0 || (state != "on" && state != "off") ||
+        std::find(group.fans.begin(), group.fans.end(), entity) != group.fans.end()) continue;
+    group.fans.push_back(entity);
+    if (state == "off") group.all_on = false;
   }
-  auto step = esphome::parse_number<float>(GetTextSensorValue(entity + "|percentage_step"));
-  auto current = esphome::parse_number<float>(GetFanAttribute(entity + "|percentage"));
-  if (!step.has_value() || !current.has_value() || !std::isfinite(*step) ||
-      !std::isfinite(*current) || *step <= 0 || *step > 100 || *current < 0 || *current > 100) {
-    ESP_LOGW("Fan", "Invalid speed or step for %s", entity.c_str());
-    return;
-  }
-  const float next = *current >= 100 ? *step : (std::floor((*current + 0.999f) / *step) + 1) * *step;
-  const int percentage = std::max(1, std::min(100, static_cast<int>(std::floor((next > 100.001f ? *step : next) + 0.001f))));
-  SetFanAttribute(entity, "percentage", std::to_string(percentage), "set_percentage");
+  return group;
 }
 
-void CycleFanDirection(const std::string& item) {
-  const std::string entity = GetSensor(item);
-  const std::string state = GetTextSensorValue(entity);
-  if (entity.find("fan.") != 0 || (state != "on" && state != "off") || !FanSupports(entity, 4)) {
-    ESP_LOGW("Fan", "Direction control unavailable for %s", entity.c_str());
+struct FanSpeedGroup {
+  std::vector<std::string> fans;
+  float lowest = 0;
+  float step = 0;
+};
+
+FanSpeedGroup GetFanSpeedGroup(const std::vector<std::string>& entities) {
+  FanSpeedGroup group;
+  for (const auto& entity : GetFanPowerGroup(entities).fans) {
+    if (!FanSupports(entity, 1)) continue;
+    auto step = esphome::parse_number<float>(GetTextSensorValue(entity + "|percentage_step"));
+    auto current = esphome::parse_number<float>(GetFanAttribute(entity + "|percentage"));
+    if (!step.has_value() || !current.has_value() || !std::isfinite(*step) ||
+        !std::isfinite(*current) || *step <= 0 || *step > 100 || *current < 0 || *current > 100) continue;
+    if (group.fans.empty() || *current < group.lowest) {
+      group.lowest = *current;
+      group.step = *step;
+    }
+    group.fans.push_back(entity);
+  }
+  return group;
+}
+
+struct FanDirectionGroup {
+  std::vector<std::string> fans;
+  bool any_reverse = false;
+};
+
+FanDirectionGroup GetFanDirectionGroup(const std::vector<std::string>& entities) {
+  FanDirectionGroup group;
+  for (const auto& entity : GetFanPowerGroup(entities).fans) {
+    if (!FanSupports(entity, 4)) continue;
+    const std::string direction = GetFanAttribute(entity + "|direction");
+    if (direction != "forward" && direction != "reverse") continue;
+    group.fans.push_back(entity);
+    if (direction == "reverse") group.any_reverse = true;
+  }
+  return group;
+}
+
+void LogSkippedFans(const std::vector<std::string>& entities, const std::vector<std::string>& fans,
+                    const char* control) {
+  std::set<std::string> seen;
+  for (const auto& item : entities) {
+    const std::string entity = GetSensor(item);
+    if (seen.insert(entity).second && std::find(fans.begin(), fans.end(), entity) == fans.end())
+      ESP_LOGW("Fan", "Skipping %s: %s control unavailable", entity.c_str(), control);
+  }
+}
+
+void ToggleFanPower(const std::vector<std::string>& entities) {
+  const auto group = GetFanPowerGroup(entities);
+  LogSkippedFans(entities, group.fans, "power");
+  if (group.fans.empty()) {
+    ESP_LOGW("Fan", "No fans available for power control");
     return;
   }
-  const std::string direction = GetFanAttribute(entity + "|direction");
-  if (direction != "forward" && direction != "reverse") {
-    ESP_LOGW("Fan", "Invalid direction for %s: %s", entity.c_str(), direction.c_str());
+  for (const auto& fan : group.fans) PerformHaAction(fan, group.all_on ? "turn_off" : "turn_on");
+}
+
+void CycleFanSpeed(const std::vector<std::string>& entities) {
+  const auto group = GetFanSpeedGroup(entities);
+  LogSkippedFans(entities, group.fans, "speed");
+  if (group.fans.empty()) {
+    ESP_LOGW("Fan", "No fans available for speed control");
     return;
   }
-  SetFanAttribute(entity, "direction", direction == "forward" ? "reverse" : "forward", "set_direction");
+  const float next = group.lowest >= 100 ? group.step : (std::floor((group.lowest + 0.999f) / group.step) + 1) * group.step;
+  const int percentage = std::max(1, std::min(100, static_cast<int>(std::floor((next > 100.001f ? group.step : next) + 0.001f))));
+  for (const auto& fan : group.fans)
+    SetFanAttribute(fan, "percentage", std::to_string(percentage), "set_percentage");
+}
+
+void CycleFanDirection(const std::vector<std::string>& entities) {
+  const auto group = GetFanDirectionGroup(entities);
+  LogSkippedFans(entities, group.fans, "direction");
+  if (group.fans.empty()) {
+    ESP_LOGW("Fan", "No fans available for direction control");
+    return;
+  }
+  for (const auto& fan : group.fans)
+    SetFanAttribute(fan, "direction", group.any_reverse ? "forward" : "reverse", "set_direction");
 }
 
 void AdjustClimateTemperature(const std::string& ac, float adjustment, const char* log_tag) {

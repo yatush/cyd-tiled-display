@@ -728,29 +728,21 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          for (const auto& item : entities) {
-            const auto fan = GetSensor(item);
-            const auto state = GetTextSensorValue(fan);
-            if (fan.find("fan.") != 0 || (state != "on" && state != "off")) {
-              ESP_LOGW("Fan", "Power state unavailable for %s", fan.c_str());
-              continue;
-            }
-            PerformHaAction(fan, "toggle");
-          }
+          ToggleFanPower(entities);
 
   - id: action_fan_speed
     parameters:
       entities: string[]
     then:
       - lambda: |-
-          for (const auto& fan : entities) CycleFanSpeed(fan);
+          CycleFanSpeed(entities);
 
   - id: action_fan_direction
     parameters:
       entities: string[]
     then:
       - lambda: |-
-          for (const auto& fan : entities) CycleFanDirection(fan);
+          CycleFanDirection(entities);
 
   - id: tile_fan
     parameters:
@@ -762,11 +754,11 @@ script:
       size: esphome::display::BaseFont*
     then:
       - lambda: |-
-          std::string state = entities.empty() ? "" : GetTextSensorValue(GetSensor(entities.front()));
-          auto color = state == "on" ? id(yellow) : id(gray);
+          const auto group = GetFanPowerGroup(entities);
+          auto color = !group.fans.empty() && group.all_on ? id(yellow) : id(gray);
           int x = (x_start + x_end) / 2, y = (y_start + y_end) / 2;
           print(x, y, size, color, TextAlign::CENTER, "\U0000f168");
-          if (state != "on" && state != "off")
+          if (group.fans.empty())
             print(x, y_end - 10, id(text_small), id(gray), TextAlign::CENTER, "--");
 
   - id: tile_fan_speed
@@ -778,12 +770,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          const std::string fan = entities.empty() ? "" : GetSensor(entities.front());
-          const std::string state = GetTextSensorValue(fan);
-          const std::string value = (state == "on" || state == "off") && FanSupports(fan, 1) ? GetFanAttribute(fan + "|percentage") : "";
-          auto percentage = esphome::parse_number<float>(value);
-          std::string label = percentage.has_value() && std::isfinite(*percentage) && *percentage >= 0 && *percentage <= 100
-              ? std::to_string(static_cast<int>(std::round(*percentage))) + "%" : "--";
+          const auto group = GetFanSpeedGroup(entities);
+          std::string label = group.fans.empty() ? "--" : std::to_string(static_cast<int>(std::round(group.lowest))) + "%";
           print(x_start + 2, y_start + 2, id(tiny), id(white), TextAlign::TOP_LEFT, "\U0000f168");
           print((x_start + x_end) / 2, (y_start + y_end) / 2, id(text_bold), id(white), TextAlign::CENTER, label.c_str());
 
@@ -796,10 +784,8 @@ script:
       entities: string[]
     then:
       - lambda: |-
-          const std::string fan = entities.empty() ? "" : GetSensor(entities.front());
-          const std::string state = GetTextSensorValue(fan);
-          const std::string direction = (state == "on" || state == "off") && FanSupports(fan, 4) ? GetFanAttribute(fan + "|direction") : "";
-          const char* label = direction == "forward" ? "Forward" : direction == "reverse" ? "Reverse" : "--";
+          const auto group = GetFanDirectionGroup(entities);
+          const char* label = group.fans.empty() ? "--" : group.any_reverse ? "Reverse" : "Forward";
           print(x_start + 2, y_start + 2, id(tiny), id(white), TextAlign::TOP_LEFT, "\U0000f168");
           print((x_start + x_end) / 2, (y_start + y_end) / 2, id(text_small), id(white), TextAlign::CENTER, label);
 
