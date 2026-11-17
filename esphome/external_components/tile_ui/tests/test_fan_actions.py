@@ -270,6 +270,8 @@ std::vector<const std::string*> Pointer(const std::vector<std::string>& values) 
 std::vector<std::string> Deref(const std::vector<const std::string*>& values) {
   std::vector<std::string> result; for (auto* s : values) result.push_back(*s); return result;
 }
+std::map<std::string, std::string> entity_states;
+std::string GetTextSensorValue(const std::string& entity) { return entity_states[entity]; }
 std::map<std::string, std::vector<const std::string*>> dynamic;
 void EMSet(const std::string* key, const std::vector<const std::string*>& values) { dynamic[*key] = values; }
 bool HasDynamicEntity(const std::vector<const std::string*>&) { return false; }
@@ -310,6 +312,13 @@ int main() {
   disp.page = &page;
   HAActionTile legacy(0, 0, {}, {short_action}, {"fan.one|percentage"});
   legacy.start(&page); legacy.decodeEntities(); legacy.touch(true); assert(short_count == 2);
+
+  HAActionTile cover(0, 0, {}, {short_action}, {"cover.one"});
+  cover.start(&page); cover.decodeEntities();
+  assert(!cover.requiresFastRefresh());
+  entity_states["cover.one"] = "opening"; assert(cover.requiresFastRefresh());
+  entity_states["cover.one"] = "closing"; assert(cover.requiresFastRefresh());
+  entity_states["cover.one"] = "open"; assert(!cover.requiresFastRefresh());
 }
 """
         compile_and_run(code)

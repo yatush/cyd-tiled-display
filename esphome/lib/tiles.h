@@ -291,6 +291,14 @@ public:
 
   bool updateOnEntitiesMapChange() override { return true; }
 
+  bool requiresFastRefresh() override {
+    for (const auto* item : decoded_entities_) {
+      const auto state = GetTextSensorValue(GetSensor(*item));
+      if (state == "opening" || state == "closing") return true;
+    }
+    return false;
+  }
+
   static void updateTouch(const std::vector<esphome::touchscreen::TouchPoint>& touches) {
     if (touches.size() > 1) {
       multi_touch_ = true;
@@ -499,7 +507,14 @@ public:
   }
 
   bool requiresFastRefresh() override {
-    return this->requiresFastRefreshFunc_(Deref(this->decoded_entities_));
+    if (this->requiresFastRefreshFunc_(Deref(this->decoded_entities_))) return true;
+    for (const auto* entity : this->decoded_entities_) {
+      const auto entity_id = GetSensor(*entity);
+      if (entity_id.rfind("cover.", 0) != 0) continue;
+      const auto state = GetTextSensorValue(entity_id);
+      if (state == "opening" || state == "closing") return true;
+    }
+    return false;
   }
 
   void initSensors() override {

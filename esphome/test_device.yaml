@@ -103,11 +103,6 @@ tile_ui:
               - dynamic_entity: COVER
             perform:
               - action_blinds_up
-            requires_fast_refresh:
-              operator: OR
-              conditions:
-                - blinds_moving_up_fn
-                - blinds_moving_down_fn
             x: 0
             y: 1
         - ha_action:
@@ -118,11 +113,6 @@ tile_ui:
               - dynamic_entity: COVER
             perform:
               - action_blinds_down
-            requires_fast_refresh:
-              operator: OR
-              conditions:
-                - blinds_moving_up_fn
-                - blinds_moving_down_fn
             x: 1
             y: 1
         - ha_action:
@@ -562,16 +552,6 @@ tile_ui:
               - dynamic_entity: COVER_TEMP
             location_perform:
               - action_blinds_up_down
-            requires_fast_refresh:
-              operator: OR
-              conditions:
-                - operator: AND
-                  conditions:
-                    - operator: NOT
-                      conditions:
-                        - blinds_moving_down_fn
-                    - blinds_moving_down_fn
-                - blinds_moving_down_fn
             x: 0
             y: 1
         - move_page:

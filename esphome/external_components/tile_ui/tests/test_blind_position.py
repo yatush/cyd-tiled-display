@@ -70,6 +70,7 @@ public:
   virtual ~Tile() = default;
   virtual void initSensors() {}
   virtual void decodeEntities() {}
+  virtual bool requiresFastRefresh() { return false; }
   virtual bool updateOnEntitiesMapChange() { return false; }
   bool checkActivationMaybeToggle() { return enabled; }
   int getEffectiveBorderWidth() const { return -1; }
@@ -120,6 +121,10 @@ int main() {
   dynamic = Pointer({"cover.a", "cover.b"});
   values = {{"cover.a|current_position", "100"}, {"cover.b|current_position", "0"}};
   t.start(); t.decodeEntities();
+  assert(!t.requiresFastRefresh());
+  values["cover.a"] = "opening"; assert(t.requiresFastRefresh());
+  values["cover.a"] = "unknown"; values["cover.b"] = "closing"; assert(t.requiresFastRefresh());
+  values["cover.b"] = "unknown"; assert(!t.requiresFastRefresh());
   t.draw();
   assert((labels == std::vector<std::string>{"0%", "-", "100%"}));
   assert(label_y[0] < label_y[1] && label_y[1] < label_y[2]);
