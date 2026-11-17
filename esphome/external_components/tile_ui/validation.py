@@ -486,6 +486,8 @@ def _validate_tile_positions(screen_id, tiles):
                 val = act_var.get("value", "")
                 if isinstance(val, str):
                     current_vals = set(v.strip() for v in val.split(","))
+                elif isinstance(val, list):
+                    current_vals = set(str(v).strip() for v in val)
                 else:
                     current_vals = {str(val)}
             

@@ -7,8 +7,17 @@ from typing import Any
 import esphome.config_validation as cv
 
 try:
-    from voluptuous import PREVENT_EXTRA, Required, Optional, Schema, All, Any as Vol_Any
+    from voluptuous import (
+        PREVENT_EXTRA, Required, Optional, Schema, All,
+        Any as Vol_Any, Invalid as _VolInvalid,
+    )
+    if isinstance(getattr(cv, "Invalid", None), type) and not issubclass(cv.Invalid, _VolInvalid):
+        class _SchemaInvalid(cv.Invalid, _VolInvalid):
+            pass
+    else:
+        _SchemaInvalid = getattr(cv, "Invalid", _VolInvalid)
 except ImportError:
+    _SchemaInvalid = getattr(cv, "Invalid", ValueError)
     PREVENT_EXTRA = 1
     _NO_DEFAULT = object()
 
@@ -143,70 +152,72 @@ __all__ = [
 
 def coord_schema(value: Any) -> int:
     """Validate coordinate (non-negative integer)."""
-    if not isinstance(value, int):
-        raise cv.Invalid(f"Coordinate must be integer, got {type(value).__name__}")
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise _SchemaInvalid(f"Coordinate must be integer, got {type(value).__name__}")
     if value < 0:
-        raise cv.Invalid(f"Coordinate must be non-negative, got {value}")
+        raise _SchemaInvalid(f"Coordinate must be non-negative, got {value}")
     return value
 
 
 def non_empty_string(value: Any) -> str:
     """Validate non-empty string."""
     if not isinstance(value, str):
-        raise cv.Invalid(f"Must be a string, got {type(value).__name__}")
+        raise _SchemaInvalid(f"Must be a string, got {type(value).__name__}")
     if not value.strip():
-        raise cv.Invalid("String cannot be empty")
+        raise _SchemaInvalid("String cannot be empty")
     return value
 
 
 def string_list(value: Any) -> list[str]:
     """Validate list of non-empty strings."""
     if not isinstance(value, list):
-        raise cv.Invalid(f"Must be a list, got {type(value).__name__}")
+        raise _SchemaInvalid(f"Must be a list, got {type(value).__name__}")
+    if not value:
+        raise _SchemaInvalid("List cannot be empty")
     for item in value:
         if not isinstance(item, str) or not item.strip():
-            raise cv.Invalid(f"List items must be non-empty strings, got {item}")
+            raise _SchemaInvalid(f"List items must be non-empty strings, got {item}")
     return value
 
 
 def display_list(value: Any) -> list[Any]:
     """Validate list of display items (strings or dicts)."""
     if not isinstance(value, list):
-        raise cv.Invalid(f"Must be a list, got {type(value).__name__}")
+        raise _SchemaInvalid(f"Must be a list, got {type(value).__name__}")
     for item in value:
         if isinstance(item, str):
             if not item.strip():
-                raise cv.Invalid("String items cannot be empty")
+                raise _SchemaInvalid("String items cannot be empty")
         elif isinstance(item, dict):
             if len(item) != 1:
-                raise cv.Invalid(f"Dict items must have exactly one key, got {len(item)}")
+                raise _SchemaInvalid(f"Dict items must have exactly one key, got {len(item)}")
             key = list(item.keys())[0]
             if not isinstance(key, str) or not key.strip():
-                raise cv.Invalid("Dict key must be a non-empty string")
+                raise _SchemaInvalid("Dict key must be a non-empty string")
         else:
-            raise cv.Invalid(f"List items must be strings or dicts, got {type(item).__name__}")
+            raise _SchemaInvalid(f"List items must be strings or dicts, got {type(item).__name__}")
     return value
 
 
 def entities_list(value: Any) -> list[dict | str]:
     """Validate entities list - can contain non-empty strings or dicts with dynamic_entity or entity keys."""
     if not isinstance(value, list):
-        raise cv.Invalid(f"entities must be a list, got {type(value).__name__}")
+        raise _SchemaInvalid(f"entities must be a list, got {type(value).__name__}")
     if not value:
-        raise cv.Invalid("entities list cannot be empty")
+        raise _SchemaInvalid("entities list cannot be empty")
     for item in value:
         if isinstance(item, str):
             if not item.strip():
-                raise cv.Invalid("entity string cannot be empty")
+                raise _SchemaInvalid("entity string cannot be empty")
             continue
         if not isinstance(item, dict):
-            raise cv.Invalid(f"entities items must be dicts or strings, got {type(item).__name__}")
+            raise _SchemaInvalid(f"entities items must be dicts or strings, got {type(item).__name__}")
         if not any(key in item for key in ["dynamic_entity", "entity"]):
-            raise cv.Invalid(f"entities dict must have 'dynamic_entity' or 'entity' key, got {list(item.keys())}")
+            raise _SchemaInvalid(f"entities dict must have 'dynamic_entity' or 'entity' key, got {list(item.keys())}")
         if "entity" in item and (not isinstance(item["entity"], str) or not item["entity"].strip()):
-            raise cv.Invalid("entity must be a non-empty string")
+            raise _SchemaInvalid("entity must be a non-empty string")
         if "dynamic_entity" in item and (not isinstance(item["dynamic_entity"], str) or not item["dynamic_entity"].strip()):
-            raise cv.Invalid("dynamic_entity must be a non-empty string")
+            raise _SchemaInvalid("dynamic_entity must be a non-empty string")
     return value
 
 
@@ -214,7 +225,7 @@ def activation_var_schema(value: Any) -> dict:
     """Validate activation_var configuration."""
     schema = Schema({
         Required("dynamic_entity"): non_empty_string,
-        Required("value"): non_empty_string,
+        Required("value"): Vol_Any(non_empty_string, string_list),
     }, extra=PREVENT_EXTRA)
     return schema(value)
 
@@ -223,17 +234,17 @@ def script_item(value: Any) -> Any:
     """Validate a single script item (string or dict)."""
     if isinstance(value, str):
         if not value.strip():
-            raise cv.Invalid("String cannot be empty")
+            raise _SchemaInvalid("String cannot be empty")
         return value
     elif isinstance(value, dict):
         if len(value) != 1:
-            raise cv.Invalid(f"Dict items must have exactly one key, got {len(value)}")
+            raise _SchemaInvalid(f"Dict items must have exactly one key, got {len(value)}")
         key = list(value.keys())[0]
         if not isinstance(key, str) or not key.strip():
-            raise cv.Invalid("Dict key must be a non-empty string")
+            raise _SchemaInvalid("Dict key must be a non-empty string")
         return value
     else:
-        raise cv.Invalid(f"Item must be string or dict, got {type(value).__name__}")
+        raise _SchemaInvalid(f"Item must be string or dict, got {type(value).__name__}")
 
 
 # Helper to map JSON types to validators
@@ -290,17 +301,17 @@ def get_validator(field_type: str, object_fields: list = None):
             # Accept plain string (backward compat) or list of {color, condition?} entries
             if isinstance(value, str):
                 if not value.strip():
-                    raise cv.Invalid("Color string cannot be empty")
+                    raise _SchemaInvalid("Color string cannot be empty")
                 return value
             if isinstance(value, list):
                 if not value:
-                    raise cv.Invalid("color_list cannot be empty")
+                    raise _SchemaInvalid("color_list cannot be empty")
                 _entry_schema = Schema({
                     Required('color'): non_empty_string,
                     Optional('condition'): Vol_Any(dict, str),
                 }, extra=PREVENT_EXTRA)
                 return [_entry_schema(entry) for entry in value]
-            raise cv.Invalid(f"fill_color must be a string or list, got {type(value).__name__}")
+            raise _SchemaInvalid(f"fill_color must be a string or list, got {type(value).__name__}")
         return _color_list_validator
     if field_type == 'int_list':
         def _int_list_validator(value):
@@ -309,13 +320,13 @@ def get_validator(field_type: str, object_fields: list = None):
                 return value
             if isinstance(value, list):
                 if not value:
-                    raise cv.Invalid("int_list cannot be empty")
+                    raise _SchemaInvalid("int_list cannot be empty")
                 _entry_schema = Schema({
                     Required('value'): int,
                     Optional('condition'): Vol_Any(dict, str),
                 }, extra=PREVENT_EXTRA)
                 return [_entry_schema(entry) for entry in value]
-            raise cv.Invalid(f"int_list must be an int or list, got {type(value).__name__}")
+            raise _SchemaInvalid(f"int_list must be an int or list, got {type(value).__name__}")
         return _int_list_validator
     if field_type == 'condition_logic':
         return Vol_Any(dict, non_empty_string, bool)
@@ -325,22 +336,22 @@ def get_validator(field_type: str, object_fields: list = None):
         if isinstance(value, (list, tuple)) and len(value) == 2:
             x, y = value
             if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
-                raise cv.Invalid(f"animation position [x, y] must contain numbers, got {value!r}")
+                raise _SchemaInvalid(f"animation position [x, y] must contain numbers, got {value!r}")
             if not (0.0 <= float(x) <= 1.0) or not (0.0 <= float(y) <= 1.0):
-                raise cv.Invalid(f"animation position [x, y] values must be in 0.0–1.0, got {value!r}")
+                raise _SchemaInvalid(f"animation position [x, y] values must be in 0.0–1.0, got {value!r}")
             return [float(x), float(y)]
-        raise cv.Invalid(f"animation position must be an [x, y] list with values in 0.0–1.0, got {value!r}")
+        raise _SchemaInvalid(f"animation position must be an [x, y] list with values in 0.0–1.0, got {value!r}")
 
     def _valid_anim_direction(value):
         """Legacy direction field — accepted for backward-compat with old YAML files."""
         valid = ('none', 'left_right', 'right_left', 'up_down', 'down_up')
         if value not in valid:
-            raise cv.Invalid(f"animation direction must be one of {valid}, got '{value}'")
+            raise _SchemaInvalid(f"animation direction must be one of {valid}, got '{value}'")
         return value
 
     def _positive_number(value):
         if not isinstance(value, (int, float)) or value <= 0:
-            raise cv.Invalid(f"duration must be a positive number, got {value}")
+            raise _SchemaInvalid(f"duration must be a positive number, got {value}")
         return value
 
     if field_type == 'assets_list':
@@ -401,13 +412,13 @@ def get_validator(field_type: str, object_fields: list = None):
 
         def _validate_image_or_icon_entry(value):
             if not isinstance(value, dict):
-                raise cv.Invalid("Each display assets entry must be a mapping")
+                raise _SchemaInvalid("Each display assets entry must be a mapping")
             has_image = 'image' in value
             has_icon = 'icon' in value
             if has_image and has_icon:
-                raise cv.Invalid("An entry cannot have both 'image' and 'icon'")
+                raise _SchemaInvalid("An entry cannot have both 'image' and 'icon'")
             if not has_image and not has_icon:
-                raise cv.Invalid("Each entry must have either 'image' or 'icon'")
+                raise _SchemaInvalid("Each entry must have either 'image' or 'icon'")
             if has_image:
                 return _image_entry_schema(value)
             return _icon_entry_schema(value)

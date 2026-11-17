@@ -645,6 +645,15 @@ class TestValidateTileSchema(unittest.TestCase):
             validate_tiles_config(self._screen(tile))
         self.assertIn("extra keys not allowed", str(cm.exception))
 
+    def test_toggle_entity_with_entity_list_passes(self):
+        tile = {"toggle_entity": {
+            "x": 5, "y": 0,
+            "dynamic_entity": "BLINDS",
+            "entity": ["cover.lr1", "cover.lr2"],
+            "display": ["tile_choose_cover"],
+        }}
+        validate_tiles_config([{"id": "blinds", "flags": ["BASE"], "tiles": [tile]}])
+
 
 if __name__ == '__main__':
     unittest.main()

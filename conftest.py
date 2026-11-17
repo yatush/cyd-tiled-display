@@ -20,9 +20,16 @@ if _ext not in sys.path:
 # `sys.modules['esphome'].config_validation` (attribute lookup on the parent),
 # NOT to `sys.modules['esphome.config_validation']`, so both must be the same
 # object for attribute mutations to be visible inside the imported modules.
+try:
+    from voluptuous import Invalid as _VolInvalid
+    class _TestInvalid(ValueError, _VolInvalid):
+        pass
+except ImportError:
+    _TestInvalid = ValueError
+
 _esphome = MagicMock(name='esphome')
 _cv = MagicMock(name='esphome.config_validation')
-_cv.Invalid = ValueError          # must be a real exception class
+_cv.Invalid = _TestInvalid        # must be a real exception class (and Voluptuous Invalid when present)
 
 # Wire sub-mocks as attributes so dotted-import access is consistent
 _esphome.codegen = MagicMock(name='esphome.codegen')

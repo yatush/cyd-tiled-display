@@ -21,13 +21,11 @@ if 'esphome' not in sys.modules:
         def __call__(self, *args, **kwargs):
             return MockEsphome()
 
-    class _Invalid(Exception):
-        def __init__(self, message, path=None):
-            super().__init__(message)
-            self.msg = message
-            self.path = path or []
-        def __str__(self):
-            return self.msg
+    try:
+        from voluptuous import Invalid as _Invalid
+    except ImportError:
+        class _Invalid(Exception):
+            pass
 
     class _MockConfigValidation(MockEsphome):
         Invalid = _Invalid
