@@ -654,6 +654,11 @@ class TestValidateTileSchema(unittest.TestCase):
         }}
         validate_tiles_config([{"id": "blinds", "flags": ["BASE"], "tiles": [tile]}])
 
+    def test_schema_invalid_instantiation_does_not_fail_on_readonly_msg(self):
+        from tile_ui.schema import _SchemaInvalid, non_empty_string
+        with self.assertRaises(_SchemaInvalid):
+            non_empty_string(["not_a_string"])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,10 +1,17 @@
 """Schema validation for tile configuration."""
 import json
 import os
+import sys
 from enum import Enum
 from typing import Any
 
 import esphome.config_validation as cv
+
+# If an older generate_tiles_api.py injected a synthetic MockVoluptuousModule
+# into sys.modules['voluptuous'], remove it so we either import the real
+# voluptuous package or use the complete fallback implementation below.
+if "voluptuous" in sys.modules and not hasattr(sys.modules["voluptuous"], "__file__"):
+    del sys.modules["voluptuous"]
 
 try:
     from voluptuous import (
@@ -13,7 +20,8 @@ try:
     )
     if isinstance(getattr(cv, "Invalid", None), type) and not issubclass(cv.Invalid, _VolInvalid):
         class _SchemaInvalid(cv.Invalid, _VolInvalid):
-            pass
+            def __init__(self, message, path=None, *args, **kwargs):
+                _VolInvalid.__init__(self, message, path=path, *args, **kwargs)
     else:
         _SchemaInvalid = getattr(cv, "Invalid", _VolInvalid)
 except ImportError:
@@ -221,11 +229,18 @@ def entities_list(value: Any) -> list[dict | str]:
     return value
 
 
+def ha_entity_list(value: Any) -> str | list[str]:
+    """Validate ha_entity_list - a non-empty string or a list of non-empty strings."""
+    if isinstance(value, list):
+        return string_list(value)
+    return non_empty_string(value)
+
+
 def activation_var_schema(value: Any) -> dict:
     """Validate activation_var configuration."""
     schema = Schema({
         Required("dynamic_entity"): non_empty_string,
-        Required("value"): Vol_Any(non_empty_string, string_list),
+        Required("value"): ha_entity_list,
     }, extra=PREVENT_EXTRA)
     return schema(value)
 
@@ -268,7 +283,7 @@ def get_validator(field_type: str, object_fields: list = None):
     if field_type == 'dynamic_entity_select':
         return non_empty_string
     if field_type == 'ha_entity_list':
-        return Vol_Any(non_empty_string, string_list)
+        return ha_entity_list
     if field_type == 'object':
         if not object_fields:
             return dict
