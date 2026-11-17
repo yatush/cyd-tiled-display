@@ -5,7 +5,100 @@ from enum import Enum
 from typing import Any
 
 import esphome.config_validation as cv
-from voluptuous import PREVENT_EXTRA, Required, Optional, Schema, All, Any as Vol_Any
+
+try:
+    from voluptuous import PREVENT_EXTRA, Required, Optional, Schema, All, Any as Vol_Any
+except ImportError:
+    PREVENT_EXTRA = 1
+    _NO_DEFAULT = object()
+
+    class _Marker:
+        def __init__(self, schema, default=_NO_DEFAULT, msg=None):
+            self.schema = schema
+            self.default = default
+            self.msg = msg
+
+        def __hash__(self):
+            return hash(self.schema)
+
+        def __eq__(self, other):
+            return isinstance(other, _Marker) and self.schema == other.schema
+
+    class Required(_Marker):
+        pass
+
+    class Optional(_Marker):
+        pass
+
+    def _run_validator(validator, value):
+        if isinstance(validator, Schema):
+            return validator(value)
+        if isinstance(validator, list):
+            if not isinstance(value, list):
+                raise cv.Invalid(f"expected a list, got {type(value).__name__}")
+            if not validator:
+                return value
+            return [Vol_Any(*validator)(item) for item in value]
+        if isinstance(validator, type):
+            if not isinstance(value, validator):
+                raise cv.Invalid(f"expected {validator.__name__}, got {type(value).__name__}")
+            return value
+        if callable(validator):
+            return validator(value)
+        if value != validator:
+            raise cv.Invalid(f"expected {validator}, got {value}")
+        return value
+
+    class Schema:
+        def __init__(self, schema, extra=None):
+            self.schema = schema
+            self.extra = extra
+
+        def __call__(self, data):
+            if not isinstance(data, dict):
+                raise cv.Invalid(f"must be a dict, got {type(data).__name__}")
+            out = {}
+            schema_map = {}
+            for k, v in self.schema.items():
+                key_name = k.schema if isinstance(k, _Marker) else k
+                schema_map[key_name] = (k, v)
+            if self.extra == PREVENT_EXTRA:
+                for k in data:
+                    if k not in schema_map:
+                        raise cv.Invalid(f"extra keys not allowed: {k}")
+            for key_name, (key_schema, validator) in schema_map.items():
+                if key_name in data:
+                    try:
+                        out[key_name] = _run_validator(validator, data[key_name])
+                    except cv.Invalid as e:
+                        raise cv.Invalid(f"Invalid value for '{key_name}': {e}")
+                    except Exception as e:
+                        raise cv.Invalid(f"Validation error for '{key_name}': {e}")
+                else:
+                    if isinstance(key_schema, Optional):
+                        if key_schema.default is not _NO_DEFAULT:
+                            out[key_name] = key_schema.default
+                    else:
+                        raise cv.Invalid(f"required key not provided: {key_name}")
+            return out
+
+    def Vol_Any(*validators):
+        def validate(val):
+            errors = []
+            for v in validators:
+                try:
+                    return _run_validator(v, val)
+                except (cv.Invalid, ValueError, TypeError) as e:
+                    errors.append(str(e))
+            raise cv.Invalid(f"no valid option found: {'; '.join(errors)}")
+        return validate
+
+    def All(*validators):
+        def validate(val):
+            for v in validators:
+                val = _run_validator(v, val)
+            return val
+        return validate
 
 # Load schema.json
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.json")
@@ -95,15 +188,19 @@ def display_list(value: Any) -> list[Any]:
     return value
 
 
-def entities_list(value: Any) -> list[dict]:
-    """Validate entities list - can contain dicts with dynamic_entity or entity keys."""
+def entities_list(value: Any) -> list[dict | str]:
+    """Validate entities list - can contain non-empty strings or dicts with dynamic_entity or entity keys."""
     if not isinstance(value, list):
         raise cv.Invalid(f"entities must be a list, got {type(value).__name__}")
     if not value:
         raise cv.Invalid("entities list cannot be empty")
     for item in value:
+        if isinstance(item, str):
+            if not item.strip():
+                raise cv.Invalid("entity string cannot be empty")
+            continue
         if not isinstance(item, dict):
-            raise cv.Invalid(f"entities items must be dicts, got {type(item).__name__}")
+            raise cv.Invalid(f"entities items must be dicts or strings, got {type(item).__name__}")
         if not any(key in item for key in ["dynamic_entity", "entity"]):
             raise cv.Invalid(f"entities dict must have 'dynamic_entity' or 'entity' key, got {list(item.keys())}")
         if "entity" in item and (not isinstance(item["entity"], str) or not item["entity"].strip()):
@@ -160,7 +257,7 @@ def get_validator(field_type: str, object_fields: list = None):
     if field_type == 'dynamic_entity_select':
         return non_empty_string
     if field_type == 'ha_entity_list':
-        return cv.Any(non_empty_string, string_list)
+        return Vol_Any(non_empty_string, string_list)
     if field_type == 'object':
         if not object_fields:
             return dict
@@ -200,7 +297,7 @@ def get_validator(field_type: str, object_fields: list = None):
                     raise cv.Invalid("color_list cannot be empty")
                 _entry_schema = Schema({
                     Required('color'): non_empty_string,
-                    Optional('condition'): cv.Any(dict, str),
+                    Optional('condition'): Vol_Any(dict, str),
                 }, extra=PREVENT_EXTRA)
                 return [_entry_schema(entry) for entry in value]
             raise cv.Invalid(f"fill_color must be a string or list, got {type(value).__name__}")
@@ -215,13 +312,13 @@ def get_validator(field_type: str, object_fields: list = None):
                     raise cv.Invalid("int_list cannot be empty")
                 _entry_schema = Schema({
                     Required('value'): int,
-                    Optional('condition'): cv.Any(dict, str),
+                    Optional('condition'): Vol_Any(dict, str),
                 }, extra=PREVENT_EXTRA)
                 return [_entry_schema(entry) for entry in value]
             raise cv.Invalid(f"int_list must be an int or list, got {type(value).__name__}")
         return _int_list_validator
     if field_type == 'condition_logic':
-        return cv.Any(dict, non_empty_string)
+        return Vol_Any(dict, non_empty_string, bool)
 
     def _valid_anim_position(value):
         # Only [x, y] fractional lists are accepted; named strings are no longer supported
@@ -291,14 +388,14 @@ def get_validator(field_type: str, object_fields: list = None):
         )
         _image_entry_schema = Schema({
             Required('image'): non_empty_string,
-            Optional('condition'): cv.Any(dict, non_empty_string, str),
+            Optional('condition'): Vol_Any(dict, non_empty_string, str),
             Optional('animation'): animation_schema,
         }, extra=PREVENT_EXTRA)
         _icon_entry_schema = Schema({
             Required('icon'): non_empty_string,
             Optional('icon_color'): non_empty_string,
             Optional('icon_size'): non_empty_string,
-            Optional('condition'): cv.Any(dict, non_empty_string, str),
+            Optional('condition'): Vol_Any(dict, non_empty_string, str),
             Optional('animation'): animation_schema,
         }, extra=PREVENT_EXTRA)
 
@@ -318,8 +415,8 @@ def get_validator(field_type: str, object_fields: list = None):
         return All(list, [_validate_image_or_icon_entry])
     if field_type in ('image_select', 'state_image_map'):
         # Legacy field types — accept anything for backward compat
-        return cv.Any(str, list, dict)
-    return cv.string
+        return Vol_Any(str, list, dict)
+    return str
 
 def build_tile_schema(tile_type_def):
     """Builds a voluptuous schema from the JSON definition."""
@@ -347,8 +444,8 @@ def build_tile_schema(tile_type_def):
             schema_dict[Required(field['name'])] = validator
     
     # Add deprecated keys for backward compatibility (old 'image' / 'state_images')
-    schema_dict[Optional('image')] = cv.Any(str)
-    schema_dict[Optional('state_images')] = cv.Any(list, dict)
+    schema_dict[Optional('image')] = Vol_Any(str)
+    schema_dict[Optional('state_images')] = Vol_Any(list, dict)
 
     return Schema(schema_dict, extra=PREVENT_EXTRA)
 

@@ -100,6 +100,16 @@ class TestTileUtils(unittest.TestCase):
             ["addFillColor(id(blue_gray))"]
         )
 
+        # fill_color: Color(...) literal not wrapped in id(...)
+        self.assertEqual(
+            get_tile_modifiers({"fill_color": "Color(255, 0, 0)"}),
+            ["addFillColor(Color(255, 0, 0))"]
+        )
+        self.assertEqual(
+            get_tile_modifiers({"fill_color": [{"color": "Color(0, 255, 0)"}]}),
+            ["addFillColor(Color(0, 255, 0))"]
+        )
+
         # fill_color: single-entry list, no condition
         self.assertEqual(
             get_tile_modifiers({"fill_color": [{"color": "blue_gray"}]}),

@@ -24,6 +24,28 @@ const TYPE_SPECIFIC_FIELDS: Record<string, Set<string>> = {
   function:      new Set(['on_press', 'on_release']),
 };
 
+/** Synchronize known tile fields at runtime with the schema.json payload from /api/schema. */
+export function registerTileSchema(schema: {
+  common?: { name: string }[];
+  types?: { type: string; fields?: { name: string }[] }[];
+} | null | undefined): void {
+  if (!schema || typeof schema !== 'object') return;
+  if (Array.isArray(schema.common)) {
+    for (const field of schema.common) {
+      if (field?.name) COMMON_TILE_FIELDS.add(field.name);
+    }
+  }
+  if (Array.isArray(schema.types)) {
+    for (const typeDef of schema.types) {
+      if (!typeDef?.type) continue;
+      const fields = new Set<string>(
+        (typeDef.fields || []).map(f => f?.name).filter((n): n is string => Boolean(n))
+      );
+      TYPE_SPECIFIC_FIELDS[typeDef.type] = fields;
+    }
+  }
+}
+
 export function unknownTileFields(tile: Record<string, unknown>, type: string): string[] {
   if (!Object.prototype.hasOwnProperty.call(TYPE_SPECIFIC_FIELDS, type)) throw new Error(`Unknown tile type: ${type}`);
   const typeFields = TYPE_SPECIFIC_FIELDS[type];

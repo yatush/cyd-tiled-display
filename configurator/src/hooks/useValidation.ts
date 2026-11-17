@@ -21,23 +21,30 @@ export function useValidation(config: Config) {
   const [generationOutput, setGenerationOutput] = useState<{success?: boolean, cpp?: string[], error?: string, type?: string} | null>(null);
   
   const lastValidationTimeRef = useRef<number>(0);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     setIsValidating(true);
 
     const runValidation = async () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       lastValidationTimeRef.current = Date.now();
       try {
         const yamlContent = generateYaml(config);
         const response = await apiFetch('/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/yaml' },
-          body: yamlContent
+          body: yamlContent,
+          signal: controller.signal,
         });
         
-        if (!isMounted) return;
+        if (!isMounted || controller.signal.aborted) return;
 
         const result = await safeJson(response);
         if (!result) {
@@ -48,10 +55,10 @@ export function useValidation(config: Config) {
           setValidationStatus({ success: true });
         }
       } catch (err) {
-        if (!isMounted) return;
+        if (!isMounted || controller.signal.aborted || (err as Error)?.name === 'AbortError') return;
         setValidationStatus({ success: false, error: 'Connection error' });
       } finally {
-        if (isMounted) {
+        if (isMounted && !controller.signal.aborted) {
           setIsValidating(false);
         }
       }
@@ -59,7 +66,7 @@ export function useValidation(config: Config) {
 
     const now = Date.now();
     const timeSinceLast = now - lastValidationTimeRef.current;
-    const minInterval = 1000;
+    const minInterval = 400;
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -76,6 +83,9 @@ export function useValidation(config: Config) {
       isMounted = false;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, [config]);

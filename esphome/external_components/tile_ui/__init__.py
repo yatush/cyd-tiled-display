@@ -159,7 +159,10 @@ class _ImageRegistrar:
         self.CONF_ALPHA_CHANNEL = CONF_ALPHA_CHANNEL
         self.CONF_OPAQUE = CONF_OPAQUE
         self.CONF_INVERT_ALPHA = CONF_INVERT_ALPHA
+        import atexit
+        import shutil
         self.tmp_dir = tempfile.mkdtemp(prefix=prefix)
+        atexit.register(shutil.rmtree, self.tmp_dir, True)
 
         # Build the set of IDs already declared via the image: component
         # so we never re-register them.
@@ -171,6 +174,13 @@ class _ImageRegistrar:
                     _eid = _entry.get(_IMAGE_CONF_ID)
                     if _eid is not None:
                         self._declared_ids.add(str(_eid))
+
+    def cleanup(self) -> None:
+        """Remove temporary image directory created for ESPHome registration."""
+        import shutil
+        if getattr(self, "tmp_dir", None):
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+            self.tmp_dir = ""
 
     def already_registered(self, vid: str) -> bool:
         """Return True if *vid* is already known to ESPHome's image component or CORE.variables."""
@@ -269,6 +279,7 @@ async def _register_screen_images(screen_images_conf: dict, screen_w: int, scree
         if await ctx.register(img_id, png_path, esh_type, esh_trans):
             registered.add(img_id)
 
+    ctx.cleanup()
     if registered:
         print(f"[tile_ui] Registered {len(registered)} screen background image(s) from inline tile_ui.screen_images: config", file=sys.stderr)
 
@@ -324,6 +335,7 @@ async def _register_images(images_conf: dict, screens: list, screen_w: int = 480
         if await ctx.register(vid, png_path, esh_type, esh_trans, resize_val=resize_val):
             registered.add(vid)
 
+    ctx.cleanup()
     if registered:
         print(f"[tile_ui] Registered {len(registered)} image variant(s) from inline tile_ui.images: config", file=sys.stderr)
 
@@ -551,12 +563,15 @@ async def to_code(config):
     # builds to activate USE_IMAGE so image.h/image.cpp are compiled.
     # Done here (not via YAML image:) so no file ever needs to exist on disk.
     _nt_ctx = _ImageRegistrar(prefix="tile_ui_none_")
-    if not _nt_ctx.already_registered("none_transparent"):
-        import os as _os_nt
-        _nt_path = _os_nt.path.join(_nt_ctx.tmp_dir, "none_transparent.png")
-        with open(_nt_path, "wb") as _nt_f:
-            _nt_f.write(_make_1px_transparent_png())
-        await _nt_ctx.register("none_transparent", _nt_path, "RGB", _nt_ctx.CONF_ALPHA_CHANNEL)
+    try:
+        if not _nt_ctx.already_registered("none_transparent"):
+            import os as _os_nt
+            _nt_path = _os_nt.path.join(_nt_ctx.tmp_dir, "none_transparent.png")
+            with open(_nt_path, "wb") as _nt_f:
+                _nt_f.write(_make_1px_transparent_png())
+            await _nt_ctx.register("none_transparent", _nt_path, "RGB", _nt_ctx.CONF_ALPHA_CHANNEL)
+    finally:
+        _nt_ctx.cleanup()
 
     # Register images from inline tile_ui.images: config.
     # Decodes per-layout image variants from inline base64 data and registers them

@@ -212,17 +212,11 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
 `;
       }
 
-      let otaSection = '';
-      if (otaPassword) {
-          otaSection = `ota:
-  - platform: esphome
-    password: "${otaPassword}"
-`;
-      } else {
-          otaSection = `ota:
-  - platform: esphome
-`;
-      }
+      const otaSection = dump(
+        otaPassword
+          ? { ota: [{ platform: 'esphome', password: otaPassword }] }
+          : { ota: [{ platform: 'esphome' }] }
+      );
 
       // Fetch HA timezone so ESPHome can resolve it at compile time
       let timezone = 'UTC';  // fallback
@@ -240,7 +234,7 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
 
       const timeSection = `time:
   - id: !extend esptime
-    timezone: "${timezone}"
+    timezone: ${JSON.stringify(timezone)}
 `;
 
       const screensYaml = generateYaml(config, false, false);
@@ -258,11 +252,21 @@ export function useFileOperations(config: Config, setConfig: (config: Config) =>
       ) || false;
 
       const blePackageSection = hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : '';
+      const substitutionsSection = dump({
+        substitutions: {
+          device_name: deviceName,
+          friendly_name: friendlyName,
+        }
+      });
+      const apiSection = dump({
+        api: {
+          encryption: {
+            key: encryptionKey,
+          }
+        }
+      });
       
-      const fullYaml = `substitutions:
-  device_name: "${deviceName}"
-  friendly_name: ${friendlyName}
-
+      const fullYaml = `${substitutionsSection}
 packages:
   device_base: !include lib/${screenType}_base.yaml
   lib: !include lib/lib.yaml${blePackageSection}
@@ -272,10 +276,7 @@ esphome:
   friendly_name: $friendly_name
 
 ${externalComponentsSection}
-api:
-  encryption:
-    key: "${encryptionKey}"
-
+${apiSection}
 ${otaSection}
 ${wifiSection}
 ${timeSection}

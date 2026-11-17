@@ -634,6 +634,17 @@ class TestValidateTileSchema(unittest.TestCase):
             validate_tiles_config(self._screen(tile))
         self.assertIn("Must have either", str(cm.exception))
 
+    def test_stale_extra_field_rejected_in_validate_tiles_config(self):
+        tile = {"ha_action": {
+            "x": 0, "y": 0,
+            "display": ["d"],
+            "perform": ["p"], "entities": ["e"],
+            "omit_frame": True,
+        }}
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(self._screen(tile))
+        self.assertIn("extra keys not allowed", str(cm.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

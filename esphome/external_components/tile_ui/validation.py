@@ -20,6 +20,8 @@ from .schema import (
     VALID_FLAGS,
     TileType,
     SCHEMA_DEF,
+    tile_schema,
+    _validate_screen_background,
 )
 
 __all__ = [
@@ -110,6 +112,11 @@ def validate_tiles_config(
         
         if "BASE" in flags:
             base_screen_count += 1
+
+        try:
+            _validate_screen_background(screen.get("background"))
+        except Exception as e:
+            raise ValueError(f"Screen '{screen_id}': {e}") from e
         
         tiles = screen.get("tiles", [])
         
@@ -214,6 +221,12 @@ def validate_tiles_config(
             
             # Validate required fields for each tile type
             _validate_tile_fields(screen_id, tile_type, config, x, y)
+
+            # Delegate structural & extra-key checks (PREVENT_EXTRA, animation bounds, etc.) to schema.py
+            try:
+                tile_schema({tile_type: config})
+            except Exception as e:
+                raise ValueError(f"Screen '{screen_id}', {tile_type} tile at ({x},{y}): {e}") from e
             
             # Validate activation_var dynamic_entity is a valid dynamic entity
             activation_var = config.get("activation_var", None)

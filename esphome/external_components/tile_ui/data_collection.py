@@ -7,8 +7,12 @@ This module handles:
 - Collecting referenced scripts and globals from tile configuration
 """
 from typing import Any
-import yaml
 import os
+
+try:
+    import yaml
+except ImportError:
+    yaml = None  # type: ignore
 
 __all__ = [
     "load_tiles_yaml",
@@ -34,6 +38,8 @@ def load_tiles_yaml(tiles_file_path):
     """
     if not os.path.exists(tiles_file_path):
         raise FileNotFoundError(f"Tiles file not found: {tiles_file_path}")
+    if yaml is None:
+        raise ImportError("PyYAML is required to load tiles YAML files")
     
     # Open with utf-8-sig to handle UTF-8 BOM
     with open(tiles_file_path, 'r', encoding='utf-8-sig') as f:

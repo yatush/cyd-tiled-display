@@ -13,6 +13,7 @@ import threading
 import asyncio
 import concurrent.futures
 import zipfile
+from pathlib import Path
 from flask import Flask, request, send_from_directory, jsonify, Response, stream_with_context
 import requests
 from api_proxy import run_proxy_thread
@@ -458,19 +459,37 @@ def generate():
         print(f"Server Error: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
 
+def _resolve_safe_path(rel_path, allow_empty=False, base_dir=None):
+    """Resolve *rel_path* inside *base_dir* (default BASE_DIR), rejecting traversal or symlink escapes.
+    Returns the resolved absolute path string, or None if invalid.
+    """
+    if not isinstance(rel_path, str):
+        return None
+    cleaned = rel_path.strip().lstrip('/\\')
+    if not cleaned and not allow_empty:
+        return None
+    if '..' in Path(cleaned).parts or '\\' in cleaned:
+        return None
+    base = Path(base_dir or BASE_DIR).resolve()
+    target = (base / cleaned).resolve()
+    if target != base and not target.is_relative_to(base):
+        return None
+    if not allow_empty and target == base:
+        return None
+    return str(target)
+
+
 @app.route('/api/files', methods=['GET'])
 def list_files():
     try:
         path = request.args.get('path', '')
-        # Security: prevent directory traversal
-        if '..' in path:
-            return jsonify({"error": "Invalid path"}), 400
-        
         if not os.path.exists(BASE_DIR):
             # Ensure base dir exists
             os.makedirs(BASE_DIR, exist_ok=True)
-            
-        full_path = os.path.join(BASE_DIR, path.lstrip('/'))
+
+        full_path = _resolve_safe_path(path, allow_empty=True)
+        if not full_path:
+            return jsonify({"error": "Invalid path"}), 400
         
         if not os.path.exists(full_path):
             return jsonify({"error": "Path not found"}), 404
@@ -501,12 +520,11 @@ def list_files():
 @app.route('/api/mkdir', methods=['POST'])
 def make_directory():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         path = data.get('path', '')
-        if not path or '..' in path:
+        full_path = _resolve_safe_path(path, allow_empty=False)
+        if not full_path:
             return jsonify({"error": "Invalid path"}), 400
-            
-        full_path = os.path.join(BASE_DIR, path.lstrip('/'))
         
         os.makedirs(full_path, exist_ok=True)
         return jsonify({"success": True, "path": path})
@@ -688,12 +706,9 @@ def save_config():
         config_data = data.get('config')
         # path is relative to BASE_DIR
         rel_path = data.get('path', 'monitor_config/tiles.yaml')
-        
-        # Security: prevent directory traversal
-        if '..' in rel_path:
+        target_path = _resolve_safe_path(rel_path)
+        if not target_path:
             return jsonify({"error": "Invalid path"}), 400
-
-        target_path = os.path.join(BASE_DIR, rel_path.lstrip('/'))
         
         # Ensure directory exists
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -717,11 +732,9 @@ def load_config():
         rel_path = request.args.get('path', 'monitor_config/tiles.yaml')
         raw_mode = request.args.get('raw', '').lower() in ('1', 'true', 'yes')
 
-        # Security: prevent directory traversal
-        if '..' in rel_path:
+        target_path = _resolve_safe_path(rel_path)
+        if not target_path:
             return jsonify({"error": "Invalid path"}), 400
-
-        target_path = os.path.join(BASE_DIR, rel_path.lstrip('/'))
 
         # Raw mode: return plain text (preserves comments, used by hw_overrides editor)
         if raw_mode:
@@ -731,21 +744,9 @@ def load_config():
                 return f.read(), 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
         if os.path.exists(target_path):
-            # Custom YAML loader to handle all tags safely
-            class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
-                pass
-            
-            def ignore_any_tag(loader, tag_suffix, node):
-                return None
-
-            def construct_include(loader, node):
-                return loader.construct_scalar(node)
-                
-            SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
-            SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
-
+            loader_cls = generate_tiles_api.create_safe_yaml_loader()
             with open(target_path, 'r') as f:
-                return jsonify(yaml.load(f, Loader=SafeLoaderIgnoreUnknown))
+                return jsonify(yaml.load(f, Loader=loader_cls))
         
         return jsonify({"error": f"Config file {rel_path} not found"}), 404
     except Exception as e:
@@ -758,9 +759,9 @@ def load_config_raw():
     """Return the raw text content of a file (not YAML-parsed). Used by the HW overrides editor."""
     try:
         rel_path = request.args.get('path', '')
-        if not rel_path or '..' in rel_path:
+        target_path = _resolve_safe_path(rel_path)
+        if not target_path:
             return jsonify({"error": "Invalid path"}), 400
-        target_path = os.path.join(BASE_DIR, rel_path.lstrip('/'))
         if not os.path.exists(target_path):
             return '', 404
         with open(target_path, 'r', errors='replace') as f:
@@ -842,14 +843,9 @@ def _parse_base_yaml(filepath):
     Screen dimensions come from the globals block (id: width / id: height).
     Returns None if the file can't be parsed or is missing required fields.
     """
-    class _L(yaml.SafeLoader):
-        pass
-    _L.add_constructor('!include', lambda l, n: l.construct_scalar(n))
-    _L.add_multi_constructor('!', lambda l, s, n: None)
-
     try:
         with open(filepath, 'r') as _f:
-            data = yaml.load(_f, Loader=_L)
+            data = yaml.load(_f, Loader=generate_tiles_api.create_safe_yaml_loader())
     except Exception:
         return None
 
@@ -955,17 +951,8 @@ def _parse_device_yaml(filepath):
     except Exception:
         return None
 
-    class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
-        pass
-    def ignore_any_tag(loader, tag_suffix, node):
-        return None
-    def construct_include(loader, node):
-        return loader.construct_scalar(node)
-    SafeLoaderIgnoreUnknown.add_constructor('!include', construct_include)
-    SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
-
     try:
-        data = yaml.load(content, Loader=SafeLoaderIgnoreUnknown)
+        data = yaml.load(content, Loader=generate_tiles_api.create_safe_yaml_loader())
     except Exception:
         return None
 
@@ -1148,13 +1135,13 @@ def install_esphome_device():
     """Start compiling and installing a device config via OTA. Returns immediately; poll /api/esphome/install/status for progress."""
     try:
         print(f"[install] Request received", flush=True)
-        data = request.get_json()
+        data = request.get_json() or {}
         filename = data.get('filename')
+        filepath = _resolve_safe_path(filename)
 
-        if not filename or '..' in filename:
+        if not filepath:
             return jsonify({'error': 'Invalid filename'}), 400
 
-        filepath = os.path.join(BASE_DIR, filename.lstrip('/'))
         if not os.path.exists(filepath):
             return jsonify({'error': f'File not found: {filename}'}), 404
 
@@ -1423,9 +1410,7 @@ def save_wifi_credentials():
     try:
         with open(secrets_path, 'w') as f:
             f.write('# Your Wi-Fi SSID and password\n')
-            for key, value in existing.items():
-                # Quote values to handle special characters
-                f.write(f'{key}: "{value}"\n')
+            yaml.safe_dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
         print(f"[wifi] Saved WiFi credentials (SSID: {ssid})", flush=True)
         return jsonify({'success': True})
     except Exception as e:
@@ -1442,13 +1427,13 @@ def compile_esphome_device():
     """Compile firmware for a device config. Returns immediately; poll /api/esphome/compile/status for progress."""
     try:
         print(f"[compile] Request received", flush=True)
-        data = request.get_json()
+        data = request.get_json() or {}
         filename = data.get('filename')
+        filepath = _resolve_safe_path(filename)
 
-        if not filename or '..' in filename:
+        if not filepath:
             return jsonify({'error': 'Invalid filename'}), 400
 
-        filepath = os.path.join(BASE_DIR, filename.lstrip('/'))
         if not os.path.exists(filepath):
             return jsonify({'error': f'File not found: {filename}'}), 404
 
@@ -1561,8 +1546,8 @@ def compile_esphome_device():
                 # Auto-delete the device YAML so cloud users don't see each other's files.
                 if state.get('auto_cleanup'):
                     _fname = state.get('filename', '')
-                    if _fname and '..' not in _fname:
-                        _yaml_path = os.path.join(BASE_DIR, _fname.lstrip('/'))
+                    _yaml_path = _resolve_safe_path(_fname)
+                    if _yaml_path:
                         try:
                             if os.path.exists(_yaml_path):
                                 os.remove(_yaml_path)
@@ -1650,8 +1635,8 @@ def cleanup_compile():
 
     # Remove the device YAML file
     filename = state.get('filename', '')
-    if filename and '..' not in filename:
-        yaml_path = os.path.join(BASE_DIR, filename.lstrip('/'))
+    yaml_path = _resolve_safe_path(filename)
+    if yaml_path:
         try:
             if os.path.exists(yaml_path):
                 os.remove(yaml_path)
@@ -1661,8 +1646,9 @@ def cleanup_compile():
 
     # Remove the build directory
     device_name = state.get('device_name', '')
-    if device_name and '..' not in device_name:
-        build_dir = os.path.join(BASE_DIR, '.esphome', 'build', device_name)
+    build_root = os.path.join(BASE_DIR, '.esphome', 'build')
+    build_dir = _resolve_safe_path(device_name, base_dir=build_root) if os.path.isdir(build_root) else None
+    if build_dir:
         try:
             if os.path.isdir(build_dir):
                 shutil.rmtree(build_dir)
@@ -1680,9 +1666,15 @@ def _find_build_dir(device_name):
     ESP-IDF puts binaries in .esphome/build/<device>/build/
     PlatformIO/Arduino puts binaries in .esphome/build/<device>/.pioenvs/<device>/
     """
+    build_root = os.path.join(BASE_DIR, '.esphome', 'build')
+    if not os.path.isdir(build_root):
+        return None
+    dev_dir = _resolve_safe_path(device_name, base_dir=build_root)
+    if not dev_dir:
+        return None
     candidates = [
-        os.path.join(BASE_DIR, '.esphome', 'build', device_name, 'build'),
-        os.path.join(BASE_DIR, '.esphome', 'build', device_name, '.pioenvs', device_name),
+        os.path.join(dev_dir, 'build'),
+        os.path.join(dev_dir, '.pioenvs', os.path.basename(dev_dir)),
     ]
     for c in candidates:
         if os.path.isdir(c):
@@ -1693,7 +1685,7 @@ def _find_build_dir(device_name):
 @app.route('/api/esphome/firmware/<device_name>/manifest.json')
 def get_firmware_manifest(device_name):
     """Return a manifest for flashing via esptool-js (ESP Web Tools compatible)."""
-    if '..' in device_name:
+    if not _resolve_safe_path(device_name):
         return jsonify({'error': 'Invalid device name'}), 400
 
     build_dir = _find_build_dir(device_name)
@@ -1735,7 +1727,7 @@ def get_firmware_manifest(device_name):
 @app.route('/api/esphome/firmware/<device_name>/<filename>')
 def get_firmware_file(device_name, filename):
     """Serve a compiled firmware binary file."""
-    if '..' in device_name or '..' in filename:
+    if not _resolve_safe_path(device_name) or not _resolve_safe_path(filename):
         return jsonify({'error': 'Invalid path'}), 400
 
     # Only allow known binary extensions
@@ -1746,11 +1738,11 @@ def get_firmware_file(device_name, filename):
     if not build_dir:
         return jsonify({'error': f'Build output not found for {device_name}. Compile first.'}), 404
 
-    filepath = os.path.join(build_dir, filename)
-    if not os.path.exists(filepath):
+    filepath = _resolve_safe_path(filename, base_dir=build_dir)
+    if not filepath or not os.path.exists(filepath):
         return jsonify({'error': f'File not found: {filename}'}), 404
 
-    return send_from_directory(build_dir, filename, mimetype='application/octet-stream')
+    return send_from_directory(build_dir, os.path.basename(filepath), mimetype='application/octet-stream')
 
 
 # Cache for the pgrep result in toolchain_status() fallback — avoids spawning a
@@ -2352,74 +2344,14 @@ def get_scripts():
         if not os.path.exists(source_dir):
             # Fallback to APP_DIR (Default lib)
             source_dir = os.path.join(APP_DIR, 'esphome/lib')
-            
-        lib_path = os.path.join(source_dir, 'lib.yaml')
-        if not os.path.exists(lib_path):
+
+        doc = generate_tiles_api.load_merged_lib_doc(
+            user_lib_dir=source_dir,
+            fallback_lib_dir=os.path.join(APP_DIR, 'esphome/lib'),
+            merge_keys=('script', 'color', 'globals'),
+        )
+        if doc is None:
             return jsonify({"error": f"lib.yaml not found in {source_dir}"}), 404
-
-        # Custom YAML loader to handle !secret, !lambda, !include
-        class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
-            pass
-        def ignore_unknown(loader, node):
-            return None
-        def ignore_any_tag(loader, tag_suffix, node):
-            return None
-            
-        SafeLoaderIgnoreUnknown.add_constructor('!secret', ignore_unknown)
-        SafeLoaderIgnoreUnknown.add_constructor('!lambda', ignore_unknown)
-        SafeLoaderIgnoreUnknown.add_constructor('!include', ignore_unknown)
-        SafeLoaderIgnoreUnknown.add_multi_constructor('!', ignore_any_tag)
-
-        with open(lib_path, 'r') as f:
-            doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
-
-        # Load lib_common.yaml from SAME directory if it exists
-        common_lib_path = os.path.join(source_dir, 'lib_common.yaml')
-        if os.path.exists(common_lib_path):
-            try:
-                with open(common_lib_path, 'r') as f:
-                    common_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
-                    
-                    # Merge lists from common lib into main doc
-                    for key in ['script', 'color', 'globals']:
-                        if key in common_doc and isinstance(common_doc[key], list):
-                            if key not in doc:
-                                doc[key] = []
-                            doc[key].extend(common_doc[key])
-            except Exception as e:
-                print(f"Error loading common lib: {e}")
-
-        # Load custom lib from SAME directory if it exists
-        custom_lib_path = os.path.join(source_dir, 'lib_custom.yaml')
-        if os.path.exists(custom_lib_path):
-            try:
-                with open(custom_lib_path, 'r') as f:
-                    custom_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
-                    
-                    # Merge lists from custom lib into main doc
-                    for key in ['script', 'color', 'globals']:
-                        if key in custom_doc and isinstance(custom_doc[key], list):
-                            if key not in doc:
-                                doc[key] = []
-                            doc[key].extend(custom_doc[key])
-            except Exception as e:
-                print(f"Error loading custom lib: {e}")
-
-        # Load ble_proxy lib from SAME directory if it exists
-        ble_proxy_path = os.path.join(source_dir, 'ble_proxy.yaml')
-        if os.path.exists(ble_proxy_path):
-            try:
-                with open(ble_proxy_path, 'r') as f:
-                    ble_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
-                    
-                    # Merge lists from ble_proxy lib into main doc
-                    for key in ['script', 'color', 'globals']:
-                        if key in ble_doc and isinstance(ble_doc[key], list):
-                            if key not in doc:
-                                doc[key] = []
-                            doc[key].extend(ble_doc[key])
-            except Exception as e:
-                print(f"Error loading ble_proxy lib: {e}")
 
         scripts = doc.get('script', [])
         
@@ -2451,12 +2383,13 @@ def get_scripts():
 
         # Fonts from base files in SAME directory
         fonts = []
+        base_loader = generate_tiles_api.create_safe_yaml_loader()
         for base_file in ['3248s035_base.yaml', '2432s028_base.yaml']:
             base_path = os.path.join(source_dir, base_file)
             if os.path.exists(base_path):
                 try:
                     with open(base_path, 'r') as f:
-                        base_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown) or {}
+                        base_doc = yaml.load(f, Loader=base_loader) or {}
                         for font in base_doc.get('font', []):
                             if 'id' in font and font['id'] not in fonts:
                                 fonts.append(font['id'])

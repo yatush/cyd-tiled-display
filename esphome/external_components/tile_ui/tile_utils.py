@@ -272,12 +272,15 @@ def get_tile_modifiers(config, screen_id=None):
     x = config.get("x", "?")
     y = config.get("y", "?")
     context = f"Screen '{screen_id}', Tile at ({x}, {y})" if screen_id else f"Tile at ({x}, {y})"
+
+    def _color_cpp(c):
+        return c if c.startswith('Color(') else f'id({c})'
     
     fill_color = config.get("fill_color", None)
     if fill_color:
         if isinstance(fill_color, str):
-            # Backward-compatible: plain color name
-            method_chains.append(f'addFillColor(id({fill_color}))')
+            # Backward-compatible: plain color name or Color(...) literal
+            method_chains.append(f'addFillColor({_color_cpp(fill_color)})')
         elif isinstance(fill_color, list):
             for entry in fill_color:
                 color = entry.get("color") if isinstance(entry, dict) else None
@@ -288,17 +291,15 @@ def get_tile_modifiers(config, screen_id=None):
                     cond_expr = build_expression(condition, context)
                     if cond_expr:
                         method_chains.append(
-                            f'addFillColor(id({color}), [](std::vector<std::string> entities) -> bool {{ return {cond_expr}; }})'
+                            f'addFillColor({_color_cpp(color)}, [](std::vector<std::string> entities) -> bool {{ return {cond_expr}; }})'
                         )
                     else:
-                        method_chains.append(f'addFillColor(id({color}))')
+                        method_chains.append(f'addFillColor({_color_cpp(color)})')
                 else:
-                    method_chains.append(f'addFillColor(id({color}))')
+                    method_chains.append(f'addFillColor({_color_cpp(color)})')
 
     border_color = config.get("border_color", None)
     if border_color:
-        def _color_cpp(c):
-            return c if c.startswith('Color(') else f'id({c})'
         if isinstance(border_color, str):
             method_chains.append(f'addBorderColor({_color_cpp(border_color)})')
         elif isinstance(border_color, list):

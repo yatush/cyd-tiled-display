@@ -139,6 +139,7 @@ export function useTileConfig() {
     for(let r=0; r<activePage.rows; r++) {
       for(let c=0; c<activePage.cols; c++) {
         const isOccupied = activePage.tiles.some(t => {
+          if (t.x < 0 || t.y < 0) return false;
           const t_x_span = t.x_span || 1;
           const t_y_span = t.y_span || 1;
           return (
@@ -255,9 +256,21 @@ export function useTileConfig() {
   };
 
   const handleUpdatePage = (updatedPage: Page) => {
+    // Move any placed tiles that no longer fit within the resized grid into staging (-1, -1)
+    // so they are not silently dropped on YAML export.
+    const sanitizedTiles = updatedPage.tiles.map(t => {
+      if (t.x < 0 || t.y < 0) return t;
+      const xSpan = t.x_span || 1;
+      const ySpan = t.y_span || 1;
+      if (t.x + xSpan > updatedPage.cols || t.y + ySpan > updatedPage.rows) {
+        return { ...t, x: -1, y: -1 };
+      }
+      return t;
+    });
+    const nextPage = { ...updatedPage, tiles: sanitizedTiles };
     setConfig({
       ...config,
-      pages: config.pages.map(p => p.id === updatedPage.id ? updatedPage : p)
+      pages: config.pages.map(p => p.id === nextPage.id ? nextPage : p)
     });
   };
 

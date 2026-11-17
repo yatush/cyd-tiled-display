@@ -4,7 +4,6 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
-#include <regex>
 #include <set>
 #include <string>
 #include <vector>
@@ -766,16 +765,22 @@ void CancelClimateMode(const std::string& entity) {
   if (pending_climate_modes.erase(entity) != 0) id(disp).update();
 }
 
-// Extracts an ID from a string using a regular expression.
+// Extracts an ID from a dynamic placeholder string.
 // Example: "#{some_id}" -> "some_id"
 std::string ExtractId(const std::string& input) {
-  std::regex pattern("#\\{([^}]+)\\}");
-  std::smatch match;
-  if (std::regex_search(input, match, pattern)) {
-    return match[1];
-  } else {
-    return "";
+  size_t pos = 0;
+  while ((pos = input.find("#{", pos)) != std::string::npos) {
+    size_t start = pos + 2;
+    size_t end = input.find('}', start);
+    if (end == std::string::npos) {
+      return "";
+    }
+    if (end > start) {
+      return input.substr(start, end - start);
+    }
+    pos = end + 1;
   }
+  return "";
 }
 
 // Replaces the first occurrence of a substring within a string.

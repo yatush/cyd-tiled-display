@@ -333,6 +333,32 @@ class TestTileSchemaStaleKeys(unittest.TestCase):
         with self.assertRaises(Exception):
             tile_schema({'nonexistent_type': {'x': 0, 'y': 0}})
 
+    def test_yaml_generator_ts_matches_schema_json(self):
+        """Ensure COMMON_TILE_FIELDS and TYPE_SPECIFIC_FIELDS in yamlGenerator.ts match schema.json."""
+        import re
+        from tile_ui.schema import SCHEMA_DEF
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+        yaml_gen_path = os.path.join(repo_root, 'configurator', 'src', 'utils', 'yamlGenerator.ts')
+        if not os.path.exists(yaml_gen_path):
+            return
+        with open(yaml_gen_path, 'r', encoding='utf-8') as f:
+            ts_src = f.read()
+
+        common_match = re.search(r'COMMON_TILE_FIELDS\s*=\s*new Set\(\[(.*?)\]\)', ts_src, re.S)
+        self.assertIsNotNone(common_match)
+        ts_common = set(re.findall(r"'([^']+)'", common_match.group(1)))
+        schema_common = {f['name'] for f in SCHEMA_DEF['common']}
+        self.assertEqual(ts_common, schema_common)
+
+        for t_def in SCHEMA_DEF['types']:
+            t_name = t_def['type']
+            type_match = re.search(rf'\b{re.escape(t_name)}\s*:\s*new Set\(\[(.*?)\]\)', ts_src, re.S)
+            self.assertIsNotNone(type_match, f"Missing {t_name} in TYPE_SPECIFIC_FIELDS")
+            ts_fields = set(re.findall(r"'([^']+)'", type_match.group(1)))
+            schema_fields = {f['name'] for f in t_def['fields']}
+            self.assertEqual(ts_fields, schema_fields, f"Mismatch for {t_name}")
+
 
 if __name__ == '__main__':
     unittest.main()

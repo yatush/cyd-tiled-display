@@ -13,169 +13,124 @@ if user_components and (Path(user_components) / "tile_ui" / "__init__.py").is_fi
 else:
     sys.path.append(str(tile_ui_path))
 
-# Mock esphome module to prevent import errors
-class MockEsphome:
-    def __getattr__(self, name):
-        return MockEsphome()
-    def __call__(self, *args, **kwargs):
-        return MockEsphome()
+# Mock esphome module if not installed to allow standalone import of tile_ui
+if 'esphome' not in sys.modules:
+    class MockEsphome:
+        def __getattr__(self, name):
+            return MockEsphome()
+        def __call__(self, *args, **kwargs):
+            return MockEsphome()
 
-sys.modules['esphome'] = MockEsphome()
-sys.modules['esphome.codegen'] = MockEsphome()
-sys.modules['esphome.config_validation'] = MockEsphome()
-sys.modules['esphome.const'] = MockEsphome()
-sys.modules['esphome.core'] = MockEsphome()
-sys.modules['esphome.components'] = MockEsphome()
-sys.modules['esphome.components.display'] = MockEsphome()
+    class _Invalid(Exception):
+        def __init__(self, message, path=None):
+            super().__init__(message)
+            self.msg = message
+            self.path = path or []
+        def __str__(self):
+            return self.msg
 
-# Minimal implementation of voluptuous and esphome.config_validation
-# to support schema validation without external dependencies.
+    class _MockConfigValidation(MockEsphome):
+        Invalid = _Invalid
 
-class Invalid(Exception):
-    def __init__(self, message, path=None):
-        super().__init__(message)
-        self.msg = message
-        self.path = path or []
-    def __str__(self):
-        return self.msg
+        def string(self, value):
+            if not isinstance(value, str):
+                raise _Invalid(f"Expected string, got {type(value).__name__}")
+            return value
 
-class Marker:
-    def __init__(self, schema, default=None, msg=None):
-        self.schema = schema
-        self.default = default
-        self.msg = msg
-    def __hash__(self):
-        return hash(self.schema)
-    def __eq__(self, other):
-        return isinstance(other, Marker) and self.schema == other.schema
+        def boolean(self, value):
+            if not isinstance(value, bool):
+                raise _Invalid(f"Expected boolean, got {type(value).__name__}")
+            return value
 
-class Required(Marker):
-    pass
-
-class Optional(Marker):
-    pass
-
-PREVENT_EXTRA = 1
-
-class Schema:
-    def __init__(self, schema, extra=None):
-        self.schema = schema
-        self.extra = extra
-
-    def __call__(self, data):
-        if not isinstance(data, dict):
-            raise Invalid(f"expected dict, got {type(data).__name__}")
-        
-        out = {}
-        schema_map = {}
-        for k, v in self.schema.items():
-            key_name = k.schema if isinstance(k, Marker) else k
-            schema_map[key_name] = (k, v)
-
-        if self.extra == PREVENT_EXTRA:
-            for k in data:
-                if k not in schema_map:
-                    raise Invalid(f"extra keys not allowed: {k}")
-
-        for key_name, (key_schema, validator) in schema_map.items():
-            if key_name in data:
-                value = data[key_name]
-                try:
-                    if isinstance(validator, Schema):
-                        out[key_name] = validator(value)
-                    elif callable(validator):
-                        out[key_name] = validator(value)
-                    elif isinstance(validator, type):
-                        if not isinstance(value, validator):
-                            raise Invalid(f"expected {validator.__name__}, got {type(value).__name__}")
-                        out[key_name] = value
-                    else:
-                        if value != validator:
-                            raise Invalid(f"expected {validator}, got {value}")
-                        out[key_name] = value
-                except Invalid as e:
-                    raise Invalid(f"Invalid value for '{key_name}': {e}")
-                except Exception as e:
-                    raise Invalid(f"Validation error for '{key_name}': {e}")
-            else:
-                if isinstance(key_schema, Required) or not isinstance(key_schema, Optional):
-                     raise Invalid(f"required key not provided: {key_name}")
-        return out
-
-def Any(*validators):
-    def validate(val):
-        errors = []
-        for v in validators:
-            try:
-                if callable(v):
-                    return v(val)
-                elif isinstance(v, type):
-                    if isinstance(val, v):
-                        return val
-                    else:
-                        raise Invalid(f"expected {v.__name__}")
-                else:
-                    if val == v:
-                        return val
-                    else:
-                        raise Invalid(f"expected {v}")
-            except (Invalid, ValueError, TypeError) as e:
-                errors.append(str(e))
-        raise Invalid(f"no valid option found: {'; '.join(errors)}")
-    return validate
-
-def All(*validators):
-    def validate(val):
-        for v in validators:
-            if callable(v):
-                val = v(val)
-            elif isinstance(v, type):
-                if not isinstance(val, v):
-                    raise Invalid(f"expected {v.__name__}")
-            else:
-                if val != v:
-                    raise Invalid(f"expected {v}")
-        return val
-    return validate
-
-class MockVoluptuousModule:
-    def __init__(self):
-        self.Schema = Schema
-        self.Required = Required
-        self.Optional = Optional
-        self.Any = Any
-        self.All = All
-        self.PREVENT_EXTRA = PREVENT_EXTRA
-        self.Invalid = Invalid
-
-class MockConfigValidation:
-    Invalid = Invalid
-    
-    def string(self, value):
-        if not isinstance(value, str):
-            raise Invalid(f"Expected string, got {type(value).__name__}")
-        return value
-        
-    def boolean(self, value):
-        if not isinstance(value, bool):
-            raise Invalid(f"Expected boolean, got {type(value).__name__}")
-        return value
-        
-    def Any(self, *validators):
-        return Any(*validators)
-
-sys.modules['voluptuous'] = MockVoluptuousModule()
-sys.modules['esphome.config_validation'] = MockConfigValidation()
+    _mock_esphome = MockEsphome()
+    _mock_cv = _MockConfigValidation()
+    _mock_esphome.config_validation = _mock_cv
+    sys.modules['esphome'] = _mock_esphome
+    sys.modules['esphome.codegen'] = MockEsphome()
+    sys.modules['esphome.config_validation'] = _mock_cv
+    sys.modules['esphome.const'] = MockEsphome()
+    sys.modules['esphome.core'] = MockEsphome()
+    sys.modules['esphome.components'] = MockEsphome()
+    sys.modules['esphome.components.display'] = MockEsphome()
 
 try:
-    # Import only what we need, avoiding __init__.py if possible or relying on mocks
-    # Since __init__.py imports esphome, the mocks above are crucial.
     from tile_ui import generate_init_tiles_cpp
     from tile_ui.validation import validate_tiles_config
     from tile_ui.data_collection import collect_available_scripts, collect_available_globals
 except ImportError as e:
     print(json.dumps({"error": f"Failed to import tile_ui: {e}"}))
     sys.exit(1)
+
+
+def create_safe_yaml_loader(include_base_dir=None):
+    """Create a yaml.SafeLoader subclass that safely handles ESPHome YAML tags (!secret, !lambda, !include)."""
+    base_path = Path(include_base_dir) if include_base_dir else None
+
+    class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
+        pass
+
+    def _ignore_unknown(loader, node):
+        return None
+
+    def _ignore_any_tag(loader, tag_suffix, node):
+        return None
+
+    def _include_constructor(loader, node):
+        filename = loader.construct_scalar(node)
+        if base_path is not None:
+            include_path = base_path / filename
+            if include_path.exists():
+                with open(include_path, 'r', encoding='utf-8', errors='replace') as f_inc:
+                    return yaml.load(f_inc, Loader=SafeLoaderIgnoreUnknown)
+            return None
+        return filename
+
+    SafeLoaderIgnoreUnknown.add_constructor('!secret', _ignore_unknown)
+    SafeLoaderIgnoreUnknown.add_constructor('!lambda', _ignore_unknown)
+    SafeLoaderIgnoreUnknown.add_constructor('!include', _include_constructor)
+    SafeLoaderIgnoreUnknown.add_multi_constructor('!', _ignore_any_tag)
+    return SafeLoaderIgnoreUnknown
+
+
+def load_merged_lib_doc(user_lib_dir=None, fallback_lib_dir=None, merge_keys=('script', 'globals', 'color')):
+    """Load lib.yaml and merge lib_common.yaml, lib_custom.yaml, and ble_proxy.yaml."""
+    default_lib_dir = Path(fallback_lib_dir) if fallback_lib_dir else (repo_root / "esphome" / "lib")
+    if user_lib_dir and (Path(user_lib_dir) / "lib.yaml").exists():
+        lib_path = Path(user_lib_dir) / "lib.yaml"
+    else:
+        lib_path = default_lib_dir / "lib.yaml"
+
+    if not lib_path.exists():
+        return None
+
+    loader_cls = create_safe_yaml_loader(include_base_dir=lib_path.parent)
+    with open(lib_path, 'r', encoding='utf-8', errors='replace') as f:
+        lib_doc = yaml.load(f, Loader=loader_cls) or {}
+
+    if not isinstance(lib_doc, dict):
+        return {}
+
+    for extra_name in ('lib_common.yaml', 'lib_custom.yaml', 'ble_proxy.yaml'):
+        candidates = []
+        if extra_name in ('lib_custom.yaml', 'ble_proxy.yaml') and user_lib_dir:
+            candidates.append(Path(user_lib_dir) / extra_name)
+        if lib_path.parent not in [c.parent for c in candidates]:
+            candidates.append(lib_path.parent / extra_name)
+        extra_path = next((p for p in candidates if p.exists()), None)
+        if extra_path:
+            try:
+                extra_loader = create_safe_yaml_loader(include_base_dir=extra_path.parent)
+                with open(extra_path, 'r', encoding='utf-8', errors='replace') as f_extra:
+                    extra_doc = yaml.load(f_extra, Loader=extra_loader) or {}
+                if isinstance(extra_doc, dict):
+                    for key in merge_keys:
+                        if key in extra_doc and isinstance(extra_doc[key], list):
+                            lib_doc.setdefault(key, [])
+                            lib_doc[key].extend(extra_doc[key])
+            except Exception as e:
+                print(f"Warning: failed loading {extra_name}: {e}", file=sys.stderr)
+
+    return lib_doc
 
 
 def _make_1px_transparent_png() -> bytes:
@@ -198,88 +153,13 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         config = yaml.safe_load(input_data)
         screens = config.get("screens", [])
 
-        # Load lib.yaml to get available scripts and globals
-        # Prefer user_lib_dir (e.g. /config/esphome/lib in addon mode) over the bundled lib
-        if user_lib_dir and (Path(user_lib_dir) / "lib.yaml").exists():
-            lib_path = Path(user_lib_dir) / "lib.yaml"
-        else:
-            lib_path = repo_root / "esphome" / "lib" / "lib.yaml"
+        # Load lib.yaml (+ lib_common, lib_custom, ble_proxy) to get available scripts and globals
         available_scripts = {}
         available_globals = set()
-
-        if lib_path.exists():
-            with open(lib_path, 'r') as f:
-                # Define custom schema for !secret tag and others
-                class SafeLoaderIgnoreUnknown(yaml.SafeLoader):
-                    pass
-                def ignore_unknown(loader, node):
-                    return None
-                
-                def include_constructor(loader, node):
-                    filename = loader.construct_scalar(node)
-                    include_path = lib_path.parent / filename
-                    if include_path.exists():
-                        with open(include_path, 'r') as f_inc:
-                            return yaml.load(f_inc, Loader=SafeLoaderIgnoreUnknown)
-                    return None
-
-                SafeLoaderIgnoreUnknown.add_constructor('!secret', ignore_unknown)
-                SafeLoaderIgnoreUnknown.add_constructor('!lambda', ignore_unknown)
-                SafeLoaderIgnoreUnknown.add_constructor('!include', include_constructor)
-                
-                lib_doc = yaml.load(f, Loader=SafeLoaderIgnoreUnknown)
-                if lib_doc:
-                    # Merge lib_common.yaml
-                    common_lib_path = lib_path.parent / 'lib_common.yaml'
-                    if common_lib_path.exists():
-                        try:
-                            with open(common_lib_path, 'r') as f_common:
-                                common_doc = yaml.load(f_common, Loader=SafeLoaderIgnoreUnknown) or {}
-                            for key in ['script', 'globals']:
-                                if key in common_doc and isinstance(common_doc[key], list):
-                                    lib_doc.setdefault(key, [])
-                                    lib_doc[key].extend(common_doc[key])
-                        except Exception:
-                            pass
-
-                    # Merge lib_custom.yaml — check user_lib_dir first (addon mode), then lib_path.parent
-                    _custom_candidates = []
-                    if user_lib_dir:
-                        _custom_candidates.append(Path(user_lib_dir) / 'lib_custom.yaml')
-                    if lib_path.parent not in [Path(c).parent for c in _custom_candidates]:
-                        _custom_candidates.append(lib_path.parent / 'lib_custom.yaml')
-                    custom_lib_path = next((p for p in _custom_candidates if p.exists()), None)
-                    if custom_lib_path:
-                        try:
-                            with open(custom_lib_path, 'r') as f_custom:
-                                custom_doc = yaml.load(f_custom, Loader=SafeLoaderIgnoreUnknown) or {}
-                            for key in ['script', 'globals']:
-                                if key in custom_doc and isinstance(custom_doc[key], list):
-                                    lib_doc.setdefault(key, [])
-                                    lib_doc[key].extend(custom_doc[key])
-                        except Exception:
-                            pass
-
-                    # Merge ble_proxy.yaml — check user_lib_dir first (addon mode), then lib_path.parent
-                    _ble_candidates = []
-                    if user_lib_dir:
-                        _ble_candidates.append(Path(user_lib_dir) / 'ble_proxy.yaml')
-                    if lib_path.parent not in [Path(c).parent for c in _ble_candidates]:
-                        _ble_candidates.append(lib_path.parent / 'ble_proxy.yaml')
-                    ble_proxy_path = next((p for p in _ble_candidates if p.exists()), None)
-                    if ble_proxy_path:
-                        try:
-                            with open(ble_proxy_path, 'r') as f_ble:
-                                ble_doc = yaml.load(f_ble, Loader=SafeLoaderIgnoreUnknown) or {}
-                            for key in ['script', 'globals']:
-                                if key in ble_doc and isinstance(ble_doc[key], list):
-                                    lib_doc.setdefault(key, [])
-                                    lib_doc[key].extend(ble_doc[key])
-                        except Exception:
-                            pass
-
-                    available_scripts = collect_available_scripts(lib_doc)
-                    available_globals = collect_available_globals(lib_doc)
+        lib_doc = load_merged_lib_doc(user_lib_dir=user_lib_dir, merge_keys=('script', 'globals'))
+        if lib_doc:
+            available_scripts = collect_available_scripts(lib_doc)
+            available_globals = collect_available_globals(lib_doc)
 
         # Validate
         try:

@@ -684,6 +684,17 @@ def extract_toolchain(tarball_path: str, background: bool = False) -> None:
 
 # ─── Fix-wrappers phase ──────────────────────────────────────────────────────
 
+def _is_elf_binary(path: str) -> bool:
+    """Return True if *path* is a regular file starting with the ELF magic bytes."""
+    try:
+        if not os.path.isfile(path) or os.path.islink(path):
+            return False
+        with open(path, 'rb') as f:
+            return f.read(4) == b'\x7fELF'
+    except OSError:
+        return False
+
+
 def fix_wrappers() -> None:
     """Replace PlatformIO's glibc Rust binaries with Alpine-compatible wrappers."""
     write_progress('fixing', 82, 'Configuring toolchain for Alpine Linux...')
@@ -693,11 +704,9 @@ def fix_wrappers() -> None:
         subprocess.run(['sh', FIX_WRAPPERS_SCRIPT], check=False)
 
     # cmake
-    for cmake_path in glob.glob('/root/.platformio/packages/*/bin/cmake') + \
-                      glob.glob('/root/.platformio/packages/tool-cmake/bin/cmake'):
-        if os.path.isfile(cmake_path) and not os.path.islink(cmake_path) \
-                and not os.path.exists(cmake_path + '.orig'):
-            os.rename(cmake_path, cmake_path + '.orig')
+    for cmake_path in set(glob.glob('/root/.platformio/packages/*/bin/cmake') +
+                          glob.glob('/root/.platformio/packages/tool-cmake/bin/cmake')):
+        if _is_elf_binary(cmake_path):
             with open(cmake_path, 'w') as f:
                 f.write('#!/bin/sh\nexec /usr/bin/cmake "$@"\n')
             os.chmod(cmake_path, 0o755)
@@ -705,16 +714,15 @@ def fix_wrappers() -> None:
 
     # ninja
     for ninja_path in glob.glob('/root/.platformio/packages/tool-ninja/ninja'):
-        if os.path.isfile(ninja_path) and not os.path.islink(ninja_path) \
-                and not os.path.exists(ninja_path + '.orig'):
-            os.rename(ninja_path, ninja_path + '.orig')
+        if _is_elf_binary(ninja_path):
             with open(ninja_path, 'w') as f:
                 f.write('#!/bin/sh\nexec /usr/bin/ninja "$@"\n')
             os.chmod(ninja_path, 0o755)
             log(f'Replaced ninja: {ninja_path}')
 
-    # Remove .orig backups to save space
-    for orig in glob.glob('/root/.platformio/**/*.orig', recursive=True):
+    # Remove .orig / .bak backups to save space
+    for orig in (glob.glob('/root/.platformio/**/*.orig', recursive=True) +
+                 glob.glob('/root/.platformio/**/*.bak', recursive=True)):
         try:
             os.remove(orig)
         except OSError:
@@ -724,10 +732,10 @@ def fix_wrappers() -> None:
 
 
 def _cmake_needs_fix() -> bool:
-    """Return True if a non-wrapped cmake binary exists in the PIO packages dir."""
-    for cmake_path in (glob.glob('/root/.platformio/packages/*/bin/cmake') +
-                       glob.glob('/root/.platformio/packages/tool-cmake/bin/cmake')):
-        if os.path.isfile(cmake_path) and not os.path.exists(cmake_path + '.orig'):
+    """Return True if a non-wrapped ELF cmake binary exists in the PIO packages dir."""
+    for cmake_path in set(glob.glob('/root/.platformio/packages/*/bin/cmake') +
+                          glob.glob('/root/.platformio/packages/tool-cmake/bin/cmake')):
+        if _is_elf_binary(cmake_path):
             return True
     return False
 

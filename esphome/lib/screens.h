@@ -88,7 +88,7 @@ public:
       : Screen(display_page, attributes, rows, cols), tiles_(tiles) {
     for (Tile* tile : tiles) {
       tile->init(this->getDisplayPage(),
-                [&]() { this->onScreenLeave(); });
+                [this]() { this->onScreenLeave(); });
     }
   }
 

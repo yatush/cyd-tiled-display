@@ -205,7 +205,7 @@ protected:
   // Pointer to the display page this tile belongs to.
   esphome::display::DisplayPage* display_page_ = nullptr;
   // Pointer to the binary sensor for touch input.
-  TouchscreenBinarySensor* binary_sensor_;
+  TouchscreenBinarySensor* binary_sensor_ = nullptr;
   // X-coordinate of the tile.
   int x_;
   // Y-coordinate of the tile.
@@ -227,7 +227,7 @@ protected:
   // Callback function when leaving the screen
   std::function<void()> change_screen_callback_ = []() {};
   // A dynamic variable name to check for value for this tile to be active
-  const std::string* var_name_;
+  const std::string* var_name_ = nullptr;
   // Simple values to check the var_name against
   std::vector<const std::string*> var_values_;
   // Indicates if the tile was active before - to preserve activation state.
@@ -554,7 +554,7 @@ public:
 protected:
   void customInit() override {
     if (this->binary_sensor_ != nullptr) {
-      this->binary_sensor_->add_on_state_callback([&](bool x) {
+      this->binary_sensor_->add_on_state_callback([this](bool x) {
         if (!long_press_enabled_) {
           if (x) runShortAction(Deref(decoded_entities_), id(last_x), id(last_y));
           return;
@@ -696,7 +696,7 @@ public:
 
 protected:
   void customInit() override {
-    this->binary_sensor_->add_on_state_callback([&](bool x) {
+    this->binary_sensor_->add_on_state_callback([this](bool x) {
       if (!x) {
         return;
       }
@@ -737,7 +737,7 @@ public:
 
 protected:
   void customInit() override {
-    this->binary_sensor_->add_on_state_callback([&](bool x) {
+    this->binary_sensor_->add_on_state_callback([this](bool x) {
       if (x && this->on_press_) {
         this->on_press_();
       }
@@ -775,6 +775,7 @@ public:
 
 protected:
   void customInit() override {
+    delete this->binary_sensor_;
     this->binary_sensor_ = nullptr;
     HAActionTile::customInit();
   }
@@ -805,7 +806,7 @@ public:
 
 protected:
   void customInit() override {
-    this->binary_sensor_->add_on_state_callback([&](bool x) {
+    this->binary_sensor_->add_on_state_callback([this](bool x) {
       if (!x) {
         return;
       }
@@ -873,7 +874,7 @@ public:
 
 protected:
   void customInit() override {
-    this->binary_sensor_->add_on_state_callback([&](bool x) {
+    this->binary_sensor_->add_on_state_callback([this](bool x) {
       if (!x) {
         return;
       }

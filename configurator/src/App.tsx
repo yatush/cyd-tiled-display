@@ -25,7 +25,7 @@ import { getTileLabel } from './utils/tileUtils';
 import { apiFetch } from './utils/api';
 import { ImageEntry, ScreenImageEntry } from './types';
 
-import { generateYaml } from './utils/yamlGenerator';
+import { generateYaml, registerTileSchema } from './utils/yamlGenerator';
 
 function App() {
   // Toolchain status — polled in background so TopBar can show an upgrade badge
@@ -342,7 +342,10 @@ function App() {
   useEffect(() => {
     apiFetch('/schema')
       .then(res => res.json())
-      .then(data => setSchema(data))
+      .then(data => {
+        registerTileSchema(data);
+        setSchema(data);
+      })
       .catch(err => console.error("Failed to fetch schema", err));
       
     // Check for updates
