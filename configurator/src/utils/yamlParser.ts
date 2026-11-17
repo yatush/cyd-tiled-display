@@ -189,7 +189,16 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
         rows: screen.rows || 2,
         cols: screen.cols || 3,
         flags: screen.flags || [],
-        background: Array.isArray(screen.background) ? screen.background : undefined,
+        background: Array.isArray(screen.background)
+          ? screen.background.map((entry: any) => {
+              if (!entry || typeof entry !== 'object') return entry;
+              const result = { ...entry };
+              if (result.condition != null) {
+                result.condition = transformConditionLogicReverse(result.condition);
+              }
+              return result;
+            })
+          : undefined,
         time_color: screen.time_color || undefined,
         tiles
       };

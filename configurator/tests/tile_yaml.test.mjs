@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTileYaml } from '../src/utils/tileYaml.ts';
-import { generateTileYaml, generateYaml } from '../src/utils/yamlGenerator.ts';
+import { parseTileYaml, parsePageYaml } from '../src/utils/tileYaml.ts';
+import { generateTileYaml, generatePageYaml, generateYaml } from '../src/utils/yamlGenerator.ts';
 import { getTileDynamicEntities } from '../src/utils/yamlParser.ts';
 
 test('pasted tile accepts common indentation and preserves nested YAML', () => {
@@ -81,4 +81,157 @@ test('long-press configuration and dynamic destination survive tile YAML', () =>
     long_dynamic_entity: 'FAN', long_perform: ['custom_action'] };
   assert.deepEqual(parseTileYaml(generateTileYaml(tile), tile.id), tile);
   assert.deepEqual(getTileDynamicEntities(tile), ['FAN']);
+});
+
+test('page YAML round-trips id, grid, flags, time_color, background conditions, and tiles preserving tile ids', () => {
+  const page = {
+    id: 'living',
+    rows: 4,
+    cols: 3,
+    flags: ['BASE', 'OMIT_TIME_WIFI'],
+    time_color: 'white',
+    background: [
+      {
+        color: 'black',
+        condition: {
+          and: [{ entity: 'binary_sensor.night', state: 'on' }],
+        },
+      },
+      { color: 'navy' },
+    ],
+    tiles: [
+      {
+        id: 'existing-tile-id',
+        type: 'ha_action',
+        x: 0,
+        y: 0,
+        entities: [{ entity: 'light.sofa' }],
+        display: ['tile_light'],
+        perform: ['toggle'],
+      },
+    ],
+  };
+
+  const text = generatePageYaml(page);
+  assert.match(text, /operator: AND/);
+  const parsed = parsePageYaml(text, page, ['other']);
+  assert.deepEqual(parsed, page);
+
+  const withAddedTile = `${text}    - function:\n        x: 1\n        y: 0\n        on_press: fn_extra\n`;
+  const parsedExpanded = parsePageYaml(withAddedTile, page, ['other']);
+  assert.equal(parsedExpanded.tiles.length, 2);
+  assert.equal(parsedExpanded.tiles[0].id, 'existing-tile-id');
+  assert.ok(parsedExpanded.tiles[1].id && parsedExpanded.tiles[1].id !== 'existing-tile-id');
+});
+
+test('page YAML accepts indented blocks and screens wrapper', () => {
+  const currentPage = { id: 'old', rows: 2, cols: 2, tiles: [{ id: 't0', type: 'function', x: 0, y: 0, on_press: 'p' }] };
+
+  const indented = `
+    id: sub
+    rows: 2
+    cols: 3
+    tiles:
+      - function:
+          x: 2
+          y: 1
+          on_press: fn1
+  `;
+  const parsedIndented = parsePageYaml(indented, currentPage, ['other']);
+  assert.equal(parsedIndented.id, 'sub');
+  assert.equal(parsedIndented.cols, 3);
+  assert.equal(parsedIndented.tiles[0].id, 't0');
+  assert.equal(parsedIndented.tiles[0].x, 2);
+
+  const wrapped = `
+    screens:
+      - id: wrapped_id
+        rows: 3
+        cols: 2
+        tiles: []
+  `;
+  const parsedWrapped = parsePageYaml(wrapped, currentPage, ['other']);
+  assert.equal(parsedWrapped.id, 'wrapped_id');
+  assert.equal(parsedWrapped.rows, 3);
+  assert.deepEqual(parsedWrapped.tiles, []);
+});
+
+test('page YAML rejects invalid pages, conflicts, out-of-bounds tiles, and invalid tiles', () => {
+  const currentPage = { id: 'p1', rows: 2, cols: 2, tiles: [] };
+
+  assert.throws(() => parsePageYaml(`
+screens:
+  - id: a
+    rows: 2
+    cols: 2
+    tiles: []
+  - id: b
+    rows: 2
+    cols: 2
+    tiles: []
+`, currentPage, []));
+
+  assert.throws(() => parsePageYaml(`
+id: p1
+rows: 2
+cols: 2
+unknown_page_prop: true
+tiles: []
+`, currentPage, []));
+
+  assert.throws(() => parsePageYaml(`
+id: existing_other
+rows: 2
+cols: 2
+tiles: []
+`, currentPage, ['existing_other']));
+
+  assert.throws(() => parsePageYaml(`
+id: p1
+rows: 2
+cols: 2
+flags:
+  - BASE
+  - TEMPORARY
+tiles: []
+`, currentPage, []));
+
+  assert.throws(() => parsePageYaml(`
+id: p1
+rows: 2
+cols: 2
+background:
+  - condition:
+      eq: [a, b]
+tiles: []
+`, currentPage, []));
+
+  assert.throws(() => parsePageYaml(`
+id: p1
+rows: 2
+cols: 2
+tiles:
+  - function:
+      x: 2
+      y: 0
+      on_press: p
+`, currentPage, []));
+
+  assert.throws(() => parsePageYaml(`
+id: p1
+rows: 2
+cols: 2
+tiles:
+  - function:
+      x: 0
+      y: 0
+      on_press: p
+      bad_tile_prop: 123
+`, currentPage, []));
+});
+
+test('unsupported existing page fields remain visible in generated YAML and fail validation', () => {
+  const text = generatePageYaml({ id: 'p1', rows: 2, cols: 2, tiles: [], extra_page_field: 'keep_visible' });
+  assert.match(text, /extra_page_field: keep_visible/);
+  assert.throws(() => parsePageYaml(text, { id: 'p1', rows: 2, cols: 2, tiles: [] }, []));
 });

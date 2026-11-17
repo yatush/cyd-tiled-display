@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, KeyboardEvent } from 'react';
 import { Trash2, Copy, Layout, Settings2, Plus } from 'lucide-react';
 import { Tile, Config, Page, HaEntity, ImageEntry, ScreenBgEntry, ScreenImageEntry } from '../types';
 import { 
@@ -17,12 +17,52 @@ import {
 import { DisplayListInput } from './DisplayListInput';
 import { ColorPicker } from './Pickers';
 import { apiFetch } from '../utils/api';
-import { generateTileYaml } from '../utils/yamlGenerator';
-import { parseTileYaml } from '../utils/tileYaml';
+import { generateTileYaml, generatePageYaml } from '../utils/yamlGenerator';
+import { parseTileYaml, parsePageYaml } from '../utils/tileYaml';
+import { getTileDynamicEntities } from '../utils/yamlParser';
 
-type YamlDraft = { text: string; initialText: string; baseTile: string };
+type YamlDraft = { text: string; initialText: string; baseSnapshot: string };
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config, schema, activePage, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: {
+const handleYamlKeyDown = (
+  event: KeyboardEvent<HTMLTextAreaElement>,
+  text: string,
+  onChangeText: (nextText: string) => void
+) => {
+  if ((event.key !== 'Enter' && event.key !== 'Tab') || event.ctrlKey || event.metaKey || event.altKey) return;
+  const input = event.currentTarget;
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  if (event.shiftKey && (event.key !== 'Tab' || start === end)) return;
+  if (event.key === 'Tab' && start !== end) {
+    const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+    const lastSelected = text[end - 1] === '\n' ? end - 1 : end;
+    const lineEnd = text.indexOf('\n', lastSelected);
+    const blockEnd = lineEnd === -1 ? text.length : lineEnd;
+    const block = text.slice(lineStart, blockEnd).split('\n')
+      .map(line => event.shiftKey ? line.replace(/^ {1,2}/, '') : `  ${line}`).join('\n');
+    event.preventDefault();
+    onChangeText(text.slice(0, lineStart) + block + text.slice(blockEnd));
+    requestAnimationFrame(() => {
+      input.selectionStart = lineStart;
+      input.selectionEnd = lineStart + block.length;
+    });
+    return;
+  }
+  let insertion = '  ';
+  if (event.key === 'Enter') {
+    const line = text.slice(text.lastIndexOf('\n', start - 1) + 1, start);
+    const spaces = line.match(/^ */)?.[0] ?? '';
+    const extra = /:\s*$/.test(line) ? (/^\s*-\s+/.test(line) ? '    ' : '  ') : '';
+    insertion = `\n${spaces}${extra}`;
+  }
+  event.preventDefault();
+  onChangeText(text.slice(0, start) + insertion + text.slice(end));
+  requestAnimationFrame(() => {
+    input.selectionStart = input.selectionEnd = start + insertion.length;
+  });
+};
+
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config, schema, activePage, setActivePageId, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: {
   selectedTile: Tile | null, 
   onUpdate: (t: Tile, discoverDynamicEntities?: boolean) => void,
   onDelete: () => void,
@@ -30,6 +70,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   config: Config,
   schema: any,
   activePage: Page,
+  setActivePageId?: (id: string) => void,
   onUpdatePage: (p: Page) => void,
   onRenamePage: (oldId: string, newId: string) => void,
   haEntities: HaEntity[],
@@ -40,12 +81,17 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   const [tileEditor, setTileEditor] = useState<'form' | 'yaml'>('form');
   const [yamlDrafts, setYamlDrafts] = useState<Record<string, YamlDraft>>({});
   const [yamlError, setYamlError] = useState('');
+  const [pageEditor, setPageEditor] = useState<'form' | 'yaml'>('form');
+  const [pageYamlDrafts, setPageYamlDrafts] = useState<Record<string, YamlDraft>>({});
+  const [pageYamlError, setPageYamlError] = useState('');
 
   const dynamicEntities = config.dynamic_entities || [];
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
   const images = config.images || {};
   const tileIds = new Set(config.pages.flatMap(page => page.tiles.map(tile => tile.id)));
   const orphanDrafts = Object.entries(yamlDrafts).filter(([id]) => !tileIds.has(id));
+  const pageIds = new Set(config.pages.map(page => page.id));
+  const orphanPageDrafts = Object.entries(pageYamlDrafts).filter(([id]) => !pageIds.has(id));
 
   const [colorList, setColorList] = useState<{id: string, value: string}[]>([]);
 
@@ -58,14 +104,18 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   }, [selectedTile?.id]);
 
   useEffect(() => {
-    if (Object.keys(yamlDrafts).length === 0) return;
+    setPageYamlError('');
+  }, [activePage.id]);
+
+  useEffect(() => {
+    if (Object.keys(yamlDrafts).length === 0 && Object.keys(pageYamlDrafts).length === 0) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [yamlDrafts]);
+  }, [yamlDrafts, pageYamlDrafts]);
 
   useEffect(() => {
     apiFetch('/scripts').then(async res => {
@@ -87,7 +137,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
       else next[selectedTile.id] = {
         text,
         initialText,
-        baseTile: draft?.baseTile ?? JSON.stringify(selectedTile)
+        baseSnapshot: draft?.baseSnapshot ?? JSON.stringify(selectedTile)
       };
       return next;
     });
@@ -104,7 +154,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   };
   const applyYamlDraft = () => {
     if (!selectedTile) return;
-    if (draft && draft.baseTile !== JSON.stringify(selectedTile)) {
+    if (draft && draft.baseSnapshot !== JSON.stringify(selectedTile)) {
       setYamlError('The tile changed since this draft was started. Cancel the draft and reopen YAML to edit the current tile.');
       return;
     }
@@ -121,8 +171,136 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
     }
   };
 
+  const pageDraft = pageYamlDrafts[activePage.id];
+  const pageYamlText = pageEditor === 'yaml' ? pageDraft?.text ?? generatePageYaml(activePage) : '';
+  const updatePageYamlText = (text: string) => {
+    const initialText = pageDraft?.initialText ?? generatePageYaml(activePage);
+    setPageYamlDrafts(current => {
+      const next = { ...current };
+      if (text === initialText) delete next[activePage.id];
+      else next[activePage.id] = {
+        text,
+        initialText,
+        baseSnapshot: pageDraft?.baseSnapshot ?? JSON.stringify(activePage)
+      };
+      return next;
+    });
+    setPageYamlError('');
+  };
+  const discardPageYamlDraft = () => {
+    setPageYamlDrafts(current => {
+      const next = { ...current };
+      delete next[activePage.id];
+      return next;
+    });
+    setPageYamlError('');
+  };
+  const applyPageYamlDraft = () => {
+    if (pageDraft && pageDraft.baseSnapshot !== JSON.stringify(activePage)) {
+      setPageYamlError('The page changed since this draft was started. Cancel the draft and reopen YAML to edit the current page.');
+      return;
+    }
+    try {
+      const existingPageIds = config.pages.filter(p => p.id !== activePage.id).map(p => p.id);
+      const parsedPage = parsePageYaml(pageYamlText, activePage, existingPageIds);
+      const otherHasBase = config.pages.some(p => p.id !== activePage.id && p.flags?.includes('BASE'));
+      if (config.pages.length > 1 && activePage.flags?.includes('BASE') && !parsedPage.flags?.includes('BASE') && !otherHasBase) {
+        throw new Error('Cannot remove BASE flag from the only BASE page. Set BASE on another page instead.');
+      }
+
+      if (setConfig) {
+        let pages = config.pages.map(p => {
+          if (p.id === activePage.id) return parsedPage;
+          if (parsedPage.flags?.includes('BASE') && p.flags?.includes('BASE')) {
+            return { ...p, flags: p.flags.filter(f => f !== 'BASE') };
+          }
+          return p;
+        });
+        if (parsedPage.id !== activePage.id) {
+          pages = pages.map(p => ({
+            ...p,
+            tiles: p.tiles.map(t => ({
+              ...t,
+              ...(t.destination === activePage.id ? { destination: parsedPage.id } : {}),
+              ...(t.long_destination === activePage.id ? { long_destination: parsedPage.id } : {}),
+              ...(t.display_page_if_no_entity === activePage.id ? { display_page_if_no_entity: parsedPage.id } : {}),
+            }))
+          }));
+        }
+        const existingDynamic = config.dynamic_entities || [];
+        const discovered = Array.from(new Set(parsedPage.tiles.flatMap(t => getTileDynamicEntities(t))));
+        const nextDynamic = [...existingDynamic];
+        for (const dyn of discovered) {
+          if (!nextDynamic.includes(dyn)) nextDynamic.push(dyn);
+        }
+        setConfig({
+          ...config,
+          pages,
+          ...(nextDynamic.length > existingDynamic.length ? { dynamic_entities: nextDynamic } : {})
+        });
+        if (parsedPage.id !== activePage.id) {
+          setActivePageId?.(parsedPage.id);
+        }
+      } else {
+        if (parsedPage.id !== activePage.id) {
+          onUpdatePage({ ...parsedPage, id: activePage.id });
+          onRenamePage(activePage.id, parsedPage.id);
+          setActivePageId?.(parsedPage.id);
+        } else {
+          onUpdatePage(parsedPage);
+        }
+      }
+
+      discardPageYamlDraft();
+      setPageEditor('form');
+    } catch (error) {
+      setPageYamlError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const renderPageProperties = () => (
-    <div className="space-y-6">
+    <div className="space-y-5 pb-20">
+      <div className="flex justify-between items-start border-b pb-3">
+        <div>
+          <h2 className="font-bold text-base text-slate-800">Edit Page</h2>
+          <div className="text-[10px] font-mono text-slate-400 mt-0.5">{activePage.id}</div>
+        </div>
+      </div>
+
+      <div className="flex gap-2" aria-label="Page editor mode">
+        <button
+          type="button"
+          onClick={() => setPageEditor('form')}
+          className={`px-3 py-1 rounded text-sm ${pageEditor === 'form' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+        >Form</button>
+        <button
+          type="button"
+          onClick={() => setPageEditor('yaml')}
+          className={`px-3 py-1 rounded text-sm ${pageEditor === 'yaml' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+        >YAML{pageDraft ? ' *' : ''}</button>
+      </div>
+
+      {pageEditor === 'yaml' ? (
+        <div className="space-y-2">
+          <label htmlFor="page-yaml" className="block text-xs font-medium text-slate-700">Page YAML</label>
+          <p className="text-xs text-slate-500">Edit this screen and its tiles as YAML. Common leading indentation is removed; relative indentation must be valid. Comments and formatting are not saved.</p>
+          <textarea
+            id="page-yaml"
+            spellCheck={false}
+            value={pageYamlText}
+            onChange={event => updatePageYamlText(event.target.value)}
+            onKeyDown={event => handleYamlKeyDown(event, pageYamlText, updatePageYamlText)}
+            className="w-full min-h-[380px] border-2 border-slate-200 rounded-lg p-2 text-xs font-mono focus:border-blue-500 outline-none"
+          />
+          {pageYamlError && <p role="alert" className="text-xs text-red-600 whitespace-pre-wrap">{pageYamlError}</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={applyPageYamlDraft} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm">Apply</button>
+            <button type="button" onClick={() => { discardPageYamlDraft(); setPageEditor('form'); }} className="px-3 py-1.5 rounded bg-slate-100 text-slate-700 text-sm">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {pageDraft && <p className="text-xs text-amber-700">A YAML draft is pending. Return to YAML to apply or cancel it.</p>}
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Page Settings</label>
         <div className="mb-4">
@@ -391,6 +569,8 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
         </div>
       </div>
     </div>
+      )}
+    </div>
   );
 
   return (
@@ -421,23 +601,46 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
         </button>
       </div>
 
-      {orphanDrafts.length > 0 && (
+      {(orphanDrafts.length > 0 || orphanPageDrafts.length > 0) && (
         <div className="p-3 bg-amber-50 text-xs text-amber-800 space-y-2">
-          <p>These YAML drafts belong to tiles no longer in the project. Copy or discard them before leaving.</p>
-          {orphanDrafts.map(([id, orphan]) => (
-            <details key={id}>
-              <summary className="cursor-pointer">Draft for removed tile {id}</summary>
-              <textarea aria-label={`Draft for removed tile ${id}`} readOnly value={orphan.text} className="w-full min-h-[100px] mt-1 p-1 font-mono border rounded bg-white" />
-              <button type="button" className="underline" onClick={() => {
-                if (!confirm('Discard this YAML draft?')) return;
-                setYamlDrafts(current => {
-                  const next = { ...current };
-                  delete next[id];
-                  return next;
-                });
-              }}>Discard draft</button>
-            </details>
-          ))}
+          {orphanDrafts.length > 0 && (
+            <>
+              <p>These YAML drafts belong to tiles no longer in the project. Copy or discard them before leaving.</p>
+              {orphanDrafts.map(([id, orphan]) => (
+                <details key={`tile-${id}`}>
+                  <summary className="cursor-pointer">Draft for removed tile {id}</summary>
+                  <textarea aria-label={`Draft for removed tile ${id}`} readOnly value={orphan.text} className="w-full min-h-[100px] mt-1 p-1 font-mono border rounded bg-white" />
+                  <button type="button" className="underline" onClick={() => {
+                    if (!confirm('Discard this YAML draft?')) return;
+                    setYamlDrafts(current => {
+                      const next = { ...current };
+                      delete next[id];
+                      return next;
+                    });
+                  }}>Discard draft</button>
+                </details>
+              ))}
+            </>
+          )}
+          {orphanPageDrafts.length > 0 && (
+            <>
+              <p>These YAML drafts belong to pages no longer in the project. Copy or discard them before leaving.</p>
+              {orphanPageDrafts.map(([id, orphan]) => (
+                <details key={`page-${id}`}>
+                  <summary className="cursor-pointer">Draft for removed page {id}</summary>
+                  <textarea aria-label={`Draft for removed page ${id}`} readOnly value={orphan.text} className="w-full min-h-[100px] mt-1 p-1 font-mono border rounded bg-white" />
+                  <button type="button" className="underline" onClick={() => {
+                    if (!confirm('Discard this YAML draft?')) return;
+                    setPageYamlDrafts(current => {
+                      const next = { ...current };
+                      delete next[id];
+                      return next;
+                    });
+                  }}>Discard draft</button>
+                </details>
+              ))}
+            </>
+          )}
         </div>
       )}
       <div className="flex-1 overflow-y-auto p-4">
@@ -482,40 +685,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                   spellCheck={false}
                   value={yamlText}
                   onChange={event => updateYamlText(event.target.value)}
-                  onKeyDown={event => {
-                    if ((event.key !== 'Enter' && event.key !== 'Tab') || event.ctrlKey || event.metaKey || event.altKey) return;
-                    const input = event.currentTarget;
-                    const start = input.selectionStart;
-                    const end = input.selectionEnd;
-                    if (event.shiftKey && (event.key !== 'Tab' || start === end)) return;
-                    if (event.key === 'Tab' && start !== end) {
-                      const lineStart = yamlText.lastIndexOf('\n', start - 1) + 1;
-                      const lastSelected = yamlText[end - 1] === '\n' ? end - 1 : end;
-                      const lineEnd = yamlText.indexOf('\n', lastSelected);
-                      const blockEnd = lineEnd === -1 ? yamlText.length : lineEnd;
-                      const block = yamlText.slice(lineStart, blockEnd).split('\n')
-                        .map(line => event.shiftKey ? line.replace(/^ {1,2}/, '') : `  ${line}`).join('\n');
-                      event.preventDefault();
-                      updateYamlText(yamlText.slice(0, lineStart) + block + yamlText.slice(blockEnd));
-                      requestAnimationFrame(() => {
-                        input.selectionStart = lineStart;
-                        input.selectionEnd = lineStart + block.length;
-                      });
-                      return;
-                    }
-                    let insertion = '  ';
-                    if (event.key === 'Enter') {
-                      const line = yamlText.slice(yamlText.lastIndexOf('\n', start - 1) + 1, start);
-                      const spaces = line.match(/^ */)?.[0] ?? '';
-                      const extra = /:\s*$/.test(line) ? (/^\s*-\s+/.test(line) ? '    ' : '  ') : '';
-                      insertion = `\n${spaces}${extra}`;
-                    }
-                    event.preventDefault();
-                    updateYamlText(yamlText.slice(0, start) + insertion + yamlText.slice(end));
-                    requestAnimationFrame(() => {
-                      input.selectionStart = input.selectionEnd = start + insertion.length;
-                    });
-                  }}
+                  onKeyDown={event => handleYamlKeyDown(event, yamlText, updateYamlText)}
                   className="w-full min-h-[300px] border-2 border-slate-200 rounded-lg p-2 text-xs font-mono focus:border-blue-500 outline-none"
                 />
                 {yamlError && <p role="alert" className="text-xs text-red-600 whitespace-pre-wrap">{yamlError}</p>}

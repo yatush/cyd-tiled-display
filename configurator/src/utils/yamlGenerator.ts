@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import type { Config, Tile } from '../types';
+import type { Config, Page, Tile } from '../types';
 
 // ---------------------------------------------------------------------------
 // Known-field allowlists derived from schema.json.
@@ -24,12 +24,22 @@ const TYPE_SPECIFIC_FIELDS: Record<string, Set<string>> = {
   function:      new Set(['on_press', 'on_release']),
 };
 
-/** Synchronize known tile fields at runtime with the schema.json payload from /api/schema. */
+const SCREEN_FIELDS = new Set([
+  'id', 'rows', 'cols', 'flags', 'time_color', 'background', 'tiles',
+]);
+
+/** Synchronize known tile and screen fields at runtime with the schema.json payload from /api/schema. */
 export function registerTileSchema(schema: {
+  screen?: { name: string }[];
   common?: { name: string }[];
   types?: { type: string; fields?: { name: string }[] }[];
 } | null | undefined): void {
   if (!schema || typeof schema !== 'object') return;
+  if (Array.isArray(schema.screen)) {
+    for (const field of schema.screen) {
+      if (field?.name) SCREEN_FIELDS.add(field.name);
+    }
+  }
   if (Array.isArray(schema.common)) {
     for (const field of schema.common) {
       if (field?.name) COMMON_TILE_FIELDS.add(field.name);
@@ -44,6 +54,10 @@ export function registerTileSchema(schema: {
       TYPE_SPECIFIC_FIELDS[typeDef.type] = fields;
     }
   }
+}
+
+export function unknownPageFields(page: Record<string, unknown>): string[] {
+  return Object.keys(page).filter(key => !SCREEN_FIELDS.has(key));
 }
 
 export function unknownTileFields(tile: Record<string, unknown>, type: string): string[] {
@@ -194,30 +208,57 @@ const serializeTile = ({ id, ...rest }: Tile, includeIds: boolean, retainUnknown
 const formatIcons = (text: string) =>
     text.replace(/icon:\s*['"]?(\\U[0-9a-fA-F]+)['"]?/g, "icon: '\"$1\"'");
 
-export const generateTileYaml = (tile: Tile): string =>
-    formatIcons(yaml.dump([serializeTile(tile, false, true)], { lineWidth: -1, noCompatMode: true, sortKeys: false }));
+const serializePage = (page: Page, includeIds: boolean, retainUnknown = false) => {
+    const pageExtras: Record<string, any> = {};
+    if (retainUnknown) {
+      for (const [key, value] of Object.entries(page as Record<string, any>)) {
+        if (!SCREEN_FIELDS.has(key) && value !== undefined) {
+          pageExtras[key] = value;
+        }
+      }
+    }
 
-export const generateYaml = (config: Config, includeIds: boolean = false, includeInternalKeys: boolean = true) => {
-    // Convert internal model to YAML structure expected by Python script
-    const screens = config.pages.map(page => ({
+    const serializedBg = page.background && page.background.length > 0
+      ? page.background.map((entry: any) => {
+          const result: any = retainUnknown ? { ...entry } : {};
+          if (!retainUnknown) {
+            if ('color' in entry && entry.color) result.color = entry.color;
+            if ('image' in entry && entry.image) result.image = entry.image;
+          }
+          if ('condition' in entry && entry.condition !== '' && entry.condition != null) {
+            result.condition = transformConditionLogic(entry.condition);
+          } else if (retainUnknown && 'condition' in result && (result.condition == null || result.condition === '')) {
+            delete result.condition;
+          }
+          return result;
+        }).filter(e => retainUnknown || 'color' in e || 'image' in e)
+      : undefined;
+
+    const tilesToSerialize = retainUnknown
+      ? page.tiles
+      : page.tiles.filter(tile => tile.x < page.cols && tile.y < page.rows);
+
+    return {
       id: page.id,
       rows: page.rows,
       cols: page.cols,
       flags: page.flags && page.flags.length > 0 ? page.flags : undefined,
       time_color: page.time_color || undefined,
-      background: page.background && page.background.length > 0 ? page.background.map((entry: any) => {
-        const result: any = {};
-        if ('color' in entry && entry.color) result.color = entry.color;
-        if ('image' in entry && entry.image) result.image = entry.image;
-        if ('condition' in entry && entry.condition !== '' && entry.condition != null) {
-          result.condition = transformConditionLogic(entry.condition);
-        }
-        return result;
-      }).filter(e => 'color' in e || 'image' in e) : undefined,
-      tiles: page.tiles
-        .filter(tile => tile.x < page.cols && tile.y < page.rows)
-        .map(tile => serializeTile(tile, includeIds))
-    }));
+      background: serializedBg && serializedBg.length > 0 ? serializedBg : undefined,
+      ...pageExtras,
+      tiles: tilesToSerialize.map(tile => serializeTile(tile, includeIds, retainUnknown)),
+    };
+};
+
+export const generateTileYaml = (tile: Tile): string =>
+    formatIcons(yaml.dump([serializeTile(tile, false, true)], { lineWidth: -1, noCompatMode: true, sortKeys: false }));
+
+export const generatePageYaml = (page: Page): string =>
+    formatIcons(yaml.dump([serializePage(page, false, true)], { lineWidth: -1, noCompatMode: true, sortKeys: false }));
+
+export const generateYaml = (config: Config, includeIds: boolean = false, includeInternalKeys: boolean = true) => {
+    // Convert internal model to YAML structure expected by Python script
+    const screens = config.pages.map(page => serializePage(page, includeIds, false));
     
     const yamlString = yaml.dump({ 
         screens,

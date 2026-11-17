@@ -1,7 +1,10 @@
 import yaml from 'js-yaml';
-import type { Tile } from '../types';
-import { unknownTileFields } from './yamlGenerator.ts';
+import type { Page, Tile } from '../types';
+import { unknownPageFields, unknownTileFields } from './yamlGenerator.ts';
 import { convertParsedYamlToConfig } from './yamlParser.ts';
+
+const VALID_PAGE_FLAGS = new Set(['BASE', 'TEMPORARY', 'FAST_REFRESH', 'OMIT_TIME_WIFI']);
+const VALID_BACKGROUND_KEYS = new Set(['color', 'image', 'condition']);
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) &&
@@ -35,15 +38,14 @@ function rejectCycles(value: unknown, ancestors = new Set<object>()): void {
   ancestors.delete(value);
 }
 
-export function parseTileYaml(text: string, id: string): Tile {
+function loadDedentedYaml(text: string): unknown {
   const lines = text.split('\n');
   const indents = lines.filter(line => line.trim()).map(line => line.match(/^ */)![0].length);
   const indent = indents.length ? Math.min(...indents) : 0;
   const normalized = lines.map(line => line.trim() ? line.slice(indent) : '').join('\n');
 
-  let parsed: unknown;
   try {
-    parsed = yaml.load(normalized);
+    return yaml.load(normalized);
   } catch (error) {
     if (error instanceof yaml.YAMLException && error.mark) {
       const offset = lines[error.mark.line]?.trim() ? indent : 0;
@@ -51,16 +53,9 @@ export function parseTileYaml(text: string, id: string): Tile {
     }
     throw error;
   }
+}
 
-  if (Array.isArray(parsed)) {
-    if (parsed.length !== 1) throw new Error('Enter exactly one tile.');
-    parsed = parsed[0];
-  }
-  if (!isMapping(parsed) || Object.keys(parsed).length !== 1) {
-    throw new Error('Enter one tile as a mapping with its type as the key.');
-  }
-  const [type, props] = Object.entries(parsed)[0];
-  if (!isMapping(props)) throw new Error('Tile properties must be a mapping.');
+function validateTileMapping(type: string, props: Record<string, unknown>): void {
   rejectCycles(props);
   const unknown = unknownTileFields(props, type);
   if (unknown.length) throw new Error(`Unsupported field(s) for ${type}: ${unknown.join(', ')}`);
@@ -91,56 +86,189 @@ export function parseTileYaml(text: string, id: string): Tile {
     if (Array.isArray(value) && value.some(item => !isMapping(item))) {
       throw new Error(`Each ${key} entry must be a mapping.`);
     }
-    for (const key of ['dynamic_entity', 'destination', 'long_destination', 'long_dynamic_entity', 'presentation_name', 'display_page_if_no_entity']) {
-      if (props[key] !== undefined && typeof props[key] !== 'string') {
-        throw new Error(`${key} must be a string.`);
-      }
+  }
+  for (const key of ['dynamic_entity', 'destination', 'long_destination', 'long_dynamic_entity', 'presentation_name', 'display_page_if_no_entity']) {
+    if (props[key] !== undefined && typeof props[key] !== 'string') {
+      throw new Error(`${key} must be a string.`);
     }
-    for (const key of ['initially_chosen', 'reset_on_leave']) {
-      if (props[key] !== undefined && typeof props[key] !== 'boolean') {
-        throw new Error(`${key} must be a boolean.`);
-      }
+  }
+  for (const key of ['initially_chosen', 'reset_on_leave']) {
+    if (props[key] !== undefined && typeof props[key] !== 'boolean') {
+      throw new Error(`${key} must be a boolean.`);
     }
-    for (const key of ['activation_var', 'dynamic_entry']) {
-      if (props[key] !== undefined && !isMapping(props[key])) {
-        throw new Error(`${key} must be a mapping.`);
-      }
+  }
+  for (const key of ['activation_var', 'dynamic_entry']) {
+    if (props[key] !== undefined && !isMapping(props[key])) {
+      throw new Error(`${key} must be a mapping.`);
     }
-    for (const key of ['fill_color', 'border_color', 'border_width', 'border_radius']) {
-      const value = props[key];
-      if (value === undefined) continue;
-      const scalarType = key.endsWith('color') ? 'string' : 'number';
-      if (typeof value !== scalarType && (!Array.isArray(value) || value.some(item => !isMapping(item)))) {
-        throw new Error(`${key} must be a ${scalarType} or a list of mappings.`);
-      }
-      const itemKey = scalarType === 'string' ? 'color' : 'value';
-      if (Array.isArray(value) && value.some(item => typeof item[itemKey] !== scalarType)) {
-        throw new Error(`Each ${key} entry must contain a ${scalarType} ${itemKey}.`);
-      }
+  }
+  for (const key of ['fill_color', 'border_color', 'border_width', 'border_radius']) {
+    const value = props[key];
+    if (value === undefined) continue;
+    const scalarType = key.endsWith('color') ? 'string' : 'number';
+    if (typeof value !== scalarType && (!Array.isArray(value) || value.some(item => !isMapping(item)))) {
+      throw new Error(`${key} must be a ${scalarType} or a list of mappings.`);
     }
-    if (props.requires_fast_refresh !== undefined) validateCondition(props.requires_fast_refresh);
-    if (Array.isArray(props.display_assets)) {
-      for (const entry of props.display_assets) {
-        if (!isMapping(entry)) continue;
-        if (entry.condition !== undefined) validateCondition(entry.condition);
-        for (const key of ['image', 'icon', 'icon_color', 'icon_size']) {
-          if (entry[key] !== undefined && typeof entry[key] !== 'string') {
-            throw new Error(`display_assets ${key} must be a string.`);
-          }
+    const itemKey = scalarType === 'string' ? 'color' : 'value';
+    if (Array.isArray(value) && value.some(item => typeof item[itemKey] !== scalarType)) {
+      throw new Error(`Each ${key} entry must contain a ${scalarType} ${itemKey}.`);
+    }
+  }
+  if (props.requires_fast_refresh !== undefined) validateCondition(props.requires_fast_refresh);
+  if (Array.isArray(props.display_assets)) {
+    for (const entry of props.display_assets) {
+      if (!isMapping(entry)) continue;
+      if (entry.condition !== undefined) validateCondition(entry.condition);
+      for (const key of ['image', 'icon', 'icon_color', 'icon_size']) {
+        if (entry[key] !== undefined && typeof entry[key] !== 'string') {
+          throw new Error(`display_assets ${key} must be a string.`);
         }
-        if (entry.animation !== undefined) {
-          if (!isMapping(entry.animation)) throw new Error('Animation must be a mapping.');
-          if (entry.animation.steps !== undefined &&
-              (!Array.isArray(entry.animation.steps) || entry.animation.steps.some(step => !isMapping(step)))) {
-            throw new Error('Animation steps must be a list of mappings.');
-          }
+      }
+      if (entry.animation !== undefined) {
+        if (!isMapping(entry.animation)) throw new Error('Animation must be a mapping.');
+        if (entry.animation.steps !== undefined &&
+            (!Array.isArray(entry.animation.steps) || entry.animation.steps.some(step => !isMapping(step)))) {
+          throw new Error('Animation steps must be a list of mappings.');
         }
       }
     }
   }
+}
+
+export function parseTileYaml(text: string, id: string): Tile {
+  let parsed = loadDedentedYaml(text);
+
+  if (Array.isArray(parsed)) {
+    if (parsed.length !== 1) throw new Error('Enter exactly one tile.');
+    parsed = parsed[0];
+  }
+  if (!isMapping(parsed) || Object.keys(parsed).length !== 1) {
+    throw new Error('Enter one tile as a mapping with its type as the key.');
+  }
+  const [type, props] = Object.entries(parsed)[0];
+  if (!isMapping(props)) throw new Error('Tile properties must be a mapping.');
+  validateTileMapping(type, props);
 
   const config = convertParsedYamlToConfig({
     screens: [{ id: 'editor', rows: 1, cols: 1, tiles: [{ [type]: props }] }]
   });
   return { ...config.pages[0].tiles[0], id };
+}
+
+export function parsePageYaml(text: string, currentPage: Page, existingPageIds: string[] = []): Page {
+  let parsed = loadDedentedYaml(text);
+
+  if (isMapping(parsed) && Object.keys(parsed).length === 1 && 'screens' in parsed && Array.isArray(parsed.screens)) {
+    parsed = parsed.screens;
+  }
+  if (Array.isArray(parsed)) {
+    if (parsed.length !== 1) throw new Error('Enter exactly one page.');
+    parsed = parsed[0];
+  }
+  if (!isMapping(parsed)) {
+    throw new Error('Enter one page as a mapping.');
+  }
+
+  rejectCycles(parsed);
+  const unknown = unknownPageFields(parsed);
+  if (unknown.length) {
+    throw new Error(`Unsupported field(s) for page: ${unknown.join(', ')}`);
+  }
+
+  if (typeof parsed.id !== 'string' || !parsed.id.trim()) {
+    throw new Error('Page id must be a non-empty string.');
+  }
+  if (parsed.id !== currentPage.id && existingPageIds.includes(parsed.id)) {
+    throw new Error(`Page ID "${parsed.id}" already exists.`);
+  }
+
+  for (const key of ['rows', 'cols'] as const) {
+    const val = parsed[key];
+    if (val !== undefined && (typeof val !== 'number' || !Number.isInteger(val) || val < 1)) {
+      throw new Error(`${key} must be a positive integer.`);
+    }
+  }
+  const rows = (parsed.rows as number | undefined) ?? currentPage.rows ?? 2;
+  const cols = (parsed.cols as number | undefined) ?? currentPage.cols ?? 3;
+
+  if (parsed.flags !== undefined) {
+    if (!Array.isArray(parsed.flags) || parsed.flags.some(f => typeof f !== 'string')) {
+      throw new Error('flags must be a list of flag strings.');
+    }
+    for (const flag of parsed.flags) {
+      if (!VALID_PAGE_FLAGS.has(flag)) {
+        throw new Error(`Invalid page flag "${flag}". Valid flags: ${Array.from(VALID_PAGE_FLAGS).join(', ')}.`);
+      }
+    }
+    if (parsed.flags.includes('BASE') && parsed.flags.includes('TEMPORARY')) {
+      throw new Error('A page cannot have both BASE and TEMPORARY flags.');
+    }
+  }
+
+  if (parsed.time_color !== undefined && (typeof parsed.time_color !== 'string' || !parsed.time_color.trim())) {
+    throw new Error('time_color must be a non-empty string.');
+  }
+
+  if (parsed.background !== undefined) {
+    if (!Array.isArray(parsed.background) || parsed.background.some(item => !isMapping(item))) {
+      throw new Error('background must be a list of mappings.');
+    }
+    for (const entry of parsed.background) {
+      const extraBgKeys = Object.keys(entry).filter(k => !VALID_BACKGROUND_KEYS.has(k));
+      if (extraBgKeys.length) {
+        throw new Error(`Unsupported background field(s): ${extraBgKeys.join(', ')}.`);
+      }
+      const hasColor = 'color' in entry;
+      const hasImage = 'image' in entry;
+      if (hasColor && hasImage) {
+        throw new Error('A background entry cannot have both color and image.');
+      }
+      if (!hasColor && !hasImage) {
+        throw new Error('Each background entry must specify either color or image.');
+      }
+      if (hasColor && (typeof entry.color !== 'string' || !entry.color.trim())) {
+        throw new Error('background color must be a non-empty string.');
+      }
+      if (hasImage && (typeof entry.image !== 'string' || !entry.image.trim())) {
+        throw new Error('background image must be a non-empty string.');
+      }
+      if (entry.condition !== undefined) {
+        validateCondition(entry.condition);
+      }
+    }
+  }
+
+  if (parsed.tiles !== undefined && !Array.isArray(parsed.tiles)) {
+    throw new Error('tiles must be a list.');
+  }
+  const rawTiles = (parsed.tiles as unknown[] | undefined) ?? [];
+  for (const item of rawTiles) {
+    if (!isMapping(item) || Object.keys(item).length !== 1) {
+      throw new Error('Each tile entry must be a mapping with its type as the key.');
+    }
+    const [tileType, tileProps] = Object.entries(item)[0];
+    if (!isMapping(tileProps)) {
+      throw new Error('Tile properties must be a mapping.');
+    }
+    validateTileMapping(tileType, tileProps);
+    const tx = tileProps.x as number;
+    const ty = tileProps.y as number;
+    const txSpan = (tileProps.x_span as number | undefined) ?? 1;
+    const tySpan = (tileProps.y_span as number | undefined) ?? 1;
+    if ((tx < 0) !== (ty < 0) || (tx >= 0 && ty >= 0 && (tx + txSpan > cols || ty + tySpan > rows))) {
+      throw new Error('Each tile position must be within the page grid (or -1, -1 for unplaced tiles).');
+    }
+  }
+
+  const convertedPage = convertParsedYamlToConfig({
+    screens: [{ ...parsed, rows, cols, tiles: rawTiles }]
+  }).pages[0];
+
+  return {
+    ...convertedPage,
+    tiles: convertedPage.tiles.map((tile, idx) => ({
+      ...tile,
+      id: currentPage.tiles[idx]?.id ?? tile.id,
+    })),
+  };
 }

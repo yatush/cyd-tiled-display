@@ -485,6 +485,7 @@ function App() {
           config={config}
           schema={schema}
           activePage={activePage}
+          setActivePageId={setActivePageId}
           haEntities={haEntities}
           onUpdatePage={handleUpdatePage}
           onRenamePage={handleRenamePage}
