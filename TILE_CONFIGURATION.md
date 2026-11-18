@@ -23,6 +23,13 @@ esphome/monitor_tiles.yaml
 ## Basic Structure
 
 ```yaml
+dynamic_entities:        # optional — runtime variable names and/or fixed entity bindings
+  - LIGHT: light.bedroom_main
+  - BLINDS:
+      - cover.bedroom_left
+      - cover.bedroom_right
+  - ACTIVE_FAN
+
 screens:
   - id: screen_name
     flags: [FLAG1, FLAG2]
@@ -588,9 +595,20 @@ Dynamic entities can also hold multiple entity IDs simultaneously (a group/vecto
 
 Common ways to populate/update a dynamic entity:
 
-- `toggle_entity` tile: sets a fixed entity (or comma-separated entity list) when tapped.
+- **Fixed `dynamic_entities` binding (read-only)**: bind a variable to one or more Home Assistant entity IDs directly in `dynamic_entities:` at the top of `tile_ui:`. Fixed dynamic entities are populated automatically at startup and cannot be overwritten at runtime by `toggle_entity`, `cycle_entity`, `move_page.dynamic_entry`, or `long_dynamic_entity`. This is ideal when duplicating the same screen layout across multiple physical rooms/devices and changing only the top-level entity bindings.
+- `toggle_entity` tile: sets an entity (or comma-separated entity list) when tapped.
 - `cycle_entity` tile: rotates through options; supports `"*"` to represent all other options.
 - `move_page.dynamic_entry`: sets a value when entering a destination screen.
+- `ha_action.long_dynamic_entity`: populates a dynamic entity when opening `long_destination` on long press.
+
+```yaml
+dynamic_entities:
+  - LIGHT: light.bedroom_main          # Fixed single entity (read-only)
+  - BLINDS:                            # Fixed multi-entity group (read-only)
+      - cover.bedroom_left
+      - cover.bedroom_right
+  - ROOM                               # Runtime dynamic entity (set by tiles)
+```
 
 #### Where dynamic entities are used
 

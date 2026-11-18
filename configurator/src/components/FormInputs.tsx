@@ -422,6 +422,7 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
                   );
                   const currentVal = item[field.key] || '';
                   const isDuplicate = currentVal !== '' && usedByOthers.has(currentVal);
+                  const isDisallowed = currentVal !== '' && !dynamicEntities.includes(currentVal);
                   return (
                     <>
                       <select
@@ -431,9 +432,12 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
                           newValues[i] = { ...item, [field.key]: e.target.value };
                           onChange(newValues);
                         }}
-                        className={`w-full border rounded p-1 text-xs bg-white ${isDuplicate ? 'border-red-500' : ''}`}
+                        className={`w-full border rounded p-1 text-xs bg-white ${isDuplicate || isDisallowed ? 'border-red-500' : ''}`}
                       >
                         <option value="">Select variable...</option>
+                        {isDisallowed && (
+                          <option value={currentVal}>{currentVal} (fixed — read-only)</option>
+                        )}
                         {dynamicEntities.map(d => (
                           <option key={d} value={d} disabled={usedByOthers.has(d)}>
                             {d}
@@ -442,6 +446,9 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
                       </select>
                       {isDuplicate && (
                         <p className="text-[10px] text-red-600 mt-0.5">Duplicate dynamic entity "{currentVal}".</p>
+                      )}
+                      {isDisallowed && (
+                        <p className="text-[10px] text-red-600 mt-0.5">"{currentVal}" has a fixed value and cannot be modified at runtime.</p>
                       )}
                     </>
                   );

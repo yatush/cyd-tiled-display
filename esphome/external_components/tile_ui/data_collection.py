@@ -21,6 +21,7 @@ __all__ = [
     "collect_referenced_scripts",
     "collect_referenced_globals",
     "collect_dynamic_entities",
+    "parse_dynamic_entities_config",
 ]
 
 
@@ -321,3 +322,116 @@ def collect_dynamic_entities(entities_config, entity_set):
         for entity in entities_config:
             if isinstance(entity, dict) and "dynamic_entity" in entity:
                 entity_set.add(entity["dynamic_entity"])
+
+
+def _normalize_fixed_entity_values(name: str, raw_val: Any) -> list[str]:
+    """Validate and normalize fixed entity value(s) for a dynamic entity."""
+    if isinstance(raw_val, str):
+        values = [v.strip() for v in raw_val.split(",")] if "," in raw_val else [raw_val.strip()]
+    elif isinstance(raw_val, list):
+        if not raw_val:
+            raise ValueError(f"Fixed dynamic entity '{name}' cannot have an empty entity list")
+        values = []
+        for item in raw_val:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(
+                    f"Fixed dynamic entity '{name}' list items must be non-empty strings, got {item!r}"
+                )
+            values.append(item.strip())
+    else:
+        raise ValueError(
+            f"Fixed dynamic entity '{name}' must map to an entity string or list of entity strings, "
+            f"got {type(raw_val).__name__}"
+        )
+
+    if not values or any(not v for v in values):
+        raise ValueError(f"Fixed dynamic entity '{name}' must specify at least one non-empty entity ID")
+
+    for ent in values:
+        if "#{" in ent:
+            raise ValueError(
+                f"Fixed dynamic entity '{name}' value '{ent}' cannot contain dynamic placeholders"
+            )
+    return values
+
+
+def parse_dynamic_entities_config(
+    dynamic_entities_config: Any,
+) -> tuple[list[str] | None, dict[str, list[str]]]:
+    """Normalize top-level ``dynamic_entities`` configuration.
+
+    Supports:
+    - ``None`` -> ``(None, {})`` (no explicit declaration)
+    - List of mixed entries:
+      - ``"VAR"`` -> runtime dynamic entity
+      - ``{"VAR": "domain.entity"}`` or ``{"VAR": ["domain.e1", "domain.e2"]}`` -> fixed dynamic entity
+      - ``{"name": "VAR", "entities": [...]}`` / ``{"name": "VAR", "value": ...}`` -> object form
+    - Dict mapping ``{"VAR": "domain.entity", ...}`` -> convenience mapping form
+
+    Returns:
+        Tuple of ``(declared_names, fixed_values)`` where ``declared_names`` preserves
+        declaration order and ``fixed_values`` maps fixed variable names to their entity lists.
+    """
+    if dynamic_entities_config is None:
+        return None, {}
+
+    declared_names: list[str] = []
+    seen_names: set[str] = set()
+    fixed_values: dict[str, list[str]] = {}
+
+    def _register(raw_name: Any, fixed_raw: Any = None, has_fixed: bool = False) -> None:
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise ValueError(f"Dynamic entity name must be a non-empty string, got {raw_name!r}")
+        name = raw_name.strip()
+        if name in seen_names:
+            raise ValueError(f"Duplicate dynamic entity declaration: '{name}'")
+        seen_names.add(name)
+        declared_names.append(name)
+        if has_fixed:
+            fixed_values[name] = _normalize_fixed_entity_values(name, fixed_raw)
+
+    if isinstance(dynamic_entities_config, dict):
+        for k, v in dynamic_entities_config.items():
+            if v is None:
+                _register(k, has_fixed=False)
+            else:
+                _register(k, v, has_fixed=True)
+        return declared_names, fixed_values
+
+    if not isinstance(dynamic_entities_config, list):
+        raise ValueError(
+            f"dynamic_entities must be a list, got {type(dynamic_entities_config).__name__}"
+        )
+
+    for entry in dynamic_entities_config:
+        if isinstance(entry, str):
+            _register(entry, has_fixed=False)
+        elif isinstance(entry, dict):
+            if "name" in entry and set(entry.keys()).issubset({"name", "entities", "value"}):
+                if "entities" in entry and "value" in entry:
+                    raise ValueError(
+                        f"Dynamic entity '{entry.get('name')}' cannot specify both 'entities' and 'value'"
+                    )
+                has_val = ("entities" in entry and entry["entities"] is not None) or (
+                    "value" in entry and entry["value"] is not None
+                )
+                raw_val = entry.get("entities") if "entities" in entry else entry.get("value")
+                _register(entry["name"], raw_val, has_fixed=has_val)
+            elif len(entry) == 1:
+                name, raw_val = next(iter(entry.items()))
+                if raw_val is None:
+                    raise ValueError(
+                        f"Fixed dynamic entity '{name}' must specify at least one non-empty entity ID"
+                    )
+                _register(name, raw_val, has_fixed=True)
+            else:
+                raise ValueError(
+                    f"Invalid dynamic_entities dict entry {entry!r}: expected single-key "
+                    f"'{{VAR: entity_or_list}}' or '{{name: VAR, entities: [...]}}'"
+                )
+        else:
+            raise ValueError(
+                f"dynamic_entities items must be strings or dicts, got {type(entry).__name__}"
+            )
+
+    return declared_names, fixed_values

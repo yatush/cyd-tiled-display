@@ -53,33 +53,128 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
   );
 };
 
-export const DynamicEntitiesEditor = ({ entities, onChange }: { entities: string[], onChange: (v: string[]) => void }) => {
+export const DynamicEntitiesEditor = ({
+  entities,
+  fixedValues = {},
+  onChange,
+  onFixedChange,
+  haEntities,
+}: {
+  entities: string[];
+  fixedValues?: Record<string, string[]>;
+  onChange: (v: string[]) => void;
+  onFixedChange?: (varName: string, values: string[] | null) => void;
+  haEntities?: HaEntity[];
+}) => {
   const safeEntities = Array.isArray(entities) ? entities : (entities ? [entities] : []);
+  const listId = `ha-dyn-fixed-${Math.random().toString(36).substr(2, 9)}`;
 
   return (
     <div className="mb-2">
-      <div className="space-y-1">
-        {safeEntities.map((v, i) => (
-          <div key={i} className="flex gap-1">
-            <input
-              type="text"
-              value={v}
-              onChange={e => {
-                const newValues = [...safeEntities];
-                newValues[i] = e.target.value;
-                onChange(newValues);
-              }}
-              className="flex-1 border rounded p-1 text-sm"
-              placeholder="Variable Name"
-            />
-            <button
-              onClick={() => onChange(safeEntities.filter((_, idx) => idx !== i))}
-              className="text-red-500 hover:bg-red-50 p-1 rounded"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
+      <div className="space-y-2">
+        {safeEntities.map((v, i) => {
+          const trimmedName = v.trim();
+          const isFixed = Boolean(trimmedName && Object.prototype.hasOwnProperty.call(fixedValues, trimmedName));
+          const boundEntities = isFixed ? (fixedValues[trimmedName] || ['']) : [];
+          const displayBound = boundEntities.length > 0 ? boundEntities : [''];
+
+          return (
+            <div key={i} className="border rounded p-2 bg-white space-y-1.5 shadow-sm">
+              <div className="flex gap-1 items-center">
+                <input
+                  type="text"
+                  value={v}
+                  onChange={e => {
+                    const newValues = [...safeEntities];
+                    newValues[i] = e.target.value;
+                    onChange(newValues);
+                  }}
+                  className="flex-1 min-w-0 border rounded p-1 text-xs font-medium"
+                  placeholder="Variable Name"
+                />
+                <button
+                  onClick={() => onChange(safeEntities.filter((_, idx) => idx !== i))}
+                  className="text-red-500 hover:bg-red-50 p-1 rounded flex-shrink-0"
+                  title="Delete Variable"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+
+              {onFixedChange && trimmedName !== '' && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold">Mode</span>
+                  <div className="inline-flex rounded border overflow-hidden text-[10px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => isFixed && onFixedChange(trimmedName, null)}
+                      className={`px-2 py-0.5 transition-colors ${!isFixed ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                      title="Set dynamically at runtime by navigation or selector tiles"
+                    >
+                      Runtime
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => !isFixed && onFixedChange(trimmedName, [''])}
+                      className={`px-2 py-0.5 border-l transition-colors ${isFixed ? 'bg-purple-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                      title="Bind to fixed Home Assistant entity ID(s) in this file"
+                    >
+                      Fixed
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {onFixedChange && isFixed && (
+                <div className="pt-1 border-t border-slate-100 space-y-1">
+                  <label className="block text-[10px] text-slate-500 uppercase">Fixed Entity ID(s)</label>
+                  {displayBound.map((entVal, entIdx) => (
+                    <div key={entIdx} className="flex gap-1 items-center">
+                      <input
+                        type="text"
+                        value={entVal}
+                        onChange={e => {
+                          const next = [...displayBound];
+                          next[entIdx] = e.target.value;
+                          onFixedChange(trimmedName, next);
+                        }}
+                        list={haEntities ? listId : undefined}
+                        placeholder="e.g. light.living_room"
+                        className="flex-1 min-w-0 border rounded p-1 text-xs"
+                      />
+                      {displayBound.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => onFixedChange(trimmedName, displayBound.filter((_, idx) => idx !== entIdx))}
+                          className="text-red-500 hover:bg-red-50 p-0.5 rounded flex-shrink-0"
+                          title="Remove Entity"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => onFixedChange(trimmedName, [...displayBound, ''])}
+                    className="text-[10px] text-purple-600 hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus size={11} /> Add Entity
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {haEntities && (
+          <datalist id={listId}>
+            {haEntities.map(e => (
+              <option key={e.entity_id} value={e.entity_id}>
+                {e.friendly_name && e.friendly_name !== e.entity_id ? e.friendly_name : null}
+              </option>
+            ))}
+          </datalist>
+        )}
         <button
           onClick={() => onChange([...safeEntities, ''])}
           className="text-xs text-blue-600 hover:underline flex items-center gap-1"

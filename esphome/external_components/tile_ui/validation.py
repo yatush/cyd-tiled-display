@@ -13,7 +13,8 @@ from .script_types import script_parameter_defaults, validate_script_type
 from .data_collection import (
     collect_referenced_scripts,
     collect_referenced_globals,
-    collect_dynamic_entities
+    collect_dynamic_entities,
+    parse_dynamic_entities_config,
 )
 from .schema import (
     VALID_TILE_TYPES,
@@ -33,7 +34,7 @@ def validate_tiles_config(
     screens: list[dict],
     available_scripts: dict | None = None,
     available_globals: set | None = None,
-    declared_dynamic_entities: list[str] | None = None,
+    declared_dynamic_entities: list[Any] | dict[str, Any] | None = None,
     available_images: set | None = None,
     available_screen_images: set | None = None,
 ) -> None:
@@ -72,9 +73,13 @@ def validate_tiles_config(
         ValueError: With detailed error messages if validation fails
     """
     
+    # Normalize declared dynamic entities (supports plain names and fixed entity bindings)
+    declared_names, fixed_dynamic_entities = parse_dynamic_entities_config(declared_dynamic_entities)
+    fixed_set = set(fixed_dynamic_entities.keys())
+
     # Collect all screen IDs, dynamic entities, and validate BASE flag
     valid_screen_ids = set()
-    valid_dynamic_entities = set()
+    valid_dynamic_entities = set(fixed_set)
     base_screen_count = 0
     seen_screen_ids = set()
     
@@ -272,10 +277,10 @@ def validate_tiles_config(
                         f"Valid screen IDs are: {', '.join(sorted(valid_screen_ids))}"
                     )
     
-    # Validate all dynamic_entity references against the declared list (when provided)
-    if declared_dynamic_entities is not None:
-        declared_set = set(declared_dynamic_entities)
-        _validate_dynamic_entity_references(screens, declared_set)
+    # Validate all dynamic_entity references against the declared list and fixed immutability rules
+    if declared_names is not None or fixed_set:
+        declared_set = set(declared_names) if declared_names is not None else None
+        _validate_dynamic_entity_references(screens, declared_set, fixed_set)
 
     # Validate all referenced scripts are available with correct types
     if available_scripts is not None:

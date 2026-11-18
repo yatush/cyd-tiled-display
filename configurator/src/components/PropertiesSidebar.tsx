@@ -51,6 +51,10 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   });
 
   const dynamicEntities = config.dynamic_entities || [];
+  const fixedValuesMap = config.dynamic_entity_values || {};
+  const mutableDynamicEntities = dynamicEntities.filter(
+    d => !Object.prototype.hasOwnProperty.call(fixedValuesMap, d)
+  );
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
   const images = config.images || {};
   const tileIds = new Set(config.pages.flatMap(page => page.tiles.map(tile => tile.id)));
@@ -891,7 +895,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           values={selectedTile[field.name] || []}
                           fields={field.objectFields}
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
-                          dynamicEntities={dynamicEntities}
+                          dynamicEntities={field.name === 'dynamic_entry' ? mutableDynamicEntities : dynamicEntities}
                           haEntities={haEntities}
                         />
                       );
@@ -951,21 +955,29 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                       );
                     }
                     if (field.type === 'dynamic_entity_select') {
+                      const currentVal = selectedTile[field.name] || '';
+                      const isFixedTarget = currentVal !== '' && !mutableDynamicEntities.includes(currentVal);
                       return (
                         <div key={field.name} className="mb-1">
                           <label className="block text-xs font-medium text-slate-600 mb-1">{field.label}</label>
                           <select
-                            value={selectedTile[field.name] || ''}
+                            value={currentVal}
                             onChange={e => {
                               const updated: Tile = {...selectedTile, [field.name]: e.target.value};
                               if (field.optional && !e.target.value) delete updated[field.name];
                               onUpdate(updated);
                             }}
-                            className="w-full border rounded p-1 text-sm bg-white"
+                            className={`w-full border rounded p-1 text-sm bg-white ${isFixedTarget ? 'border-red-500' : ''}`}
                           >
                             <option value="">Select variable...</option>
-                            {dynamicEntities.map(d => <option key={d} value={d}>{d}</option>)}
+                            {isFixedTarget && (
+                              <option value={currentVal}>{currentVal} (fixed — read-only)</option>
+                            )}
+                            {mutableDynamicEntities.map(d => <option key={d} value={d}>{d}</option>)}
                           </select>
+                          {isFixedTarget && (
+                            <p className="text-[10px] text-red-600 mt-0.5">"{currentVal}" has a fixed value and cannot be modified at runtime.</p>
+                          )}
                         </div>
                       );
                     }

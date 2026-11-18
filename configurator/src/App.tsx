@@ -438,6 +438,7 @@ function App() {
           fileInputRef={fileInputRef}
           handleLoadProject={handleLoadProject}
           handleClearConfig={handleClearConfig}
+          haEntities={haEntities}
         />
 
       {/* Left Resizer */}

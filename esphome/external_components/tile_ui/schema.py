@@ -154,6 +154,7 @@ __all__ = [
     "tile_schema",
     "screen_schema",
     "screens_list_schema",
+    "dynamic_entities_schema",
     "get_validator",
 ]
 
@@ -620,3 +621,13 @@ def screens_list_schema(value):
             raise cv.Invalid(f"Screen {idx}: {str(e)}")
     
     return validated
+
+
+def dynamic_entities_schema(value: Any) -> Any:
+    """Validate top-level dynamic_entities configuration (runtime names and/or fixed values)."""
+    from .data_collection import parse_dynamic_entities_config
+    try:
+        parse_dynamic_entities_config(value)
+    except ValueError as e:
+        raise _SchemaInvalid(str(e))
+    return value

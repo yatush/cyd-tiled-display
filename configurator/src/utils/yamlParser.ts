@@ -213,14 +213,71 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
       };
     });
 
-    // Extract dynamic entities from tiles to populate the list
+    // Extract dynamic entities (both runtime names and fixed entity bindings)
     const dynamicEntities = new Set<string>();
+    const dynamicEntityValues: Record<string, string[]> = {};
 
-    // Support top-level dynamic_entities declaration if present
+    const normalizeFixedVals = (rawVal: any): string[] => {
+        if (typeof rawVal === 'string') {
+            return rawVal.includes(',')
+                ? rawVal.split(',').map(s => s.trim()).filter(Boolean)
+                : (rawVal.trim() ? [rawVal.trim()] : []);
+        }
+        if (Array.isArray(rawVal)) {
+            return rawVal.map(v => (typeof v === 'string' ? v.trim() : '')).filter(Boolean);
+        }
+        return [];
+    };
+
+    // Preserve explicit dynamic_entity_values if present (e.g. JSON config)
+    if (parsed.dynamic_entity_values && typeof parsed.dynamic_entity_values === 'object') {
+        for (const [k, v] of Object.entries(parsed.dynamic_entity_values)) {
+            const name = k.trim();
+            if (name) {
+                dynamicEntities.add(name);
+                dynamicEntityValues[name] = normalizeFixedVals(v);
+            }
+        }
+    }
+
+    // Support top-level dynamic_entities declaration (list of strings/dicts, or mapping)
     if (parsed.dynamic_entities && Array.isArray(parsed.dynamic_entities)) {
         parsed.dynamic_entities.forEach((de: any) => {
-            if (typeof de === 'string') dynamicEntities.add(de);
+            if (typeof de === 'string') {
+                const name = de.trim();
+                if (name) dynamicEntities.add(name);
+            } else if (de && typeof de === 'object') {
+                const keys = Object.keys(de);
+                if ('name' in de && keys.every(k => k === 'name' || k === 'entities' || k === 'value')) {
+                    const name = typeof de.name === 'string' ? de.name.trim() : '';
+                    if (name) {
+                        dynamicEntities.add(name);
+                        const rawVal = 'entities' in de ? de.entities : de.value;
+                        if (rawVal !== undefined && rawVal !== null) {
+                            dynamicEntityValues[name] = normalizeFixedVals(rawVal);
+                        }
+                    }
+                } else if (keys.length === 1) {
+                    const name = keys[0].trim();
+                    if (name) {
+                        dynamicEntities.add(name);
+                        const rawVal = de[keys[0]];
+                        if (rawVal !== null && rawVal !== undefined) {
+                            dynamicEntityValues[name] = normalizeFixedVals(rawVal);
+                        }
+                    }
+                }
+            }
         });
+    } else if (parsed.dynamic_entities && typeof parsed.dynamic_entities === 'object') {
+        for (const [rawKey, rawVal] of Object.entries(parsed.dynamic_entities)) {
+            const name = rawKey.trim();
+            if (!name) continue;
+            dynamicEntities.add(name);
+            if (rawVal !== null && rawVal !== undefined) {
+                dynamicEntityValues[name] = normalizeFixedVals(rawVal);
+            }
+        }
     }
 
     // Recursively scan all pages and tiles for dynamic entities
@@ -230,13 +287,18 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
         });
     });
 
-    const result = {
+    const hasFixedValues = Object.keys(dynamicEntityValues).length > 0;
+    const result: Config = {
       ...parsed,
       pages,
       dynamic_entities: Array.from(dynamicEntities),
+      ...(hasFixedValues ? { dynamic_entity_values: dynamicEntityValues } : {}),
       images: (parsed.images && typeof parsed.images === 'object') ? parsed.images : undefined
     };
-    delete result.screens;
+    if (!hasFixedValues) {
+        delete (result as any).dynamic_entity_values;
+    }
+    delete (result as any).screens;
     return result;
 };
 

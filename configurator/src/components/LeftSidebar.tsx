@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth } from 'lucide-react';
-import { Config, Tile, ImageEntry, ScreenImageEntry } from '../types';
+import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity } from '../types';
 import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel } from './FormInputs';
-import { applyDynamicEntityListChange } from '../utils/tileUtils';
+import { applyDynamicEntityListChange, updateDynamicEntityFixedValues } from '../utils/tileUtils';
 
 interface LeftSidebarProps {
   width: number;
@@ -38,6 +38,7 @@ interface LeftSidebarProps {
   fileInputRef: React.RefObject<HTMLInputElement>;
   handleLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleClearConfig: () => void;
+  haEntities?: HaEntity[];
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -74,6 +75,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   fileInputRef,
   handleLoadProject,
   handleClearConfig,
+  haEntities,
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
 
@@ -187,7 +189,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <div className="pt-2">
                       <DynamicEntitiesEditor 
                           entities={config.dynamic_entities || []} 
+                          fixedValues={config.dynamic_entity_values}
                           onChange={v => setConfig(prev => applyDynamicEntityListChange(prev, v))} 
+                          onFixedChange={(varName, vals) => setConfig(prev => updateDynamicEntityFixedValues(prev, varName, vals))}
+                          haEntities={haEntities}
                       />
                   </div>
               </div>

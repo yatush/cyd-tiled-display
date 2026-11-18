@@ -84,11 +84,12 @@ def run(screen_w: int = 480, screen_h: int = 320) -> bool:
     # ── 1. Write test_device_tiles.yaml ──────────────────────────────────────
     tiles_config = {
         'screens':          screens,
-        'dynamic_entities': dynamic_entities,
         # images are NOT read from tiles_file by the tile_ui component, but
         # including them is harmless and keeps the file self-documenting.
         'images':           images,
     }
+    if dynamic_entities:
+        tiles_config['dynamic_entities'] = dynamic_entities
     os.makedirs(LIB_DIR, exist_ok=True)
     with open(TILES_FILE, 'w') as fh:
         yaml.dump(tiles_config, fh, default_flow_style=False, allow_unicode=True)

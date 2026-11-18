@@ -1,5 +1,6 @@
 ﻿"""Tile UI ESPhome Component - C++ code generation entry point."""
 from typing import Any
+import json
 import sys
 import os
 
@@ -8,15 +9,21 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ID
 from esphome.core import CORE
 from esphome.components.display import DisplayPage
-from .data_collection import load_tiles_yaml, collect_available_scripts, collect_available_globals
+from .data_collection import (
+    load_tiles_yaml,
+    collect_available_scripts,
+    collect_available_globals,
+    parse_dynamic_entities_config,
+)
 from .tile_generation import generate_tile_cpp
 from .tile_utils import flags_to_cpp, build_expression
-from .schema import screens_list_schema
+from .schema import screens_list_schema, dynamic_entities_schema
 
 # Configuration constants
 DOMAIN = "tile_ui"
 CONF_TILES_FILE = "tiles_file"
 CONF_SCREENS = "screens"
+CONF_DYNAMIC_ENTITIES = "dynamic_entities"
 CONF_DEBUG_OUTPUT = "debug_output"
 CONF_SYSTEM_PAGES = "system_pages"
 
@@ -29,6 +36,8 @@ def load_tiles_config(config):
         try:
             tiles_config = load_tiles_yaml(tiles_path)
             config[CONF_SCREENS] = tiles_config.get("screens", [])
+            if CONF_DYNAMIC_ENTITIES not in config and CONF_DYNAMIC_ENTITIES in tiles_config:
+                config[CONF_DYNAMIC_ENTITIES] = tiles_config[CONF_DYNAMIC_ENTITIES]
             # Also forward images: from the tiles file so _register_images handles
             # them the same way as test_device / CI (one path for everything).
             if "images" not in config and "images" in tiles_config:
@@ -50,6 +59,7 @@ CONFIG_SCHEMA = cv.All(
     load_tiles_config,
     cv.Schema({
         cv.Optional(CONF_TILES_FILE): cv.string,
+        cv.Optional(CONF_DYNAMIC_ENTITIES): dynamic_entities_schema,
         cv.Optional(CONF_SCREENS): cv.ensure_list(cv.Schema({
             cv.Required(CONF_ID): cv.declare_id(DisplayPage),
         }, extra=cv.ALLOW_EXTRA)),
@@ -352,7 +362,13 @@ CALIB_PAGE_LAMBDA = """
 """
 
 
-def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=None, debug=False):
+def generate_init_tiles_cpp(
+    screens,
+    available_scripts=None,
+    available_globals=None,
+    debug=False,
+    dynamic_entities=None,
+):
     """Generate separate lambda scripts for each screen and view init."""
     from .validation import validate_tiles_config
     from .tile_generation import compute_image_variants, apply_image_variants
@@ -363,7 +379,14 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
     if variant_id:
         screens = apply_image_variants(screens, variant_id)
 
-    validate_tiles_config(screens, available_scripts, available_globals)
+    declared_dynamic_entities = dynamic_entities or None
+    validate_tiles_config(
+        screens,
+        available_scripts,
+        available_globals,
+        declared_dynamic_entities=declared_dynamic_entities,
+    )
+    _, fixed_dynamic_entities = parse_dynamic_entities_config(declared_dynamic_entities)
     
     lambdas = []
     
@@ -372,6 +395,14 @@ def generate_init_tiles_cpp(screens, available_scripts=None, available_globals=N
         "// Initialize view",
         "view_ptr.reset(new View());",
     ]
+    if fixed_dynamic_entities:
+        view_init.append("// Initialize fixed dynamic entities")
+        for var_name, entity_list in fixed_dynamic_entities.items():
+            var_cpp = json.dumps(var_name, ensure_ascii=True)
+            vals_cpp = ", ".join(json.dumps(ent, ensure_ascii=True) for ent in entity_list)
+            view_init.append(
+                f"EMSet(Pointer({var_cpp}), Pointer(std::vector<std::string>{{{vals_cpp}}}));"
+            )
     lambdas.append("\n".join(view_init))
     
     # Generate each screen as a separate lambda
@@ -542,6 +573,7 @@ async def to_code(config):
         return
     
     # Validate the configuration
+    declared_dynamic_entities = config.get(CONF_DYNAMIC_ENTITIES) or None
     try:
         available_images = set(config.get("images", {}).keys())
         available_screen_images = set(config.get("screen_images", {}).keys())
@@ -549,6 +581,7 @@ async def to_code(config):
             screens,
             available_scripts,
             available_globals,
+            declared_dynamic_entities=declared_dynamic_entities,
             available_images=available_images,
             available_screen_images=available_screen_images,
         )
@@ -600,7 +633,13 @@ async def to_code(config):
 
     # Generate C++ initialization code (returns list of lambda strings)
     debug_output = config.get(CONF_DEBUG_OUTPUT, False)
-    cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts, available_globals, debug=debug_output)
+    cpp_lambdas = generate_init_tiles_cpp(
+        screens,
+        available_scripts,
+        available_globals,
+        debug=debug_output,
+        dynamic_entities=declared_dynamic_entities,
+    )
     
     # Add initialization code directly to setup() with a delay to avoid boot loops
     

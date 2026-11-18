@@ -387,7 +387,7 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
             key = f['key']
             if key in value:
                 # Construct a temporary field def for recursive validation
-                temp_def = {'name': f"{field_name}.{key}", 'type': f['type']}
+                temp_def = {'name': f"{field_name}.{key}", 'type': f.get('type', 'string')}
                 if 'objectFields' in f:
                     temp_def['objectFields'] = f['objectFields']
                 validate_field_value(value[key], temp_def, context)
@@ -406,7 +406,7 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
             for f in object_fields:
                 key = f['key']
                 if key in item:
-                    temp_def = {'name': f"{field_name}[{idx}].{key}", 'type': f['type']}
+                    temp_def = {'name': f"{field_name}[{idx}].{key}", 'type': f.get('type', 'string')}
                     if 'objectFields' in f:
                         temp_def['objectFields'] = f['objectFields']
                     validate_field_value(item[key], temp_def, context)

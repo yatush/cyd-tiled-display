@@ -187,8 +187,13 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         import os as _os
         from tile_ui.tile_generation import compute_image_variants
 
-        # Generate CPP — generate_init_tiles_cpp handles variant substitution.
-        cpp_lambdas = generate_init_tiles_cpp(screens, available_scripts, available_globals)
+        # Generate CPP — generate_init_tiles_cpp handles variant substitution and fixed dynamic_entities.
+        cpp_lambdas = generate_init_tiles_cpp(
+            screens,
+            available_scripts,
+            available_globals,
+            dynamic_entities=declared_dynamic_entities,
+        )
 
         # Build the variant map so PNG files can be named correctly.
         _variant_id = compute_image_variants(screens)  # (img_id, rows, cols) -> variant_id

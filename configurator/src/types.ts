@@ -40,6 +40,7 @@ export interface ScreenImageEntry {
 export interface Config {
   pages: Page[];
   dynamic_entities?: string[];
+  dynamic_entity_values?: Record<string, string[]>;
   project_name?: string;
   project_path?: string;
   images?: Record<string, ImageEntry>;

@@ -78,9 +78,36 @@ export function applyDynamicEntityListChange(
     }
   }
 
+  // Sync dynamic_entity_values keys across renames and removals
+  let nextFixedValues = config.dynamic_entity_values
+    ? { ...config.dynamic_entity_values }
+    : undefined;
+  if (nextFixedValues) {
+    const updatedFixed: Record<string, string[]> = {};
+    const validSet = new Set(newEntities.filter(Boolean));
+    for (const [key, vals] of Object.entries(nextFixedValues)) {
+      if (removed.has(key)) continue;
+      const mappedKey = renames[key] !== undefined ? renames[key] : key;
+      if (mappedKey && validSet.has(mappedKey)) {
+        updatedFixed[mappedKey] = vals;
+      }
+    }
+    nextFixedValues = Object.keys(updatedFixed).length > 0 ? updatedFixed : undefined;
+  }
+
+  const withFixed = (base: Config): Config => {
+    const next = { ...base };
+    if (nextFixedValues) {
+      next.dynamic_entity_values = nextFixedValues;
+    } else {
+      delete next.dynamic_entity_values;
+    }
+    return next;
+  };
+
   // No changes to propagate
   if (Object.keys(renames).length === 0 && removed.size === 0) {
-    return { ...config, dynamic_entities: newEntities };
+    return withFixed({ ...config, dynamic_entities: newEntities });
   }
 
   const patchValue = (val: string): string => {
@@ -160,7 +187,35 @@ export function applyDynamicEntityListChange(
     }),
   }));
 
-  return { ...config, dynamic_entities: newEntities, pages: updatedPages };
+  return withFixed({ ...config, dynamic_entities: newEntities, pages: updatedPages });
+}
+
+/**
+ * Set or clear fixed Home Assistant entity value(s) for a declared dynamic entity.
+ * Passing `null` switches the variable back to a runtime (unfixed) dynamic entity.
+ */
+export function updateDynamicEntityFixedValues(
+  config: Config,
+  varName: string,
+  fixedValues: string[] | null
+): Config {
+  const name = varName.trim();
+  if (!name) return config;
+
+  const nextMap: Record<string, string[]> = { ...(config.dynamic_entity_values || {}) };
+  if (fixedValues === null) {
+    delete nextMap[name];
+  } else {
+    nextMap[name] = [...fixedValues];
+  }
+
+  const nextConfig: Config = { ...config };
+  if (Object.keys(nextMap).length > 0) {
+    nextConfig.dynamic_entity_values = nextMap;
+  } else {
+    delete nextConfig.dynamic_entity_values;
+  }
+  return nextConfig;
 }
 
 export const getTileLabel = (tile: Tile): string => {

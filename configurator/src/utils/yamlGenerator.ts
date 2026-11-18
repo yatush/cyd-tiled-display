@@ -256,13 +256,41 @@ export const generateTileYaml = (tile: Tile): string =>
 export const generatePageYaml = (page: Page): string =>
     formatIcons(yaml.dump([serializePage(page, false, true)], { lineWidth: -1, noCompatMode: true, sortKeys: false }));
 
-export const generateYaml = (config: Config, includeIds: boolean = false, includeInternalKeys: boolean = true) => {
+const serializeDynamicEntities = (config: Config): any[] | undefined => {
+    const names = config.dynamic_entities || [];
+    const fixedValues = config.dynamic_entity_values || {};
+    if (names.length === 0) return undefined;
+
+    const items: any[] = [];
+    for (const rawName of names) {
+        const name = typeof rawName === 'string' ? rawName.trim() : '';
+        if (!name) continue;
+        if (Object.prototype.hasOwnProperty.call(fixedValues, name)) {
+            const vals = (fixedValues[name] || [])
+                .map(v => (typeof v === 'string' ? v.trim() : ''))
+                .filter(Boolean);
+            if (vals.length === 0) {
+                items.push({ [name]: [] });
+            } else if (vals.length === 1) {
+                items.push({ [name]: vals[0] });
+            } else {
+                items.push({ [name]: vals });
+            }
+        } else {
+            items.push(name);
+        }
+    }
+    return items.length > 0 ? items : undefined;
+};
+
+export const generateYaml = (config: Config, includeIds: boolean = false, _includeInternalKeys: boolean = true) => {
     // Convert internal model to YAML structure expected by Python script
     const screens = config.pages.map(page => serializePage(page, includeIds, false));
+    const serializedDynamicEntities = serializeDynamicEntities(config);
     
     const yamlString = yaml.dump({ 
+        dynamic_entities: serializedDynamicEntities,
         screens,
-        dynamic_entities: includeInternalKeys && config.dynamic_entities && config.dynamic_entities.length > 0 ? config.dynamic_entities : undefined,
         images: config.images && Object.keys(config.images).length > 0 ? config.images : undefined,
         screen_images: config.screen_images && Object.keys(config.screen_images).length > 0 ? config.screen_images : undefined
     }, { lineWidth: -1, noCompatMode: true, sortKeys: false });

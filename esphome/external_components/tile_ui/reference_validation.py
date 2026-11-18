@@ -73,15 +73,22 @@ def _validate_screen_image_references(screens: list[dict], available_screen_imag
                 )
 
 
-def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[str]) -> None:
-    """Validate that every dynamic_entity reference in every tile is declared.
+def _validate_dynamic_entity_references(
+    screens: list[dict],
+    declared_set: set[str] | None,
+    fixed_set: set[str] | None = None,
+) -> None:
+    """Validate that every dynamic_entity reference is declared and fixed entities are not mutated.
 
     Checks the following locations where a dynamic_entity name can appear:
-    - toggle_entity / cycle_entity  -> tile.dynamic_entity
-    - entity-list tiles             -> tile.entities[i].dynamic_entity
-    - any tile type                 -> tile.activation_var.dynamic_entity
-    - move_page                     -> tile.dynamic_entry.dynamic_entity
+    - toggle_entity / cycle_entity  -> tile.dynamic_entity (runtime-mutating)
+    - ha_action                     -> tile.long_dynamic_entity (runtime-mutating)
+    - move_page                     -> tile.dynamic_entry.dynamic_entity (runtime-mutating)
+    - entity-list tiles             -> tile.entities[i].dynamic_entity (read-only)
+    - any tile type                 -> tile.activation_var.dynamic_entity (read-only)
     """
+    fixed = fixed_set or set()
+
     for screen in screens:
         screen_id = screen.get("id", "")
         for tile in screen.get("tiles", []):
@@ -90,8 +97,10 @@ def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[s
             x = config.get("x", 0)
             y = config.get("y", 0)
 
-            def _check(name: str, location: str) -> None:
-                if name and name not in declared_set:
+            def _check(name: str, location: str, mutates: bool = False) -> None:
+                if not name:
+                    return
+                if declared_set is not None and name not in declared_set:
                     declared_list = ", ".join(sorted(declared_set)) if declared_set else "(none)"
                     raise ValueError(
                         f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
@@ -99,29 +108,51 @@ def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[s
                         f"declared in dynamic_entities. "
                         f"Declared dynamic entities are: {declared_list}"
                     )
+                if mutates and name in fixed:
+                    raise ValueError(
+                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                        f"{location} cannot modify fixed dynamic entity '{name}'. "
+                        f"Remove its fixed value in dynamic_entities or use a non-fixed dynamic entity."
+                    )
 
-            # Direct dynamic_entity field (toggle_entity, cycle_entity)
+            # Direct dynamic_entity field (toggle_entity, cycle_entity — mutates at runtime)
             direct = config.get("dynamic_entity", "")
             if direct:
-                _check(direct, "dynamic_entity")
+                _check(direct, "dynamic_entity", mutates=True)
             if config.get("long_dynamic_entity"):
-                _check(config["long_dynamic_entity"], "long_dynamic_entity")
+                _check(config["long_dynamic_entity"], "long_dynamic_entity", mutates=True)
 
-            # entities list
+            # entities list (read-only)
+            tile_dyn_names: list[str] = []
             for i, entry in enumerate(config.get("entities", [])):
                 if isinstance(entry, dict):
                     de = entry.get("dynamic_entity", "")
                     if de:
-                        _check(de, f"entities[{i}].dynamic_entity")
+                        _check(de, f"entities[{i}].dynamic_entity", mutates=False)
+                        tile_dyn_names.append(de)
 
-            # activation_var.dynamic_entity
+            # display_page_if_no_entity requires at least one runtime (non-fixed) dynamic entity
+            if (
+                tile_type == TileType.HA_ACTION.value
+                and config.get("display_page_if_no_entity")
+                and tile_dyn_names
+                and fixed
+                and all(de in fixed for de in tile_dyn_names)
+            ):
+                raise ValueError(
+                    f"Screen '{screen_id}', ha_action tile at ({x}, {y}): "
+                    f"display_page_if_no_entity cannot be used when all referenced dynamic entities "
+                    f"({', '.join(tile_dyn_names)}) have fixed values"
+                )
+
+            # activation_var.dynamic_entity (read-only)
             activation_var = config.get("activation_var")
             if isinstance(activation_var, dict):
                 de = activation_var.get("dynamic_entity", "")
                 if de:
-                    _check(de, "activation_var.dynamic_entity")
+                    _check(de, "activation_var.dynamic_entity", mutates=False)
 
-            # dynamic_entry.dynamic_entity (move_page)
+            # dynamic_entry.dynamic_entity (move_page — mutates at runtime)
             dynamic_entry = config.get("dynamic_entry")
             if dynamic_entry:
                 entries = dynamic_entry if isinstance(dynamic_entry, list) else [dynamic_entry]
@@ -130,7 +161,7 @@ def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[s
                         de = entry.get("dynamic_entity", "")
                         if de:
                             label = f"dynamic_entry[{idx}].dynamic_entity" if isinstance(dynamic_entry, list) else "dynamic_entry.dynamic_entity"
-                            _check(de, label)
+                            _check(de, label, mutates=True)
 
 
 def _validate_tile_positions(screen_id, tiles):
