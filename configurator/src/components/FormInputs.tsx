@@ -413,20 +413,39 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
               return (
               <div key={field.key}>
                 <label className="block text-[10px] text-slate-500 uppercase">{field.label}</label>
-                {field.type === 'dynamic_entity_select' && dynamicEntities ? (
-                  <select
-                    value={item[field.key] || ''}
-                    onChange={e => {
-                      const newValues = [...safeValues];
-                      newValues[i] = { ...item, [field.key]: e.target.value };
-                      onChange(newValues);
-                    }}
-                    className="w-full border rounded p-1 text-xs bg-white"
-                  >
-                    <option value="">Select variable...</option>
-                    {dynamicEntities.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                ) : field.type === 'ha_entity_list' ? (
+                {field.type === 'dynamic_entity_select' && dynamicEntities ? (() => {
+                  const usedByOthers = new Set(
+                    safeValues
+                      .filter((_, idx) => idx !== i)
+                      .map(other => other?.[field.key])
+                      .filter((v): v is string => typeof v === 'string' && v !== '')
+                  );
+                  const currentVal = item[field.key] || '';
+                  const isDuplicate = currentVal !== '' && usedByOthers.has(currentVal);
+                  return (
+                    <>
+                      <select
+                        value={currentVal}
+                        onChange={e => {
+                          const newValues = [...safeValues];
+                          newValues[i] = { ...item, [field.key]: e.target.value };
+                          onChange(newValues);
+                        }}
+                        className={`w-full border rounded p-1 text-xs bg-white ${isDuplicate ? 'border-red-500' : ''}`}
+                      >
+                        <option value="">Select variable...</option>
+                        {dynamicEntities.map(d => (
+                          <option key={d} value={d} disabled={usedByOthers.has(d)}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+                      {isDuplicate && (
+                        <p className="text-[10px] text-red-600 mt-0.5">Duplicate dynamic entity "{currentVal}".</p>
+                      )}
+                    </>
+                  );
+                })() : field.type === 'ha_entity_list' ? (
                   <EntityListInput 
                     label="" 
                     values={item[field.key] || []} 

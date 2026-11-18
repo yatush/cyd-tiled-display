@@ -304,4 +304,28 @@ test('move_page supports multiple dynamic_entry items in YAML round-trip and ent
   const text = generateTileYaml(tile);
   assert.deepEqual(parseTileYaml(text, tile.id), tile);
   assert.deepEqual(getTileDynamicEntities(tile), ['AC', 'FAN']);
+
+  assert.throws(() => parseTileYaml(`
+move_page:
+  x: 0
+  y: 0
+  destination: room
+  display: [arrow]
+  dynamic_entry:
+    - dynamic_entity: AC
+      value: [climate.living]
+    - dynamic_entity: AC
+      value: [climate.bedroom]
+`, 'mv_dup'), /Duplicate dynamic_entity "AC"/);
+
+  assert.throws(() => parseTileYaml(`
+move_page:
+  x: 0
+  y: 0
+  destination: room
+  display: [arrow]
+  dynamic_entry:
+    - dynamic_entity: AC
+      value: [climate.living, climate.living]
+`, 'mv_dup_val'), /Duplicate entity "climate\.living"/);
 });

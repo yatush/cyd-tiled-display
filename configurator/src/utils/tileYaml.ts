@@ -107,6 +107,30 @@ function validateTileMapping(type: string, props: Record<string, unknown>): void
   ) {
     throw new Error('dynamic_entry must be a mapping or a list of mappings.');
   }
+  if (props.dynamic_entry !== undefined) {
+    const entries = Array.isArray(props.dynamic_entry) ? props.dynamic_entry : [props.dynamic_entry];
+    const seenDynamicEntities = new Set<string>();
+    for (const item of entries) {
+      const de = item.dynamic_entity;
+      if (typeof de === 'string' && de.trim() !== '') {
+        if (seenDynamicEntities.has(de)) {
+          throw new Error(`Duplicate dynamic_entity "${de}" in dynamic_entry list.`);
+        }
+        seenDynamicEntities.add(de);
+      }
+      if (Array.isArray(item.value)) {
+        const seenValues = new Set<string>();
+        for (const val of item.value) {
+          if (typeof val === 'string' && val.trim() !== '') {
+            if (seenValues.has(val)) {
+              throw new Error(`Duplicate entity "${val}" in dynamic_entry value list.`);
+            }
+            seenValues.add(val);
+          }
+        }
+      }
+    }
+  }
   for (const key of ['fill_color', 'border_color', 'border_width', 'border_radius']) {
     const value = props[key];
     if (value === undefined) continue;

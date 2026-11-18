@@ -162,6 +162,34 @@ def _validate_tile_fields(
                     f"option {idx} missing 'label' field"
                 )
 
+    elif tile_type == TileType.MOVE_PAGE.value:
+        dynamic_entry = config.get("dynamic_entry")
+        if dynamic_entry:
+            entries = dynamic_entry if isinstance(dynamic_entry, list) else [dynamic_entry]
+            seen_dynamic_entities = set()
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                de = entry.get("dynamic_entity", "")
+                if de:
+                    if de in seen_dynamic_entities:
+                        raise ValueError(
+                            f"Screen '{screen_id}', move_page tile at ({x}, {y}): "
+                            f"Duplicate dynamic_entity '{de}' in dynamic_entry list"
+                        )
+                    seen_dynamic_entities.add(de)
+                val = entry.get("value")
+                if isinstance(val, list):
+                    seen_vals = set()
+                    for v in val:
+                        if isinstance(v, str) and v:
+                            if v in seen_vals:
+                                raise ValueError(
+                                    f"Screen '{screen_id}', move_page tile at ({x}, {y}): "
+                                    f"Duplicate entity '{v}' in dynamic_entry value list"
+                                )
+                            seen_vals.add(v)
+
 
 def _validate_condition_expression(expression, context):
     """Validate condition expression structure recursively."""

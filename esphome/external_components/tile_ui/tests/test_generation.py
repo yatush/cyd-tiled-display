@@ -700,6 +700,21 @@ class TestMoveTileExtras(unittest.TestCase):
         self.assertIn('->setDynamicEntry("AC", {"climate.living"})', cpp)
         self.assertIn('->setDynamicEntry("FAN", {"fan.living", "fan.desk"})', cpp)
 
+    def test_duplicate_dynamic_entry_raises(self):
+        from tile_ui.tile_generation import generate_move_page_tile
+        config = {
+            "x": 0, "y": 0,
+            "display": ["arrow"],
+            "destination": "screen2",
+            "dynamic_entry": [
+                {"dynamic_entity": "AC", "value": ["climate.living"]},
+                {"dynamic_entity": "AC", "value": ["climate.bedroom"]},
+            ],
+        }
+        with self.assertRaises(ValueError) as cm:
+            generate_move_page_tile(config, {}, 'main')
+        self.assertIn("Duplicate dynamic_entity 'AC'", str(cm.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

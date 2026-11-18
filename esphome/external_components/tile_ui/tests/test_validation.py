@@ -691,6 +691,57 @@ class TestValidateTileSchema(unittest.TestCase):
             validate_tiles_config(screens, declared_dynamic_entities=["AC"])
         self.assertIn("FAN", str(cm.exception))
 
+        # Duplicate dynamic_entity in dynamic_entry list must fail
+        dup_de_screens = [
+            {
+                "id": "main",
+                "flags": ["BASE"],
+                "tiles": [
+                    {
+                        "move_page": {
+                            "x": 0,
+                            "y": 0,
+                            "display": ["arrow"],
+                            "destination": "room",
+                            "dynamic_entry": [
+                                {"dynamic_entity": "AC", "value": ["climate.living"]},
+                                {"dynamic_entity": "AC", "value": ["climate.bedroom"]},
+                            ],
+                        }
+                    }
+                ],
+            },
+            screens[1],
+        ]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(dup_de_screens, declared_dynamic_entities=["AC", "FAN"])
+        self.assertIn("Duplicate dynamic_entity 'AC'", str(cm.exception))
+
+        # Duplicate entity in dynamic_entry value list must fail
+        dup_val_screens = [
+            {
+                "id": "main",
+                "flags": ["BASE"],
+                "tiles": [
+                    {
+                        "move_page": {
+                            "x": 0,
+                            "y": 0,
+                            "display": ["arrow"],
+                            "destination": "room",
+                            "dynamic_entry": [
+                                {"dynamic_entity": "AC", "value": ["climate.living", "climate.living"]},
+                            ],
+                        }
+                    }
+                ],
+            },
+            screens[1],
+        ]
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(dup_val_screens, declared_dynamic_entities=["AC", "FAN"])
+        self.assertIn("Duplicate entity 'climate.living'", str(cm.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

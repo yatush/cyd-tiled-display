@@ -175,12 +175,16 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
     modifiers = []
     if dynamic_entry:
         entries = dynamic_entry if isinstance(dynamic_entry, list) else [dynamic_entry]
+        seen_dynamic_entities = set()
         for entry in entries:
             if not isinstance(entry, dict):
                 raise ValueError(f"Screen '{screen_id}', Tile at ({x}, {y}): dynamic_entry entries must be dicts")
             dynamic_entity = entry.get("dynamic_entity", "")
             value = entry.get("value", "")
             if dynamic_entity and value:
+                if dynamic_entity in seen_dynamic_entities:
+                    raise ValueError(f"Screen '{screen_id}', Tile at ({x}, {y}): Duplicate dynamic_entity '{dynamic_entity}' in dynamic_entry list")
+                seen_dynamic_entities.add(dynamic_entity)
                 values_cpp = format_entity_cpp(value)
                 modifiers.append(f'setDynamicEntry("{dynamic_entity}", {values_cpp})')
             else:
