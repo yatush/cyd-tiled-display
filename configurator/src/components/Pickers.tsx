@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { iconCodeToChar } from '../utils/iconUtils';
 
 export const IconPicker = ({ value, onChange, icons, onFocus }: { value: string, onChange: (v: string) => void, icons: {value: string, label: string, char?: string}[], onFocus?: () => void }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -27,21 +28,10 @@ export const IconPicker = ({ value, onChange, icons, onFocus }: { value: string,
   );
 
   const getDisplayChar = (val: string) => {
-      let cleanVal = val;
-      if (cleanVal.startsWith('"') && cleanVal.endsWith('"')) {
-          cleanVal = cleanVal.slice(1, -1);
-      }
-
+      const cleanVal = val.startsWith('"') && val.endsWith('"') ? val.slice(1, -1) : val;
       const found = icons.find(i => i.value === cleanVal);
       if (found && found.char) return found.char;
-      // Fallback for manual entry or if char not found
-      if (cleanVal.startsWith('\\U')) {
-          try {
-              const hex = cleanVal.substring(2);
-              return String.fromCodePoint(parseInt(hex, 16));
-          } catch (e) { return cleanVal; }
-      }
-      return cleanVal;
+      return iconCodeToChar(cleanVal);
   };
 
   const selectedIcon = icons.find(i => i.value === value);

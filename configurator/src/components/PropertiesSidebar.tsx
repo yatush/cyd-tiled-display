@@ -1,6 +1,6 @@
-import { useState, useEffect, KeyboardEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2, Copy, Layout, Settings2, Plus } from 'lucide-react';
-import { Tile, Config, Page, HaEntity, ImageEntry, ScreenBgEntry, ScreenImageEntry } from '../types';
+import { Tile, Config, Page, HaEntity, ScreenImageEntry } from '../types';
 import { 
   TextInput, 
   Checkbox, 
@@ -12,55 +12,16 @@ import {
   EntityListInput,
   ConditionBuilder,
   ImagesListInput,
-  ImageSelectInput
 } from './FormInputs';
 import { DisplayListInput } from './DisplayListInput';
 import { ColorPicker } from './Pickers';
 import { apiFetch } from '../utils/api';
 import { generateTileYaml, generatePageYaml } from '../utils/yamlGenerator';
-import { parseTileYaml, parsePageYaml } from '../utils/tileYaml';
+import { parseTileYaml, parsePageYaml, validateTileBounds } from '../utils/tileYaml';
 import { getTileDynamicEntities } from '../utils/yamlParser';
-
-type YamlDraft = { text: string; initialText: string; baseSnapshot: string };
-
-const handleYamlKeyDown = (
-  event: KeyboardEvent<HTMLTextAreaElement>,
-  text: string,
-  onChangeText: (nextText: string) => void
-) => {
-  if ((event.key !== 'Enter' && event.key !== 'Tab') || event.ctrlKey || event.metaKey || event.altKey) return;
-  const input = event.currentTarget;
-  const start = input.selectionStart;
-  const end = input.selectionEnd;
-  if (event.shiftKey && (event.key !== 'Tab' || start === end)) return;
-  if (event.key === 'Tab' && start !== end) {
-    const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-    const lastSelected = text[end - 1] === '\n' ? end - 1 : end;
-    const lineEnd = text.indexOf('\n', lastSelected);
-    const blockEnd = lineEnd === -1 ? text.length : lineEnd;
-    const block = text.slice(lineStart, blockEnd).split('\n')
-      .map(line => event.shiftKey ? line.replace(/^ {1,2}/, '') : `  ${line}`).join('\n');
-    event.preventDefault();
-    onChangeText(text.slice(0, lineStart) + block + text.slice(blockEnd));
-    requestAnimationFrame(() => {
-      input.selectionStart = lineStart;
-      input.selectionEnd = lineStart + block.length;
-    });
-    return;
-  }
-  let insertion = '  ';
-  if (event.key === 'Enter') {
-    const line = text.slice(text.lastIndexOf('\n', start - 1) + 1, start);
-    const spaces = line.match(/^ */)?.[0] ?? '';
-    const extra = /:\s*$/.test(line) ? (/^\s*-\s+/.test(line) ? '    ' : '  ') : '';
-    insertion = `\n${spaces}${extra}`;
-  }
-  event.preventDefault();
-  onChangeText(text.slice(0, start) + insertion + text.slice(end));
-  requestAnimationFrame(() => {
-    input.selectionStart = input.selectionEnd = start + insertion.length;
-  });
-};
+import { useYamlDraft } from '../hooks/useYamlDraft';
+import { OrphanDraftsBanner, YamlEditorSection, YamlModeToggle } from './YamlEditorPanel';
+import { PagePropertiesPanel } from './PagePropertiesPanel';
 
 export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config, schema, activePage, setActivePageId, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: {
   selectedTile: Tile | null, 
@@ -78,20 +39,24 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   screenImages?: Record<string, ScreenImageEntry>
 }) => {
   const [activeTab, setActiveTab] = useState<'tile' | 'page'>('page');
-  const [tileEditor, setTileEditor] = useState<'form' | 'yaml'>('form');
-  const [yamlDrafts, setYamlDrafts] = useState<Record<string, YamlDraft>>({});
-  const [yamlError, setYamlError] = useState('');
-  const [pageEditor, setPageEditor] = useState<'form' | 'yaml'>('form');
-  const [pageYamlDrafts, setPageYamlDrafts] = useState<Record<string, YamlDraft>>({});
-  const [pageYamlError, setPageYamlError] = useState('');
+  const tileYaml = useYamlDraft<Tile>({
+    itemId: selectedTile?.id,
+    currentItem: selectedTile,
+    generateYaml: generateTileYaml,
+  });
+  const pageYaml = useYamlDraft<Page>({
+    itemId: activePage.id,
+    currentItem: activePage,
+    generateYaml: generatePageYaml,
+  });
 
   const dynamicEntities = config.dynamic_entities || [];
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
   const images = config.images || {};
   const tileIds = new Set(config.pages.flatMap(page => page.tiles.map(tile => tile.id)));
-  const orphanDrafts = Object.entries(yamlDrafts).filter(([id]) => !tileIds.has(id));
+  const orphanDrafts = tileYaml.getOrphanDrafts(tileIds);
   const pageIds = new Set(config.pages.map(page => page.id));
-  const orphanPageDrafts = Object.entries(pageYamlDrafts).filter(([id]) => !pageIds.has(id));
+  const orphanPageDrafts = pageYaml.getOrphanDrafts(pageIds);
 
   const [colorList, setColorList] = useState<{id: string, value: string}[]>([]);
 
@@ -100,22 +65,17 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
     if (selectedTile) {
       setActiveTab('tile');
     }
-    setYamlError('');
   }, [selectedTile?.id]);
 
   useEffect(() => {
-    setPageYamlError('');
-  }, [activePage.id]);
-
-  useEffect(() => {
-    if (Object.keys(yamlDrafts).length === 0 && Object.keys(pageYamlDrafts).length === 0) return;
+    if (!tileYaml.hasDrafts && !pageYaml.hasDrafts) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [yamlDrafts, pageYamlDrafts]);
+  }, [tileYaml.hasDrafts, pageYaml.hasDrafts]);
 
   useEffect(() => {
     apiFetch('/scripts').then(async res => {
@@ -126,83 +86,31 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
     }).catch(() => {});
   }, []);
 
-  const draft = selectedTile ? yamlDrafts[selectedTile.id] : undefined;
-  const yamlText = selectedTile && tileEditor === 'yaml' ? draft?.text ?? generateTileYaml(selectedTile) : '';
-  const updateYamlText = (text: string) => {
-    if (!selectedTile) return;
-    const initialText = draft?.initialText ?? generateTileYaml(selectedTile);
-    setYamlDrafts(current => {
-      const next = { ...current };
-      if (text === initialText) delete next[selectedTile.id];
-      else next[selectedTile.id] = {
-        text,
-        initialText,
-        baseSnapshot: draft?.baseSnapshot ?? JSON.stringify(selectedTile)
-      };
-      return next;
-    });
-    setYamlError('');
-  };
-  const discardYamlDraft = () => {
-    if (!selectedTile) return;
-    setYamlDrafts(current => {
-      const next = { ...current };
-      delete next[selectedTile.id];
-      return next;
-    });
-    setYamlError('');
-  };
   const applyYamlDraft = () => {
     if (!selectedTile) return;
-    if (draft && draft.baseSnapshot !== JSON.stringify(selectedTile)) {
-      setYamlError('The tile changed since this draft was started. Cancel the draft and reopen YAML to edit the current tile.');
+    if (tileYaml.isStale) {
+      tileYaml.setError('The tile changed since this draft was started. Cancel the draft and reopen YAML to edit the current tile.');
       return;
     }
     try {
-      const tile = parseTileYaml(yamlText, selectedTile.id);
-      if (tile.x >= activePage.cols || tile.y >= activePage.rows) {
-        throw new Error('The tile position must be within the current page grid.');
-      }
+      const tile = parseTileYaml(tileYaml.yamlText, selectedTile.id);
+      validateTileBounds(tile, activePage.rows, activePage.cols);
       onUpdate(tile, true);
-      discardYamlDraft();
-      setTileEditor('form');
+      tileYaml.discard();
+      tileYaml.setMode('form');
     } catch (error) {
-      setYamlError(error instanceof Error ? error.message : String(error));
+      tileYaml.setError(error instanceof Error ? error.message : String(error));
     }
   };
 
-  const pageDraft = pageYamlDrafts[activePage.id];
-  const pageYamlText = pageEditor === 'yaml' ? pageDraft?.text ?? generatePageYaml(activePage) : '';
-  const updatePageYamlText = (text: string) => {
-    const initialText = pageDraft?.initialText ?? generatePageYaml(activePage);
-    setPageYamlDrafts(current => {
-      const next = { ...current };
-      if (text === initialText) delete next[activePage.id];
-      else next[activePage.id] = {
-        text,
-        initialText,
-        baseSnapshot: pageDraft?.baseSnapshot ?? JSON.stringify(activePage)
-      };
-      return next;
-    });
-    setPageYamlError('');
-  };
-  const discardPageYamlDraft = () => {
-    setPageYamlDrafts(current => {
-      const next = { ...current };
-      delete next[activePage.id];
-      return next;
-    });
-    setPageYamlError('');
-  };
   const applyPageYamlDraft = () => {
-    if (pageDraft && pageDraft.baseSnapshot !== JSON.stringify(activePage)) {
-      setPageYamlError('The page changed since this draft was started. Cancel the draft and reopen YAML to edit the current page.');
+    if (pageYaml.isStale) {
+      pageYaml.setError('The page changed since this draft was started. Cancel the draft and reopen YAML to edit the current page.');
       return;
     }
     try {
       const existingPageIds = config.pages.filter(p => p.id !== activePage.id).map(p => p.id);
-      const parsedPage = parsePageYaml(pageYamlText, activePage, existingPageIds);
+      const parsedPage = parsePageYaml(pageYaml.yamlText, activePage, existingPageIds);
       const otherHasBase = config.pages.some(p => p.id !== activePage.id && p.flags?.includes('BASE'));
       if (config.pages.length > 1 && activePage.flags?.includes('BASE') && !parsedPage.flags?.includes('BASE') && !otherHasBase) {
         throw new Error('Cannot remove BASE flag from the only BASE page. Set BASE on another page instead.');
@@ -251,10 +159,10 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
         }
       }
 
-      discardPageYamlDraft();
-      setPageEditor('form');
+      pageYaml.discard();
+      pageYaml.setMode('form');
     } catch (error) {
-      setPageYamlError(error instanceof Error ? error.message : String(error));
+      pageYaml.setError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -267,308 +175,38 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
         </div>
       </div>
 
-      <div className="flex gap-2" aria-label="Page editor mode">
-        <button
-          type="button"
-          onClick={() => setPageEditor('form')}
-          className={`px-3 py-1 rounded text-sm ${pageEditor === 'form' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
-        >Form</button>
-        <button
-          type="button"
-          onClick={() => setPageEditor('yaml')}
-          className={`px-3 py-1 rounded text-sm ${pageEditor === 'yaml' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
-        >YAML{pageDraft ? ' *' : ''}</button>
-      </div>
+      <YamlModeToggle
+        mode={pageYaml.mode}
+        onChange={pageYaml.setMode}
+        hasDraft={Boolean(pageYaml.draft)}
+        ariaLabel="Page editor mode"
+      />
 
-      {pageEditor === 'yaml' ? (
-        <div className="space-y-2">
-          <label htmlFor="page-yaml" className="block text-xs font-medium text-slate-700">Page YAML</label>
-          <p className="text-xs text-slate-500">Edit this screen and its tiles as YAML. Common leading indentation is removed; relative indentation must be valid. Comments and formatting are not saved.</p>
-          <textarea
-            id="page-yaml"
-            spellCheck={false}
-            value={pageYamlText}
-            onChange={event => updatePageYamlText(event.target.value)}
-            onKeyDown={event => handleYamlKeyDown(event, pageYamlText, updatePageYamlText)}
-            className="w-full min-h-[380px] border-2 border-slate-200 rounded-lg p-2 text-xs font-mono focus:border-blue-500 outline-none"
-          />
-          {pageYamlError && <p role="alert" className="text-xs text-red-600 whitespace-pre-wrap">{pageYamlError}</p>}
-          <div className="flex gap-2">
-            <button type="button" onClick={applyPageYamlDraft} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm">Apply</button>
-            <button type="button" onClick={() => { discardPageYamlDraft(); setPageEditor('form'); }} className="px-3 py-1.5 rounded bg-slate-100 text-slate-700 text-sm">Cancel</button>
-          </div>
-        </div>
+      {pageYaml.mode === 'yaml' ? (
+        <YamlEditorSection
+          id="page-yaml"
+          label="Page YAML"
+          hint="Edit this screen and its tiles as YAML. Common leading indentation is removed; relative indentation must be valid. Comments and formatting are not saved."
+          value={pageYaml.yamlText}
+          error={pageYaml.error}
+          onChange={pageYaml.updateText}
+          onApply={applyPageYamlDraft}
+          onCancel={() => { pageYaml.discard(); pageYaml.setMode('form'); }}
+          minHeightClass="min-h-[380px]"
+        />
       ) : (
         <div className="space-y-6">
-          {pageDraft && <p className="text-xs text-amber-700">A YAML draft is pending. Return to YAML to apply or cancel it.</p>}
-      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Page Settings</label>
-        <div className="mb-4">
-          <label className="block text-xs text-slate-600 mb-1 font-medium">Page ID</label>
-          <input 
-            type="text" 
-            value={activePage.id} 
-            onChange={e => onRenamePage(activePage.id, e.target.value)}
-            className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+          {pageYaml.draft && <p className="text-xs text-amber-700">A YAML draft is pending. Return to YAML to apply or cancel it.</p>}
+          <PagePropertiesPanel
+            activePage={activePage}
+            config={config}
+            colorList={colorList}
+            screenImages={screenImages}
+            onUpdatePage={onUpdatePage}
+            onRenamePage={onRenamePage}
+            setConfig={setConfig}
           />
         </div>
-        
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Grid Dimensions</label>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-slate-600 mb-1 font-medium">Rows</label>
-            <input 
-              type="number" 
-              value={activePage.rows} 
-              onChange={e => onUpdatePage({...activePage, rows: Math.max(1, parseInt(e.target.value) || 1)})}
-              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-600 mb-1 font-medium">Columns</label>
-            <input 
-              type="number" 
-              value={activePage.cols} 
-              onChange={e => onUpdatePage({...activePage, cols: Math.max(1, parseInt(e.target.value) || 1)})}
-              className="w-full border-2 border-slate-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
-            />
-          </div>
-        </div>
-      </div>
-      
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Page Flags</label>
-        <div className="space-y-2">
-          {['BASE', 'TEMPORARY', 'FAST_REFRESH', 'OMIT_TIME_WIFI'].map(flag => {
-            const isChecked = activePage.flags?.includes(flag) || false;
-            const isBase = flag === 'BASE';
-            const isTemporaryFlag = flag === 'TEMPORARY';
-            const isCurrentBase = activePage.flags?.includes('BASE');
-            const isTemporary = activePage.flags?.includes('TEMPORARY');
-            
-            // Cannot uncheck BASE if it's the current base screen
-            // Cannot check BASE if page is TEMPORARY
-            // Cannot check TEMPORARY if page is BASE
-            const isDisabled = (isBase && isCurrentBase) || (isBase && isTemporary && !isChecked) || (isTemporaryFlag && isCurrentBase && !isChecked);
-            
-            return (
-              <div key={flag} className="flex items-center gap-2">
-                <input 
-                  type="checkbox" 
-                  id={`flag-${flag}`}
-                  checked={isChecked}
-                  disabled={isDisabled}
-                  onChange={(e) => {
-                    if (isBase && e.target.checked) {
-                      // When setting BASE on this page, remove it from all others
-                      if (setConfig) {
-                        const updatedPages = config.pages.map(p => ({
-                          ...p,
-                          flags: p.id === activePage.id 
-                            ? [...(p.flags || []), 'BASE'] 
-                            : (p.flags?.filter(f => f !== 'BASE') || [])
-                        }));
-                        setConfig({...config, pages: updatedPages});
-                      }
-                    } else {
-                      // For other flags, just add/remove normally
-                      const newFlags = e.target.checked 
-                        ? [...(activePage.flags || []), flag]
-                        : (activePage.flags || []).filter(f => f !== flag);
-                      onUpdatePage({...activePage, flags: newFlags});
-                    }
-                  }}
-                  className={`rounded ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                />
-                <label htmlFor={`flag-${flag}`} className={`text-sm ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                  {flag === 'OMIT_TIME_WIFI' ? 'Omit time & WiFi indicator' : flag}
-                  {isBase && isCurrentBase && <span className="text-xs text-slate-500 ml-1">(cannot remove)</span>}
-                  {isBase && isTemporary && !isChecked && <span className="text-xs text-slate-500 ml-1">(cannot use with TEMPORARY)</span>}
-                  {isTemporaryFlag && isCurrentBase && !isChecked && <span className="text-xs text-slate-500 ml-1">(cannot use with BASE)</span>}
-                </label>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Time Color */}
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Time Color</label>
-        <div className="bg-slate-50 rounded-lg border border-slate-100 p-3">
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="page-time-color-enable"
-              checked={!!activePage.time_color}
-              onChange={e => {
-                if (e.target.checked) {
-                  onUpdatePage({ ...activePage, time_color: 'dark_gray' });
-                } else {
-                  const { time_color: _tc, ...rest } = activePage as any;
-                  onUpdatePage(rest as Page);
-                }
-              }}
-              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            />
-            <label htmlFor="page-time-color-enable" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
-              Override time color
-            </label>
-          </div>
-          {activePage.time_color && (
-            <div className="pl-4 mt-3">
-              <ColorPicker
-                value={activePage.time_color}
-                onChange={v => onUpdatePage({ ...activePage, time_color: v })}
-                colors={colorList}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Screen Background */}
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Screen Background</label>
-        <div className="bg-slate-50 rounded-lg border border-slate-100 p-3">
-          {(() => {
-            const bgEntries: ScreenBgEntry[] = activePage.background || [];
-            const bgEnabled = bgEntries.length > 0;
-
-            const updateBg = (entries: ScreenBgEntry[]) => {
-              onUpdatePage({ ...activePage, background: entries.length > 0 ? entries : undefined });
-            };
-
-            return (
-              <>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="page-bg-enable"
-                    checked={bgEnabled}
-                    onChange={e => {
-                      if (e.target.checked) {
-                        updateBg([{ color: 'black' }]);
-                      } else {
-                        updateBg([]);
-                      }
-                    }}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <label htmlFor="page-bg-enable" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
-                    Enable background
-                  </label>
-                </div>
-
-                {bgEnabled && (
-                  <div className="pl-4 mt-3 space-y-3">
-                    {bgEntries.map((entry, idx) => {
-                      const isImage = 'image' in entry;
-                      const hasCondition = 'condition' in entry;
-                      return (
-                        <div key={idx} className="space-y-2 pb-2 border-b border-slate-200 last:border-b-0 last:pb-0">
-                          {/* Type + delete row */}
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={isImage ? 'image' : 'color'}
-                              onChange={e => {
-                                const newEntries = bgEntries.map((en, i) => {
-                                  if (i !== idx) return en;
-                                  if (e.target.value === 'image') {
-                                    const { color: _c, ...rest } = en as any;
-                                    return { ...rest, image: '' };
-                                  } else {
-                                    const { image: _img, ...rest } = en as any;
-                                    return { ...rest, color: 'black' };
-                                  }
-                                });
-                                updateBg(newEntries);
-                              }}
-                              className="text-xs border rounded px-1.5 py-1 bg-white flex-shrink-0"
-                            >
-                              <option value="color">Color</option>
-                              <option value="image">Image</option>
-                            </select>
-                            <div className="flex-1 min-w-0">
-                              {isImage ? (
-                                <ImageSelectInput
-                                  value={entry.image || ''}
-                                  onChange={v => {
-                                    const newEntries = bgEntries.map((en, i) => i === idx ? { ...en, image: v } : en);
-                                    updateBg(newEntries);
-                                  }}
-                                  images={(screenImages || {}) as Record<string, ImageEntry>}
-                                />
-                              ) : (
-                                <ColorPicker
-                                  value={(entry as any).color || 'black'}
-                                  onChange={v => {
-                                    const newEntries = bgEntries.map((en, i) => i === idx ? { ...en, color: v } : en);
-                                    updateBg(newEntries);
-                                  }}
-                                  colors={colorList}
-                                />
-                              )}
-                            </div>
-                            <button
-                              onClick={() => updateBg(bgEntries.filter((_, i) => i !== idx))}
-                              className="text-red-400 hover:text-red-600 p-0.5 rounded shrink-0"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-
-                          {/* Only if condition */}
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="checkbox"
-                              id={`bg-cond-${idx}`}
-                              checked={hasCondition}
-                              onChange={ev => {
-                                const newEntries = bgEntries.map((en, i) => {
-                                  if (i !== idx) return en;
-                                  const updated = { ...en };
-                                  if (ev.target.checked) {
-                                    (updated as any).condition = '';
-                                  } else {
-                                    delete (updated as any).condition;
-                                  }
-                                  return updated;
-                                });
-                                updateBg(newEntries);
-                              }}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <label htmlFor={`bg-cond-${idx}`} className="text-[10px] text-slate-500 select-none cursor-pointer">
-                              Only if condition
-                            </label>
-                          </div>
-                          {hasCondition && (
-                            <ConditionBuilder
-                              value={(entry as any).condition || ''}
-                              onChange={v => {
-                                const newEntries = bgEntries.map((en, i) => i === idx ? { ...en, condition: v } : en);
-                                updateBg(newEntries);
-                              }}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                    <button
-                      onClick={() => updateBg([...bgEntries, { color: 'black' }])}
-                      className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                    >
-                      <Plus size={12} /> Add background layer
-                    </button>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      </div>
-    </div>
       )}
     </div>
   );
@@ -601,48 +239,12 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
         </button>
       </div>
 
-      {(orphanDrafts.length > 0 || orphanPageDrafts.length > 0) && (
-        <div className="p-3 bg-amber-50 text-xs text-amber-800 space-y-2">
-          {orphanDrafts.length > 0 && (
-            <>
-              <p>These YAML drafts belong to tiles no longer in the project. Copy or discard them before leaving.</p>
-              {orphanDrafts.map(([id, orphan]) => (
-                <details key={`tile-${id}`}>
-                  <summary className="cursor-pointer">Draft for removed tile {id}</summary>
-                  <textarea aria-label={`Draft for removed tile ${id}`} readOnly value={orphan.text} className="w-full min-h-[100px] mt-1 p-1 font-mono border rounded bg-white" />
-                  <button type="button" className="underline" onClick={() => {
-                    if (!confirm('Discard this YAML draft?')) return;
-                    setYamlDrafts(current => {
-                      const next = { ...current };
-                      delete next[id];
-                      return next;
-                    });
-                  }}>Discard draft</button>
-                </details>
-              ))}
-            </>
-          )}
-          {orphanPageDrafts.length > 0 && (
-            <>
-              <p>These YAML drafts belong to pages no longer in the project. Copy or discard them before leaving.</p>
-              {orphanPageDrafts.map(([id, orphan]) => (
-                <details key={`page-${id}`}>
-                  <summary className="cursor-pointer">Draft for removed page {id}</summary>
-                  <textarea aria-label={`Draft for removed page ${id}`} readOnly value={orphan.text} className="w-full min-h-[100px] mt-1 p-1 font-mono border rounded bg-white" />
-                  <button type="button" className="underline" onClick={() => {
-                    if (!confirm('Discard this YAML draft?')) return;
-                    setPageYamlDrafts(current => {
-                      const next = { ...current };
-                      delete next[id];
-                      return next;
-                    });
-                  }}>Discard draft</button>
-                </details>
-              ))}
-            </>
-          )}
-        </div>
-      )}
+      <OrphanDraftsBanner
+        tileDrafts={orphanDrafts}
+        pageDrafts={orphanPageDrafts}
+        onDiscardTile={tileYaml.discardById}
+        onDiscardPage={pageYaml.discardById}
+      />
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'page' ? (
           renderPageProperties()
@@ -664,39 +266,26 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
               </div>
             </div>
 
-            <div className="flex gap-2" aria-label="Tile editor mode">
-              <button
-                type="button"
-                onClick={() => setTileEditor('form')}
-                className={`px-3 py-1 rounded text-sm ${tileEditor === 'form' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
-              >Form</button>
-              <button
-                type="button"
-                onClick={() => setTileEditor('yaml')}
-                className={`px-3 py-1 rounded text-sm ${tileEditor === 'yaml' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}
-              >YAML{draft ? ' *' : ''}</button>
-            </div>
-            {tileEditor === 'yaml' ? (
-              <div className="space-y-2">
-                <label htmlFor="tile-yaml" className="block text-xs font-medium text-slate-700">Tile YAML</label>
-                <p className="text-xs text-slate-500">Paste one tile. Common leading indentation is removed; relative indentation must be valid. Comments and formatting are not saved.</p>
-                <textarea
-                  id="tile-yaml"
-                  spellCheck={false}
-                  value={yamlText}
-                  onChange={event => updateYamlText(event.target.value)}
-                  onKeyDown={event => handleYamlKeyDown(event, yamlText, updateYamlText)}
-                  className="w-full min-h-[300px] border-2 border-slate-200 rounded-lg p-2 text-xs font-mono focus:border-blue-500 outline-none"
-                />
-                {yamlError && <p role="alert" className="text-xs text-red-600 whitespace-pre-wrap">{yamlError}</p>}
-                <div className="flex gap-2">
-                  <button type="button" onClick={applyYamlDraft} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm">Apply</button>
-                  <button type="button" onClick={() => { discardYamlDraft(); setTileEditor('form'); }} className="px-3 py-1.5 rounded bg-slate-100 text-slate-700 text-sm">Cancel</button>
-                </div>
-              </div>
+            <YamlModeToggle
+              mode={tileYaml.mode}
+              onChange={tileYaml.setMode}
+              hasDraft={Boolean(tileYaml.draft)}
+              ariaLabel="Tile editor mode"
+            />
+            {tileYaml.mode === 'yaml' ? (
+              <YamlEditorSection
+                id="tile-yaml"
+                label="Tile YAML"
+                hint="Paste one tile. Common leading indentation is removed; relative indentation must be valid. Comments and formatting are not saved."
+                value={tileYaml.yamlText}
+                error={tileYaml.error}
+                onChange={tileYaml.updateText}
+                onApply={applyYamlDraft}
+                onCancel={() => { tileYaml.discard(); tileYaml.setMode('form'); }}
+              />
             ) : (
             <>
-            {draft && <p className="text-xs text-amber-700">A YAML draft is pending. Return to YAML to apply or cancel it.</p>}
+            {tileYaml.draft && <p className="text-xs text-amber-700">A YAML draft is pending. Return to YAML to apply or cancel it.</p>}
             {/* Position & Size */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Position & Size</label>

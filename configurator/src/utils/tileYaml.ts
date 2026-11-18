@@ -155,6 +155,20 @@ export function parseTileYaml(text: string, id: string): Tile {
   return { ...config.pages[0].tiles[0], id };
 }
 
+export function validateTileBounds(
+  tile: { x: number; y: number; x_span?: number; y_span?: number },
+  rows: number,
+  cols: number
+): void {
+  const tx = tile.x;
+  const ty = tile.y;
+  const txSpan = tile.x_span ?? 1;
+  const tySpan = tile.y_span ?? 1;
+  if ((tx < 0) !== (ty < 0) || (tx >= 0 && ty >= 0 && (tx + txSpan > cols || ty + tySpan > rows))) {
+    throw new Error('Each tile position must be within the page grid (or -1, -1 for unplaced tiles).');
+  }
+}
+
 export function parsePageYaml(text: string, currentPage: Page, existingPageIds: string[] = []): Page {
   let parsed = loadDedentedYaml(text);
 
@@ -251,13 +265,16 @@ export function parsePageYaml(text: string, currentPage: Page, existingPageIds: 
       throw new Error('Tile properties must be a mapping.');
     }
     validateTileMapping(tileType, tileProps);
-    const tx = tileProps.x as number;
-    const ty = tileProps.y as number;
-    const txSpan = (tileProps.x_span as number | undefined) ?? 1;
-    const tySpan = (tileProps.y_span as number | undefined) ?? 1;
-    if ((tx < 0) !== (ty < 0) || (tx >= 0 && ty >= 0 && (tx + txSpan > cols || ty + tySpan > rows))) {
-      throw new Error('Each tile position must be within the page grid (or -1, -1 for unplaced tiles).');
-    }
+    validateTileBounds(
+      {
+        x: tileProps.x as number,
+        y: tileProps.y as number,
+        x_span: tileProps.x_span as number | undefined,
+        y_span: tileProps.y_span as number | undefined,
+      },
+      rows,
+      cols
+    );
   }
 
   const convertedPage = convertParsedYamlToConfig({

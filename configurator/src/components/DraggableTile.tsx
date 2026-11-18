@@ -1,6 +1,7 @@
 import { useDraggable } from '@dnd-kit/core';
 import { Trash2, ArrowRightCircle } from 'lucide-react';
 import { Tile, ImageEntry } from '../types';
+import { iconCodeToChar } from '../utils/iconUtils';
 
 // Resolves a fill_color value (named id or Color(r,g,b)) to a CSS color string.
 function resolveFillColor(val: string, colorList: {id: string, value: string}[]): string | null {
@@ -180,12 +181,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
         const firstEntry = tileAny.display_assets[0];
         // Icon entry
         if (firstEntry?.icon) {
-          let iconVal = firstEntry.icon;
-          if (typeof iconVal === 'string' && iconVal.startsWith('"') && iconVal.endsWith('"')) iconVal = iconVal.slice(1, -1);
-          let displayChar = iconVal;
-          if (typeof iconVal === 'string' && iconVal.startsWith('\\U')) {
-            try { displayChar = String.fromCodePoint(parseInt(iconVal.substring(2), 16)); } catch (e) {}
-          }
+          const displayChar = iconCodeToChar(firstEntry.icon);
           return (
             <div className="absolute pointer-events-none" style={{ inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 0 }}>
               <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '28px', lineHeight: 1, opacity: 0.85 }}>{displayChar}</span>
@@ -256,13 +252,8 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
                       return first;
                     }
                     const key = Object.keys(first)[0];
-                    if (key === 'tile_icon' && first[key]?.icon) {
-                      let iconVal = first[key].icon;
-                      if (typeof iconVal === 'string' && iconVal.startsWith('"') && iconVal.endsWith('"')) iconVal = iconVal.slice(1, -1);
-                      let displayChar = iconVal;
-                      if (iconVal.startsWith('\\U')) {
-                        try { displayChar = String.fromCodePoint(parseInt(iconVal.substring(2), 16)); } catch (e) {}
-                      }
+                    if (first[key]?.icon) {
+                      const displayChar = iconCodeToChar(first[key].icon);
                       return <span style={{ fontFamily: '"Material Symbols Outlined"', fontSize: '24px', lineHeight: 1 }}>{displayChar}</span>;
                     }
                     if (key === 'tile_text' && first[key]?.text) {
