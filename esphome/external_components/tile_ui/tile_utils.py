@@ -82,7 +82,9 @@ def _generate_lambda(script_id, available_scripts, expected_params, static_param
                     # We assume if the string is wrapped in quotes, we leave it alone (it might be a complex expression)
                     # But if it's a simple string, we wrap it.
                     val = str(val)
-                    if not (val.startswith('"') and val.endswith('"')):
+                    if len(val) == 1 and ord(val) > 127:
+                        val = f'"\\U{ord(val):08x}"'
+                    elif not (val.startswith('"') and val.endswith('"')):
                         escaped_val = val.replace('"', '\\"')
                         val = f'"{escaped_val}"'
                 

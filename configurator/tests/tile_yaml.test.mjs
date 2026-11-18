@@ -37,6 +37,10 @@ test('standalone tile output matches the existing generator and handles unplaced
   const pageYaml = generateYaml({ pages: [{ id: 'main', rows: 1, cols: 1, tiles: [tile] }] });
   assert.match(pageYaml, /operator: OR/);
   assert.match(text, /operator: OR/);
+  assert.match(pageYaml, /icon: '\\U0000f05a'/);
+  assert.match(text, /icon: '\\U0000f05a'/);
+  assert.doesNotMatch(pageYaml, /'"\\U0000f05a"'/);
+  assert.doesNotMatch(text, /'"\\U0000f05a"'/);
   assert.deepEqual(parseTileYaml(text, tile.id), tile);
 });
 
@@ -234,4 +238,51 @@ test('unsupported existing page fields remain visible in generated YAML and fail
   const text = generatePageYaml({ id: 'p1', rows: 2, cols: 2, tiles: [], extra_page_field: 'keep_visible' });
   assert.match(text, /extra_page_field: keep_visible/);
   assert.throws(() => parsePageYaml(text, { id: 'p1', rows: 2, cols: 2, tiles: [] }, []));
+});
+
+test('icons emit single quotes without inner double quotes and normalize all quote styles', () => {
+  const tile = {
+    id: 'cover_1',
+    type: 'toggle_entity',
+    x: 0,
+    y: 0,
+    dynamic_entity: 'BLINDS',
+    entity: ['cover.lr1'],
+    display: [{ tile_choose_cover_sized: { size: 'small', icon: '\\U0000e286' } }],
+    display_assets: [{ icon: '\\U0000ec0e', icon_color: 'white', icon_size: 'small' }],
+  };
+
+  const tileYaml = generateTileYaml(tile);
+  const pageYaml = generatePageYaml({ id: 'blinds', rows: 2, cols: 2, tiles: [tile] });
+
+  assert.match(tileYaml, /icon: '\\U0000e286'/);
+  assert.match(tileYaml, /icon: '\\U0000ec0e'/);
+  assert.match(pageYaml, /icon: '\\U0000e286'/);
+  assert.match(pageYaml, /icon: '\\U0000ec0e'/);
+  assert.doesNotMatch(tileYaml, /'"\\U/);
+  assert.doesNotMatch(pageYaml, /'"\\U/);
+
+  for (const [displayIconYaml, assetIconYaml] of [
+    ["'\\U0000e286'", "'\\U0000ec0e'"],
+    ['"\\U0000e286"', '"\\U0000ec0e"'],
+    ['\'"\\U0000e286"\'', '\'"\\U0000ec0e"\''],
+  ]) {
+    const parsed = parseTileYaml(`
+toggle_entity:
+  x: 0
+  y: 0
+  dynamic_entity: BLINDS
+  entity:
+    - cover.lr1
+  display:
+    - tile_choose_cover_sized:
+        size: id(small)
+        icon: ${displayIconYaml}
+  display_assets:
+    - icon: ${assetIconYaml}
+      icon_color: white
+      icon_size: small
+`, 'cover_1');
+    assert.deepEqual(parsed, tile);
+  }
 });

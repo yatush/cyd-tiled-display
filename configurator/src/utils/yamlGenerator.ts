@@ -206,7 +206,7 @@ const serializeTile = ({ id, ...rest }: Tile, includeIds: boolean, retainUnknown
 };
 
 const formatIcons = (text: string) =>
-    text.replace(/icon:\s*['"]?(\\U[0-9a-fA-F]+)['"]?/g, "icon: '\"$1\"'");
+    text.replace(/icon:\s*['"]*(\\U[0-9a-fA-F]+)['"]*/g, "icon: '$1'");
 
 const serializePage = (page: Page, includeIds: boolean, retainUnknown = false) => {
     const pageExtras: Record<string, any> = {};
@@ -266,6 +266,6 @@ export const generateYaml = (config: Config, includeIds: boolean = false, includ
         images: config.images && Object.keys(config.images).length > 0 ? config.images : undefined,
         screen_images: config.screen_images && Object.keys(config.screen_images).length > 0 ? config.screen_images : undefined
     }, { lineWidth: -1, noCompatMode: true, sortKeys: false });
-    // Ensure icons are formatted as '"\U..."' for ESPHome compatibility
+    // Ensure icons are formatted as '\U...' for clean single-quoted YAML
     return formatIcons(yamlString);
 };

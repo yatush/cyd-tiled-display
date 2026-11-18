@@ -15,13 +15,22 @@ function _normalizePos(pos: any): [number, number] {
     return [0.5, 0.5]; // default to center
 }
 
-/** Strip surrounding double-quotes from an icon value added by the YAML generator.
- * e.g. '"\U0000f05a"' → '\U0000f05a' */
+/** Normalize an icon value from YAML: strip legacy surrounding double-quotes
+ * (e.g. '"\U0000f05a"' → '\U0000f05a') and re-encode decoded non-ASCII single
+ * glyphs (e.g. from double-quoted "\U0000f05a") back to '\U0000f05a'. */
 function _normalizeIconValue(v: any): any {
-    if (typeof v === 'string' && v.startsWith('"') && v.endsWith('"') && v.length > 2) {
-        return v.substring(1, v.length - 1);
+    if (typeof v !== 'string') return v;
+    const val = v.startsWith('"') && v.endsWith('"') && v.length > 2
+        ? v.substring(1, v.length - 1)
+        : v;
+    const chars = Array.from(val);
+    if (chars.length === 1) {
+        const cp = chars[0].codePointAt(0)!;
+        if (cp > 127) {
+            return `\\U${cp.toString(16).padStart(8, '0')}`;
+        }
     }
-    return v;
+    return val;
 }
 
 /** Migrate an animation object (or step within it) from legacy direction → from/to, and normalize positions to [x,y]. */
@@ -166,8 +175,8 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
                                 newParams[p] = newParams[p].substring(3, newParams[p].length - 1);
                             }
                         });
-                        if (typeof newParams.icon === 'string' && newParams.icon.startsWith('"') && newParams.icon.endsWith('"')) {
-                            newParams.icon = newParams.icon.substring(1, newParams.icon.length - 1);
+                        if ('icon' in newParams) {
+                            newParams.icon = _normalizeIconValue(newParams.icon);
                         }
                         return { [scriptId]: newParams };
                     }
