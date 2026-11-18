@@ -305,9 +305,10 @@ def get_validator(field_type: str, object_fields: list = None):
             key = Optional(f['key']) if f.get('optional') else Required(f['key'])
             item_schema[key] = get_validator(f.get('type', 'string'), f.get('objectFields'))
             
-        return All(
-            list,
-            [Schema(item_schema, extra=PREVENT_EXTRA)]
+        item_validator = Schema(item_schema, extra=PREVENT_EXTRA)
+        return Vol_Any(
+            All(list, [item_validator]),
+            item_validator,
         )
     if field_type == 'color':
         return non_empty_string

@@ -102,8 +102,17 @@ export function applyDynamicEntityListChange(
         updated.long_dynamic_entity = patchValue(tile.long_dynamic_entity);
       }
 
-      // tile.dynamic_entry.dynamic_entity (move_page)
-      if (
+      // tile.dynamic_entry (move_page): single object or array of objects
+      if (Array.isArray(tile.dynamic_entry)) {
+        updated.dynamic_entry = tile.dynamic_entry.map((entry: any) =>
+          entry &&
+          typeof entry === 'object' &&
+          typeof entry.dynamic_entity === 'string' &&
+          entry.dynamic_entity !== ''
+            ? { ...entry, dynamic_entity: patchValue(entry.dynamic_entity) }
+            : entry
+        );
+      } else if (
         tile.dynamic_entry &&
         typeof tile.dynamic_entry === 'object' &&
         typeof tile.dynamic_entry.dynamic_entity === 'string' &&

@@ -357,11 +357,12 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
   );
 };
 
-export const ObjectArrayInput = ({ label, values, fields, onChange, haEntities }: { 
+export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntities, haEntities }: { 
   label: string, 
   values: any[], 
   fields: { key: string, label: string, type?: string }[],
   onChange: (v: any[]) => void,
+  dynamicEntities?: string[],
   haEntities?: HaEntity[]
 }) => {
   const listId = `ha-entities-obj-arr-${Math.random().toString(36).substr(2, 9)}`;
@@ -412,7 +413,20 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, haEntities }
               return (
               <div key={field.key}>
                 <label className="block text-[10px] text-slate-500 uppercase">{field.label}</label>
-                {field.type === 'ha_entity_list' ? (
+                {field.type === 'dynamic_entity_select' && dynamicEntities ? (
+                  <select
+                    value={item[field.key] || ''}
+                    onChange={e => {
+                      const newValues = [...safeValues];
+                      newValues[i] = { ...item, [field.key]: e.target.value };
+                      onChange(newValues);
+                    }}
+                    className="w-full border rounded p-1 text-xs bg-white"
+                  >
+                    <option value="">Select variable...</option>
+                    {dynamicEntities.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                ) : field.type === 'ha_entity_list' ? (
                   <EntityListInput 
                     label="" 
                     values={item[field.key] || []} 

@@ -685,6 +685,21 @@ class TestMoveTileExtras(unittest.TestCase):
             generate_move_page_tile(config, {}, 'main')
         self.assertIn("dynamic_entry", str(cm.exception))
 
+    def test_multiple_dynamic_entries_chain_set_dynamic_entry(self):
+        from tile_ui.tile_generation import generate_move_page_tile
+        config = {
+            "x": 0, "y": 0,
+            "display": ["arrow"],
+            "destination": "screen2",
+            "dynamic_entry": [
+                {"dynamic_entity": "AC", "value": ["climate.living"]},
+                {"dynamic_entity": "FAN", "value": ["fan.living", "fan.desk"]},
+            ],
+        }
+        cpp = generate_move_page_tile(config, {}, 'main')
+        self.assertIn('->setDynamicEntry("AC", {"climate.living"})', cpp)
+        self.assertIn('->setDynamicEntry("FAN", {"fan.living", "fan.desk"})', cpp)
+
 
 if __name__ == '__main__':
     unittest.main()

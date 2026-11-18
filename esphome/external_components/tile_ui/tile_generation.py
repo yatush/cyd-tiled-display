@@ -174,13 +174,17 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
     
     modifiers = []
     if dynamic_entry:
-        dynamic_entity = dynamic_entry.get("dynamic_entity", "")
-        value = dynamic_entry.get("value", "")
-        if dynamic_entity and value:
-            values_cpp = format_entity_cpp(value)
-            modifiers.append(f'setDynamicEntry("{dynamic_entity}", {values_cpp})')
-        else:
-            raise ValueError(f"Screen '{screen_id}', Tile at ({x}, {y}): dynamic_entry must have both 'dynamic_entity' and 'value'")
+        entries = dynamic_entry if isinstance(dynamic_entry, list) else [dynamic_entry]
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError(f"Screen '{screen_id}', Tile at ({x}, {y}): dynamic_entry entries must be dicts")
+            dynamic_entity = entry.get("dynamic_entity", "")
+            value = entry.get("value", "")
+            if dynamic_entity and value:
+                values_cpp = format_entity_cpp(value)
+                modifiers.append(f'setDynamicEntry("{dynamic_entity}", {values_cpp})')
+            else:
+                raise ValueError(f"Screen '{screen_id}', Tile at ({x}, {y}): dynamic_entry must have both 'dynamic_entity' and 'value'")
     
     tile_cpp = _apply_modifiers(tile_cpp, config, modifiers, screen_id)
     tile_cpp += ','

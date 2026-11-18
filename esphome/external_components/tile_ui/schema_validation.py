@@ -366,6 +366,25 @@ def validate_field_value(value: Any, field_def: dict, context: str) -> None:
             elif not f.get('optional', False):
                 raise ValueError(f"{context}: Field '{field_name}' missing required key '{key}'")
 
+    elif field_type == 'object_list':
+        # Accept a list of objects (or a single object dict for backwards compatibility)
+        items = [value] if isinstance(value, dict) else value
+        if not isinstance(items, list):
+            raise ValueError(f"{context}: Field '{field_name}' must be a list of objects")
+        object_fields = field_def.get('objectFields', [])
+        for idx, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ValueError(f"{context}: Field '{field_name}' item {idx} must be a dict")
+            for f in object_fields:
+                key = f['key']
+                if key in item:
+                    temp_def = {'name': f"{field_name}[{idx}].{key}", 'type': f['type']}
+                    if 'objectFields' in f:
+                        temp_def['objectFields'] = f['objectFields']
+                    validate_field_value(item[key], temp_def, context)
+                elif not f.get('optional', False):
+                    raise ValueError(f"{context}: Field '{field_name}' item {idx} missing required key '{key}'")
+
     elif field_type == 'condition_logic':
         _validate_condition_expression(value, f"{context} field '{field_name}'")
 

@@ -64,8 +64,8 @@
         { "name": "entities", "type": "entity_list", "label": "Display Entities", "optional": true },
         { 
           "name": "dynamic_entry", 
-          "type": "object", 
-          "label": "Dynamic Entry",
+          "type": "object_list", 
+          "label": "Dynamic Entries",
           "optional": true,
           "objectFields": [
             { "key": "dynamic_entity", "label": "Dynamic Entity", "type": "dynamic_entity_select" },

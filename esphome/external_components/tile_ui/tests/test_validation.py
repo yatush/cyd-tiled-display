@@ -659,6 +659,38 @@ class TestValidateTileSchema(unittest.TestCase):
         with self.assertRaises(_SchemaInvalid):
             non_empty_string(["not_a_string"])
 
+    def test_move_page_multiple_dynamic_entries_validation(self):
+        screens = [
+            {
+                "id": "main",
+                "flags": ["BASE"],
+                "tiles": [
+                    {
+                        "move_page": {
+                            "x": 0,
+                            "y": 0,
+                            "display": ["arrow"],
+                            "destination": "room",
+                            "dynamic_entry": [
+                                {"dynamic_entity": "AC", "value": ["climate.living"]},
+                                {"dynamic_entity": "FAN", "value": ["fan.living"]},
+                            ],
+                        }
+                    }
+                ],
+            },
+            {"id": "room", "flags": ["TEMPORARY"], "tiles": [
+                {"ha_action": {
+                    "x": 0, "y": 0, "display": ["d"], "perform": ["p"],
+                    "entities": [{"dynamic_entity": "AC"}, {"dynamic_entity": "FAN"}],
+                }}
+            ]},
+        ]
+        validate_tiles_config(screens, declared_dynamic_entities=["AC", "FAN"])
+        with self.assertRaises(ValueError) as cm:
+            validate_tiles_config(screens, declared_dynamic_entities=["AC"])
+        self.assertIn("FAN", str(cm.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

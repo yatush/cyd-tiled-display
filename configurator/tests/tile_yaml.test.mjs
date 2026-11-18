@@ -286,3 +286,22 @@ toggle_entity:
     assert.deepEqual(parsed, tile);
   }
 });
+
+test('move_page supports multiple dynamic_entry items in YAML round-trip and entity discovery', () => {
+  const tile = {
+    id: 'mv_multi',
+    type: 'move_page',
+    x: 0,
+    y: 0,
+    destination: 'room',
+    display: ['arrow'],
+    dynamic_entry: [
+      { dynamic_entity: 'AC', value: ['climate.living'] },
+      { dynamic_entity: 'FAN', value: ['fan.living', 'fan.desk'] },
+    ],
+  };
+
+  const text = generateTileYaml(tile);
+  assert.deepEqual(parseTileYaml(text, tile.id), tile);
+  assert.deepEqual(getTileDynamicEntities(tile), ['AC', 'FAN']);
+});

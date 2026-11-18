@@ -123,10 +123,14 @@ def _validate_dynamic_entity_references(screens: list[dict], declared_set: set[s
 
             # dynamic_entry.dynamic_entity (move_page)
             dynamic_entry = config.get("dynamic_entry")
-            if isinstance(dynamic_entry, dict):
-                de = dynamic_entry.get("dynamic_entity", "")
-                if de:
-                    _check(de, "dynamic_entry.dynamic_entity")
+            if dynamic_entry:
+                entries = dynamic_entry if isinstance(dynamic_entry, list) else [dynamic_entry]
+                for idx, entry in enumerate(entries):
+                    if isinstance(entry, dict):
+                        de = entry.get("dynamic_entity", "")
+                        if de:
+                            label = f"dynamic_entry[{idx}].dynamic_entity" if isinstance(dynamic_entry, list) else "dynamic_entry.dynamic_entity"
+                            _check(de, label)
 
 
 def _validate_tile_positions(screen_id, tiles):

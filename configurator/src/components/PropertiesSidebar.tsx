@@ -891,6 +891,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           values={selectedTile[field.name] || []}
                           fields={field.objectFields}
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
+                          dynamicEntities={dynamicEntities}
                           haEntities={haEntities}
                         />
                       );

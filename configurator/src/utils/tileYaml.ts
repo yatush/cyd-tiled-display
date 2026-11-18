@@ -97,10 +97,15 @@ function validateTileMapping(type: string, props: Record<string, unknown>): void
       throw new Error(`${key} must be a boolean.`);
     }
   }
-  for (const key of ['activation_var', 'dynamic_entry']) {
-    if (props[key] !== undefined && !isMapping(props[key])) {
-      throw new Error(`${key} must be a mapping.`);
-    }
+  if (props.activation_var !== undefined && !isMapping(props.activation_var)) {
+    throw new Error('activation_var must be a mapping.');
+  }
+  if (
+    props.dynamic_entry !== undefined &&
+    !isMapping(props.dynamic_entry) &&
+    (!Array.isArray(props.dynamic_entry) || props.dynamic_entry.some(item => !isMapping(item)))
+  ) {
+    throw new Error('dynamic_entry must be a mapping or a list of mappings.');
   }
   for (const key of ['fill_color', 'border_color', 'border_width', 'border_radius']) {
     const value = props[key];

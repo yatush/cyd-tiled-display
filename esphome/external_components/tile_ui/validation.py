@@ -243,14 +243,17 @@ def validate_tiles_config(
             # Validate dynamic_entry dynamic_entity is a valid dynamic entity
             dynamic_entry = config.get("dynamic_entry", None)
             if dynamic_entry:
-                entry_name = dynamic_entry.get("dynamic_entity", "")
-                
-                if entry_name and entry_name not in valid_dynamic_entities:
-                    raise ValueError(
-                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
-                        f"dynamic_entry dynamic_entity '{entry_name}' is not a valid dynamic entity. "
-                        f"Valid dynamic entities are: {', '.join(sorted(valid_dynamic_entities))}"
-                    )
+                entries = dynamic_entry if isinstance(dynamic_entry, list) else [dynamic_entry]
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    entry_name = entry.get("dynamic_entity", "")
+                    if entry_name and entry_name not in valid_dynamic_entities:
+                        raise ValueError(
+                            f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                            f"dynamic_entry dynamic_entity '{entry_name}' is not a valid dynamic entity. "
+                            f"Valid dynamic entities are: {', '.join(sorted(valid_dynamic_entities))}"
+                        )
             
             if tile_type == TileType.HA_ACTION.value:
                 if config.get("long_dynamic_entity") and not config.get("long_destination"):
