@@ -179,7 +179,7 @@ int main() {
   values[fan] = "unavailable";
   values[second] = "unavailable";
   draws.clear(); tile_fan(10, 110, 20, 120, fans, big);
-  assert(draws.size() == 2 && draws[0].color == gray && draws[1].text == "--");
+  assert(draws.size() == 1 && draws[0].color == gray && draws[0].text == "\U0000f168");
   draws.clear(); tile_fan_direction(10, 110, 20, 120, fans);
   assert(draws[1].text == "--");
   ToggleFanPower(fans); CycleFanDirection(fans);
