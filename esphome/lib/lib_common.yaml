@@ -249,7 +249,7 @@ script:
     then:
       - lambda: |-
           BlindPositionTile::releaseTouch();
-          id(ignore_touch) = false;
+          Tile::notifyScreenRelease();
 
   - id: _handle_touch
     mode: restart
@@ -264,8 +264,11 @@ script:
           auto now = millis();
           id(last_activity_ms) = now;
           id(last_touch_ms) = now;
-          id(last_x) = x;
-          id(last_y) = y;
+          if (!Tile::hasActiveTouchSession()) {
+            id(last_x) = x;
+            id(last_y) = y;
+          }
+          Tile::notifyScreenTouch();
           if (id(turn_on_ms) == 0) {
             id(turn_on_ms) = now;
           }
