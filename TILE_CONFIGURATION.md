@@ -302,9 +302,8 @@ it turns all off. Speed displays the lowest percentage (with optional
 `icon_size`, default `tiny`, and `text_size`, default `text_bold`) and applies
 the next step from that fan to all fans, wrapping to its lowest nonzero step.
 Fans with different steps may round the requested percentage differently.
-Direction displays a white fan icon centered over a blue cool-down arrow for
-forward or a red warm-up arrow for reverse (with optional `size`, default
-`big`); if any fan is reverse, it displays reverse and tapping sets all to
+Direction displays a blue cool-down arrow (forward) or red warm-up arrow
+(reverse) centered over a white fan icon (with optional `size`, default `big`); if any fan is reverse, it displays reverse and tapping sets all to
 forward, otherwise it sets all to reverse. Unavailable fans and fans without
 the relevant supported control or valid attributes are skipped; if none can be
 controlled, the speed and direction tiles show `--` and send no action.

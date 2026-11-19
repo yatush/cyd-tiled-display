@@ -167,14 +167,14 @@ int main() {
   calls.clear();
   draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, medium);
   assert(draws.size() == 2);
-  assert(draws[0].text == "\U0000f4b5" && draws[0].color == red && draws[0].font == medium && draws[0].x == 60 && draws[0].y == 70);
-  assert(draws[1].text == "\U0000f168" && draws[1].color == white && draws[1].font == medium && draws[1].x == 60 && draws[1].y == 70);
+  assert(draws[0].text == "\U0000f168" && draws[0].color == white && draws[0].font == medium && draws[0].x == 60 && draws[0].y == 70);
+  assert(draws[1].text == "\U0000f4b5" && draws[1].color == red && draws[1].font == medium && draws[1].x == 60 && draws[1].y == 70);
   CycleFanDirection(fans);
   assert((calls == std::vector<std::string>{fan + ":set_direction:forward", second + ":set_direction:forward"}));
   draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, small);
   assert(draws.size() == 2);
-  assert(draws[0].text == "\U0000f4b6" && draws[0].color == blue && draws[0].font == small && draws[0].x == 60 && draws[0].y == 70);
-  assert(draws[1].text == "\U0000f168" && draws[1].color == white && draws[1].font == small && draws[1].x == 60 && draws[1].y == 70);
+  assert(draws[0].text == "\U0000f168" && draws[0].color == white && draws[0].font == small && draws[0].x == 60 && draws[0].y == 70);
+  assert(draws[1].text == "\U0000f4b6" && draws[1].color == blue && draws[1].font == small && draws[1].x == 60 && draws[1].y == 70);
   calls.clear(); CycleFanDirection(fans);
   assert((calls == std::vector<std::string>{fan + ":set_direction:reverse", second + ":set_direction:reverse"}));
   for (auto& callback : esphome::App.scheduler.callbacks) callback();
