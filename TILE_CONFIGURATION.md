@@ -292,18 +292,22 @@ screens:
 dynamic_entities: [FAN]
 ```
 
-The power tile toggles on a short release; holding it for two seconds opens
-settings even when the fan is off. Its fan icon is yellow when on and gray
-when off. To change its size, use `display: [{tile_fan: {size: small}}]`;
-the default is `big`, and `tiny`, `small`, `medium`, and `big` are available.
-For multiple fans, power is on only when all available fans are on; tapping
-turns all on if any is off, otherwise it turns all off. Speed displays the
-lowest percentage and applies the next step from that fan to all fans, wrapping
-to its lowest nonzero step. Fans with different steps may round the requested
-percentage differently. Direction displays reverse if any fan is reverse;
-tapping sets all to forward, otherwise it sets all to reverse. Unavailable
-fans and fans without the relevant supported control or valid attributes are
-skipped; if none can be controlled, the tile shows `--` and sends no action.
+The power tile toggles on a short release; holding it for 1.5 seconds opens
+settings even when the fan is off. It shows a yellow `mode_fan` icon when on
+and a gray `mode_fan_off` icon when off or unavailable. To change its size, use
+`display: [{tile_fan: {size: small}}]`; the default is `big`, and `tiny`,
+`small`, `medium`, and `big` are available. For multiple fans, power is on only
+when all available fans are on; tapping turns all on if any is off, otherwise
+it turns all off. Speed displays the lowest percentage (with optional
+`icon_size`, default `tiny`, and `text_size`, default `text_bold`) and applies
+the next step from that fan to all fans, wrapping to its lowest nonzero step.
+Fans with different steps may round the requested percentage differently.
+Direction displays a stacked fan icon above a blue cool-down arrow for forward
+or a red warm-up arrow for reverse (with optional `size`, default `small`); if
+any fan is reverse, it displays reverse and tapping sets all to forward,
+otherwise it sets all to reverse. Unavailable fans and fans without the
+relevant supported control or valid attributes are skipped; if none can be
+controlled, the speed and direction tiles show `--` and send no action.
 Applying a speed while off may turn the fan on.
 
 For a blinds up/down control with configurable arrow size:

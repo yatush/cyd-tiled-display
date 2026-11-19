@@ -44,7 +44,8 @@ class FanActionsTest(unittest.TestCase):
         library = yaml.load((ROOT / "esphome/lib/lib_common.yaml").read_text(), Loader=Loader)
         scripts = {script["id"]: script for script in library["script"]}
         glyphs = yaml.safe_load((ROOT / "esphome/lib/mdi_glyphs.yaml").read_text())
-        self.assertIn("\uf168", glyphs)
+        for glyph in ("\uf168", "\uec17", "\uf4b5", "\uf4b6"):
+            self.assertIn(glyph, glyphs)
         source = (ROOT / "esphome/lib/utils.h").read_text()
         pending = source.split("struct PendingFanAttribute {", 1)[1].split(
             "\nstd::map<std::string, PendingClimateMode>", 1
@@ -62,6 +63,7 @@ class FanActionsTest(unittest.TestCase):
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 #define id(x) x
 template<class... Args> void log_warning(Args...) {}
@@ -92,19 +94,35 @@ struct PendingFanAttribute {
 std::string GetFanAttribute(
 """ + actions + r"""
 enum TextAlign { CENTER, TOP_LEFT };
-enum Font { big, small, tiny, text_small, text_bold };
-enum Color { yellow, gray, white };
+enum Font { big, medium, small, tiny, text_small, text_bold, text_big_bold };
+enum Color { yellow, gray, white, blue, red };
 struct Draw { int x, y; Font font; Color color; TextAlign align; std::string text; };
 std::vector<Draw> draws;
 void print(int x, int y, Font font, Color color, TextAlign align, const char* text) {
   draws.push_back({x, y, font, color, align, text});
 }
+std::pair<int, int> measure(Font font, const char*) {
+  switch (font) {
+    case big: return {80, 80};
+    case medium: return {60, 60};
+    case small: return {40, 40};
+    case tiny: return {24, 24};
+    case text_big_bold: return {30, 30};
+    case text_bold: return {20, 20};
+    case text_small: return {12, 12};
+  }
+  return {20, 20};
+}
 """
-        for name in ("tile_fan", "tile_fan_speed", "tile_fan_direction"):
-            size_parameter = ", Font size" if name == "tile_fan" else ""
+        extra_params = {
+            "tile_fan": ", Font size",
+            "tile_fan_speed": ", Font icon_size, Font text_size",
+            "tile_fan_direction": ", Font size",
+        }
+        for name, extra in extra_params.items():
             code += (
                 f"\nvoid {name}(int x_start, int x_end, int y_start, int y_end, "
-                f"std::vector<std::string> entities{size_parameter}) {{\n"
+                f"std::vector<std::string> entities{extra}) {{\n"
                 + scripts[name]["then"][0]["lambda"] + "\n}\n"
             )
         code += r"""
@@ -123,19 +141,19 @@ int main() {
   values[second + "|direction"] = "reverse";
   std::vector<std::string> fans = {fan, second, "fan.missing", fan + "|percentage"};
   tile_fan(10, 110, 20, 120, fans, small);
-  assert(draws.size() == 1 && draws[0].color == gray && draws[0].font == small);
+  assert(draws.size() == 1 && draws[0].color == gray && draws[0].font == small && draws[0].text == "\U0000ec17");
   ToggleFanPower(fans);
   assert((calls == std::vector<std::string>{fan + ":turn_on", second + ":turn_on"}));
   calls.clear(); values[second] = "on";
   draws.clear(); tile_fan(10, 110, 20, 120, fans, big);
-  assert(draws.size() == 1 && draws[0].color == yellow && draws[0].text == "\U0000f168");
+  assert(draws.size() == 1 && draws[0].color == yellow && draws[0].font == big && draws[0].text == "\U0000f168");
   ToggleFanPower(fans);
   assert((calls == std::vector<std::string>{fan + ":turn_off", second + ":turn_off"}));
   calls.clear();
-  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans);
+  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, small, text_big_bold);
   assert(draws.size() == 2 && draws[0].color == white && draws[0].align == TOP_LEFT);
-  assert(draws[0].x == 12 && draws[0].y == 22 && draws[0].font == tiny && draws[0].text == "\U0000f168");
-  assert(draws[1].text == "33%" && draws[1].color == white);
+  assert(draws[0].x == 12 && draws[0].y == 22 && draws[0].font == small && draws[0].text == "\U0000f168");
+  assert(draws[1].text == "33%" && draws[1].color == white && draws[1].font == text_big_bold);
   CycleFanSpeed(fans);
   assert((calls == std::vector<std::string>{fan + ":set_percentage:66", second + ":set_percentage:66"}));
   calls.clear();
@@ -147,12 +165,16 @@ int main() {
   CycleFanSpeed(fans);
   assert((calls == std::vector<std::string>{fan + ":set_percentage:33", second + ":set_percentage:33"}));
   calls.clear();
-  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans);
-  assert(draws[1].text == "Reverse" && draws[1].color == white);
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, medium);
+  assert(draws.size() == 2);
+  assert(draws[0].text == "\U0000f168" && draws[0].color == white && draws[0].font == medium && draws[0].y == 40);
+  assert(draws[1].text == "\U0000f4b5" && draws[1].color == red && draws[1].font == medium && draws[1].y == 100);
   CycleFanDirection(fans);
   assert((calls == std::vector<std::string>{fan + ":set_direction:forward", second + ":set_direction:forward"}));
-  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans);
-  assert(draws[1].text == "Forward");
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, small);
+  assert(draws.size() == 2);
+  assert(draws[0].text == "\U0000f168" && draws[0].color == white && draws[0].font == small && draws[0].y == 50);
+  assert(draws[1].text == "\U0000f4b6" && draws[1].color == blue && draws[1].font == small && draws[1].y == 90);
   calls.clear(); CycleFanDirection(fans);
   assert((calls == std::vector<std::string>{fan + ":set_direction:reverse", second + ":set_direction:reverse"}));
   for (auto& callback : esphome::App.scheduler.callbacks) callback();
@@ -166,22 +188,27 @@ int main() {
   esphome::App.scheduler.callbacks.clear();
   calls.clear();
   values[fan + "|percentage_step"] = "unknown";
-  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans);
-  assert(draws[1].text == "25%");
+  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, tiny, text_bold);
+  assert(draws[1].text == "25%" && draws[1].font == text_bold);
   CycleFanSpeed(fans);
   assert((calls == std::vector<std::string>{second + ":set_percentage:50"}));
   calls.clear();
   values[second + "|supported_features"] = "0";
-  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans);
+  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, tiny, text_bold);
   assert(draws[1].text == "--");
   CycleFanSpeed(fans);
   assert(calls.empty());
   values[fan] = "unavailable";
   values[second] = "unavailable";
   draws.clear(); tile_fan(10, 110, 20, 120, fans, big);
-  assert(draws.size() == 1 && draws[0].color == gray && draws[0].text == "\U0000f168");
-  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans);
-  assert(draws[1].text == "--");
+  assert(draws.size() == 1 && draws[0].color == gray && draws[0].text == "\U0000ec17");
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, small);
+  assert(draws.size() == 2 && draws[0].text == "\U0000f168" && draws[0].font == small);
+  assert(draws[1].text == "--" && draws[1].color == white && draws[1].font == text_small);
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, medium);
+  assert(draws[1].text == "--" && draws[1].font == text_bold);
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, big);
+  assert(draws[1].text == "--" && draws[1].font == text_big_bold);
   ToggleFanPower(fans); CycleFanDirection(fans);
   assert(calls.empty());
 }

@@ -36,6 +36,7 @@
   "\U0000e425", # Timer
   "\U0000f154", # Airwave
   "\U0000f168", # Fan
+  "\U0000ec17", # Fan off
   "\U0000f418", # Power
   # Bluetooth
   "\U0000e1a7", # Bluetooth
