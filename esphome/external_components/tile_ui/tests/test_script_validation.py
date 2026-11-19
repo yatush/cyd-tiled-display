@@ -166,10 +166,10 @@ class TestScriptValidation(unittest.TestCase):
         }}
         screens = [{"id": "main", "flags": ["BASE"], "tiles": [tile]}]
         for display, expected in [
-            (["tile_fan_direction"], "&id(small)"),
-            ([{"tile_fan_direction": {}}], "&id(small)"),
+            (["tile_fan_direction"], "&id(big)"),
+            ([{"tile_fan_direction": {}}], "&id(big)"),
             ([{"tile_fan_direction": {"size": "medium"}}], "&id(medium)"),
-            ([{"tile_fan_direction": {"size": "id(big)"}}], "&id(big)"),
+            ([{"tile_fan_direction": {"size": "id(small)"}}], "&id(small)"),
         ]:
             with self.subTest(display=display):
                 tile["ha_action"]["display"] = display
