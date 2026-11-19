@@ -792,23 +792,14 @@ script:
           const auto group = GetFanDirectionGroup(entities);
           int x_mid = (x_start + x_end) / 2;
           int y_mid = (y_start + y_end) / 2;
-          int icon_h = measure(size, "\U0000f168").second;
           if (group.fans.empty()) {
-            auto dash_font = id(text_bold);
-            if (size == id(tiny) || size == id(small)) {
-              dash_font = id(text_small);
-            } else if (size == id(big)) {
-              dash_font = id(text_big_bold);
-            }
-            int text_h = measure(dash_font, "--").second;
-            print(x_mid, y_mid - text_h / 2, size, id(white), TextAlign::CENTER, "\U0000f168");
-            print(x_mid, y_mid + icon_h / 2, dash_font, id(white), TextAlign::CENTER, "--");
+            print(x_start + 2, y_start + 2, id(tiny), id(white), TextAlign::TOP_LEFT, "\U0000f168");
+            print(x_mid, y_mid, id(text_bold), id(white), TextAlign::CENTER, "--");
           } else {
             const char* dir_icon = group.any_reverse ? "\U0000f4b5" : "\U0000f4b6";
             auto dir_color = group.any_reverse ? id(red) : id(blue);
-            int dir_h = measure(size, dir_icon).second;
-            print(x_mid, y_mid - dir_h / 2, size, id(white), TextAlign::CENTER, "\U0000f168");
-            print(x_mid, y_mid + icon_h / 2, size, dir_color, TextAlign::CENTER, dir_icon);
+            print(x_mid, y_mid, size, dir_color, TextAlign::CENTER, dir_icon);
+            print(x_mid, y_mid, size, id(white), TextAlign::CENTER, "\U0000f168");
           }
 
   - id: tile_ac

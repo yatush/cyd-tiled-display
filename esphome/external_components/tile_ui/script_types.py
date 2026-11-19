@@ -122,7 +122,7 @@ def _are_types_compatible(actual, expected):
 BUILTIN_FONT_PARAMETER_DEFAULTS = {
     'tile_ac': {'size': 'big'},
     'tile_fan': {'size': 'big'},
-    'tile_fan_direction': {'size': 'small'},
+    'tile_fan_direction': {'size': 'big'},
     'tile_fan_speed': {'icon_size': 'tiny', 'text_size': 'text_bold'},
 }
 
