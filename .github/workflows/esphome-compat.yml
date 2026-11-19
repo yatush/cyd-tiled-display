@@ -127,13 +127,13 @@ jobs:
           path: /tmp/build_summary.log
           retention-days: 7
 
-  # ─── 3. LLM Analysis via GitHub Models ────────────────────────────────────
+  # ─── 3. LLM Analysis via Google Gemini API ────────────────────────────────
   analyze:
     name: LLM Analysis
     needs: [check-version, compile]
     runs-on: ubuntu-latest
     permissions:
-      models: read
+      contents: read
     steps:
       - name: Download build summary
         uses: actions/download-artifact@v5
@@ -161,23 +161,31 @@ jobs:
           [ -z "$BODY" ] && BODY="No release notes found for ESPHome ${VERSION}."
           printf '%s\n' "$BODY" > /tmp/changelog.txt
           echo "Changelog: $(wc -c < /tmp/changelog.txt) bytes"
-      - name: Analyze with GitHub Models (gpt-4.1)
+
+      - name: Analyze with Google Gemini
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           ESPHOME_VERSION: ${{ needs.check-version.outputs.esphome_version }}
           BUILD_STATUS: ${{ needs.compile.outputs.build_status }}
         run: |
           python3 << 'PYEOF'
-          import json, os, time, urllib.error, urllib.request
+          import json, os, time, urllib.error, urllib.parse, urllib.request
 
           version      = os.environ["ESPHOME_VERSION"]
           build_status = os.environ["BUILD_STATUS"]
+          api_key      = os.environ.get("GEMINI_API_KEY", "").strip()
+          custom_model = os.environ.get("GEMINI_MODEL", "").strip()
+          base_url     = os.environ.get(
+              "GEMINI_API_BASE_URL",
+              "https://generativelanguage.googleapis.com/v1beta",
+          ).rstrip("/")
 
-          with open("/tmp/artifacts/build_summary.log") as f:
-              build_log = f.read()[-6000:]   # last ~6 k chars to stay within token budget
+          with open("/tmp/artifacts/build_summary.log", encoding="utf-8", errors="replace") as f:
+              build_log = f.read()[-12000:]
 
-          with open("/tmp/changelog.txt") as f:
-              changelog = f.read()[:3000]   # first 3 k chars of changelog
+          with open("/tmp/changelog.txt", encoding="utf-8", errors="replace") as f:
+              changelog = f.read()[:12000]
 
           prompt = (
               f"You are reviewing ESPHome {version} against an ESP32 project that uses:\n"
@@ -202,60 +210,107 @@ jobs:
               f"Be specific and actionable in the compatibility section. If everything looks clean, say so."
           )
 
-          retryable_statuses = {410, 429, 500, 502, 503, 504}
+          default_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]
+          models = []
+          for candidate in ([custom_model] if custom_model else []) + default_models:
+              if candidate and candidate not in models:
+                  models.append(candidate)
+
+          retryable_statuses = {429, 500, 502, 503, 504}
           retry_delays = [15]
-          models = ["openai/gpt-4.1", "openai/gpt-4o-mini"]
           summary = None
           errors = []
 
-          for model in models:
-              payload = {
-                  "model": model,
-                  "messages": [{"role": "user", "content": prompt}],
-                  "max_tokens": 2048,
-                  "temperature": 0.3,
-              }
-              req = urllib.request.Request(
-                  "https://models.github.ai/inference/chat/completions",
-                  data=json.dumps(payload).encode(),
-                  headers={
-                      "Content-Type": "application/json",
-                      "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-                  },
-                  method="POST",
+          if not api_key:
+              summary = (
+                  "⚠️ LLM analysis skipped: `GEMINI_API_KEY` repository secret is not set.\n"
+                  "Create a free API key at https://aistudio.google.com/apikey and add it under "
+                  "**Settings → Secrets and variables → Actions → New repository secret** as `GEMINI_API_KEY`."
               )
+          else:
+              payload_bytes = json.dumps({
+                  "contents": [{"parts": [{"text": prompt}]}],
+              }).encode("utf-8")
 
-              for attempt in range(2):
-                  try:
-                      with urllib.request.urlopen(req, timeout=60) as resp:
-                          data = json.loads(resp.read().decode())
-                          summary = data["choices"][0]["message"]["content"]
-                      print(f"GitHub Models succeeded with {model}")
-                      break
-                  except urllib.error.HTTPError as e:
-                      error_body = e.read().decode(errors="replace")
-                      errors.append(f"{model}: HTTP {e.code}: {error_body}")
-                      if e.code not in retryable_statuses or attempt == 1:
-                          break
-                      print(f"{model} returned HTTP {e.code}; retrying in 15s")
-                      time.sleep(retry_delays[attempt])
-                  except urllib.error.URLError as e:
-                      errors.append(f"{model}: {e}")
-                      if attempt == 1:
-                          break
-                      print(f"{model} request failed; retrying in 15s")
-                      time.sleep(retry_delays[attempt])
-                  except Exception as e:
-                      errors.append(f"{model}: {e}")
-                      break
+              for model in models:
+                  url = f"{base_url}/models/{urllib.parse.quote(model, safe='')}:generateContent"
 
-              if summary is not None:
-                  break
+                  for attempt in range(2):
+                      req = urllib.request.Request(
+                          url,
+                          data=payload_bytes,
+                          headers={
+                              "Content-Type": "application/json",
+                              "Accept": "application/json",
+                              "x-goog-api-key": api_key,
+                          },
+                          method="POST",
+                      )
+                      try:
+                          with urllib.request.urlopen(req, timeout=90) as resp:
+                              content_type = resp.headers.get("Content-Type", "unknown")
+                              raw_body = resp.read().decode("utf-8", errors="replace")
+
+                          try:
+                              data = json.loads(raw_body)
+                          except json.JSONDecodeError as je:
+                              snippet = raw_body.strip().replace("\n", " ")[:200]
+                              errors.append(
+                                  f"{model}: invalid JSON ({je}; content-type={content_type}; body={snippet!r})"
+                              )
+                              break
+
+                          candidates = data.get("candidates") or []
+                          parts = (
+                              (candidates[0].get("content") or {}).get("parts") or []
+                              if candidates else []
+                          )
+                          text = "".join(
+                              p.get("text", "")
+                              for p in parts
+                              if isinstance(p, dict) and not p.get("thought") and isinstance(p.get("text"), str)
+                          ).strip()
+
+                          if text:
+                              summary = text
+                              print(f"Gemini succeeded with {model}")
+                              break
+
+                          finish_reason = candidates[0].get("finishReason") if candidates else None
+                          block_reason = (data.get("promptFeedback") or {}).get("blockReason")
+                          errors.append(
+                              f"{model}: empty response (finishReason={finish_reason}, blockReason={block_reason})"
+                          )
+                          break
+                      except urllib.error.HTTPError as e:
+                          error_body = e.read().decode("utf-8", errors="replace").strip()
+                          try:
+                              err_json = json.loads(error_body)
+                              error_msg = (err_json.get("error") or {}).get("message") or error_body[:300]
+                          except Exception:
+                              error_msg = error_body[:300]
+                          errors.append(f"{model}: HTTP {e.code}: {error_msg}")
+                          if e.code not in retryable_statuses or attempt == 1:
+                              break
+                          print(f"{model} returned HTTP {e.code}; retrying in {retry_delays[attempt]}s")
+                          time.sleep(retry_delays[attempt])
+                      except urllib.error.URLError as e:
+                          errors.append(f"{model}: {e}")
+                          if attempt == 1:
+                              break
+                          print(f"{model} request failed; retrying in {retry_delays[attempt]}s")
+                          time.sleep(retry_delays[attempt])
+                      except Exception as e:
+                          errors.append(f"{model}: {e}")
+                          break
+
+                  if summary is not None:
+                      break
 
           if summary is None:
               summary = "⚠️ LLM analysis unavailable after model fallback:\n" + "\n".join(errors)
 
-          with open("/tmp/llm_summary.txt", "w") as f:
+          with open("/tmp/llm_summary.txt", "w", encoding="utf-8") as f:
               f.write(summary)
 
           print("--- LLM Summary Preview ---")
