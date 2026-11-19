@@ -12,6 +12,7 @@ __all__ = [
     "build_fast_refresh_lambda",
     "get_tile_modifiers",
     "flags_to_cpp",
+    "screen_page_id",
 ]
 
 
@@ -386,3 +387,16 @@ def flags_to_cpp(flags):
     if not flags:
         return "{}"
     return "{" + ", ".join(flags) + "}"
+
+
+SCREEN_PAGE_ID_PREFIX = "tile_page_"
+
+
+def screen_page_id(screen_id: str) -> str:
+    """Return the namespaced C++ DisplayPage identifier for a user screen ID.
+
+    Prefixing avoids C++ global/keyword/integration collisions (e.g. 'main',
+    'light', 'switch', 'rows', 'disp') while keeping logical YAML IDs intact.
+    """
+    return f"{SCREEN_PAGE_ID_PREFIX}{screen_id}"
+

@@ -6,7 +6,7 @@ from typing import Any
 from .tile_utils import (
     format_display_list, format_functions_list, format_entity_value,
     build_fast_refresh_lambda, build_expression, format_entity_cpp, get_tile_modifiers,
-    flags_to_cpp, format_single_function
+    flags_to_cpp, format_single_function, screen_page_id
 )
 from .schema import TileType
 
@@ -113,11 +113,11 @@ def generate_action_tile(config, available_scripts, screen_id=None):
     long_destination = config.get("long_destination")
     if long_perform or long_destination:
         long_cpp = format_functions_list(long_perform, available_scripts, [('entities', 'string[]')])
-        destination_cpp = f'&id({long_destination})' if long_destination else 'nullptr'
+        destination_cpp = f'&id({screen_page_id(long_destination)})' if long_destination else 'nullptr'
         dynamic_entity = config.get("long_dynamic_entity", "")
         modifiers.append(f'setLongPress({long_cpp}, {destination_cpp}, {json.dumps(dynamic_entity, ensure_ascii=True)})')
     if display_page:
-        modifiers.append(f'setDisplayPageIfNoEntity(&id({display_page}))')
+        modifiers.append(f'setDisplayPageIfNoEntity(&id({screen_page_id(display_page)}))')
     
     x = config.get("x", "?")
     y = config.get("y", "?")
@@ -170,7 +170,7 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
     
     entities = config.get("entities")
     entity_arg = f', {format_entity_cpp(format_entity_value(entities))}' if entities else ''
-    tile_cpp = f'new MovePageTile({x}, {y}, {display_cpp}, &id({destination}){entity_arg})'
+    tile_cpp = f'new MovePageTile({x}, {y}, {display_cpp}, &id({screen_page_id(destination)}){entity_arg})'
     
     modifiers = []
     if dynamic_entry:
