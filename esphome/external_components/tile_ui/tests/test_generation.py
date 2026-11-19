@@ -77,7 +77,7 @@ class TestTileGeneration(unittest.TestCase):
         }}
         cpp = generate_tile_cpp(tile)
         self.assertIn("id(after_hold).execute(arg0)", cpp)
-        self.assertIn('&id(fan_settings), "FAN")', cpp)
+        self.assertIn('&id(tile_page_fan_settings), "FAN")', cpp)
         self.assertIn("->setLongPress(", cpp)
 
     def test_title_tile(self):
@@ -102,7 +102,7 @@ class TestTileGeneration(unittest.TestCase):
         }
         cpp = generate_tile_cpp(config)
         # Updated expectation for lambda generation
-        self.assertIn('new MovePageTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(arrow).execute(arg0, arg1, arg2, arg3, arg4); } }, &id(screen2))', cpp)
+        self.assertIn('new MovePageTile(0, 0, { [](int arg0, int arg1, int arg2, int arg3, std::vector<std::string> arg4) { id(arrow).execute(arg0, arg1, arg2, arg3, arg4); } }, &id(tile_page_screen2))', cpp)
         
     def test_move_page_tile_dynamic(self):
         config = {
@@ -126,7 +126,7 @@ class TestTileGeneration(unittest.TestCase):
             "dynamic_entry": {"dynamic_entity": "AC", "value": "climate.living"},
         }}
         cpp = generate_tile_cpp(tile)
-        self.assertIn('&id(screen2), {"climate.living", "#{AC}"})', cpp)
+        self.assertIn('&id(tile_page_screen2), {"climate.living", "#{AC}"})', cpp)
         self.assertIn('setDynamicEntry("AC", {"climate.living"})', cpp)
 
     def test_function_tile(self):
@@ -507,7 +507,7 @@ class TestActionTileExtras(unittest.TestCase):
             "display_page_if_no_entity": "detail_screen",
         }
         cpp = self._gen(config)
-        self.assertIn('setDisplayPageIfNoEntity(&id(detail_screen))', cpp)
+        self.assertIn('setDisplayPageIfNoEntity(&id(tile_page_detail_screen))', cpp)
 
     def test_display_page_if_no_entity_without_dynamic_entity_raises(self):
         config = {
@@ -869,6 +869,195 @@ class TestMipiSpiDisplayTestCardGuard(unittest.TestCase):
         self.assertLess(active_idx, update_idx)
 
 
+class TestScreenPageIdNamespacing(unittest.TestCase):
+    """Ensure screen IDs like 'main' or 'light' do not collide with C++ / ESPHome globals."""
+
+    def test_load_tiles_config_and_to_code_namespace_screen_page_ids(self):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import tile_ui
+
+        cfg = tile_ui.load_tiles_config({
+            tile_ui.CONF_SCREENS: [
+                {"id": "main", "flags": ["BASE"], "tiles": []},
+                {"id": "light", "flags": ["TEMPORARY"], "tiles": []},
+            ]
+        })
+        self.assertEqual(cfg[tile_ui.CONF_SCREENS][0]["id"], "main")
+        self.assertEqual(cfg[tile_ui.CONF_SCREENS][0][tile_ui.CONF_PAGE_ID], "tile_page_main")
+        self.assertEqual(cfg[tile_ui.CONF_SCREENS][1]["id"], "light")
+        self.assertEqual(cfg[tile_ui.CONF_SCREENS][1][tile_ui.CONF_PAGE_ID], "tile_page_light")
+
+        declared = []
+        display_stub = SimpleNamespace(DisplayOnPageChangeTrigger=object())
+        to_code_cfg = {
+            tile_ui.CONF_SYSTEM_PAGES: [{tile_ui.CONF_ID: SimpleNamespace(id="calib")}],
+            tile_ui.CONF_SCREENS: [
+                {
+                    tile_ui.CONF_ID: "main",
+                    tile_ui.CONF_PAGE_ID: SimpleNamespace(id="tile_page_main"),
+                },
+            ],
+        }
+        with (
+            patch.dict(sys.modules, {"esphome.components.display": display_stub}),
+            patch.object(sys.modules["esphome.components"], "display", display_stub),
+            patch.object(tile_ui.cg, "new_Pvariable", side_effect=lambda pid, _e: (declared.append(pid.id), pid.id)[1]),
+            patch.object(tile_ui.cg, "RawStatement", side_effect=lambda s: s),
+            patch.object(tile_ui.cg, "add", side_effect=lambda _s: None),
+            patch.object(tile_ui, "screens_list_schema", return_value=[]),
+        ):
+            asyncio.run(tile_ui.to_code(to_code_cfg))
+
+        self.assertEqual(declared, ["calib", "tile_page_main"])
+
+    def test_main_screen_id_compiles_with_host_gxx_main_entrypoint(self):
+        import shutil
+        import subprocess
+        import tempfile
+        from tile_ui import generate_init_tiles_cpp
+
+        gxx = shutil.which("g++")
+        if not gxx:
+            self.skipTest("g++ not available")
+
+        screens = [
+            {
+                "id": "main",
+                "flags": ["BASE"],
+                "rows": 2,
+                "cols": 3,
+                "tiles": [{
+                    "move_page": {
+                        "x": 0,
+                        "y": 0,
+                        "destination": "pref",
+                        "display": ["tile_icon"],
+                    }
+                }],
+            },
+            {
+                "id": "pref",
+                "flags": ["TEMPORARY"],
+                "rows": 2,
+                "cols": 3,
+                "tiles": [{
+                    "move_page": {
+                        "x": 0,
+                        "y": 0,
+                        "destination": "main",
+                        "display": ["tile_icon"],
+                    }
+                }],
+            },
+        ]
+        lambdas = generate_init_tiles_cpp(
+            screens,
+            available_scripts={
+                "tile_icon": {
+                    "parameters": {
+                        "x_start": "int",
+                        "x_end": "int",
+                        "y_start": "int",
+                        "y_end": "int",
+                    }
+                }
+            },
+        )
+        init_body = "\n".join(lambdas)
+        self.assertNotIn("&id(main)", init_body)
+        self.assertIn("&id(tile_page_main)", init_body)
+        self.assertIn("&id(tile_page_pref)", init_body)
+
+        cpp_src = r"""
+#include <cassert>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+#define id(x) (*x)
+#define ESP_LOGD(tag, fmt, ...) ((void)0)
+
+namespace esphome { namespace display { struct DisplayPage {}; } }
+enum ScreenAtt { BASE = 0, TEMPORARY = 1, FAST_REFRESH = 2 };
+
+static esphome::display::DisplayPage page_main_storage, page_pref_storage;
+static esphome::display::DisplayPage *const tile_page_main = &page_main_storage;
+static esphome::display::DisplayPage *const tile_page_pref = &page_pref_storage;
+
+struct ScriptStub {
+  void execute(int, int, int, int) {}
+} tile_icon_obj;
+static ScriptStub *const tile_icon = &tile_icon_obj;
+
+static int rows_val = 2, cols_val = 3;
+static int *const rows = &rows_val;
+static int *const cols = &cols_val;
+
+struct DispStub {
+  esphome::display::DisplayPage *active = nullptr;
+  int updates = 0;
+  void show_page(esphome::display::DisplayPage *p) { active = p; }
+  void update() { ++updates; }
+} disp_obj;
+static DispStub *const disp = &disp_obj;
+
+struct Tile { virtual ~Tile() = default; };
+struct MovePageTile : Tile {
+  esphome::display::DisplayPage *dest;
+  MovePageTile(int, int, std::vector<std::function<void(int, int, int, int, std::vector<std::string>)>>,
+               esphome::display::DisplayPage *d) : dest(d) {}
+};
+struct Screen {
+  esphome::display::DisplayPage *page_;
+  int rows_, cols_;
+  bool is_base_ = false;
+  Screen(esphome::display::DisplayPage *p, std::vector<ScreenAtt> atts, int r, int c)
+      : page_(p), rows_(r), cols_(c) {
+    for (auto a : atts) if (a == BASE) is_base_ = true;
+  }
+  esphome::display::DisplayPage *getDisplayPage() { return page_; }
+  int getRows() const { return rows_; }
+  int getCols() const { return cols_; }
+};
+struct TiledScreen : Screen {
+  std::vector<Tile*> tiles_;
+  TiledScreen(esphome::display::DisplayPage *p, std::vector<ScreenAtt> atts, int r, int c, std::vector<Tile*> t)
+      : Screen(p, atts, r, c), tiles_(std::move(t)) {}
+};
+struct View {
+  std::vector<Screen*> screens;
+  Screen *base = nullptr;
+  void addScreen(Screen *s) { screens.push_back(s); if (s->is_base_ || !base) base = s; }
+  void init() {}
+  Screen *getBaseScreen() { return base; }
+  Screen *getActiveScreen() {
+    for (auto *s : screens) if (s->getDisplayPage() == disp_obj.active) return s;
+    return base;
+  }
+};
+static std::unique_ptr<View> view_ptr;
+
+int main() {
+""" + init_body + r"""
+  assert(disp_obj.active == tile_page_main);
+  assert(disp_obj.updates == 1);
+  assert(view_ptr->screens.size() == 2);
+  return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_path = os.path.join(tmpdir, "host_main.cpp")
+            bin_path = os.path.join(tmpdir, "host_main")
+            with open(src_path, "w", encoding="utf-8") as f:
+                f.write(cpp_src)
+            subprocess.run([gxx, "-std=gnu++20", "-DUSE_HOST", src_path, "-o", bin_path], check=True)
+            subprocess.run([bin_path], check=True)
+
+
 if __name__ == '__main__':
     unittest.main()
+
 

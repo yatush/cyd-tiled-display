@@ -16,13 +16,14 @@ from .data_collection import (
     parse_dynamic_entities_config,
 )
 from .tile_generation import generate_tile_cpp
-from .tile_utils import flags_to_cpp, build_expression
+from .tile_utils import flags_to_cpp, build_expression, screen_page_id
 from .schema import screens_list_schema, dynamic_entities_schema
 
 # Configuration constants
 DOMAIN = "tile_ui"
 CONF_TILES_FILE = "tiles_file"
 CONF_SCREENS = "screens"
+CONF_PAGE_ID = "_page_id"
 CONF_DYNAMIC_ENTITIES = "dynamic_entities"
 CONF_DEBUG_OUTPUT = "debug_output"
 CONF_SYSTEM_PAGES = "system_pages"
@@ -48,6 +49,18 @@ def load_tiles_config(config):
             print(f"Error loading tiles config: {e}")
             # Ignore errors here, they will be caught in to_code
             config[CONF_SCREENS] = []
+
+    raw_screens = config.get(CONF_SCREENS, [])
+    if isinstance(raw_screens, list):
+        normalized_screens = []
+        for s in raw_screens:
+            if isinstance(s, dict):
+                s = dict(s)
+                raw_id = s.get("id", s.get(CONF_ID))
+                if isinstance(raw_id, str) and raw_id and CONF_PAGE_ID not in s:
+                    s[CONF_PAGE_ID] = screen_page_id(raw_id)
+            normalized_screens.append(s)
+        config[CONF_SCREENS] = normalized_screens
             
     # Ensure system pages are present
     if CONF_SYSTEM_PAGES not in config:
@@ -61,7 +74,8 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_TILES_FILE): cv.string,
         cv.Optional(CONF_DYNAMIC_ENTITIES): dynamic_entities_schema,
         cv.Optional(CONF_SCREENS): cv.ensure_list(cv.Schema({
-            cv.Required(CONF_ID): cv.declare_id(DisplayPage),
+            cv.Required(CONF_ID): cv.string,
+            cv.Optional(CONF_PAGE_ID): cv.declare_id(DisplayPage),
         }, extra=cv.ALLOW_EXTRA)),
         cv.Optional(CONF_SYSTEM_PAGES): cv.ensure_list(cv.Schema({
             cv.Required(CONF_ID): cv.declare_id(DisplayPage),
@@ -417,9 +431,11 @@ def generate_init_tiles_cpp(
         cols_cpp = str(cols) if cols is not None else "id(cols)"
         
         flags_cpp = flags_to_cpp(flags)
+        page_id_cpp = screen_page_id(screen_id)
+        tiles_var = f"tiles_{page_id_cpp}"
         lines = [
             f"// Screen: {screen_id}",
-            f"std::vector<Tile*> tiles_{screen_id} = {{",
+            f"std::vector<Tile*> {tiles_var} = {{",
         ]
         
         for tile in tiles:
@@ -465,11 +481,11 @@ def generate_init_tiles_cpp(
             all_chains.append(time_color_chain)
 
         screen_expr = (
-            f"  new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id})"
+            f"  new TiledScreen(&id({page_id_cpp}), {flags_cpp}, {rows_cpp}, {cols_cpp}, {tiles_var})"
         )
         if all_chains:
             screen_expr = (
-                f"  (new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id}))"
+                f"  (new TiledScreen(&id({page_id_cpp}), {flags_cpp}, {rows_cpp}, {cols_cpp}, {tiles_var}))"
             )
             for chain in all_chains:
                 screen_expr += f"\n  {chain}"
@@ -548,12 +564,12 @@ async def to_code(config):
              var = cg.new_Pvariable(page_id, lambda_expr)
              all_pages.append(var)
 
-    # Register screen pages
+    # Register screen pages using namespaced C++ IDs (e.g. tile_page_main)
     for screen_conf in config.get(CONF_SCREENS, []):
-        screen_id = screen_conf[CONF_ID]
+        page_id = screen_conf.get(CONF_PAGE_ID) or screen_conf[CONF_ID]
         lambda_str = f"[](esphome::display::Display &it) {{ id(_draw_page).execute(); }}"
         lambda_expr = cg.RawExpression(lambda_str)
-        var = cg.new_Pvariable(screen_id, lambda_expr)
+        var = cg.new_Pvariable(page_id, lambda_expr)
         all_pages.append(var)
 
     # Now generate code to set pages
