@@ -186,7 +186,59 @@ public:
       this->binary_sensor_->set_area(
           x_start(this->x_), x_start(x_end_idx) + x_rect(),
           y_start(this->y_), y_start(y_end_idx) + y_rect());
+    }
   }
+
+  static constexpr uint32_t kTouchReleaseGraceMs = 150;
+
+  static bool isTouchBlockedFor(const Tile* tile) {
+    return active_touch_tile_ != nullptr && active_touch_tile_ != tile;
+  }
+
+  static bool hasActiveTouchSession() {
+    return screen_touch_active_ || active_touch_tile_ != nullptr;
+  }
+
+  static bool isScreenTouchActive() { return screen_touch_active_; }
+
+  static void claimTouchTile(Tile* tile) {
+    if (active_touch_tile_ == nullptr) {
+      active_touch_tile_ = tile;
+    }
+  }
+
+  static void releaseTouchTile(const Tile* tile) {
+    if (active_touch_tile_ == tile) {
+      active_touch_tile_ = nullptr;
+    }
+  }
+
+  static void notifyScreenTouch() {
+    screen_touch_active_ = true;
+    ++screen_release_gen_;
+    if (active_touch_tile_ != nullptr) {
+      active_touch_tile_->onScreenTouchResume();
+    }
+  }
+
+  static void notifyScreenRelease() {
+    screen_touch_active_ = false;
+    const uint32_t gen = ++screen_release_gen_;
+    if (active_touch_tile_ != nullptr) {
+      if (active_touch_tile_->holdsTouchDuringReleaseGrace()) {
+        active_touch_tile_->onScreenTouchPause();
+      } else {
+        active_touch_tile_ = nullptr;
+      }
+    }
+    if (id(ignore_touch)) {
+      esphome::App.scheduler.set_timeout(
+          nullptr, static_cast<const char*>(nullptr), kTouchReleaseGraceMs, [gen]() {
+            if (!screen_touch_active_ && gen == screen_release_gen_) {
+              id(ignore_touch) = false;
+            }
+          });
+    }
   }
 
   friend class TiledScreen;
@@ -201,6 +253,12 @@ protected:
   virtual void onActivation() {}
 
   virtual void onScreenLeave() {};
+
+  virtual bool holdsTouchDuringReleaseGrace() const { return false; }
+
+  virtual void onScreenTouchPause() {}
+
+  virtual void onScreenTouchResume() {}
 
   // Pointer to the display page this tile belongs to.
   esphome::display::DisplayPage* display_page_ = nullptr;
@@ -235,6 +293,10 @@ protected:
   bool always_active_ = true;
 
 private:
+  inline static Tile* active_touch_tile_ = nullptr;
+  inline static bool screen_touch_active_ = false;
+  inline static uint32_t screen_release_gen_ = 0;
+
   // Initialize the Tile
   void init(esphome::display::DisplayPage* display_page,
             std::function<void()> change_screen_callback) {
@@ -244,9 +306,9 @@ private:
     if (this->binary_sensor_ != nullptr) {
       this->binary_sensor_->add_filter(new esphome::binary_sensor::LambdaFilter(
           [this](bool x) -> optional<bool> {
-            // Ignore touch events shortly after a page change.
+            // Ignore touch events shortly after a page change or while another tile owns the touch.
             auto now = millis();
-            if (x && id(ignore_touch)) {
+            if (x && (id(ignore_touch) || Tile::isTouchBlockedFor(this))) {
               return {};
             }
             if (!x || (now - id(turn_on_ms) < id(inactive_ms)) ||
@@ -256,12 +318,11 @@ private:
             if (!this->checkActivationMaybeToggle()) {
               return false;
             }
+            Tile::claimTouchTile(this);
             return true;
           }));
-      // Define the touch area for the tile.
-          this->binary_sensor_->set_area(
-              x_start(this->x_), x_start(this->x_) + x_rect(),
-              y_start(this->y_), y_start(this->y_) + y_rect());
+      // Define the touch area for the tile (including spans).
+      this->updateTouchArea();
       this->binary_sensor_->add_page(this->display_page_);
       this->binary_sensor_->setup();
     }
@@ -540,9 +601,13 @@ public:
       esphome::display::DisplayPage* target_display_page) {
     this->binary_sensor_->add_filter(new esphome::binary_sensor::LambdaFilter(
         [target_display_page, this](bool x) -> optional<bool> {
+          if (x && (id(ignore_touch) || isTouchBlockedFor(this))) {
+            return {};
+          }
           if (x && this->decoded_entities_.empty()) {
             this->change_screen_callback_();
             id(disp).show_page(target_display_page);
+            id(ignore_touch) = true;
             id(disp).update();
             return {};
           }
@@ -551,41 +616,134 @@ public:
     return this;
   }
 
+  static constexpr uint32_t kLongPressDelayMs = 1500;
+  static constexpr uint32_t kReleaseDebounceMs = 150;
+
 protected:
+  bool holdsTouchDuringReleaseGrace() const override {
+    return long_press_enabled_ && pressed_ && !long_fired_;
+  }
+
+  void onScreenTouchPause() override {
+    if (!long_press_enabled_ || !pressed_) return;
+    if (long_fired_) {
+      resetPressState();
+      return;
+    }
+    if (millis() - press_started_ >= kLongPressDelayMs) {
+      if (display_page_ == id(disp).get_active_page() && checkActivationMaybeToggle()) {
+        fireLongPress();
+      }
+      resetPressState();
+      return;
+    }
+    startReleaseDebounce();
+  }
+
+  void onScreenTouchResume() override {
+    if (!long_press_enabled_ || !pressed_) return;
+    releasing_ = false;
+    ++release_generation_;
+    if (!long_fired_ && millis() - press_started_ >= kLongPressDelayMs) {
+      if (display_page_ == id(disp).get_active_page() && checkActivationMaybeToggle()) {
+        fireLongPress();
+      }
+    }
+  }
+
   void customInit() override {
     if (this->binary_sensor_ != nullptr) {
       this->binary_sensor_->add_on_state_callback([this](bool x) {
         if (!long_press_enabled_) {
-          if (x) runShortAction(Deref(decoded_entities_), id(last_x), id(last_y));
+          if (x) {
+            claimTouchTile(this);
+            runShortAction(Deref(decoded_entities_), id(last_x), id(last_y));
+          }
           return;
         }
         if (x) {
+          claimTouchTile(this);
+          if (pressed_) {
+            onScreenTouchResume();
+            return;
+          }
           pressed_ = true;
+          releasing_ = false;
           long_fired_ = false;
           press_started_ = millis();
           press_entities_ = Deref(decoded_entities_);
           press_x_ = id(last_x);
           press_y_ = id(last_y);
           const uint32_t generation = ++press_generation_;
-          esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 2000, [this, generation]() {
-            if (pressed_ && generation == press_generation_ && display_page_ == id(disp).get_active_page() &&
-                checkActivationMaybeToggle()) fireLongPress();
-          });
+          ++release_generation_;
+          esphome::App.scheduler.set_timeout(
+              nullptr, static_cast<const char*>(nullptr), kLongPressDelayMs,
+              [this, generation]() {
+                if (pressed_ && !releasing_ && !long_fired_ &&
+                    generation == press_generation_ &&
+                    display_page_ == id(disp).get_active_page() &&
+                    checkActivationMaybeToggle()) {
+                  fireLongPress();
+                }
+              });
         } else if (pressed_) {
-          if (!long_fired_ && display_page_ == id(disp).get_active_page() && checkActivationMaybeToggle()) {
-            if (millis() - press_started_ >= 2000) fireLongPress();
-            else runShortAction(press_entities_, press_x_, press_y_);
+          if (long_fired_) {
+            resetPressState();
+          } else if (!isScreenTouchActive()) {
+            onScreenTouchPause();
           }
-          pressed_ = false;
-          ++press_generation_;
         }
       });
     }
   }
 
   void onScreenLeave() override {
+    resetPressState();
+  }
+
+  void startReleaseDebounce() {
+    if (releasing_) return;
+    releasing_ = true;
+    release_started_ = millis();
+    const uint32_t press_gen = press_generation_;
+    const uint32_t rel_gen = ++release_generation_;
+    esphome::App.scheduler.set_timeout(
+        nullptr, static_cast<const char*>(nullptr), kReleaseDebounceMs,
+        [this, press_gen, rel_gen]() {
+          if (!pressed_ || !releasing_ || press_gen != press_generation_ ||
+              rel_gen != release_generation_) {
+            return;
+          }
+          finishConfirmedRelease();
+        });
+  }
+
+  void finishConfirmedRelease() {
+    const uint32_t held_ms = release_started_ - press_started_;
+    const bool can_act = !long_fired_ &&
+                         display_page_ == id(disp).get_active_page() &&
+                         checkActivationMaybeToggle();
+    const auto entities = press_entities_;
+    const int tx = press_x_;
+    const int ty = press_y_;
+    resetPressState();
+    if (can_act) {
+      if (held_ms >= kLongPressDelayMs) {
+        press_entities_ = entities;
+        fireLongPress();
+        resetPressState();
+      } else {
+        runShortAction(entities, tx, ty);
+      }
+    }
+  }
+
+  void resetPressState() {
     pressed_ = false;
+    releasing_ = false;
     ++press_generation_;
+    ++release_generation_;
+    releaseTouchTile(this);
   }
 
   void runShortAction(const std::vector<std::string>& entities_vec, int touch_x, int touch_y) {
@@ -641,9 +799,10 @@ private:
   esphome::display::DisplayPage* long_destination_ = nullptr;
   std::string long_dynamic_entity_;
   std::vector<std::string> press_entities_;
-  uint32_t press_started_ = 0, press_generation_ = 0;
+  uint32_t press_started_ = 0, release_started_ = 0;
+  uint32_t press_generation_ = 0, release_generation_ = 0;
   int press_x_ = 0, press_y_ = 0;
-  bool long_press_enabled_ = false, pressed_ = false, long_fired_ = false;
+  bool long_press_enabled_ = false, pressed_ = false, releasing_ = false, long_fired_ = false;
 };
 
 // A tile that navigates to a different page when pressed.
