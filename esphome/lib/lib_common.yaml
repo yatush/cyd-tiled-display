@@ -798,8 +798,8 @@ script:
           } else {
             const char* dir_icon = group.any_reverse ? "\U0000f4b5" : "\U0000f4b6";
             auto dir_color = group.any_reverse ? id(red) : id(blue);
-            print(x_mid, y_mid, size, dir_color, TextAlign::CENTER, dir_icon);
             print(x_mid, y_mid, size, id(white), TextAlign::CENTER, "\U0000f168");
+            print(x_mid, y_mid, size, dir_color, TextAlign::CENTER, dir_icon);
           }
 
   - id: tile_ac
