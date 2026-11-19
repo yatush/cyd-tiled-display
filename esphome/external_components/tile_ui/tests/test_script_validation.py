@@ -147,6 +147,58 @@ class TestScriptValidation(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "valid font"):
                 validate_tiles_config(screens, scripts)
 
+    def test_fan_direction_and_speed_font_defaults_and_overrides(self):
+        from tile_ui.tile_generation import generate_tile_cpp
+
+        dir_params = dict(self.available_scripts["display_std"]["parameters"])
+        dir_params["size"] = "esphome::display::BaseFont*"
+        speed_params = dict(self.available_scripts["display_std"]["parameters"])
+        speed_params["icon_size"] = "esphome::display::BaseFont*"
+        speed_params["text_size"] = "esphome::display::BaseFont*"
+        scripts = {
+            "tile_fan_direction": {"parameters": dir_params},
+            "tile_fan_speed": {"parameters": speed_params},
+            "action": {"parameters": {"entities": "string[]"}},
+        }
+        tile = {"ha_action": {
+            "x": 0, "y": 0, "entities": [{"entity": "fan.office"}],
+            "display": ["tile_fan_direction"], "perform": ["action"],
+        }}
+        screens = [{"id": "main", "flags": ["BASE"], "tiles": [tile]}]
+        for display, expected in [
+            (["tile_fan_direction"], "&id(small)"),
+            ([{"tile_fan_direction": {}}], "&id(small)"),
+            ([{"tile_fan_direction": {"size": "medium"}}], "&id(medium)"),
+            ([{"tile_fan_direction": {"size": "id(big)"}}], "&id(big)"),
+        ]:
+            with self.subTest(display=display):
+                tile["ha_action"]["display"] = display
+                validate_tiles_config(screens, scripts)
+                cpp = generate_tile_cpp(tile, scripts, "main")
+                self.assertIn(f"id(tile_fan_direction).execute(arg0, arg1, arg2, arg3, arg4, {expected})", cpp)
+        for size in ("", "nullptr"):
+            tile["ha_action"]["display"] = [{"tile_fan_direction": {"size": size}}]
+            with self.assertRaisesRegex(ValueError, "valid font"):
+                validate_tiles_config(screens, scripts)
+
+        for display, expected in [
+            (["tile_fan_speed"], "&id(tiny), &id(text_bold)"),
+            ([{"tile_fan_speed": {}}], "&id(tiny), &id(text_bold)"),
+            ([{"tile_fan_speed": {"icon_size": "small"}}], "&id(small), &id(text_bold)"),
+            ([{"tile_fan_speed": {"text_size": "text_big_bold"}}], "&id(tiny), &id(text_big_bold)"),
+            ([{"tile_fan_speed": {"icon_size": "id(medium)", "text_size": "id(text_small)"}}], "&id(medium), &id(text_small)"),
+        ]:
+            with self.subTest(display=display):
+                tile["ha_action"]["display"] = display
+                validate_tiles_config(screens, scripts)
+                cpp = generate_tile_cpp(tile, scripts, "main")
+                self.assertIn(f"id(tile_fan_speed).execute(arg0, arg1, arg2, arg3, arg4, {expected})", cpp)
+        for param in ("icon_size", "text_size"):
+            for bad_val in ("", "nullptr"):
+                tile["ha_action"]["display"] = [{"tile_fan_speed": {param: bad_val}}]
+                with self.assertRaisesRegex(ValueError, "valid font"):
+                    validate_tiles_config(screens, scripts)
+
     def test_validate_script_type_toggle(self):
         validate_script_type("display_toggle", self.available_scripts["display_toggle"], "display_toggle", "test")
 

@@ -1,7 +1,7 @@
 """Script, global, condition, and tile schema validators."""
 from typing import Any
 
-from .script_types import script_parameter_defaults, validate_script_type
+from .script_types import BUILTIN_FONT_PARAMETER_DEFAULTS, script_parameter_defaults, validate_script_type
 from .data_collection import collect_referenced_scripts, collect_referenced_globals
 from .schema import VALID_TILE_TYPES, TileType, SCHEMA_DEF, tile_schema
 
@@ -56,10 +56,11 @@ def _validate_script_parameters(script_id, script_info, provided_params, context
                 f"Valid parameters are: {', '.join(sorted(script_params.keys()))}"
             )
 
-    if script_id in ('tile_ac', 'tile_fan') and 'size' in provided_params:
-        size = provided_params['size']
-        if not isinstance(size, str) or not size.strip() or size.strip() == 'nullptr':
-            raise ValueError(f"{context}: Script '{script_id}' requires a valid font for 'size'.")
+    for font_param in BUILTIN_FONT_PARAMETER_DEFAULTS.get(script_id, ()):
+        if font_param in provided_params:
+            font_val = provided_params[font_param]
+            if not isinstance(font_val, str) or not font_val.strip() or font_val.strip() == 'nullptr':
+                raise ValueError(f"{context}: Script '{script_id}' requires a valid font for '{font_param}'.")
     
     # Check for missing required parameters
     # Implicit parameters are those that are automatically provided by the system
