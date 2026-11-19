@@ -756,10 +756,7 @@ script:
       - lambda: |-
           const auto group = GetFanPowerGroup(entities);
           auto color = !group.fans.empty() && group.all_on ? id(yellow) : id(gray);
-          int x = (x_start + x_end) / 2, y = (y_start + y_end) / 2;
-          print(x, y, size, color, TextAlign::CENTER, "\U0000f168");
-          if (group.fans.empty())
-            print(x, y_end - 10, id(text_small), id(gray), TextAlign::CENTER, "--");
+          print((x_start + x_end) / 2, (y_start + y_end) / 2, size, color, TextAlign::CENTER, "\U0000f168");
 
   - id: tile_fan_speed
     parameters:
