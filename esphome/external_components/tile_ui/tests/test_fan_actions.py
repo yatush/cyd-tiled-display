@@ -75,8 +75,25 @@ template<class T> std::optional<T> parse_number(const std::string& value) {
   return {};
 }
 struct Scheduler {
-  std::vector<std::function<void()>> callbacks;
-  void set_timeout(void*, const char*, int, std::function<void()> cb) { callbacks.push_back(cb); }
+  std::vector<std::pair<int, std::function<void()>>> callbacks;
+  void set_timeout(void*, const char*, int delay_ms, std::function<void()> cb) {
+    callbacks.push_back({delay_ms, cb});
+  }
+  void run_delay(int delay_ms) {
+    auto pending = std::move(callbacks);
+    callbacks.clear();
+    for (auto& [delay, cb] : pending) {
+      if (delay == delay_ms) cb();
+      else callbacks.push_back({delay, cb});
+    }
+  }
+  void flush() {
+    while (!callbacks.empty()) {
+      auto pending = std::move(callbacks);
+      callbacks.clear();
+      for (auto& [delay, cb] : pending) cb();
+    }
+  }
 };
 struct Application { Scheduler scheduler; } App;
 }
@@ -154,15 +171,33 @@ int main() {
   assert(draws.size() == 2 && draws[0].color == white && draws[0].align == TOP_LEFT);
   assert(draws[0].x == 12 && draws[0].y == 22 && draws[0].font == small && draws[0].text == "\U0000f168");
   assert(draws[1].text == "33%" && draws[1].color == white && draws[1].font == text_big_bold);
+  // Rapid taps update optimistic UI immediately and debounce HA send for 3000ms after the last tap
   CycleFanSpeed(fans);
-  assert((calls == std::vector<std::string>{fan + ":set_percentage:66", second + ":set_percentage:66"}));
-  calls.clear();
+  assert(calls.empty());
+  assert(GetFanAttribute(fan + "|percentage") == "66");
+  assert(esphome::App.scheduler.callbacks.size() == 2);
+  auto first_batch = std::move(esphome::App.scheduler.callbacks);
+  esphome::App.scheduler.callbacks.clear();
   CycleFanSpeed(fans);
-  assert((calls == std::vector<std::string>{fan + ":set_percentage:100", second + ":set_percentage:100"}));
-  ReconcileFanAttribute(fan + "|percentage", "66");
+  assert(calls.empty());
   assert(GetFanAttribute(fan + "|percentage") == "100");
+  // Stale 3000ms timers from first tap must not send anything
+  for (auto& [delay, cb] : first_batch) { assert(delay == 3000); cb(); }
+  assert(calls.empty());
+  // Incoming HA update while unsent must not clobber pending target
+  ReconcileFanAttribute(fan + "|percentage", "33");
+  assert(GetFanAttribute(fan + "|percentage") == "100");
+  // Firing the latest 3000ms debounce timers sends only the final speed (100%)
+  esphome::App.scheduler.run_delay(3000);
+  assert((calls == std::vector<std::string>{fan + ":set_percentage:100", second + ":set_percentage:100"}));
   calls.clear();
+  // Tapping again after send wraps to 33% and waits 3000ms; stale 100% confirmation is absorbed
   CycleFanSpeed(fans);
+  assert(calls.empty());
+  assert(GetFanAttribute(fan + "|percentage") == "33");
+  ReconcileFanAttribute(fan + "|percentage", "100");
+  assert(GetFanAttribute(fan + "|percentage") == "33");
+  esphome::App.scheduler.run_delay(3000);
   assert((calls == std::vector<std::string>{fan + ":set_percentage:33", second + ":set_percentage:33"}));
   calls.clear();
   draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, medium);
@@ -177,26 +212,31 @@ int main() {
   assert(draws[1].text == "\U0000f4b6" && draws[1].color == blue && draws[1].font == small && draws[1].x == 60 && draws[1].y == 70);
   calls.clear(); CycleFanDirection(fans);
   assert((calls == std::vector<std::string>{fan + ":set_direction:reverse", second + ":set_direction:reverse"}));
-  for (auto& callback : esphome::App.scheduler.callbacks) callback();
+  esphome::App.scheduler.flush();
   assert(pending_fan_attributes.empty());
   calls.clear();
   values[fan + "|percentage"] = "80";
   values[second + "|percentage"] = "25";
   CycleFanSpeed(fans);
+  assert(calls.empty());
+  esphome::App.scheduler.run_delay(3000);
   assert((calls == std::vector<std::string>{fan + ":set_percentage:50", second + ":set_percentage:50"}));
-  for (auto& callback : esphome::App.scheduler.callbacks) callback();
-  esphome::App.scheduler.callbacks.clear();
+  esphome::App.scheduler.flush();
   calls.clear();
   values[fan + "|percentage_step"] = "unknown";
   draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, tiny, text_bold);
   assert(draws[1].text == "25%" && draws[1].font == text_bold);
   CycleFanSpeed(fans);
+  assert(calls.empty());
+  esphome::App.scheduler.run_delay(3000);
   assert((calls == std::vector<std::string>{second + ":set_percentage:50"}));
+  esphome::App.scheduler.flush();
   calls.clear();
   values[second + "|supported_features"] = "0";
   draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, tiny, text_bold);
   assert(draws[1].text == "--");
   CycleFanSpeed(fans);
+  esphome::App.scheduler.flush();
   assert(calls.empty());
   values[fan] = "unavailable";
   values[second] = "unavailable";

@@ -300,7 +300,9 @@ and a gray `mode_fan_off` icon when off or unavailable. To change its size, use
 when all available fans are on; tapping turns all on if any is off, otherwise
 it turns all off. Speed displays the lowest percentage (with optional
 `icon_size`, default `tiny`, and `text_size`, default `text_bold`) and applies
-the next step from that fan to all fans, wrapping to its lowest nonzero step.
+the next step from that fan to all fans, wrapping to its lowest nonzero step;
+repeated taps update the displayed speed immediately and send the action to
+Home Assistant 3 seconds after the last tap.
 Fans with different steps may round the requested percentage differently.
 Direction displays a blue cool-down arrow (forward) or red warm-up arrow
 (reverse) centered over a white fan icon (with optional `size`, default `big`); if any fan is reverse, it displays reverse and tapping sets all to
