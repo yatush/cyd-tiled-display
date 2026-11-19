@@ -127,6 +127,9 @@ display:
     buffer_size: ${display_buffer_size}
     data_rate: 40000000.0
     rotation: 90
+    # Keep a no-op writer so mipi_spi allocates MipiSpiBuffer without
+    # auto-enabling show_test_card before tile_ui attaches pages in C++.
+    lambda: "return;"
 
 
 touchscreen:

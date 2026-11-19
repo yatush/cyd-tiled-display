@@ -485,13 +485,14 @@ def generate_init_tiles_cpp(
     # Generate view finalization
     view_final = [
         "view_ptr->init();",
+        "if (view_ptr->getBaseScreen()) {",
+        "  id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());",
+        "}",
         "if (view_ptr->getActiveScreen()) {",
         "  id(rows) = view_ptr->getActiveScreen()->getRows();",
         "  id(cols) = view_ptr->getActiveScreen()->getCols();",
         "}",
-        "if (view_ptr->getBaseScreen()) {",
-        "  id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());",
-        "}",
+        "id(disp).update();",
         "ESP_LOGD(\"InitTiles\", \"Tiles initialized\");",
     ]
     lambdas.append("\n".join(view_final))
@@ -503,6 +504,30 @@ def generate_init_tiles_cpp(
 
 
 def final_validate(config):
+    """Ensure disp has a writer without show_test_card when tile_ui manages pages.
+
+    Drivers like mipi_spi set show_test_card=True during final validation if
+    neither lambda nor pages is present in the YAML display block, which takes
+    priority over runtime DisplayPage writers in Display::do_update_().
+    """
+    if config.get(CONF_SCREENS) or config.get(CONF_SYSTEM_PAGES):
+        try:
+            import esphome.final_validate as fv
+            from esphome.core import Lambda
+            global_cfg = fv.full_config.get()
+        except Exception:
+            global_cfg = None
+            Lambda = None
+        if isinstance(global_cfg, dict) and Lambda is not None:
+            for disp_conf in global_cfg.get("display", []):
+                if not isinstance(disp_conf, dict):
+                    continue
+                disp_id = disp_conf.get("id", disp_conf.get(CONF_ID, ""))
+                if str(disp_id) != "disp":
+                    continue
+                if not disp_conf.get("lambda") and not disp_conf.get("pages"):
+                    disp_conf["lambda"] = Lambda("return;")
+                    disp_conf.pop("show_test_card", None)
     return config
 
 FINAL_VALIDATE_SCHEMA = final_validate

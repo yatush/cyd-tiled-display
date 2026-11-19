@@ -771,5 +771,104 @@ class TestToCodeDisplayPageChangeCompat(unittest.TestCase):
         self.assertNotIn("DisplayOnPageChangeTrigger", cpp)
 
 
+class TestMipiSpiDisplayTestCardGuard(unittest.TestCase):
+    """Ensure mipi_spi displays do not stay stuck on ESPHome's built-in RGB test card."""
+
+    def test_3248s035_base_yaml_defines_noop_display_lambda(self):
+        import yaml
+        base_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "..", "lib", "3248s035_base.yaml",
+        )
+
+        class _Loader(yaml.SafeLoader):
+            pass
+
+        _Loader.add_multi_constructor("!", lambda loader, suffix, node: loader.construct_scalar(node))
+        with open(base_path, "r", encoding="utf-8") as f:
+            doc = yaml.load(f, Loader=_Loader)
+
+        displays = doc.get("display", [])
+        disp = next((d for d in displays if d.get("id") == "disp"), None)
+        self.assertIsNotNone(disp)
+        self.assertEqual(disp.get("platform"), "mipi_spi")
+        self.assertTrue(disp.get("lambda"), "mipi_spi disp must define a non-empty lambda")
+        self.assertFalse(disp.get("show_test_card", False))
+
+    def test_final_validate_replaces_auto_test_card_with_noop_lambda(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import tile_ui
+
+        class _FakeLambda:
+            def __init__(self, val):
+                self.value = val
+
+        disp_conf = {"id": "disp", "platform": "mipi_spi", "show_test_card": True}
+        other_disp = {"id": "other_disp", "platform": "mipi_spi", "show_test_card": True}
+        custom_disp = {"id": "disp", "platform": "mipi_spi", "lambda": _FakeLambda("custom();")}
+
+        fv_stub = SimpleNamespace(full_config=SimpleNamespace(get=lambda: {"display": [disp_conf, other_disp]}))
+        with (
+            patch.dict(sys.modules, {"esphome.final_validate": fv_stub}),
+            patch.object(sys.modules["esphome"], "final_validate", fv_stub, create=True),
+            patch.object(sys.modules["esphome.core"], "Lambda", _FakeLambda),
+        ):
+            tile_ui.final_validate({tile_ui.CONF_SYSTEM_PAGES: [{"id": "calib"}]})
+
+        self.assertIsInstance(disp_conf.get("lambda"), _FakeLambda)
+        self.assertEqual(disp_conf["lambda"].value, "return;")
+        self.assertNotIn("show_test_card", disp_conf)
+        self.assertTrue(other_disp.get("show_test_card"))
+
+        fv_custom = SimpleNamespace(full_config=SimpleNamespace(get=lambda: {"display": [custom_disp]}))
+        with (
+            patch.dict(sys.modules, {"esphome.final_validate": fv_custom}),
+            patch.object(sys.modules["esphome"], "final_validate", fv_custom, create=True),
+            patch.object(sys.modules["esphome.core"], "Lambda", _FakeLambda),
+        ):
+            tile_ui.final_validate({tile_ui.CONF_SYSTEM_PAGES: [{"id": "calib"}]})
+
+        self.assertEqual(custom_disp["lambda"].value, "custom();")
+
+    def test_view_finalization_shows_base_screen_before_active_query_and_updates_disp(self):
+        from tile_ui import generate_init_tiles_cpp
+
+        screens = [{
+            "id": "home",
+            "flags": ["BASE"],
+            "rows": 2,
+            "cols": 3,
+            "tiles": [{
+                "title": {
+                    "x": 0,
+                    "y": 0,
+                    "entities": [{"entity": "sensor.temp"}],
+                    "display": ["tile_text"],
+                }
+            }],
+        }]
+        lambdas = generate_init_tiles_cpp(
+            screens,
+            available_scripts={
+                "tile_text": {
+                    "parameters": {
+                        "x_start": "int",
+                        "x_end": "int",
+                        "y_start": "int",
+                        "y_end": "int",
+                    }
+                }
+            },
+        )
+        final_cpp = lambdas[-1]
+        show_idx = final_cpp.index("id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());")
+        active_idx = final_cpp.index("view_ptr->getActiveScreen()")
+        update_idx = final_cpp.index("id(disp).update();")
+        self.assertLess(show_idx, active_idx)
+        self.assertLess(active_idx, update_idx)
+
+
 if __name__ == '__main__':
     unittest.main()
+
