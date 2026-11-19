@@ -493,7 +493,7 @@ void PerformHaAction(
     const std::string& entity, const std::string& action,
     std::vector<std::pair<std::string, std::string>> data = {}) {
   
-  std::string service_name = (action.find('.') == -1)
+  std::string service_name = (action.find('.') == std::string::npos)
           ? entity.substr(0, entity.find('.')).append(".").append(action)
           : action;
 
@@ -503,23 +503,25 @@ void PerformHaAction(
   }
 
   esphome::api::HomeassistantActionRequest request;
-  // Set the service name using StringRef
-  request.service = StringRef(service_name);
+  // ESPHome >= 2026.11 uses ProgmemStringRef (explicitly constructible from StringRef),
+  // whereas older ESPHome versions use StringRef directly.
+  using ServiceStringType = decltype(request.service);
+  request.service = ServiceStringType(StringRef(service_name));
   
   // IMPORTANT: Must call init() before push_back - FixedVector requires this!
   request.data.init(1 + data.size());
   
   // Add entity_id as the first data item  
   esphome::api::HomeassistantServiceMap entity_id_kv;
-  entity_id_kv.key = StringRef("entity_id");
-  entity_id_kv.value = StringRef(entity);
+  entity_id_kv.key = ServiceStringType(StringRef::from_lit("entity_id"));
+  entity_id_kv.value = ServiceStringType(StringRef(entity));
   request.data.push_back(entity_id_kv);
   
   // Add any additional data to the service call
   for (const auto& pair : data) {
     esphome::api::HomeassistantServiceMap kv;
-    kv.key = StringRef(pair.first);
-    kv.value = StringRef(pair.second);
+    kv.key = ServiceStringType(StringRef(pair.first));
+    kv.value = ServiceStringType(StringRef(pair.second));
     request.data.push_back(kv);
   }
   

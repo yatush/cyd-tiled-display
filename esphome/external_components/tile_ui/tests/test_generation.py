@@ -716,5 +716,60 @@ class TestMoveTileExtras(unittest.TestCase):
         self.assertIn("Duplicate dynamic_entity 'AC'", str(cm.exception))
 
 
+class TestToCodeDisplayPageChangeCompat(unittest.TestCase):
+    """Verify page-change callback generation across ESPHome <= 2026.10 and >= 2026.11."""
+
+    def _run_to_code(self, display_attrs: dict):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+        import tile_ui
+
+        display_stub = SimpleNamespace(**display_attrs)
+        statements = []
+        defines = []
+
+        with (
+            patch.dict(sys.modules, {"esphome.components.display": display_stub}),
+            patch.object(sys.modules["esphome.components"], "display", display_stub),
+            patch.object(tile_ui.cg, "new_Pvariable", side_effect=lambda page_id, _expr: page_id.id),
+            patch.object(tile_ui.cg, "RawStatement", side_effect=lambda s: s),
+            patch.object(tile_ui.cg, "add", side_effect=lambda stmt: statements.append(stmt)),
+            patch.object(tile_ui.cg, "add_define", side_effect=lambda *args: defines.append(args)),
+            patch.object(tile_ui.cg, "get_variable", new=AsyncMock(return_value="disp")),
+            patch.object(tile_ui, "screens_list_schema", side_effect=lambda s: s),
+        ):
+            cfg = {
+                tile_ui.CONF_SYSTEM_PAGES: [{tile_ui.CONF_ID: SimpleNamespace(id="calib")}],
+                tile_ui.CONF_SCREENS: [],
+            }
+            asyncio.run(tile_ui.to_code(cfg))
+
+        return "\n".join(str(s) for s in statements), defines
+
+    def test_legacy_esphome_uses_display_on_page_change_trigger(self):
+        cpp, defines = self._run_to_code({"DisplayOnPageChangeTrigger": object()})
+        self.assertIn("DisplayOnPageChangeTrigger", cpp)
+        self.assertNotIn("add_on_page_change_callback", cpp)
+        self.assertEqual(defines, [])
+
+    def test_esphome_2026_11_requests_slot_and_uses_callback(self):
+        requested_keys = []
+        cpp, defines = self._run_to_code({
+            "DisplayOnPageChangeTrigger": None,
+            "_request_page_change_slot": lambda key: requested_keys.append(key),
+        })
+        self.assertEqual(requested_keys, ["disp"])
+        self.assertEqual(defines, [])
+        self.assertIn("add_on_page_change_callback", cpp)
+        self.assertNotIn("DisplayOnPageChangeTrigger", cpp)
+
+    def test_esphome_2026_11_without_slot_helper_defines_callback_count(self):
+        cpp, defines = self._run_to_code({"DisplayOnPageChangeTrigger": None})
+        self.assertEqual(defines, [("DISPLAY_PAGE_CHANGE_CALLBACK_COUNT", 1)])
+        self.assertIn("add_on_page_change_callback", cpp)
+        self.assertNotIn("DisplayOnPageChangeTrigger", cpp)
+
+
 if __name__ == '__main__':
     unittest.main()

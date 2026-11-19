@@ -1,4 +1,4 @@
-﻿"""Tile UI ESPhome Component - C++ code generation entry point."""
+"""Tile UI ESPhome Component - C++ code generation entry point."""
 from typing import Any
 import json
 import sys
@@ -533,25 +533,45 @@ async def to_code(config):
 
     # Now generate code to set pages
     if all_pages:
-        pages_list = ", ".join([str(p) for p in all_pages])
-        stmt = f"""
-        std::vector<esphome::display::DisplayPage*> tile_pages = {{{pages_list}}};
-        ((esphome::display::Display*)&id(disp))->set_pages(tile_pages);
+        from esphome.components import display as display_mod
+        from esphome.core import ID
 
-        auto *page_change_trigger = new esphome::display::DisplayOnPageChangeTrigger((esphome::display::Display*)&id(disp));
-        auto *automation = new esphome::Automation<esphome::display::DisplayPage *, esphome::display::DisplayPage *>(page_change_trigger);
-        automation->add_action(new esphome::LambdaAction<esphome::display::DisplayPage *, esphome::display::DisplayPage *>([=](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{
+        pages_list = ", ".join([str(p) for p in all_pages])
+        on_page_change_body = """
             id(change_page_ms) = millis();
             id(disp).fill(Color::BLACK);
-            if (view_ptr != nullptr) {{
+            if (view_ptr != nullptr) {
                 Screen* screen = view_ptr->getScreen(to);
-                if (screen != nullptr) {{
+                if (screen != nullptr) {
                     id(rows) = screen->getRows();
                     id(cols) = screen->getCols();
                     screen->onScreenEnter();
-                }}
-            }}
-        }}));
+                }
+            }"""
+
+        if getattr(display_mod, "DisplayOnPageChangeTrigger", None) is not None:
+            page_change_cpp = f"""
+        auto *page_change_trigger = new esphome::display::DisplayOnPageChangeTrigger((esphome::display::Display*)&id(disp));
+        auto *automation = new esphome::Automation<esphome::display::DisplayPage *, esphome::display::DisplayPage *>(page_change_trigger);
+        automation->add_action(new esphome::LambdaAction<esphome::display::DisplayPage *, esphome::display::DisplayPage *>([=](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{{on_page_change_body}
+        }}));"""
+        else:
+            req_slot = getattr(display_mod, "request_page_change_slot", None) or getattr(
+                display_mod, "_request_page_change_slot", None
+            )
+            if callable(req_slot):
+                disp_var = await cg.get_variable(ID("disp", is_declaration=False))
+                req_slot(str(disp_var))
+            else:
+                cg.add_define("DISPLAY_PAGE_CHANGE_CALLBACK_COUNT", 1)
+            page_change_cpp = f"""
+        ((esphome::display::Display*)&id(disp))->add_on_page_change_callback([](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{{on_page_change_body}
+        }});"""
+
+        stmt = f"""
+        std::vector<esphome::display::DisplayPage*> tile_pages = {{{pages_list}}};
+        ((esphome::display::Display*)&id(disp))->set_pages(tile_pages);
+{page_change_cpp}
         """
         cg.add(cg.RawStatement(stmt))
 

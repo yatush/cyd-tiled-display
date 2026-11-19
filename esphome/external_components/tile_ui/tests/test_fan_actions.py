@@ -323,6 +323,133 @@ int main() {
 """
         compile_and_run(code)
 
+    def test_perform_ha_action_string_ref_and_progmem_string_ref(self):
+        source = (ROOT / "esphome/lib/utils.h").read_text()
+        perform_ha_action = (
+            "void PerformHaAction("
+            + source.split("void PerformHaAction(", 1)[1].split(
+                "\nstd::string GetFanAttribute(", 1
+            )[0]
+        )
+        template = r"""
+#include <cassert>
+#include <cstddef>
+#include <string>
+#include <utility>
+#include <vector>
+
+#define id(x) x
+template<class... Args> void log_info(Args...) {}
+#define ESP_LOGI(...) log_info(__VA_ARGS__)
+
+namespace esphome {
+class StringRef {
+ public:
+  constexpr StringRef() = default;
+  explicit StringRef(const std::string& s) : ptr_(s.data()), len_(s.size()) {}
+  template<size_t N>
+  static constexpr StringRef from_lit(const char (&s)[N]) {
+    return StringRef(s, N - 1);
+  }
+  constexpr const char* c_str() const { return ptr_; }
+  constexpr size_t size() const { return len_; }
+ private:
+  constexpr StringRef(const char* ptr, size_t len) : ptr_(ptr), len_(len) {}
+  const char* ptr_ = "";
+  size_t len_ = 0;
+};
+
+class ProgmemStringRef {
+ public:
+  constexpr ProgmemStringRef() = default;
+  explicit constexpr ProgmemStringRef(const StringRef& ref)
+      : ptr_(ref.c_str()), len_(ref.size()) {}
+  constexpr const char* c_str() const { return ptr_; }
+  constexpr size_t size() const { return len_; }
+ private:
+  const char* ptr_ = "";
+  size_t len_ = 0;
+};
+
+template<typename T>
+struct FixedVector {
+  bool initialized = false;
+  size_t capacity = 0;
+  std::vector<T> items;
+  void init(size_t n) {
+    initialized = true;
+    capacity = n;
+    items.clear();
+    items.reserve(n);
+  }
+  void push_back(const T& item) {
+    assert(initialized && items.size() < capacity);
+    items.push_back(item);
+  }
+};
+
+namespace api {
+struct HomeassistantServiceMap {
+  __FIELD_TYPE__ key;
+  __FIELD_TYPE__ value;
+};
+
+struct HomeassistantActionRequest {
+  __FIELD_TYPE__ service;
+  FixedVector<HomeassistantServiceMap> data;
+};
+}  // namespace api
+}  // namespace esphome
+
+using esphome::StringRef;
+
+struct CapturedCall {
+  std::string service;
+  std::vector<std::pair<std::string, std::string>> data;
+};
+
+struct ApiServer {
+  std::vector<CapturedCall> sent;
+  void send_homeassistant_action(const esphome::api::HomeassistantActionRequest& req) {
+    CapturedCall call;
+    call.service.assign(req.service.c_str(), req.service.size());
+    for (const auto& kv : req.data.items) {
+      call.data.emplace_back(
+          std::string(kv.key.c_str(), kv.key.size()),
+          std::string(kv.value.c_str(), kv.value.size()));
+    }
+    sent.push_back(std::move(call));
+  }
+} api_server;
+
+__PERFORM_HA_ACTION__
+
+int main() {
+  PerformHaAction("light.kitchen", "toggle", {{"brightness_pct", "80"}});
+  assert(api_server.sent.size() == 1);
+  assert(api_server.sent[0].service == "light.toggle");
+  assert((api_server.sent[0].data == std::vector<std::pair<std::string, std::string>>{
+      {"entity_id", "light.kitchen"},
+      {"brightness_pct", "80"},
+  }));
+
+  PerformHaAction("fan.bedroom", "homeassistant.turn_off");
+  assert(api_server.sent.size() == 2);
+  assert(api_server.sent[1].service == "homeassistant.turn_off");
+  assert((api_server.sent[1].data == std::vector<std::pair<std::string, std::string>>{
+      {"entity_id", "fan.bedroom"},
+  }));
+}
+"""
+        for field_type in ("esphome::StringRef", "esphome::ProgmemStringRef"):
+            with self.subTest(field_type=field_type):
+                code = (
+                    template
+                    .replace("__FIELD_TYPE__", field_type)
+                    .replace("__PERFORM_HA_ACTION__", perform_ha_action)
+                )
+                compile_and_run(code)
+
 
 if __name__ == "__main__":
     unittest.main()

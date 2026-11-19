@@ -176,7 +176,7 @@ script:
   - id: _init_radar
     then:
       - lambda: |-
-          static const struct { esphome::ld2410::GateThresholdNumber* gate; int val; } values[] = {
+          static const struct { esphome::number::Number* gate; int val; } values[] = {
             {id(g0m), 50}, {id(g1m), 50}, {id(g2m), 40}, {id(g3m), 40}, {id(g4m), 40},
             {id(g5m), 40}, {id(g6m), 30}, {id(g7m), 30}, {id(g8m), 30},
             {id(g0s), 0},  {id(g1s), 0},  {id(g2s), 40}, {id(g3s), 40}, {id(g4s), 40},
