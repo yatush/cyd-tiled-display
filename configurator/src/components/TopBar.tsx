@@ -44,9 +44,8 @@ interface TopBarProps {
   isDirty: boolean;
   saveStatus: QuickSaveStatus;
   onQuickSave: () => void;
-  onOpenBatchUpdate: () => void;
-  batchUpdateActive?: boolean;
-  batchUpdateLabel?: string;
+  onUpdateCurrentDevice: () => void;
+  otaInstallActive?: boolean;
   updateAvailable?: boolean;
   emulatorStatus: 'stopped' | 'running' | 'starting' | 'error';
   onStartEmulator: () => void;
@@ -81,9 +80,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isDirty,
   saveStatus,
   onQuickSave,
-  onOpenBatchUpdate,
-  batchUpdateActive,
-  batchUpdateLabel,
+  onUpdateCurrentDevice,
+  otaInstallActive,
   updateAvailable,
   emulatorStatus,
   onStartEmulator,
@@ -454,21 +452,30 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {isAddon && (
           <button
-            onClick={onOpenBatchUpdate}
+            onClick={onUpdateCurrentDevice}
+            disabled={!otaInstallActive && (!fileContext || fileContext.kind !== 'device')}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border ${
-              batchUpdateActive
+              otaInstallActive
                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 animate-pulse'
-                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                : fileContext?.kind === 'device'
+                ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
             }`}
-            title="Update all online CYD devices via OTA"
+            title={
+              otaInstallActive
+                ? 'View running OTA installation'
+                : fileContext?.kind === 'device'
+                ? `Update ${getDisplayFileName(fileContext.path)} via OTA${isDirty ? ' (will save first)' : ''}`
+                : 'Open or save a device file to update it via OTA'
+            }
           >
-            {batchUpdateActive ? (
+            {otaInstallActive ? (
               <RefreshCw size={15} className="animate-spin" />
             ) : (
               <UploadCloud size={15} />
             )}
             <span className="hidden xl:inline">
-              {batchUpdateActive ? (batchUpdateLabel || 'Updating...') : 'Update All'}
+              {otaInstallActive ? 'Installing...' : 'Update Device'}
             </span>
           </button>
         )}
