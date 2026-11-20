@@ -312,5 +312,141 @@ class TestFixedDynamicEntitiesCodegen(unittest.TestCase):
                 self.assertEqual(cfg["dynamic_entities"], [{"LIGHT": "light.bedroom"}])
 
 
+class TestFixedDynamicEntityLabelsAndCycleEntity(unittest.TestCase):
+    def test_parse_fixed_entities_with_optional_labels(self):
+        from tile_ui.data_collection import (
+            format_entity_label,
+            parse_dynamic_entities_with_labels,
+        )
+
+        raw = [
+            "ACTIVE_COVER",
+            {
+                "ROOM_COVERS": [
+                    {"entity": "cover.living_room_left", "label": "PR1"},
+                    "cover.living_room_right",
+                    {"entity": "cover.kitchen_main", "label": "  "},
+                ]
+            },
+            {"SINGLE": {"entity": "light.desk_lamp", "label": "Desk"}},
+        ]
+        names, entries = parse_dynamic_entities_with_labels(raw)
+        self.assertEqual(names, ["ACTIVE_COVER", "ROOM_COVERS", "SINGLE"])
+        self.assertEqual(
+            entries,
+            {
+                "ROOM_COVERS": [
+                    ("cover.living_room_left", "PR1"),
+                    ("cover.living_room_right", None),
+                    ("cover.kitchen_main", None),
+                ],
+                "SINGLE": [("light.desk_lamp", "Desk")],
+            },
+        )
+        # parse_dynamic_entities_config still returns plain entity IDs
+        _, plain = parse_dynamic_entities_config(raw)
+        self.assertEqual(
+            plain,
+            {
+                "ROOM_COVERS": [
+                    "cover.living_room_left",
+                    "cover.living_room_right",
+                    "cover.kitchen_main",
+                ],
+                "SINGLE": ["light.desk_lamp"],
+            },
+        )
+
+        # Fallback label formatting
+        self.assertEqual(format_entity_label("light.living_room"), "Living Room")
+        self.assertEqual(format_entity_label("cover.bedroom_left|position"), "Bedroom Left")
+        self.assertEqual(format_entity_label("LR"), "LR")
+
+    def test_rejects_invalid_labeled_fixed_entries(self):
+        with self.assertRaisesRegex(ValueError, "unsupported key"):
+            parse_dynamic_entities_config([{"A": [{"entity": "light.a", "foo": "bar"}]}])
+        with self.assertRaisesRegex(ValueError, "non-empty string 'entity'"):
+            parse_dynamic_entities_config([{"A": [{"entity": "", "label": "X"}]}])
+        with self.assertRaisesRegex(ValueError, "'label' must be a string"):
+            parse_dynamic_entities_config([{"A": [{"entity": "light.a", "label": 123}]}])
+
+    def test_cycle_entity_accepts_fixed_dynamic_entity_option_and_generates_cpp(self):
+        screens = [
+            {
+                "id": "main",
+                "flags": ["BASE"],
+                "tiles": [
+                    {
+                        "cycle_entity": {
+                            "x": 0,
+                            "y": 0,
+                            "display": ["tile_cover_name"],
+                            "dynamic_entity": "ACTIVE_COVER",
+                            "options": [
+                                {"entity": "*", "label": "ALL"},
+                                {"dynamic_entity": "ROOM_COVERS"},
+                            ],
+                        }
+                    }
+                ],
+            }
+        ]
+        declared = [
+            "ACTIVE_COVER",
+            {
+                "ROOM_COVERS": [
+                    {"entity": "cover.living_left", "label": "PR1"},
+                    "cover.living_right",
+                ]
+            },
+        ]
+        lambdas = generate_init_tiles_cpp(screens, dynamic_entities=declared)
+        # EMSet initializes ROOM_COVERS with plain entity IDs
+        self.assertIn(
+            'EMSet(Pointer("ROOM_COVERS"), Pointer(std::vector<std::string>{"cover.living_left", "cover.living_right"}));',
+            lambdas[0],
+        )
+        # CycleEntityTile expands ROOM_COVERS into individual options with custom + fallback labels
+        screen_cpp = lambdas[1]
+        self.assertIn(
+            '{ { {"*"}, "ALL" }, { {"cover.living_left"}, "PR1" }, { {"cover.living_right"}, "Living Right" } }',
+            screen_cpp,
+        )
+
+    def test_cycle_entity_rejects_non_fixed_or_mixed_dynamic_entity_option(self):
+        base_screens = lambda opt: [
+            {
+                "id": "main",
+                "flags": ["BASE"],
+                "tiles": [
+                    {
+                        "cycle_entity": {
+                            "x": 0,
+                            "y": 0,
+                            "display": ["d"],
+                            "dynamic_entity": "ACTIVE_COVER",
+                            "options": [opt],
+                        }
+                    }
+                ],
+            }
+        ]
+        with self.assertRaisesRegex(ValueError, "is not a fixed dynamic entity"):
+            validate_tiles_config(
+                base_screens({"dynamic_entity": "RUNTIME_VAR"}),
+                declared_dynamic_entities=["ACTIVE_COVER", "RUNTIME_VAR"],
+            )
+        with self.assertRaisesRegex(ValueError, "is not declared in dynamic_entities"):
+            validate_tiles_config(
+                base_screens({"dynamic_entity": "MISSING_VAR"}),
+                declared_dynamic_entities=["ACTIVE_COVER"],
+            )
+        with self.assertRaisesRegex(ValueError, "cannot combine 'dynamic_entity' with 'entity' or 'label'"):
+            validate_tiles_config(
+                base_screens({"dynamic_entity": "ROOM_COVERS", "label": "Oops"}),
+                declared_dynamic_entities=["ACTIVE_COVER", {"ROOM_COVERS": ["cover.a"]}],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

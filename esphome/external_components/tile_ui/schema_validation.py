@@ -152,6 +152,19 @@ def _validate_tile_fields(
                     f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
                     f"option {idx} must be a dict"
                 )
+            if "dynamic_entity" in option:
+                if "entity" in option or "label" in option:
+                    raise ValueError(
+                        f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                        f"option {idx} cannot combine 'dynamic_entity' with 'entity' or 'label'"
+                    )
+                de = option.get("dynamic_entity")
+                if not isinstance(de, str) or not de.strip():
+                    raise ValueError(
+                        f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                        f"option {idx} 'dynamic_entity' must be a non-empty string"
+                    )
+                continue
             if "entity" not in option:
                 raise ValueError(
                     f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "

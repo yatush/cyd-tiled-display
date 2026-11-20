@@ -1,5 +1,5 @@
 import { Trash2, Plus } from 'lucide-react';
-import { HaEntity } from '../types';
+import { FixedEntityEntry, HaEntity } from '../types';
 
 export const EntityListInput = ({ label, values, onChange, haEntities }: {
   label: string,
@@ -61,13 +61,22 @@ export const DynamicEntitiesEditor = ({
   haEntities,
 }: {
   entities: string[];
-  fixedValues?: Record<string, string[]>;
+  fixedValues?: Record<string, FixedEntityEntry[]>;
   onChange: (v: string[]) => void;
-  onFixedChange?: (varName: string, values: string[] | null) => void;
+  onFixedChange?: (varName: string, values: FixedEntityEntry[] | null) => void;
   haEntities?: HaEntity[];
 }) => {
   const safeEntities = Array.isArray(entities) ? entities : (entities ? [entities] : []);
   const listId = `ha-dyn-fixed-${Math.random().toString(36).substr(2, 9)}`;
+
+  const getEntryParts = (entry: FixedEntityEntry): { entity: string; label: string } => {
+    if (typeof entry === 'string') return { entity: entry, label: '' };
+    return { entity: entry?.entity || '', label: entry?.label || '' };
+  };
+
+  const makeEntry = (entity: string, label: string): FixedEntityEntry => {
+    return label.trim() ? { entity, label } : entity;
+  };
 
   return (
     <div className="mb-2">
@@ -75,8 +84,8 @@ export const DynamicEntitiesEditor = ({
         {safeEntities.map((v, i) => {
           const trimmedName = v.trim();
           const isFixed = Boolean(trimmedName && Object.prototype.hasOwnProperty.call(fixedValues, trimmedName));
-          const boundEntities = isFixed ? (fixedValues[trimmedName] || ['']) : [];
-          const displayBound = boundEntities.length > 0 ? boundEntities : [''];
+          const boundEntities: FixedEntityEntry[] = isFixed ? (fixedValues[trimmedName] || ['']) : [];
+          const displayBound: FixedEntityEntry[] = boundEntities.length > 0 ? boundEntities : [''];
 
           return (
             <div key={i} className="border rounded p-2 bg-white space-y-1.5 shadow-sm">
@@ -126,34 +135,50 @@ export const DynamicEntitiesEditor = ({
               )}
 
               {onFixedChange && isFixed && (
-                <div className="pt-1 border-t border-slate-100 space-y-1">
+                <div className="pt-1 border-t border-slate-100 space-y-1.5">
                   <label className="block text-[10px] text-slate-500 uppercase">Fixed Entity ID(s)</label>
-                  {displayBound.map((entVal, entIdx) => (
-                    <div key={entIdx} className="flex gap-1 items-center">
-                      <input
-                        type="text"
-                        value={entVal}
-                        onChange={e => {
-                          const next = [...displayBound];
-                          next[entIdx] = e.target.value;
-                          onFixedChange(trimmedName, next);
-                        }}
-                        list={haEntities ? listId : undefined}
-                        placeholder="e.g. light.living_room"
-                        className="flex-1 min-w-0 border rounded p-1 text-xs"
-                      />
-                      {displayBound.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => onFixedChange(trimmedName, displayBound.filter((_, idx) => idx !== entIdx))}
-                          className="text-red-500 hover:bg-red-50 p-0.5 rounded flex-shrink-0"
-                          title="Remove Entity"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  {displayBound.map((entry, entIdx) => {
+                    const { entity: entVal, label: lblVal } = getEntryParts(entry);
+                    return (
+                      <div key={entIdx} className="space-y-1">
+                        <div className="flex gap-1 items-center">
+                          <input
+                            type="text"
+                            value={entVal}
+                            onChange={e => {
+                              const next = [...displayBound];
+                              next[entIdx] = makeEntry(e.target.value, lblVal);
+                              onFixedChange(trimmedName, next);
+                            }}
+                            list={haEntities ? listId : undefined}
+                            placeholder="e.g. light.living_room"
+                            className="flex-1 min-w-0 border rounded p-1 text-xs"
+                          />
+                          {displayBound.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => onFixedChange(trimmedName, displayBound.filter((_, idx) => idx !== entIdx))}
+                              className="text-red-500 hover:bg-red-50 p-0.5 rounded flex-shrink-0"
+                              title="Remove Entity"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={lblVal}
+                          onChange={e => {
+                            const next = [...displayBound];
+                            next[entIdx] = makeEntry(entVal, e.target.value);
+                            onFixedChange(trimmedName, next);
+                          }}
+                          placeholder="Label (optional, for cycle_entity)"
+                          className="w-full border rounded p-1 text-[11px] text-slate-700 bg-slate-50"
+                        />
+                      </div>
+                    );
+                  })}
                   <button
                     type="button"
                     onClick={() => onFixedChange(trimmedName, [...displayBound, ''])}

@@ -109,3 +109,62 @@ test('applyDynamicEntityListChange and updateDynamicEntityFixedValues keep fixed
   config = applyDynamicEntityListChange(config, ['ROOM_LIGHT']);
   assert.equal(config.dynamic_entity_values, undefined);
 });
+
+test('fixed dynamic_entities with optional labels and cycle_entity options round-trip and rename cleanly', () => {
+  let config = {
+    pages: [
+      {
+        id: 'main',
+        rows: 2,
+        cols: 3,
+        flags: ['BASE'],
+        tiles: [
+          {
+            id: 't1',
+            type: 'cycle_entity',
+            x: 0,
+            y: 0,
+            display: ['tile_cover_name'],
+            dynamic_entity: 'ACTIVE_COVER',
+            options: [
+              { entity: '*', label: 'ALL' },
+              { dynamic_entity: 'BLINDS' },
+            ],
+          },
+        ],
+      },
+    ],
+    dynamic_entities: ['ACTIVE_COVER', 'BLINDS'],
+    dynamic_entity_values: {
+      BLINDS: [
+        { entity: 'cover.bedroom_left', label: 'PR1' },
+        'cover.bedroom_right',
+      ],
+    },
+  };
+
+  const yamlText = generateYaml(config);
+  assert.match(yamlText, /- entity: cover\.bedroom_left\n\s+label: PR1/);
+  assert.match(yamlText, /- cover\.bedroom_right/);
+  assert.match(yamlText, /- dynamic_entity: BLINDS/);
+
+  const parsed = parseYamlToConfig(yamlText);
+  assert.deepEqual(parsed.dynamic_entity_values, {
+    BLINDS: [
+      { entity: 'cover.bedroom_left', label: 'PR1' },
+      'cover.bedroom_right',
+    ],
+  });
+  assert.deepEqual(parsed.pages[0].tiles[0].options, [
+    { entity: '*', label: 'ALL' },
+    { dynamic_entity: 'BLINDS' },
+  ]);
+
+  // Rename BLINDS -> ROOM_BLINDS updates both dynamic_entity_values and cycle_entity option
+  config = applyDynamicEntityListChange(config, ['ACTIVE_COVER', 'ROOM_BLINDS']);
+  assert.equal(config.pages[0].tiles[0].options[1].dynamic_entity, 'ROOM_BLINDS');
+  assert.deepEqual(config.dynamic_entity_values.ROOM_BLINDS, [
+    { entity: 'cover.bedroom_left', label: 'PR1' },
+    'cover.bedroom_right',
+  ]);
+});
