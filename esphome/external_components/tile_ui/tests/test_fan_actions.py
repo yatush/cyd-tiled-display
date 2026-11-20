@@ -275,11 +275,10 @@ struct Scheduler {
   struct Entry { uint32_t due_ms; std::function<void()> cb; };
   std::vector<Entry> entries;
   void set_timeout(void*, const char*, uint32_t delay, std::function<void()> cb) {
-    assert(delay == 1500 || delay == 150);
+    assert(delay == 1500 || delay == 150 || delay == 75);
     entries.push_back({clock_ms + delay, std::move(cb)});
   }
-  void advance_to(uint32_t target_ms) {
-    clock_ms = target_ms;
+  void run_due() {
     bool ran = true;
     while (ran) {
       ran = false;
@@ -293,6 +292,16 @@ struct Scheduler {
         }
       }
     }
+  }
+  void advance_to(uint32_t target_ms) {
+    while (clock_ms < target_ms) {
+      clock_ms = (clock_ms + 25 < target_ms) ? (clock_ms + 25) : target_ms;
+      run_due();
+    }
+  }
+  void stall_to(uint32_t target_ms) {
+    clock_ms = target_ms;
+    run_due();
   }
 };
 struct Application { Scheduler scheduler; } App;
@@ -525,6 +534,33 @@ int main() {
   assert(short_count == 3 && Tile::isTouchBlockedFor(&other_tile));
   Tile::notifyScreenRelease(); legacy.touch(false);
   assert(!Tile::hasActiveTouchSession() && !Tile::isTouchBlockedFor(&other_tile));
+
+  // 10. Touch dropout followed by a 250ms display redraw stall does NOT false-fire short press;
+  //     when touchscreen polls on the next frame and sees the finger still down, long press completes.
+  esphome::App.scheduler.advance_to(17000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(17400);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  // Display draw blocks the main loop for 250ms (> 150ms debounce!), then scheduler runs before touchscreen->loop()
+  esphome::App.scheduler.stall_to(17650);
+  assert(short_count == 3 && long_count == 5);
+  // touchscreen->loop() runs in that frame and sees finger still touching
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(18500);
+  assert(long_count == 6 && short_count == 3 && disp.page == &destination);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.advance_to(18700);
+  disp.page = &page;
+
+  // 11. Genuine short tap followed by repeated 250ms display stalls still confirms after kMaxStallRetries loop cycles
+  esphome::App.scheduler.advance_to(20000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(20100);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.stall_to(20350); assert(short_count == 3);
+  esphome::App.scheduler.stall_to(20600); assert(short_count == 3);
+  esphome::App.scheduler.stall_to(20850); assert(short_count == 3);
+  esphome::App.scheduler.stall_to(21100); assert(short_count == 4 && long_count == 6);
 
   HAActionTile cover(0, 0, {}, {short_action}, {"cover.one"});
   cover.start(&page); cover.decodeEntities();
