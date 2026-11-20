@@ -97,7 +97,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
   const handleSyncGithub = async () => {
     if (!confirm(
       "Download ESPHome library files, tile_ui and test_device.yaml from yatush/cyd-tiled-display main? " +
-      "Matching managed files will be overwritten and backed up in /config/esphome. " +
+      "Matching managed files will be overwritten. " +
       "Custom files are preserved. Stop any builds or emulator sessions first."
     )) return;
 
@@ -106,7 +106,7 @@ export const HASettingsDialog: React.FC<HASettingsDialogProps> = ({
       const res = await apiFetch('/sync_github_lib', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      alert(`Synced ${data.count} files. Backup: /config/esphome/${data.backup}\n\nThe add-on version warning may remain. Reloading will refresh the editor schema.`);
+      alert(`Synced ${data.count} files.\n\nThe add-on version warning may remain. Reloading will refresh the editor schema.`);
       window.location.reload();
     } catch (error) {
       alert(`GitHub sync failed: ${error instanceof Error ? error.message : String(error)}`);
