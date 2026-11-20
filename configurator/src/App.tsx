@@ -140,6 +140,10 @@ function App() {
   const [isBatchUpdateOpen, setIsBatchUpdateOpen] = useState(false);
   const [batchUpdateActive, setBatchUpdateActive] = useState(false);
   const [batchUpdateLabel, setBatchUpdateLabel] = useState<string | undefined>(undefined);
+  const [quickUpdateDevice, setQuickUpdateDevice] = useState<string | null>(null);
+  const [autoStartOta, setAutoStartOta] = useState(false);
+  const [isSaveAndUpdateConfirmOpen, setIsSaveAndUpdateConfirmOpen] = useState(false);
+  const [isSavingBeforeUpdate, setIsSavingBeforeUpdate] = useState(false);
 
   // Hooks
   const {
@@ -222,6 +226,36 @@ function App() {
       handleQuickSave();
     } else {
       setIsFileManagementOpen(true);
+    }
+  };
+
+  const handleUpdateCurrentDevice = () => {
+    if (otaInstallActive) {
+      setIsInstallDeviceOpen(true);
+      return;
+    }
+    if (!fileContext || fileContext.kind !== 'device') return;
+    if (isDirty) {
+      setIsSaveAndUpdateConfirmOpen(true);
+    } else {
+      setQuickUpdateDevice(fileContext.path);
+      setAutoStartOta(true);
+      setIsInstallDeviceOpen(true);
+    }
+  };
+
+  const handleConfirmSaveAndUpdate = async () => {
+    if (!fileContext || fileContext.kind !== 'device') return;
+    setIsSavingBeforeUpdate(true);
+    try {
+      const saved = await handleQuickSave();
+      if (!saved) return;
+      setIsSaveAndUpdateConfirmOpen(false);
+      setQuickUpdateDevice(fileContext.path);
+      setAutoStartOta(true);
+      setIsInstallDeviceOpen(true);
+    } finally {
+      setIsSavingBeforeUpdate(false);
     }
   };
 
@@ -430,9 +464,8 @@ function App() {
         isDirty={isDirty}
         saveStatus={saveStatus}
         onQuickSave={handleSaveOrSaveAs}
-        onOpenBatchUpdate={() => setIsBatchUpdateOpen(true)}
-        batchUpdateActive={batchUpdateActive}
-        batchUpdateLabel={batchUpdateLabel}
+        onUpdateCurrentDevice={handleUpdateCurrentDevice}
+        otaInstallActive={otaInstallActive}
         updateAvailable={updateAvailable}
         emulatorStatus={emulatorStatus}
         onStartEmulator={() => setIsEmulatorDevicePickerOpen(true)}
@@ -652,7 +685,53 @@ function App() {
         stayMounted={usbCompileActive || otaInstallActive}
         onCompileActiveChange={setUsbCompileActive}
         onOtaActiveChange={setOtaInstallActive}
+        initialDeviceFilename={quickUpdateDevice}
+        autoStartOta={autoStartOta}
+        onAutoStartHandled={() => setAutoStartOta(false)}
       />
+
+      {/* Save-before-update confirmation popup when active device file has unsaved changes */}
+      {isSaveAndUpdateConfirmOpen && fileContext && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[260] p-4 backdrop-blur-sm"
+          onClick={() => !isSavingBeforeUpdate && setIsSaveAndUpdateConfirmOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b bg-amber-50">
+              <h3 className="font-bold text-slate-800 text-base">Save Changes Before Updating?</h3>
+            </div>
+            <div className="p-5 space-y-2 text-sm text-slate-600">
+              <p>
+                You have unsaved changes to{' '}
+                <span className="font-mono font-bold text-slate-800">{fileContext.path}</span>.
+              </p>
+              <p className="text-xs text-slate-500">
+                The file will be saved first, then the OTA update will start for this device.
+              </p>
+            </div>
+            <div className="px-5 py-3 border-t bg-slate-50 flex justify-end gap-2">
+              <button
+                onClick={() => setIsSaveAndUpdateConfirmOpen(false)}
+                disabled={isSavingBeforeUpdate}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSaveAndUpdate}
+                disabled={isSavingBeforeUpdate}
+                className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isSavingBeforeUpdate && <RefreshCw size={13} className="animate-spin" />}
+                {isSavingBeforeUpdate ? 'Saving...' : 'Save & Update Device'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       <ScreensFileDialog 
         isOpen={isScreensFileOpen}
