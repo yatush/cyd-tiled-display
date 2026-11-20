@@ -14,6 +14,7 @@ from .data_collection import (
     collect_available_scripts,
     collect_available_globals,
     parse_dynamic_entities_config,
+    parse_dynamic_entities_with_labels,
 )
 from .tile_generation import generate_tile_cpp
 from .tile_utils import flags_to_cpp, build_expression, screen_page_id
@@ -400,7 +401,7 @@ def generate_init_tiles_cpp(
         available_globals,
         declared_dynamic_entities=declared_dynamic_entities,
     )
-    _, fixed_dynamic_entities = parse_dynamic_entities_config(declared_dynamic_entities)
+    _, fixed_dynamic_entries = parse_dynamic_entities_with_labels(declared_dynamic_entities)
     
     lambdas = []
     
@@ -409,11 +410,11 @@ def generate_init_tiles_cpp(
         "// Initialize view",
         "view_ptr.reset(new View());",
     ]
-    if fixed_dynamic_entities:
+    if fixed_dynamic_entries:
         view_init.append("// Initialize fixed dynamic entities")
-        for var_name, entity_list in fixed_dynamic_entities.items():
+        for var_name, entry_list in fixed_dynamic_entries.items():
             var_cpp = json.dumps(var_name, ensure_ascii=True)
-            vals_cpp = ", ".join(json.dumps(ent, ensure_ascii=True) for ent in entity_list)
+            vals_cpp = ", ".join(json.dumps(ent, ensure_ascii=True) for ent, _ in entry_list)
             view_init.append(
                 f"EMSet(Pointer({var_cpp}), Pointer(std::vector<std::string>{{{vals_cpp}}}));"
             )
@@ -439,7 +440,12 @@ def generate_init_tiles_cpp(
         ]
         
         for tile in tiles:
-            tile_cpp = generate_tile_cpp(tile, available_scripts, screen_id)
+            tile_cpp = generate_tile_cpp(
+                tile,
+                available_scripts,
+                screen_id,
+                fixed_dynamic_entities=fixed_dynamic_entries,
+            )
             lines.append(f"  {tile_cpp}")
 
         # Build background method chains (drawn before tiles at runtime)

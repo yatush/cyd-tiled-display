@@ -21,7 +21,9 @@ __all__ = [
     "collect_referenced_scripts",
     "collect_referenced_globals",
     "collect_dynamic_entities",
+    "format_entity_label",
     "parse_dynamic_entities_config",
+    "parse_dynamic_entities_with_labels",
 ]
 
 
@@ -324,60 +326,111 @@ def collect_dynamic_entities(entities_config, entity_set):
                 entity_set.add(entity["dynamic_entity"])
 
 
-def _normalize_fixed_entity_values(name: str, raw_val: Any) -> list[str]:
-    """Validate and normalize fixed entity value(s) for a dynamic entity."""
+def format_entity_label(entity_id: str) -> str:
+    """Format a Home Assistant entity ID into a human-readable fallback label.
+
+    Examples:
+        ``light.living_room`` -> ``Living Room``
+        ``cover.bedroom_left|position`` -> ``Bedroom Left``
+        ``LR`` -> ``LR``
+    """
+    base = entity_id.split("|", 1)[0].strip()
+    if "." in base:
+        base = base.split(".", 1)[1]
+    words = [w for w in base.replace("_", " ").split() if w]
+    if not words:
+        return entity_id.strip()
+    return " ".join(w if w.isupper() else w.capitalize() for w in words)
+
+
+def _normalize_fixed_entity_item(name: str, item: Any) -> tuple[str, str | None]:
+    """Validate and normalize a single fixed entity entry (string or {entity, label?})."""
+    if isinstance(item, str):
+        ent = item.strip()
+        if not ent:
+            raise ValueError(
+                f"Fixed dynamic entity '{name}' list items must be non-empty strings, got {item!r}"
+            )
+        return ent, None
+    if isinstance(item, dict):
+        unknown_keys = set(item.keys()) - {"entity", "label"}
+        if unknown_keys:
+            raise ValueError(
+                f"Fixed dynamic entity '{name}' entry has unsupported key(s): "
+                f"{', '.join(sorted(unknown_keys))}. Allowed keys are 'entity' and 'label'"
+            )
+        raw_ent = item.get("entity")
+        if not isinstance(raw_ent, str) or not raw_ent.strip():
+            raise ValueError(
+                f"Fixed dynamic entity '{name}' entry must have a non-empty string 'entity', got {raw_ent!r}"
+            )
+        raw_label = item.get("label")
+        label: str | None = None
+        if raw_label is not None:
+            if not isinstance(raw_label, str):
+                raise ValueError(
+                    f"Fixed dynamic entity '{name}' entry 'label' must be a string, got {type(raw_label).__name__}"
+                )
+            stripped = raw_label.strip()
+            label = stripped if stripped else None
+        return raw_ent.strip(), label
+    raise ValueError(
+        f"Fixed dynamic entity '{name}' list items must be non-empty strings or "
+        f"'{{entity, label?}}' dicts, got {item!r}"
+    )
+
+
+def _normalize_fixed_entity_entries(name: str, raw_val: Any) -> list[tuple[str, str | None]]:
+    """Validate and normalize fixed entity entries (with optional labels) for a dynamic entity."""
     if isinstance(raw_val, str):
-        values = [v.strip() for v in raw_val.split(",")] if "," in raw_val else [raw_val.strip()]
+        parts = [v.strip() for v in raw_val.split(",")] if "," in raw_val else [raw_val.strip()]
+        entries = [(v, None) for v in parts]
+    elif isinstance(raw_val, dict):
+        entries = [_normalize_fixed_entity_item(name, raw_val)]
     elif isinstance(raw_val, list):
         if not raw_val:
             raise ValueError(f"Fixed dynamic entity '{name}' cannot have an empty entity list")
-        values = []
-        for item in raw_val:
-            if not isinstance(item, str) or not item.strip():
-                raise ValueError(
-                    f"Fixed dynamic entity '{name}' list items must be non-empty strings, got {item!r}"
-                )
-            values.append(item.strip())
+        entries = [_normalize_fixed_entity_item(name, item) for item in raw_val]
     else:
         raise ValueError(
-            f"Fixed dynamic entity '{name}' must map to an entity string or list of entity strings, "
-            f"got {type(raw_val).__name__}"
+            f"Fixed dynamic entity '{name}' must map to an entity string, '{{entity, label?}}' dict, "
+            f"or list of entity entries, got {type(raw_val).__name__}"
         )
 
-    if not values or any(not v for v in values):
+    if not entries or any(not ent for ent, _ in entries):
         raise ValueError(f"Fixed dynamic entity '{name}' must specify at least one non-empty entity ID")
 
-    for ent in values:
+    for ent, _ in entries:
         if "#{" in ent:
             raise ValueError(
                 f"Fixed dynamic entity '{name}' value '{ent}' cannot contain dynamic placeholders"
             )
-    return values
+    return entries
 
 
-def parse_dynamic_entities_config(
+def parse_dynamic_entities_with_labels(
     dynamic_entities_config: Any,
-) -> tuple[list[str] | None, dict[str, list[str]]]:
-    """Normalize top-level ``dynamic_entities`` configuration.
+) -> tuple[list[str] | None, dict[str, list[tuple[str, str | None]]]]:
+    """Normalize top-level ``dynamic_entities`` configuration preserving optional per-entity labels.
 
     Supports:
     - ``None`` -> ``(None, {})`` (no explicit declaration)
     - List of mixed entries:
       - ``"VAR"`` -> runtime dynamic entity
-      - ``{"VAR": "domain.entity"}`` or ``{"VAR": ["domain.e1", "domain.e2"]}`` -> fixed dynamic entity
+      - ``{"VAR": "domain.entity"}`` or ``{"VAR": ["domain.e1", {"entity": "domain.e2", "label": "E2"}]}``
       - ``{"name": "VAR", "entities": [...]}`` / ``{"name": "VAR", "value": ...}`` -> object form
     - Dict mapping ``{"VAR": "domain.entity", ...}`` -> convenience mapping form
 
     Returns:
-        Tuple of ``(declared_names, fixed_values)`` where ``declared_names`` preserves
-        declaration order and ``fixed_values`` maps fixed variable names to their entity lists.
+        Tuple of ``(declared_names, fixed_entries)`` where ``fixed_entries`` maps fixed
+        variable names to lists of ``(entity_id, optional_label)`` tuples.
     """
     if dynamic_entities_config is None:
         return None, {}
 
     declared_names: list[str] = []
     seen_names: set[str] = set()
-    fixed_values: dict[str, list[str]] = {}
+    fixed_entries: dict[str, list[tuple[str, str | None]]] = {}
 
     def _register(raw_name: Any, fixed_raw: Any = None, has_fixed: bool = False) -> None:
         if not isinstance(raw_name, str) or not raw_name.strip():
@@ -388,7 +441,7 @@ def parse_dynamic_entities_config(
         seen_names.add(name)
         declared_names.append(name)
         if has_fixed:
-            fixed_values[name] = _normalize_fixed_entity_values(name, fixed_raw)
+            fixed_entries[name] = _normalize_fixed_entity_entries(name, fixed_raw)
 
     if isinstance(dynamic_entities_config, dict):
         for k, v in dynamic_entities_config.items():
@@ -396,7 +449,7 @@ def parse_dynamic_entities_config(
                 _register(k, has_fixed=False)
             else:
                 _register(k, v, has_fixed=True)
-        return declared_names, fixed_values
+        return declared_names, fixed_entries
 
     if not isinstance(dynamic_entities_config, list):
         raise ValueError(
@@ -434,4 +487,21 @@ def parse_dynamic_entities_config(
                 f"dynamic_entities items must be strings or dicts, got {type(entry).__name__}"
             )
 
+    return declared_names, fixed_entries
+
+
+def parse_dynamic_entities_config(
+    dynamic_entities_config: Any,
+) -> tuple[list[str] | None, dict[str, list[str]]]:
+    """Normalize top-level ``dynamic_entities`` configuration.
+
+    Returns:
+        Tuple of ``(declared_names, fixed_values)`` where ``declared_names`` preserves
+        declaration order and ``fixed_values`` maps fixed variable names to their entity ID lists.
+    """
+    declared_names, fixed_entries = parse_dynamic_entities_with_labels(dynamic_entities_config)
+    fixed_values = {
+        name: [ent for ent, _ in entries]
+        for name, entries in fixed_entries.items()
+    }
     return declared_names, fixed_values

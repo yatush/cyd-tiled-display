@@ -366,8 +366,10 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
   haEntities?: HaEntity[]
 }) => {
   const listId = `ha-entities-obj-arr-${Math.random().toString(36).substr(2, 9)}`;
-  // Check if one of the fields is 'entity'
+  // Check if one of the fields is 'entity' (cycle_entity options)
   const hasEntityField = fields.some(f => f.key === 'entity');
+  const hasDynamicEntityField = fields.some(f => f.key === 'dynamic_entity');
+  const isCycleOptionList = hasEntityField && hasDynamicEntityField;
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
 
   return (
@@ -375,7 +377,8 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
     <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
     <div className="space-y-2">
       {safeValues.map((item, i) => {
-        const isAllOption = hasEntityField && item.entity === '*';
+        const isFixedDynOption = isCycleOptionList && Object.prototype.hasOwnProperty.call(item || {}, 'dynamic_entity');
+        const isAllOption = hasEntityField && !isFixedDynOption && item.entity === '*';
 
         return (
         <div key={i} className="border rounded p-2 bg-slate-50 relative">
@@ -386,7 +389,49 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
             <Trash2 size={12} />
           </button>
 
-          {hasEntityField && (
+          {isCycleOptionList ? (
+            <div className="mb-2 flex items-center gap-1 pr-6">
+              <div className="inline-flex rounded border overflow-hidden text-[10px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isAllOption && !isFixedDynOption) return;
+                    const newValues = [...safeValues];
+                    newValues[i] = { entity: '', label: item?.label || '' };
+                    onChange(newValues);
+                  }}
+                  className={`px-2 py-0.5 transition-colors ${!isAllOption && !isFixedDynOption ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                >
+                  Entity
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAllOption) return;
+                    const newValues = [...safeValues];
+                    newValues[i] = { entity: '*', label: item?.label || 'ALL' };
+                    onChange(newValues);
+                  }}
+                  className={`px-2 py-0.5 border-l transition-colors ${isAllOption ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                >
+                  All (*)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isFixedDynOption) return;
+                    const newValues = [...safeValues];
+                    newValues[i] = { dynamic_entity: dynamicEntities?.[0] || '' };
+                    onChange(newValues);
+                  }}
+                  className={`px-2 py-0.5 border-l transition-colors ${isFixedDynOption ? 'bg-purple-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                  title="Expand all entities from a fixed dynamic entity"
+                >
+                  Fixed Var
+                </button>
+              </div>
+            </div>
+          ) : hasEntityField && (
              <div className="mb-2 flex items-center gap-2">
                 <input 
                     type="checkbox"
@@ -408,6 +453,10 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
 
           <div className="grid gap-2">
             {fields.map(field => {
+              if (isCycleOptionList) {
+                if (isFixedDynOption && field.key !== 'dynamic_entity') return null;
+                if (!isFixedDynOption && field.key === 'dynamic_entity') return null;
+              }
               if (isAllOption && field.key === 'entity') return null;
 
               return (
@@ -421,7 +470,7 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
                       .filter((v): v is string => typeof v === 'string' && v !== '')
                   );
                   const currentVal = item[field.key] || '';
-                  const isDuplicate = currentVal !== '' && usedByOthers.has(currentVal);
+                  const isDuplicate = !isCycleOptionList && currentVal !== '' && usedByOthers.has(currentVal);
                   const isDisallowed = currentVal !== '' && !dynamicEntities.includes(currentVal);
                   return (
                     <>
@@ -434,12 +483,14 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
                         }}
                         className={`w-full border rounded p-1 text-xs bg-white ${isDuplicate || isDisallowed ? 'border-red-500' : ''}`}
                       >
-                        <option value="">Select variable...</option>
+                        <option value="">{isCycleOptionList ? 'Select fixed variable...' : 'Select variable...'}</option>
                         {isDisallowed && (
-                          <option value={currentVal}>{currentVal} (fixed — read-only)</option>
+                          <option value={currentVal}>
+                            {isCycleOptionList ? `${currentVal} (not a fixed dynamic entity)` : `${currentVal} (fixed — read-only)`}
+                          </option>
                         )}
                         {dynamicEntities.map(d => (
-                          <option key={d} value={d} disabled={usedByOthers.has(d)}>
+                          <option key={d} value={d} disabled={!isCycleOptionList && usedByOthers.has(d)}>
                             {d}
                           </option>
                         ))}
@@ -448,7 +499,14 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
                         <p className="text-[10px] text-red-600 mt-0.5">Duplicate dynamic entity "{currentVal}".</p>
                       )}
                       {isDisallowed && (
-                        <p className="text-[10px] text-red-600 mt-0.5">"{currentVal}" has a fixed value and cannot be modified at runtime.</p>
+                        <p className="text-[10px] text-red-600 mt-0.5">
+                          {isCycleOptionList
+                            ? `"${currentVal}" is not a fixed dynamic entity. Switch it to Fixed mode in Dynamic Entities.`
+                            : `"${currentVal}" has a fixed value and cannot be modified at runtime.`}
+                        </p>
+                      )}
+                      {isCycleOptionList && dynamicEntities.length === 0 && (
+                        <p className="text-[10px] text-slate-500 mt-0.5">No fixed dynamic entities declared yet.</p>
                       )}
                     </>
                   );

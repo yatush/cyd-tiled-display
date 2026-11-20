@@ -1,4 +1,4 @@
-import type { Config, Page, Tile } from '../types';
+import type { Config, FixedEntityEntry, Page, Tile } from '../types';
 
 function copyTileValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(copyTileValue);
@@ -83,7 +83,7 @@ export function applyDynamicEntityListChange(
     ? { ...config.dynamic_entity_values }
     : undefined;
   if (nextFixedValues) {
-    const updatedFixed: Record<string, string[]> = {};
+    const updatedFixed: Record<string, FixedEntityEntry[]> = {};
     const validSet = new Set(newEntities.filter(Boolean));
     for (const [key, vals] of Object.entries(nextFixedValues)) {
       if (removed.has(key)) continue;
@@ -183,6 +183,24 @@ export function applyDynamicEntityListChange(
         }
       }
 
+      // tile.options[i].dynamic_entity (cycle_entity fixed dynamic entity options)
+      if (Array.isArray(tile.options)) {
+        const patchedOptions = tile.options.map((entry: any) => {
+          if (
+            entry &&
+            typeof entry === 'object' &&
+            typeof entry.dynamic_entity === 'string' &&
+            entry.dynamic_entity !== ''
+          ) {
+            return { ...entry, dynamic_entity: patchValue(entry.dynamic_entity) };
+          }
+          return entry;
+        });
+        if (patchedOptions.some((o: any, i: number) => o !== tile.options[i])) {
+          updated.options = patchedOptions;
+        }
+      }
+
       return updated;
     }),
   }));
@@ -197,12 +215,12 @@ export function applyDynamicEntityListChange(
 export function updateDynamicEntityFixedValues(
   config: Config,
   varName: string,
-  fixedValues: string[] | null
+  fixedValues: FixedEntityEntry[] | null
 ): Config {
   const name = varName.trim();
   if (!name) return config;
 
-  const nextMap: Record<string, string[]> = { ...(config.dynamic_entity_values || {}) };
+  const nextMap: Record<string, FixedEntityEntry[]> = { ...(config.dynamic_entity_values || {}) };
   if (fixedValues === null) {
     delete nextMap[name];
   } else {

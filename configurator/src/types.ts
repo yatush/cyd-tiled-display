@@ -37,10 +37,12 @@ export interface ScreenImageEntry {
   type?: string;       // 'RGB565' | 'RGBA', default 'RGB565'
 }
 
+export type FixedEntityEntry = string | { entity: string; label?: string };
+
 export interface Config {
   pages: Page[];
   dynamic_entities?: string[];
-  dynamic_entity_values?: Record<string, string[]>;
+  dynamic_entity_values?: Record<string, FixedEntityEntry[]>;
   project_name?: string;
   project_path?: string;
   images?: Record<string, ImageEntry>;

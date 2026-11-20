@@ -215,16 +215,34 @@ export const convertParsedYamlToConfig = (parsed: any): Config => {
 
     // Extract dynamic entities (both runtime names and fixed entity bindings)
     const dynamicEntities = new Set<string>();
-    const dynamicEntityValues: Record<string, string[]> = {};
+    const dynamicEntityValues: Record<string, any[]> = {};
 
-    const normalizeFixedVals = (rawVal: any): string[] => {
+    const normalizeFixedEntry = (item: any): any => {
+        if (typeof item === 'string') {
+            const ent = item.trim();
+            return ent || null;
+        }
+        if (item && typeof item === 'object') {
+            const ent = typeof item.entity === 'string' ? item.entity.trim() : '';
+            if (!ent) return null;
+            const lbl = typeof item.label === 'string' ? item.label.trim() : '';
+            return lbl ? { entity: ent, label: lbl } : ent;
+        }
+        return null;
+    };
+
+    const normalizeFixedVals = (rawVal: any): any[] => {
         if (typeof rawVal === 'string') {
             return rawVal.includes(',')
                 ? rawVal.split(',').map(s => s.trim()).filter(Boolean)
                 : (rawVal.trim() ? [rawVal.trim()] : []);
         }
         if (Array.isArray(rawVal)) {
-            return rawVal.map(v => (typeof v === 'string' ? v.trim() : '')).filter(Boolean);
+            return rawVal.map(normalizeFixedEntry).filter((v): v is any => v !== null);
+        }
+        if (rawVal && typeof rawVal === 'object') {
+            const single = normalizeFixedEntry(rawVal);
+            return single !== null ? [single] : [];
         }
         return [];
     };

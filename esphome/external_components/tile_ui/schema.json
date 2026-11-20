@@ -101,8 +101,9 @@
           "type": "object_list", 
           "label": "Options",
           "objectFields": [
-            { "key": "entity", "label": "Entity ID(s)", "type": "ha_entity_list" },
-            { "key": "label", "label": "Label" }
+            { "key": "entity", "label": "Entity ID(s)", "type": "ha_entity_list", "optional": true },
+            { "key": "label", "label": "Label", "optional": true },
+            { "key": "dynamic_entity", "label": "Fixed Dynamic Entity", "type": "dynamic_entity_select", "optional": true }
           ]
         },
         { "name": "reset_on_leave", "type": "boolean", "label": "Reset On Leave", "optional": true }

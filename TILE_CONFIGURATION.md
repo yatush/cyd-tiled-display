@@ -544,11 +544,14 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
     - `presentation_name`: String - The label for the currently selected option
     - `options`: String array - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: If the option is `"*"` (All), this list will contain **all other entities** defined in the `options` list, instead of the literal string `"*"`.
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
-- **options**: *(Required)* List of options to cycle through (at least one required)
-  - Each item must have:
+- **options**: *(Required)* List of options to cycle through (at least one required). Each item is either:
+  - A manual option with:
     - **entity**: *(Required)* The entity ID that will be set for the *dynamic_entity*. Can be a **comma-separated list** of entities.
-      - **Special Value `"*"`**: If set to `"*"`, the dynamic entity will be populated with **all other entities** defined in the `options` list.
+      - **Special Value `"*"`**: If set to `"*"`, the dynamic entity will be populated with **all other entities** defined in the `options` list (including entities expanded from fixed `dynamic_entity` items).
     - **label**: *(Required)* Display name for this option, passed to the display script
+  - A fixed dynamic entity reference `{ dynamic_entity: VAR_NAME }`:
+    - Expands into one cycle option per entity bound to `VAR_NAME` in top-level `dynamic_entities:`.
+    - Each fixed entity in `dynamic_entities:` can optionally specify a custom label (`{ entity: light.living_room, label: Living }`); otherwise the label falls back to a formatted version of the entity ID (`Living Room`).
 - **reset_on_leave**: (Optional, default: false) Reset to first option when leaving screen
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **display_assets**: (Optional) See [Display Assets](#display-assets)
