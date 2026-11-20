@@ -618,6 +618,10 @@ public:
 
   static constexpr uint32_t kLongPressDelayMs = 1500;
   static constexpr uint32_t kReleaseDebounceMs = 150;
+  static constexpr uint32_t kReleasePollMs = 75;
+  static constexpr uint32_t kMaxPollOvershootMs = 50;
+  static constexpr uint8_t kRequiredUnpressedPolls = 2;
+  static constexpr uint8_t kMaxStallRetries = 3;
 
 protected:
   bool holdsTouchDuringReleaseGrace() const override {
@@ -707,11 +711,39 @@ protected:
     release_started_ = millis();
     const uint32_t press_gen = press_generation_;
     const uint32_t rel_gen = ++release_generation_;
+    scheduleReleaseCheck(press_gen, rel_gen, 0, 0);
+  }
+
+  void scheduleReleaseCheck(uint32_t press_gen, uint32_t rel_gen,
+                            uint8_t clean_polls, uint8_t stall_retries) {
+    const uint32_t scheduled_at = millis();
     esphome::App.scheduler.set_timeout(
-        nullptr, static_cast<const char*>(nullptr), kReleaseDebounceMs,
-        [this, press_gen, rel_gen]() {
+        nullptr, static_cast<const char*>(nullptr), kReleasePollMs,
+        [this, press_gen, rel_gen, clean_polls, stall_retries, scheduled_at]() {
           if (!pressed_ || !releasing_ || press_gen != press_generation_ ||
-              rel_gen != release_generation_) {
+              rel_gen != release_generation_ || isScreenTouchActive()) {
+            return;
+          }
+          const uint32_t now = millis();
+          const uint32_t elapsed_step = now - scheduled_at;
+          uint8_t next_clean = clean_polls;
+          uint8_t next_stalls = stall_retries;
+          if (elapsed_step > kReleasePollMs + kMaxPollOvershootMs) {
+            // Main loop was stalled (e.g. a slow display redraw blocked polling);
+            // defer so touchscreen->loop() gets fresh cycles before confirming.
+            if (next_stalls < kMaxStallRetries) {
+              scheduleReleaseCheck(press_gen, rel_gen, next_clean, next_stalls + 1);
+              return;
+            }
+          } else {
+            ++next_clean;
+          }
+          if (next_clean < kRequiredUnpressedPolls && next_stalls < kMaxStallRetries) {
+            scheduleReleaseCheck(press_gen, rel_gen, next_clean, next_stalls);
+            return;
+          }
+          if (now - release_started_ < kReleaseDebounceMs && next_stalls < kMaxStallRetries) {
+            scheduleReleaseCheck(press_gen, rel_gen, next_clean, next_stalls);
             return;
           }
           finishConfirmedRelease();
