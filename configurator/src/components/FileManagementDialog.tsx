@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap, Settings } from 'lucide-react';
+import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap, Settings, Save, Check, UploadCloud } from 'lucide-react';
 import { isAddon } from '../utils/api';
+import { FileContext, getDisplayFileName } from '../utils/fileContext';
 
 interface FileManagementDialogProps {
   isOpen: boolean;
@@ -13,6 +14,10 @@ interface FileManagementDialogProps {
   onLoadDevice: () => void;
   onInstallDevice: () => void;
   onHwOverrides: () => void;
+  fileContext?: FileContext | null;
+  isDirty?: boolean;
+  onQuickSave?: () => void;
+  onBatchUpdate?: () => void;
 }
 
 export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
@@ -25,7 +30,11 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
   onSaveDevice,
   onLoadDevice,
   onInstallDevice,
-  onHwOverrides
+  onHwOverrides,
+  fileContext,
+  isDirty,
+  onQuickSave,
+  onBatchUpdate,
 }) => {
   if (!isOpen) return null;
 
@@ -45,7 +54,38 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-5">
+          {/* Active File Context Quick Save */}
+          {fileContext && onQuickSave && (
+            <div className={`p-3 rounded-lg border flex items-center justify-between gap-3 ${
+              isDirty ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Current {fileContext.kind === 'device' ? 'Device' : fileContext.kind === 'screen' ? 'Screen' : 'Local'} File
+                </div>
+                <div className="text-xs font-mono font-bold text-slate-800 truncate" title={fileContext.path}>
+                  {getDisplayFileName(fileContext.path)}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  {isDirty ? 'Unsaved changes' : 'Up to date'}
+                </div>
+              </div>
+              <button
+                onClick={() => { onQuickSave(); onClose(); }}
+                disabled={!isDirty}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-colors flex-shrink-0 ${
+                  isDirty
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-emerald-100 text-emerald-700 cursor-default'
+                }`}
+              >
+                {isDirty ? <Save size={14} /> : <Check size={14} />}
+                {isDirty ? 'Save' : 'Saved'}
+              </button>
+            </div>
+          )}
+
           {/* Local Section */}
           <div>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Local Files</h3>
@@ -82,7 +122,7 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                   <div className="p-1.5 bg-slate-100 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
                     <FileText size={16} className="text-slate-500 group-hover:text-blue-600" />
                   </div>
-                  <span className="font-bold text-xs">Save Screen</span>
+                  <span className="font-bold text-xs">Save Screen As...</span>
                 </button>
                 <button 
                   onClick={() => { onLoadScreen(); onClose(); }}
@@ -103,7 +143,7 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                   <div className="p-1.5 bg-slate-100 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
                     <Monitor size={16} className="text-slate-500 group-hover:text-indigo-600" />
                   </div>
-                  <span className="font-bold text-xs">Save Device</span>
+                  <span className="font-bold text-xs">Save Device As...</span>
                 </button>
                 <button 
                   onClick={() => { onLoadDevice(); onClose(); }}
@@ -124,6 +164,21 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                   <span className="font-bold text-xs">Install</span>
                 </button>
               </div>
+
+              {isAddon && onBatchUpdate && (
+                <button
+                  onClick={() => { onBatchUpdate(); onClose(); }}
+                  className="w-full flex items-center gap-2.5 p-3 rounded-lg border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-50 hover:border-indigo-400 text-indigo-800 transition-all group text-left"
+                >
+                  <div className="p-1.5 bg-white rounded shadow-sm">
+                    <UploadCloud size={16} className="text-indigo-600" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs">Update All Online CYD Devices (OTA)</div>
+                    <div className="text-[10px] text-indigo-600/80">Compile &amp; OTA-flash all online CYD configs on drive</div>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
 

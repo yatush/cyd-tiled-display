@@ -18,10 +18,16 @@ import {
   Wrench,
   X,
   ChevronDown,
-  AlertTriangle
+  AlertTriangle,
+  Save,
+  Check,
+  FileText,
+  UploadCloud
 } from 'lucide-react';
 import { ConnectionType, HaStatus } from '../hooks/useHaConnection';
-import { apiFetch } from '../utils/api';
+import { apiFetch, isAddon } from '../utils/api';
+import { FileContext, getDisplayFileName } from '../utils/fileContext';
+import { QuickSaveStatus } from '../hooks/useFileOperations';
 
 interface TopBarProps {
   haStatus: HaStatus;
@@ -34,6 +40,13 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onOpenFileManagement: () => void;
+  fileContext: FileContext | null;
+  isDirty: boolean;
+  saveStatus: QuickSaveStatus;
+  onQuickSave: () => void;
+  onOpenBatchUpdate: () => void;
+  batchUpdateActive?: boolean;
+  batchUpdateLabel?: string;
   updateAvailable?: boolean;
   emulatorStatus: 'stopped' | 'running' | 'starting' | 'error';
   onStartEmulator: () => void;
@@ -64,6 +77,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   onUndo,
   onRedo,
   onOpenFileManagement,
+  fileContext,
+  isDirty,
+  saveStatus,
+  onQuickSave,
+  onOpenBatchUpdate,
+  batchUpdateActive,
+  batchUpdateLabel,
   updateAvailable,
   emulatorStatus,
   onStartEmulator,
@@ -372,13 +392,94 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
+        {/* Sticky File Context + 1-Click Save */}
+        <div className="flex items-center gap-1.5">
+          {fileContext ? (
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs max-w-[180px] ${
+                isDirty
+                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                  : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}
+              title={`${fileContext.kind === 'device' ? 'Device' : fileContext.kind === 'screen' ? 'Screen' : 'Local'}: ${fileContext.path}${isDirty ? ' (unsaved changes)' : ' (saved)'}`}
+            >
+              {fileContext.kind === 'device' ? (
+                <Monitor size={13} className="flex-shrink-0 text-indigo-500" />
+              ) : (
+                <FileText size={13} className="flex-shrink-0 text-blue-500" />
+              )}
+              <span className="font-mono font-medium truncate">{getDisplayFileName(fileContext.path)}</span>
+              {isDirty ? (
+                <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" title="Unsaved changes" />
+              ) : (
+                <Check size={12} className="text-emerald-600 flex-shrink-0" />
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-slate-400 italic hidden lg:inline px-1">No file</span>
+          )}
+
+          <button
+            onClick={onQuickSave}
+            disabled={saveStatus === 'saving' || (fileContext != null && !isDirty && saveStatus !== 'saved')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border ${
+              saveStatus === 'saved'
+                ? 'bg-emerald-600 text-white border-emerald-700'
+                : !fileContext
+                ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                : isDirty
+                ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-700'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-default'
+            }`}
+            title={
+              fileContext
+                ? isDirty
+                  ? `Save changes to ${fileContext.path} (Ctrl+S)`
+                  : `All changes saved to ${fileContext.path}`
+                : 'Save As... (Ctrl+S)'
+            }
+          >
+            {saveStatus === 'saving' ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : saveStatus === 'saved' ? (
+              <Check size={15} />
+            ) : (
+              <Save size={15} />
+            )}
+            <span className="hidden sm:inline">
+              {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Save'}
+            </span>
+          </button>
+        </div>
+
+        {isAddon && (
+          <button
+            onClick={onOpenBatchUpdate}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all shadow-sm border ${
+              batchUpdateActive
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 animate-pulse'
+                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+            }`}
+            title="Update all online CYD devices via OTA"
+          >
+            {batchUpdateActive ? (
+              <RefreshCw size={15} className="animate-spin" />
+            ) : (
+              <UploadCloud size={15} />
+            )}
+            <span className="hidden xl:inline">
+              {batchUpdateActive ? (batchUpdateLabel || 'Updating...') : 'Update All'}
+            </span>
+          </button>
+        )}
+
         <button
           onClick={onOpenFileManagement}
           className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-all shadow-sm"
-          title="Manage Files (Local & HA)"
+          title="Open, Save As, and Install Files"
         >
           <FolderOpen size={18} />
-          <span className="text-sm font-bold">File Management</span>
+          <span className="text-sm font-bold hidden md:inline">Files</span>
         </button>
 
         <button
