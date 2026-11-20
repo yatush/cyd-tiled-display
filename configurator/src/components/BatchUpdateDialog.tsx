@@ -89,32 +89,32 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
   const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expandedFileRef = useRef<string | null>(null);
+  const onActiveChangeRef = useRef(onActiveChange);
   const hasAutoStartedRef = useRef(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   expandedFileRef.current = expandedFile;
+  onActiveChangeRef.current = onActiveChange;
 
   const isRunning = state != null && RUNNING_PHASES.has(state.phase);
 
-  const notifyParent = useCallback(
-    (next: BatchUpdateState | null) => {
-      if (!onActiveChange) return;
-      if (!next || !RUNNING_PHASES.has(next.phase)) {
-        onActiveChange(false, undefined);
-        return;
-      }
-      const eligibleTotal =
-        next.summary.updated + next.summary.failed + next.summary.updating + next.summary.pending;
-      const done = next.summary.updated + next.summary.failed;
-      let label = 'Scanning...';
-      if (next.phase === 'pinging') label = 'Checking online...';
-      else if (next.phase === 'updating') {
-        label = eligibleTotal > 0 ? `Updating ${Math.min(done + 1, eligibleTotal)}/${eligibleTotal}` : 'Updating...';
-      }
-      onActiveChange(true, label);
-    },
-    [onActiveChange]
-  );
+  const notifyParent = useCallback((next: BatchUpdateState | null) => {
+    const cb = onActiveChangeRef.current;
+    if (!cb) return;
+    if (!next || !RUNNING_PHASES.has(next.phase)) {
+      cb(false, undefined);
+      return;
+    }
+    const eligibleTotal =
+      next.summary.updated + next.summary.failed + next.summary.updating + next.summary.pending;
+    const done = next.summary.updated + next.summary.failed;
+    let label = 'Scanning...';
+    if (next.phase === 'pinging') label = 'Checking online...';
+    else if (next.phase === 'updating') {
+      label = eligibleTotal > 0 ? `Updating ${Math.min(done + 1, eligibleTotal)}/${eligibleTotal}` : 'Updating...';
+    }
+    cb(true, label);
+  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -187,7 +187,7 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
     return () => stopPolling();
   }, [fetchStatus, startPolling, stopPolling]);
 
-  // When opened: attach to running job or auto-start a fresh batch update
+  // When opened: attach to running job, show existing report, or auto-start from idle
   useEffect(() => {
     if (!isOpen) {
       hasAutoStartedRef.current = false;
@@ -199,7 +199,7 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
       if (cancelled) return;
       if (current && RUNNING_PHASES.has(current.phase)) {
         startPolling();
-      } else if (autoStart && !hasAutoStartedRef.current) {
+      } else if (autoStart && !hasAutoStartedRef.current && (!current || current.phase === 'idle')) {
         hasAutoStartedRef.current = true;
         await startBatchUpdate();
       }
