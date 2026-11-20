@@ -932,14 +932,18 @@ def _parse_device_yaml(filepath):
     try:
         lines = []
         has_tile_ui = False
+        has_ota_line = False
         with open(filepath, 'r', errors='replace') as f:
             for line in f:
+                if line.startswith('ota:') or line.startswith('ota '):
+                    has_ota_line = True
                 # Stop accumulating lines once we hit the tile_ui block to avoid
                 # parsing the potentially huge tile configuration YAML.
-                if line.startswith('tile_ui:') or line.startswith('tile_ui '):
+                if not has_tile_ui and (line.startswith('tile_ui:') or line.startswith('tile_ui ')):
                     has_tile_ui = True
-                    break
-                lines.append(line)
+                    continue
+                if not has_tile_ui:
+                    lines.append(line)
         # If we never hit a tile_ui: line, do one fast string check so we still
         # detect files where tile_ui appears indented (e.g. inside a package).
         if not has_tile_ui:
@@ -964,6 +968,7 @@ def _parse_device_yaml(filepath):
     screen_type = None
     ip_address = None
     is_device_config = False
+    is_cyd = False
 
     # Check substitutions
     subs = data.get('substitutions', {}) or {}
@@ -980,21 +985,31 @@ def _parse_device_yaml(filepath):
         if not friendly_name:
             friendly_name = esphome_section.get('friendly_name')
 
-    # Check packages for device_base (CYD screen type detection)
+    # Check packages for device_base / CYD lib includes
     packages = data.get('packages', {}) or {}
-    if packages:
+    if isinstance(packages, dict) and packages:
         device_base = packages.get('device_base', '')
         if isinstance(device_base, str):
             if '2432s028' in device_base:
                 screen_type = '2432s028'
                 is_device_config = True
+                is_cyd = True
             elif '3248s035' in device_base:
                 screen_type = '3248s035'
                 is_device_config = True
+                is_cyd = True
+        for pkg_val in packages.values():
+            if isinstance(pkg_val, str) and ('lib/lib.yaml' in pkg_val or 'lib/lib_common.yaml' in pkg_val):
+                is_cyd = True
 
     # Check for tile_ui section (CYD-specific marker) — detected during line scan above
     if has_tile_ui:
         is_device_config = True
+        is_cyd = True
+
+    # Check for OTA section (required for wireless OTA updates)
+    ota_section = data.get('ota')
+    has_ota = has_ota_line or (ota_section is not None and ota_section is not False)
 
     # Get IP address from wifi section
     wifi = data.get('wifi', {})
@@ -1009,8 +1024,21 @@ def _parse_device_yaml(filepath):
         'friendly_name': friendly_name or device_name,
         'screen_type': screen_type,
         'ip_address': ip_address,
-        'address': ip_address or f"{device_name}.local"
+        'address': ip_address or f"{device_name}.local",
+        'is_cyd': is_cyd,
+        'has_ota': has_ota,
     }
+
+
+def _classify_batch_device(meta, online):
+    """Classify a discovered ESPHome device for batch OTA update."""
+    if not meta.get('is_cyd'):
+        return ('skipped', 'Not a CYD configuration — no update needed')
+    if not meta.get('has_ota'):
+        return ('skipped', 'OTA update not configured')
+    if not online:
+        return ('skipped', 'Device is offline')
+    return ('pending', 'Queued for OTA update')
 
 
 def _check_device_online(device):
@@ -1350,6 +1378,357 @@ def cancel_install():
             state['message'] = 'Installation cancelled by user'
         install_processes.clear()
         return jsonify({'status': 'cancelled'})
+
+
+# ============================================================
+# Batch OTA Update (Update All Online CYD Devices)
+# ============================================================
+
+batch_update_lock = threading.Lock()
+batch_update_state = None  # Dict holding current/last batch OTA job
+
+
+def _build_esphome_env():
+    """Return an environment dict configured with ccache for fast ESPHome compiles."""
+    env = os.environ.copy()
+    env['PYTHONUNBUFFERED'] = '1'
+    pio_dir = '/root/.platformio'
+    ccache_dir = os.path.join(pio_dir, '.ccache')
+    ccache_bin = '/usr/local/lib/ccache'
+    if os.path.isdir(ccache_dir):
+        env['CCACHE_DIR'] = ccache_dir
+        env['CCACHE_MAXSIZE'] = '2G'
+        env['CCACHE_COMPILERCHECK'] = 'content'
+        env['CCACHE_SLOPPINESS'] = 'include_file_mtime,time_macros'
+        env['CCACHE_NOHASHDIR'] = 'true'
+    if os.path.isdir(ccache_bin):
+        env['PATH'] = f"{ccache_bin}:{env.get('PATH', '')}"
+    return env
+
+
+def _discover_esphome_devices():
+    """Scan BASE_DIR and return parsed metadata for all ESPHome device YAML files."""
+    devices = []
+    skip_dirs = {'lib', 'external_components', '.esphome', '__pycache__'}
+    skip_files = {'secrets.yaml'}
+    if not os.path.isdir(BASE_DIR):
+        return devices
+    for item in os.listdir(BASE_DIR):
+        if item.startswith('.') or item in skip_dirs or item in skip_files:
+            continue
+        filepath = os.path.join(BASE_DIR, item)
+        if not os.path.isfile(filepath):
+            continue
+        if not (item.endswith('.yaml') or item.endswith('.yml')):
+            continue
+        try:
+            meta = _parse_device_yaml(filepath)
+            if meta:
+                meta['filename'] = item
+                devices.append(meta)
+        except Exception as e:
+            print(f"[batch_update] Error parsing {item}: {e}", flush=True)
+    devices.sort(key=lambda d: d.get('friendly_name', '').lower())
+    return devices
+
+
+def _batch_summary(devices):
+    counts = {'total': len(devices), 'updated': 0, 'failed': 0, 'skipped': 0, 'cancelled': 0, 'pending': 0, 'updating': 0}
+    for d in devices:
+        st = d.get('status')
+        if st in counts:
+            counts[st] += 1
+    return counts
+
+
+def _serialize_batch_state(state, include_logs=None):
+    devices_out = []
+    for d in state['devices']:
+        entry = {
+            'filename': d['filename'],
+            'device_name': d['device_name'],
+            'friendly_name': d['friendly_name'],
+            'screen_type': d.get('screen_type'),
+            'address': d['address'],
+            'is_cyd': d['is_cyd'],
+            'has_ota': d['has_ota'],
+            'online': d.get('online'),
+            'status': d['status'],
+            'reason': d['reason'],
+            'duration_s': d.get('duration_s'),
+            'log_count': len(d['logs']),
+            'last_log': d['logs'][-1] if d['logs'] else '',
+        }
+        if include_logs and (include_logs == d['filename'] or include_logs == '*'):
+            entry['logs'] = list(d['logs'])
+        devices_out.append(entry)
+    return {
+        'phase': state['phase'],  # scanning | pinging | updating | completed | cancelled
+        'message': state['message'],
+        'current_filename': state.get('current_filename'),
+        'started_at': state['started_at'],
+        'finished_at': state.get('finished_at'),
+        'devices': devices_out,
+        'summary': _batch_summary(state['devices']),
+    }
+
+
+def _run_batch_update_worker(state):
+    """Background worker that scans, pings, and OTA-updates all eligible CYD devices sequentially."""
+    import time as _time
+    ansi_re = re.compile(r'\x1b\[[0-9;?]*[a-zA-Z]')
+    line_split_re = re.compile(r'\r\n|\n|\r')
+    cancel_event = state['cancel_event']
+
+    try:
+        # 1. Scan BASE_DIR for all ESPHome device configs
+        discovered = _discover_esphome_devices()
+        with batch_update_lock:
+            state['devices'] = [
+                {
+                    **meta,
+                    'online': None,
+                    'status': 'checking',
+                    'reason': 'Checking device...',
+                    'duration_s': None,
+                    'logs': [],
+                }
+                for meta in discovered
+            ]
+            if not discovered:
+                state['phase'] = 'completed'
+                state['message'] = 'No ESPHome device files found on drive.'
+                state['finished_at'] = _time.time()
+                return
+            state['phase'] = 'pinging'
+            state['message'] = f'Checking online status for {len(discovered)} device(s)...'
+
+        # 2. Classify non-CYD / non-OTA immediately, ping CYD+OTA devices in parallel
+        to_ping = []
+        for idx, d in enumerate(state['devices']):
+            if not d['is_cyd'] or not d['has_ota']:
+                st, reason = _classify_batch_device(d, online=False)
+                with batch_update_lock:
+                    d['status'] = st
+                    d['reason'] = reason
+            else:
+                to_ping.append((idx, d))
+
+        if to_ping and not cancel_event.is_set():
+            def _ping_one(pair):
+                idx, dev = pair
+                probe = {'address': dev['address']}
+                _check_device_online(probe)
+                return idx, bool(probe.get('online', False))
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                for idx, is_online in executor.map(_ping_one, to_ping):
+                    with batch_update_lock:
+                        dev = state['devices'][idx]
+                        dev['online'] = is_online
+                        st, reason = _classify_batch_device(dev, online=is_online)
+                        dev['status'] = st
+                        dev['reason'] = reason
+
+        if cancel_event.is_set():
+            with batch_update_lock:
+                for d in state['devices']:
+                    if d['status'] in ('checking', 'pending'):
+                        d['status'] = 'cancelled'
+                        d['reason'] = 'Cancelled by user'
+                state['phase'] = 'cancelled'
+                state['message'] = 'Batch update cancelled.'
+                state['finished_at'] = _time.time()
+            return
+
+        eligible = [d for d in state['devices'] if d['status'] == 'pending']
+        if not eligible:
+            with batch_update_lock:
+                state['phase'] = 'completed'
+                state['message'] = 'No online CYD devices with OTA needed updating.'
+                state['finished_at'] = _time.time()
+            return
+
+        # 3. Sequentially compile & OTA-upload each eligible device
+        env = _build_esphome_env()
+        upgrade_notice = _get_esphome_upgrade_notice_lines()
+
+        with batch_update_lock:
+            state['phase'] = 'updating'
+
+        for pos, dev in enumerate(eligible, start=1):
+            if cancel_event.is_set():
+                with batch_update_lock:
+                    dev['status'] = 'cancelled'
+                    dev['reason'] = 'Cancelled by user'
+                continue
+
+            filename = dev['filename']
+            address = dev['address']
+            start_ts = _time.time()
+
+            with batch_update_lock:
+                state['current_filename'] = filename
+                state['message'] = f'Updating {dev["friendly_name"]} ({pos}/{len(eligible)})...'
+                dev['status'] = 'updating'
+                dev['reason'] = f'Compiling & uploading via OTA ({address})...'
+                if upgrade_notice:
+                    dev['logs'].extend(upgrade_notice)
+                dev['logs'].append(f'Starting OTA update for {filename} -> {address}')
+
+            cmd = ['esphome', 'run', filename, '--device', address, '--no-logs']
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    cwd=BASE_DIR,
+                    text=True,
+                    bufsize=1,
+                    env=env,
+                )
+                with batch_update_lock:
+                    state['current_process'] = proc
+
+                ota_success = False
+                for line in iter(proc.stdout.readline, ''):
+                    if cancel_event.is_set():
+                        proc.terminate()
+                        break
+                    for raw_part in line_split_re.split(line):
+                        clean = ansi_re.sub('', raw_part.rstrip())
+                        if not clean.strip():
+                            continue
+                        with batch_update_lock:
+                            dev['logs'].append(clean)
+                        lower = clean.lower()
+                        if ('successfully uploaded' in lower or
+                            'ota successful' in lower or
+                            ('success' in lower and 'upload' in lower)):
+                            ota_success = True
+
+                if cancel_event.is_set():
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    elapsed = int(round(_time.time() - start_ts))
+                    with batch_update_lock:
+                        dev['status'] = 'cancelled'
+                        dev['reason'] = 'Cancelled by user'
+                        dev['duration_s'] = elapsed
+                        state['current_process'] = None
+                    continue
+
+                proc.wait()
+                elapsed = int(round(_time.time() - start_ts))
+                with batch_update_lock:
+                    state['current_process'] = None
+                    dev['duration_s'] = elapsed
+                    if ota_success or proc.returncode == 0:
+                        dev['status'] = 'updated'
+                        dev['reason'] = f'Updated successfully ({elapsed}s)'
+                    else:
+                        dev['status'] = 'failed'
+                        dev['reason'] = f'Update failed (exit code {proc.returncode})'
+            except Exception as e:
+                elapsed = int(round(_time.time() - start_ts))
+                with batch_update_lock:
+                    state['current_process'] = None
+                    dev['duration_s'] = elapsed
+                    dev['status'] = 'failed'
+                    dev['reason'] = f'Error: {e}'
+                    dev['logs'].append(f'Exception: {e}')
+
+        with batch_update_lock:
+            state['current_filename'] = None
+            state['current_process'] = None
+            state['finished_at'] = _time.time()
+            summary = _batch_summary(state['devices'])
+            if cancel_event.is_set():
+                for d in state['devices']:
+                    if d['status'] == 'pending':
+                        d['status'] = 'cancelled'
+                        d['reason'] = 'Cancelled by user'
+                summary = _batch_summary(state['devices'])
+                state['phase'] = 'cancelled'
+                state['message'] = (
+                    f"Cancelled: {summary['updated']} updated, "
+                    f"{summary['failed']} failed, {summary['skipped']} skipped, {summary['cancelled']} cancelled."
+                )
+            else:
+                state['phase'] = 'completed'
+                state['message'] = (
+                    f"Done: {summary['updated']} updated, "
+                    f"{summary['skipped']} skipped, {summary['failed']} failed."
+                )
+    except Exception as e:
+        with batch_update_lock:
+            state['phase'] = 'completed'
+            state['message'] = f'Batch update error: {e}'
+            state['finished_at'] = _time.time()
+            state['current_filename'] = None
+            state['current_process'] = None
+
+
+@app.route('/api/esphome/batch_update/start', methods=['POST'])
+def start_batch_update():
+    """Start a background OTA update across all online CYD devices."""
+    global batch_update_state
+    import time as _time
+
+    # Refuse if a single-device OTA install is already running
+    with install_processes_lock:
+        for existing in install_processes.values():
+            proc = existing.get('process')
+            if proc and proc.poll() is None:
+                return jsonify({'error': 'A single-device OTA install is currently running. Please wait for it to finish.'}), 409
+
+    with batch_update_lock:
+        if batch_update_state and batch_update_state['phase'] in ('scanning', 'pinging', 'updating'):
+            return jsonify({'status': 'already_running', **_serialize_batch_state(batch_update_state)})
+
+        batch_update_state = {
+            'phase': 'scanning',
+            'message': 'Scanning device configurations...',
+            'current_filename': None,
+            'current_process': None,
+            'cancel_event': threading.Event(),
+            'started_at': _time.time(),
+            'finished_at': None,
+            'devices': [],
+        }
+        state = batch_update_state
+
+    t = threading.Thread(target=_run_batch_update_worker, args=(state,), daemon=True)
+    t.start()
+
+    with batch_update_lock:
+        return jsonify({'status': 'started', **_serialize_batch_state(state)})
+
+
+@app.route('/api/esphome/batch_update/status', methods=['GET'])
+def get_batch_update_status():
+    """Return the current or most recent batch OTA update state."""
+    include_logs = request.args.get('include_logs')
+    with batch_update_lock:
+        if not batch_update_state:
+            return jsonify({'phase': 'idle', 'devices': [], 'summary': _batch_summary([])})
+        return jsonify(_serialize_batch_state(batch_update_state, include_logs=include_logs))
+
+
+@app.route('/api/esphome/batch_update/cancel', methods=['POST'])
+def cancel_batch_update():
+    """Cancel a running batch OTA update."""
+    with batch_update_lock:
+        if not batch_update_state or batch_update_state['phase'] not in ('scanning', 'pinging', 'updating'):
+            return jsonify({'status': 'not_running'}), 404
+        batch_update_state['cancel_event'].set()
+        proc = batch_update_state.get('current_process')
+        if proc and proc.poll() is None:
+            proc.terminate()
+        return jsonify({'status': 'cancelling'})
 
 
 # ============================================================
