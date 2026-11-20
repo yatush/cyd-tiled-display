@@ -37,7 +37,7 @@ def _managed_path(name):
 
 
 def sync_github_files(base_dir, validate_lib):
-    """Download and overlay managed files, backing up every file replaced."""
+    """Download and overlay managed files, rolling back on failure."""
     base = Path(base_dir).resolve()
     with tempfile.TemporaryDirectory(prefix=".cyd-sync-", dir=base) as temp:
         temp_path = Path(temp)
@@ -99,7 +99,7 @@ def sync_github_files(base_dir, validate_lib):
             if target.is_symlink() or (target.exists() and not target.is_file()):
                 raise ValueError(f"Target is not a regular file: {relative}")
 
-        backup = Path(tempfile.mkdtemp(prefix="cyd-github-backup-", dir=base))
+        backup = temp_path / "backup"
         existing = set()
         for relative in files:
             target = base / relative
@@ -126,8 +126,8 @@ def sync_github_files(base_dir, validate_lib):
                         target.unlink()
             except OSError as rollback_error:
                 raise RuntimeError(
-                    f"Sync failed: {error}; rollback failed: {rollback_error}. Backup: {backup}"
+                    f"Sync failed: {error}; rollback failed: {rollback_error}"
                 ) from error
-            raise RuntimeError(f"Sync failed and was rolled back: {error}. Backup: {backup}") from error
+            raise RuntimeError(f"Sync failed and was rolled back: {error}") from error
 
-        return len(files), backup.name
+        return len(files)

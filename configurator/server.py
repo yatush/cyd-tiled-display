@@ -2154,10 +2154,10 @@ def sync_github_lib():
             if _DEFAULT_DEVICE not in configs:
                 raise ValueError("GitHub archive has an invalid default device configuration")
 
-        count, backup = sync_github_files(BASE_DIR, validate_lib)
+        count = sync_github_files(BASE_DIR, validate_lib)
         global _DEVICE_CONFIG
         _DEVICE_CONFIG = _load_device_configs(os.path.join(BASE_DIR, 'lib'))
-        return jsonify({"success": True, "count": count, "backup": backup})
+        return jsonify({"success": True, "count": count})
     except (OSError, ValueError, RuntimeError, requests.RequestException, zipfile.BadZipFile) as error:
         app.logger.exception("GitHub sync failed")
         return jsonify({"error": str(error)}), 500
