@@ -23,6 +23,8 @@ def _get_cpp_type(param_type):
     if param_type == 'string[]': return 'std::vector<std::string>'
     if param_type == 'font': return 'esphome::display::BaseFont*'
     if param_type == 'esphome::display::BaseFont*': return 'esphome::display::BaseFont*'
+    if param_type == 'image': return 'esphome::image::Image*'
+    if param_type == 'esphome::image::Image*': return 'esphome::image::Image*'
     if param_type == 'Color': return 'Color'
     return 'auto'
 
@@ -34,6 +36,8 @@ def _get_default_value(param_type):
     if param_type == 'string[]': return '{}'
     if param_type == 'font': return 'nullptr'
     if param_type == 'esphome::display::BaseFont*': return 'nullptr'
+    if param_type == 'image': return 'nullptr'
+    if param_type == 'esphome::image::Image*': return 'nullptr'
     if param_type == 'Color': return 'Color::BLACK'
     return '{}'
 
@@ -65,13 +69,24 @@ def _generate_lambda(script_id, available_scripts, expected_params, static_param
             # 1. Check static params (from YAML)
             if static_params and param_name in static_params:
                 raw_val = static_params[param_name]
-                val = str(raw_val)
+                val = '' if raw_val is None else str(raw_val)
                 
                 is_font = param_type == 'font' or param_type == 'esphome::display::BaseFont*'
+                is_image = param_type == 'image' or param_type == 'esphome::image::Image*'
                 is_string = param_type == 'string' or param_type == 'std::string'
                 
                 if is_font:
                     if val == 'nullptr':
+                        pass
+                    elif val.startswith('id('):
+                        val = '&' + val
+                    else:
+                        val = f'&id({val})'
+                elif is_image:
+                    val = val.strip()
+                    if not val or val == 'nullptr' or val == 'none':
+                        val = 'nullptr'
+                    elif val.startswith('&id('):
                         pass
                     elif val.startswith('id('):
                         val = '&' + val

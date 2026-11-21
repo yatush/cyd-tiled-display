@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { IconPicker, ColorPicker } from './Pickers';
+import { ImageSelectInput } from './ImageInputs';
+import { ImageEntry } from '../types';
 import { apiFetch } from '../utils/api';
 
-export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], onChange: (v: any[]) => void, tileType?: string }) => {
+export const DisplayListInput = ({ value, onChange, tileType, images }: { value: any[], onChange: (v: any[]) => void, tileType?: string, images?: Record<string, ImageEntry> }) => {
   const [availableScripts, setAvailableScripts] = useState<{id: string, params: {name: string, type: string}[]}[]>([]);
   const [colors, setColors] = useState<{id: string, value: string}[]>([]);
   const [fonts, setFonts] = useState<string[]>([]);
@@ -113,6 +115,30 @@ export const DisplayListInput = ({ value, onChange, tileType }: { value: any[], 
                                     }}
                                     colors={colors}
                                     onFocus={fetchScripts}
+                                />
+                            </div>
+                        );
+                    }
+
+                    if (p.type.includes('Image') || p.type === 'image') {
+                        let currentValue = params[p.name] || '';
+                        if (currentValue.startsWith('&id(') && currentValue.endsWith(')')) {
+                            currentValue = currentValue.substring(4, currentValue.length - 1);
+                        } else if (currentValue.startsWith('id(') && currentValue.endsWith(')')) {
+                            currentValue = currentValue.substring(3, currentValue.length - 1);
+                        }
+                        return (
+                            <div key={p.name}>
+                                <label className="block text-[10px] text-slate-500 uppercase">{p.name} <span className="text-slate-300">({p.type})</span></label>
+                                <ImageSelectInput
+                                    value={currentValue}
+                                    onChange={v => {
+                                        const newParams = { ...params, [p.name]: v };
+                                        const newValues = [...safeValue];
+                                        newValues[i] = { [scriptId]: newParams };
+                                        onChange(newValues);
+                                    }}
+                                    images={images || {}}
                                 />
                             </div>
                         );

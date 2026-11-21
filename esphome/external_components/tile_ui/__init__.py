@@ -294,7 +294,13 @@ async def _register_screen_images(screen_images_conf: dict, screen_w: int, scree
         print(f"[tile_ui] Registered {len(registered)} screen background image(s) from inline tile_ui.screen_images: config", file=sys.stderr)
 
 
-async def _register_images(images_conf: dict, screens: list, screen_w: int = 480, screen_h: int = 320) -> None:
+async def _register_images(
+    images_conf: dict,
+    screens: list,
+    screen_w: int = 480,
+    screen_h: int = 320,
+    available_scripts: dict | None = None,
+) -> None:
     """Register tile_ui.images: entries via ESPHome's image codegen API.
 
     Processes base64 PNG data from inline config, writes temp files, and registers
@@ -307,7 +313,7 @@ async def _register_images(images_conf: dict, screens: list, screen_w: int = 480
     from .tile_generation import compute_image_variants
 
     ctx = _ImageRegistrar(prefix="tile_ui_images_")
-    variant_id = compute_image_variants(screens)  # (img_id, rows, cols) -> variant_str
+    variant_id = compute_image_variants(screens, available_scripts=available_scripts)  # (img_id, rows, cols) -> variant_str
     _TILE_PAD, _FIXED_PAD = 10, 5
 
     registered: set = set()
@@ -375,9 +381,9 @@ def generate_init_tiles_cpp(
 
     # Apply per-page-size image variant substitution so that the ESPHome IDs
     # emitted by the lambdas always match the variant IDs registered by _register_images.
-    variant_id = compute_image_variants(screens)
+    variant_id = compute_image_variants(screens, available_scripts=available_scripts)
     if variant_id:
-        screens = apply_image_variants(screens, variant_id)
+        screens = apply_image_variants(screens, variant_id, available_scripts=available_scripts)
 
     declared_dynamic_entities = dynamic_entities or None
     validate_tiles_config(
@@ -624,7 +630,13 @@ async def to_code(config):
 
     images_conf = config.get("images", {})
     if images_conf:
-        await _register_images(images_conf, screens, screen_w=_screen_w, screen_h=_screen_h)
+        await _register_images(
+            images_conf,
+            screens,
+            screen_w=_screen_w,
+            screen_h=_screen_h,
+            available_scripts=available_scripts,
+        )
 
     # Register screen background images from inline tile_ui.screen_images: config.
     screen_images_conf = config.get("screen_images", {})

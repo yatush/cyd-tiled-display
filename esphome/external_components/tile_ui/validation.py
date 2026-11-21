@@ -292,7 +292,7 @@ def validate_tiles_config(
 
     # Validate all image references point to known image IDs
     if available_images is not None:
-        _validate_image_references(screens, available_images)
+        _validate_image_references(screens, available_images, available_scripts)
 
     # Validate all screen background image references point to known screen image IDs
     if available_screen_images is not None:

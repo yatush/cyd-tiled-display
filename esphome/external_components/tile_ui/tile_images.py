@@ -8,7 +8,39 @@ from .tile_utils import build_fast_refresh_lambda, build_expression
 # Per-page-size image variant helpers
 # ---------------------------------------------------------------------------
 
-def compute_image_variants(screens: list) -> dict:
+def is_image_param_type(param_type) -> bool:
+    """Return True if *param_type* represents an ESPHome Image pointer parameter."""
+    if not param_type:
+        return False
+    t = str(param_type).strip()
+    return t == 'image' or t == 'esphome::image::Image*'
+
+
+def normalize_image_param_id(val) -> str:
+    """Extract a bare image ID from a script parameter value (stripping id()/&id())."""
+    if not isinstance(val, str):
+        return ""
+    s = val.strip()
+    if s.startswith("&id(") and s.endswith(")"):
+        s = s[4:-1].strip()
+    elif s.startswith("id(") and s.endswith(")"):
+        s = s[3:-1].strip()
+    return s
+
+
+def _get_script_params(available_scripts: dict | None, script_id: str) -> dict:
+    if not available_scripts:
+        return {}
+    info = available_scripts.get(script_id)
+    if info is None:
+        for key, val in available_scripts.items():
+            if str(key) == str(script_id):
+                info = val
+                break
+    return info.get('parameters', {}) if isinstance(info, dict) else {}
+
+
+def compute_image_variants(screens: list, available_scripts: dict | None = None) -> dict:
     """
     Scan screens and return a mapping ``(img_id, rows, cols) -> variant_id``.
 
@@ -38,6 +70,21 @@ def compute_image_variants(screens: list) -> dict:
                             for step in anim['steps']:
                                 if isinstance(step, dict) and step.get('image') and step['image'] != 'none':
                                     img_sizes.setdefault(step['image'], set()).add((rows, cols))
+                if available_scripts:
+                    display_list = tdata.get('display')
+                    if isinstance(display_list, list):
+                        for item in display_list:
+                            if not isinstance(item, dict):
+                                continue
+                            for script_id, params in item.items():
+                                if not isinstance(params, dict):
+                                    continue
+                                script_params = _get_script_params(available_scripts, script_id)
+                                for param_name, param_val in params.items():
+                                    if is_image_param_type(script_params.get(param_name)):
+                                        img_id = normalize_image_param_id(param_val)
+                                        if img_id and img_id not in ('none', 'nullptr'):
+                                            img_sizes.setdefault(img_id, set()).add((rows, cols))
 
     variant_id: dict = {}  # (img_id, rows, cols) -> variant_id
     for iid, sizes in img_sizes.items():
@@ -52,7 +99,7 @@ def compute_image_variants(screens: list) -> dict:
     return variant_id
 
 
-def apply_image_variants(screens: list, variant_id: dict) -> list:
+def apply_image_variants(screens: list, variant_id: dict, available_scripts: dict | None = None) -> list:
     """
     Return a deep copy of ``screens`` where every tile’s image references
     have been replaced with their per-layout variant IDs.
@@ -89,6 +136,27 @@ def apply_image_variants(screens: list, variant_id: dict) -> list:
                             ne['animation'] = {**anim, 'steps': new_steps}
                         new_entries.append(ne)
                     tdata['display_assets'] = new_entries
+                if available_scripts and isinstance(tdata.get('display'), list):
+                    new_display = []
+                    for item in tdata['display']:
+                        if not isinstance(item, dict):
+                            new_display.append(item)
+                            continue
+                        new_item = {}
+                        for script_id, params in item.items():
+                            if not isinstance(params, dict):
+                                new_item[script_id] = params
+                                continue
+                            script_params = _get_script_params(available_scripts, script_id)
+                            new_params = dict(params)
+                            for param_name, param_val in params.items():
+                                if is_image_param_type(script_params.get(param_name)):
+                                    img_id = normalize_image_param_id(param_val)
+                                    if img_id and img_id not in ('none', 'nullptr'):
+                                        new_params[param_name] = variant_id.get((img_id, rows, cols), img_id)
+                            new_item[script_id] = new_params
+                        new_display.append(new_item)
+                    tdata['display'] = new_display
     return result
 
 # ---------------------------------------------------------------------------

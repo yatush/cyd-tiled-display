@@ -1,11 +1,17 @@
 """Reference, tile grid position, and screen reachability validators."""
 from .data_collection import collect_dynamic_entities
 from .schema import TileType
+from .tile_images import is_image_param_type, normalize_image_param_id, _get_script_params
 
-def _validate_image_references(screens: list[dict], available_images: set) -> None:
+def _validate_image_references(
+    screens: list[dict],
+    available_images: set,
+    available_scripts: dict | None = None,
+) -> None:
     """Validate that every image reference in every tile's display_assets list (including animation
-    steps and legacy 'image' field) exists in the global images store. Icon entries (with 'icon' key)
-    are skipped since they do not reference the image store.
+    steps and legacy 'image' field) and image-typed display script parameters exists in the global
+    images store. Icon entries (with 'icon' key) are skipped since they do not reference the image
+    store.
     """
     for screen in screens:
         screen_id = screen.get("id", "")
@@ -54,6 +60,27 @@ def _validate_image_references(screens: list[dict], available_images: set) -> No
                                     f"animation step {step_idx} image '{step_img}' is not defined in the images store. "
                                     f"Available images: {available_list}"
                                 )
+
+            # Check image-typed parameters on display scripts
+            if available_scripts and isinstance(config.get("display"), list):
+                for item in config["display"]:
+                    if not isinstance(item, dict):
+                        continue
+                    for script_id, params in item.items():
+                        if not isinstance(params, dict):
+                            continue
+                        script_params = _get_script_params(available_scripts, script_id)
+                        for param_name, param_val in params.items():
+                            if is_image_param_type(script_params.get(param_name)):
+                                img_id = normalize_image_param_id(param_val)
+                                if img_id and img_id not in ('none', 'nullptr') and img_id not in available_images:
+                                    available_list = ", ".join(sorted(available_images)) if available_images else "(none)"
+                                    raise ValueError(
+                                        f"Screen '{screen_id}', {tile_type} tile at ({x}, {y}): "
+                                        f"script '{script_id}' parameter '{param_name}' image '{img_id}' "
+                                        f"is not defined in the images store. "
+                                        f"Available images: {available_list}"
+                                    )
 
 
 def _validate_screen_image_references(screens: list[dict], available_screen_images: set) -> None:

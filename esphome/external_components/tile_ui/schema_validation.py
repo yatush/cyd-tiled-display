@@ -4,6 +4,7 @@ from typing import Any
 from .script_types import script_parameter_defaults, validate_script_type
 from .data_collection import collect_referenced_scripts, collect_referenced_globals
 from .schema import VALID_TILE_TYPES, TileType, SCHEMA_DEF, tile_schema
+from .tile_images import is_image_param_type
 
 def _validate_script_references(screens, available_scripts):
     """Validate all referenced scripts are available with correct types."""
@@ -60,6 +61,12 @@ def _validate_script_parameters(script_id, script_info, provided_params, context
         size = provided_params['size']
         if not isinstance(size, str) or not size.strip() or size.strip() == 'nullptr':
             raise ValueError(f"{context}: Script '{script_id}' requires a valid font for 'size'.")
+
+    for param, param_type in script_params.items():
+        if is_image_param_type(param_type) and param in provided_params:
+            img_val = provided_params[param]
+            if not isinstance(img_val, str) or not img_val.strip():
+                raise ValueError(f"{context}: Script '{script_id}' requires a valid image for '{param}'.")
     
     # Check for missing required parameters
     # Implicit parameters are those that are automatically provided by the system

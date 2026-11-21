@@ -139,6 +139,54 @@ class TestApplyImageVariants(unittest.TestCase):
         # Image key not in empty map → falls back to original id
         self.assertEqual(result[0]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_a")
 
+    def test_display_script_image_params_variants(self):
+        """Images passed via display script Image* parameters participate in variant computation and substitution."""
+        scripts = {
+            "tile_lights_images": {
+                "parameters": {
+                    "x_start": "int",
+                    "x_end": "int",
+                    "y_start": "int",
+                    "y_end": "int",
+                    "entities": "string[]",
+                    "image_off": "esphome::image::Image*",
+                    "image_on": "esphome::image::Image*",
+                }
+            }
+        }
+        screens = [
+            {"id": "p1", "rows": 2, "cols": 2, "tiles": [
+                {"ha_action": {"x": 0, "y": 0, "display": [
+                    {"tile_lights_images": {"image_off": "img_off", "image_on": "img_on"}}
+                ]}}
+            ]},
+            {"id": "p2", "rows": 3, "cols": 4, "tiles": [
+                {"ha_action": {"x": 0, "y": 0, "display": [
+                    {"tile_lights_images": {"image_off": "img_off", "image_on": "none"}}
+                ]}}
+            ]},
+        ]
+        vmap = compute_image_variants(screens, available_scripts=scripts)
+        self.assertEqual(vmap[("img_off", 2, 2)], "img_off_r2c2")
+        self.assertEqual(vmap[("img_off", 3, 4)], "img_off_r3c4")
+        self.assertEqual(vmap[("img_on", 2, 2)], "img_on")
+        self.assertNotIn(("none", 3, 4), vmap)
+
+        result = apply_image_variants(screens, vmap, available_scripts=scripts)
+        self.assertEqual(
+            result[0]["tiles"][0]["ha_action"]["display"][0]["tile_lights_images"],
+            {"image_off": "img_off_r2c2", "image_on": "img_on"},
+        )
+        self.assertEqual(
+            result[1]["tiles"][0]["ha_action"]["display"][0]["tile_lights_images"],
+            {"image_off": "img_off_r3c4", "image_on": "none"},
+        )
+        # Original unmutated
+        self.assertEqual(
+            screens[0]["tiles"][0]["ha_action"]["display"][0]["tile_lights_images"]["image_off"],
+            "img_off",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -252,5 +252,90 @@ class TestScriptValidation(unittest.TestCase):
             validate_tiles_config(screens, self.available_scripts)
         self.assertIn("must have coordinate parameters", str(cm.exception))
 
+    def test_tile_lights_images_validation_and_generation(self):
+        from tile_ui import generate_init_tiles_cpp
+        from tile_ui.tile_generation import generate_tile_cpp
+        from configurator.generate_tiles_api import load_merged_lib_doc
+        from tile_ui.data_collection import collect_available_scripts
+
+        lib_doc = load_merged_lib_doc(merge_keys=("script",))
+        lib_scripts = collect_available_scripts(lib_doc)
+        self.assertIn("tile_lights_images", lib_scripts)
+        self.assertEqual(
+            lib_scripts["tile_lights_images"]["parameters"],
+            {
+                "x_start": "int",
+                "x_end": "int",
+                "y_start": "int",
+                "y_end": "int",
+                "entities": "string[]",
+                "image_off": "esphome::image::Image*",
+                "image_on": "esphome::image::Image*",
+            },
+        )
+
+        tile = {"ha_action": {
+            "x": 0, "y": 0,
+            "entities": [{"entity": "light.living"}],
+            "display": [{"tile_lights_images": {"image_off": "img_off", "image_on": "img_on"}}],
+            "perform": ["action_lights"],
+        }}
+        screens = [{"id": "main", "rows": 2, "cols": 3, "flags": ["BASE"], "tiles": [tile]}]
+        validate_tiles_config(screens, lib_scripts, available_images={"img_off", "img_on"})
+        cpp = generate_tile_cpp(tile, lib_scripts, "main")
+        self.assertIn("id(tile_lights_images).execute(arg0, arg1, arg2, arg3, arg4, &id(img_off), &id(img_on))", cpp)
+
+        # Supports id(...) syntax and 'none' -> nullptr
+        tile["ha_action"]["display"] = [{"tile_lights_images": {"image_off": "none", "image_on": "id(img_on)"}}]
+        validate_tiles_config(screens, lib_scripts, available_images={"img_on"})
+        cpp = generate_tile_cpp(tile, lib_scripts, "main")
+        self.assertIn("id(tile_lights_images).execute(arg0, arg1, arg2, arg3, arg4, nullptr, &id(img_on))", cpp)
+
+        # Missing required image parameter fails validation
+        tile["ha_action"]["display"] = [{"tile_lights_images": {"image_off": "img_off"}}]
+        with self.assertRaisesRegex(ValueError, "Missing required parameter 'image_on'"):
+            validate_tiles_config(screens, lib_scripts, available_images={"img_off"})
+
+        # Empty image parameter fails validation
+        tile["ha_action"]["display"] = [{"tile_lights_images": {"image_off": "", "image_on": "img_on"}}]
+        with self.assertRaisesRegex(ValueError, "valid image for 'image_off'"):
+            validate_tiles_config(screens, lib_scripts, available_images={"img_on"})
+
+        # Unknown image reference fails validation
+        tile["ha_action"]["display"] = [{"tile_lights_images": {"image_off": "img_missing", "image_on": "img_on"}}]
+        with self.assertRaisesRegex(ValueError, "image 'img_missing' is not defined"):
+            validate_tiles_config(screens, lib_scripts, available_images={"img_on"})
+
+        # End-to-end multi-layout variant substitution in generate_init_tiles_cpp
+        multi_screens = [
+            {
+                "id": "p1", "rows": 2, "cols": 3, "flags": ["BASE"],
+                "tiles": [
+                    {"ha_action": {
+                        "x": 0, "y": 0,
+                        "entities": [{"entity": "light.a"}],
+                        "display": [{"tile_lights_images": {"image_off": "img_off", "image_on": "img_on"}}],
+                        "perform": ["action_lights"],
+                    }},
+                    {"move_page": {"x": 1, "y": 0, "display": ["tile_lights"], "destination": "p2"}},
+                ],
+            },
+            {
+                "id": "p2", "rows": 3, "cols": 4, "flags": ["TEMPORARY"],
+                "tiles": [
+                    {"ha_action": {
+                        "x": 0, "y": 0,
+                        "entities": [{"entity": "light.b"}],
+                        "display": [{"tile_lights_images": {"image_off": "img_off", "image_on": "img_on_only_p2"}}],
+                        "perform": ["action_lights"],
+                    }},
+                ],
+            },
+        ]
+        lambdas = generate_init_tiles_cpp(multi_screens, lib_scripts)
+        full_cpp = "\n".join(lambdas)
+        self.assertIn("&id(img_off_r2c3), &id(img_on)", full_cpp)
+        self.assertIn("&id(img_off_r3c4), &id(img_on_only_p2)", full_cpp)
+
 if __name__ == '__main__':
     unittest.main()

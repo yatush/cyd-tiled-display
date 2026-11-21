@@ -711,6 +711,24 @@ script:
           int y_mid = (y_start + y_end) / 2;
           print(x_mid, y_mid, id(big), IsAnyOn(entities) ? id(yellow) : id(gray), TextAlign::CENTER, "\U0000e0f0");
 
+  - id: tile_lights_images
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+      image_off: esphome::image::Image*
+      image_on: esphome::image::Image*
+    then:
+      - lambda: |-
+          #ifdef USE_IMAGE
+          auto* _img = IsAnyOn(entities) ? image_on : image_off;
+          if (_img == nullptr) return;
+          id(image_slot) = _img;
+          id(draw_image_static).execute(x_start, x_end, y_start, y_end);
+          #endif
+
   - id: action_lights
     parameters:
       entities: string[]

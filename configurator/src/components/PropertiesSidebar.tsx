@@ -373,6 +373,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                       value={Array.isArray(selectedTile[field.name]) ? selectedTile[field.name] : (selectedTile[field.name] ? [selectedTile[field.name]] : [])}
                       onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                       tileType={selectedTile.type}
+                      images={images}
                     />
                     {imagesField && (
                       <div className="border-t pt-3">
