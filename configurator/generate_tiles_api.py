@@ -196,7 +196,11 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         )
 
         # Build the variant map so PNG files can be named correctly.
-        _variant_id = compute_image_variants(screens, available_scripts=available_scripts)  # (img_id, rows, cols) -> variant_id
+        import inspect as _inspect
+        if 'available_scripts' in _inspect.signature(compute_image_variants).parameters:
+            _variant_id = compute_image_variants(screens, available_scripts=available_scripts)  # (img_id, rows, cols) -> variant_id
+        else:
+            _variant_id = compute_image_variants(screens)  # (img_id, rows, cols) -> variant_id
 
         # Write source PNGs (one per unique image ID) for debugging purposes.
         _written_pngs: set = set()  # track which source PNGs have been written
