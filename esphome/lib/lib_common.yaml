@@ -249,7 +249,7 @@ script:
     then:
       - lambda: |-
           BlindPositionTile::releaseTouch();
-          id(ignore_touch) = false;
+          Tile::notifyScreenRelease();
 
   - id: _handle_touch
     mode: restart
@@ -264,8 +264,11 @@ script:
           auto now = millis();
           id(last_activity_ms) = now;
           id(last_touch_ms) = now;
-          id(last_x) = x;
-          id(last_y) = y;
+          if (!Tile::hasActiveTouchSession()) {
+            id(last_x) = x;
+            id(last_y) = y;
+          }
+          Tile::notifyScreenTouch();
           if (id(turn_on_ms) == 0) {
             id(turn_on_ms) = now;
           }
@@ -773,11 +776,10 @@ script:
     then:
       - lambda: |-
           const auto group = GetFanPowerGroup(entities);
-          auto color = !group.fans.empty() && group.all_on ? id(yellow) : id(gray);
-          int x = (x_start + x_end) / 2, y = (y_start + y_end) / 2;
-          print(x, y, size, color, TextAlign::CENTER, "\U0000f168");
-          if (group.fans.empty())
-            print(x, y_end - 10, id(text_small), id(gray), TextAlign::CENTER, "--");
+          const bool is_on = !group.fans.empty() && group.all_on;
+          auto color = is_on ? id(yellow) : id(gray);
+          const char* icon = is_on ? "\U0000f168" : "\U0000ec17";
+          print((x_start + x_end) / 2, (y_start + y_end) / 2, size, color, TextAlign::CENTER, icon);
 
   - id: tile_fan_speed
     parameters:
@@ -786,12 +788,14 @@ script:
       y_start: int
       y_end: int
       entities: string[]
+      icon_size: esphome::display::BaseFont*
+      text_size: esphome::display::BaseFont*
     then:
       - lambda: |-
           const auto group = GetFanSpeedGroup(entities);
           std::string label = group.fans.empty() ? "--" : std::to_string(static_cast<int>(std::round(group.lowest))) + "%";
-          print(x_start + 2, y_start + 2, id(tiny), id(white), TextAlign::TOP_LEFT, "\U0000f168");
-          print((x_start + x_end) / 2, (y_start + y_end) / 2, id(text_bold), id(white), TextAlign::CENTER, label.c_str());
+          print(x_start + 2, y_start + 2, icon_size, id(white), TextAlign::TOP_LEFT, "\U0000f168");
+          print((x_start + x_end) / 2, (y_start + y_end) / 2, text_size, id(white), TextAlign::CENTER, label.c_str());
 
   - id: tile_fan_direction
     parameters:
@@ -800,12 +804,21 @@ script:
       y_start: int
       y_end: int
       entities: string[]
+      size: esphome::display::BaseFont*
     then:
       - lambda: |-
           const auto group = GetFanDirectionGroup(entities);
-          const char* label = group.fans.empty() ? "--" : group.any_reverse ? "Reverse" : "Forward";
-          print(x_start + 2, y_start + 2, id(tiny), id(white), TextAlign::TOP_LEFT, "\U0000f168");
-          print((x_start + x_end) / 2, (y_start + y_end) / 2, id(text_small), id(white), TextAlign::CENTER, label);
+          int x_mid = (x_start + x_end) / 2;
+          int y_mid = (y_start + y_end) / 2;
+          if (group.fans.empty()) {
+            print(x_start + 2, y_start + 2, id(tiny), id(white), TextAlign::TOP_LEFT, "\U0000f168");
+            print(x_mid, y_mid, id(text_bold), id(white), TextAlign::CENTER, "--");
+          } else {
+            const char* dir_icon = group.any_reverse ? "\U0000f4b5" : "\U0000f4b6";
+            auto dir_color = group.any_reverse ? id(red) : id(blue);
+            print(x_mid, y_mid, size, id(white), TextAlign::CENTER, "\U0000f168");
+            print(x_mid, y_mid, size, dir_color, TextAlign::CENTER, dir_icon);
+          }
 
   - id: tile_ac
     parameters:

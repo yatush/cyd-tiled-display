@@ -266,12 +266,22 @@ const serializeDynamicEntities = (config: Config): any[] | undefined => {
         const name = typeof rawName === 'string' ? rawName.trim() : '';
         if (!name) continue;
         if (Object.prototype.hasOwnProperty.call(fixedValues, name)) {
-            const vals = (fixedValues[name] || [])
-                .map(v => (typeof v === 'string' ? v.trim() : ''))
-                .filter(Boolean);
+            const vals: any[] = [];
+            for (const entry of fixedValues[name] || []) {
+                if (typeof entry === 'string') {
+                    const ent = entry.trim();
+                    if (ent) vals.push(ent);
+                } else if (entry && typeof entry === 'object') {
+                    const ent = typeof entry.entity === 'string' ? entry.entity.trim() : '';
+                    const lbl = typeof entry.label === 'string' ? entry.label.trim() : '';
+                    if (ent) {
+                        vals.push(lbl ? { entity: ent, label: lbl } : ent);
+                    }
+                }
+            }
             if (vals.length === 0) {
                 items.push({ [name]: [] });
-            } else if (vals.length === 1) {
+            } else if (vals.length === 1 && typeof vals[0] === 'string') {
                 items.push({ [name]: vals[0] });
             } else {
                 items.push({ [name]: vals });

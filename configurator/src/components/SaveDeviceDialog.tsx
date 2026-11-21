@@ -131,7 +131,7 @@ export const SaveDeviceDialog: React.FC<SaveDeviceDialogProps> = ({
               </button>
             )}
             <Monitor className="text-blue-600" size={20} />
-            <h2 className="font-bold text-slate-800">Save Device Configuration</h2>
+            <h2 className="font-bold text-slate-800">Save Device As...</h2>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
             <X size={20} />

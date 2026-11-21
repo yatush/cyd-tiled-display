@@ -39,7 +39,7 @@ export const ScreensFileDialog: React.FC<ScreensFileDialogProps> = ({
               </button>
             )}
             <FileText className="text-blue-600" size={20} />
-            <h2 className="font-bold text-slate-800">{mode === 'save' ? 'Save Screen File' : 'Load Screen File'}</h2>
+            <h2 className="font-bold text-slate-800">{mode === 'save' ? 'Save Screen As...' : 'Load Screen File'}</h2>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
             <X size={20} />

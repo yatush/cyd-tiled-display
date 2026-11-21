@@ -119,12 +119,25 @@ def _are_types_compatible(actual, expected):
     
     return False
 
+BUILTIN_FONT_PARAMETER_DEFAULTS = {
+    'tile_ac': {'size': 'big'},
+    'tile_fan': {'size': 'big'},
+    'tile_fan_direction': {'size': 'big'},
+    'tile_fan_speed': {'icon_size': 'tiny', 'text_size': 'text_bold'},
+}
+
+
 def script_parameter_defaults(script_id, script_info):
     """Defaults for built-in script parameters added after their original signature."""
     params = script_info.get('parameters', {})
-    if script_id in ('tile_ac', 'tile_fan') and params.get('size') == 'esphome::display::BaseFont*':
-        return {'size': 'big'}
-    return {}
+    defaults = BUILTIN_FONT_PARAMETER_DEFAULTS.get(script_id)
+    if not defaults:
+        return {}
+    return {
+        param_name: default_font
+        for param_name, default_font in defaults.items()
+        if params.get(param_name) == 'esphome::display::BaseFont*'
+    }
 
 
 def validate_script_type(script_id, script_info, expected_type, context, provided_params=None):

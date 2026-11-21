@@ -1,4 +1,4 @@
-﻿"""Tile UI ESPhome Component - C++ code generation entry point."""
+"""Tile UI ESPhome Component - C++ code generation entry point."""
 from typing import Any
 import json
 import sys
@@ -14,15 +14,17 @@ from .data_collection import (
     collect_available_scripts,
     collect_available_globals,
     parse_dynamic_entities_config,
+    parse_dynamic_entities_with_labels,
 )
 from .tile_generation import generate_tile_cpp
-from .tile_utils import flags_to_cpp, build_expression
+from .tile_utils import flags_to_cpp, build_expression, screen_page_id
 from .schema import screens_list_schema, dynamic_entities_schema
 
 # Configuration constants
 DOMAIN = "tile_ui"
 CONF_TILES_FILE = "tiles_file"
 CONF_SCREENS = "screens"
+CONF_PAGE_ID = "_page_id"
 CONF_DYNAMIC_ENTITIES = "dynamic_entities"
 CONF_DEBUG_OUTPUT = "debug_output"
 CONF_SYSTEM_PAGES = "system_pages"
@@ -48,6 +50,18 @@ def load_tiles_config(config):
             print(f"Error loading tiles config: {e}")
             # Ignore errors here, they will be caught in to_code
             config[CONF_SCREENS] = []
+
+    raw_screens = config.get(CONF_SCREENS, [])
+    if isinstance(raw_screens, list):
+        normalized_screens = []
+        for s in raw_screens:
+            if isinstance(s, dict):
+                s = dict(s)
+                raw_id = s.get("id", s.get(CONF_ID))
+                if isinstance(raw_id, str) and raw_id and CONF_PAGE_ID not in s:
+                    s[CONF_PAGE_ID] = screen_page_id(raw_id)
+            normalized_screens.append(s)
+        config[CONF_SCREENS] = normalized_screens
             
     # Ensure system pages are present
     if CONF_SYSTEM_PAGES not in config:
@@ -61,7 +75,8 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_TILES_FILE): cv.string,
         cv.Optional(CONF_DYNAMIC_ENTITIES): dynamic_entities_schema,
         cv.Optional(CONF_SCREENS): cv.ensure_list(cv.Schema({
-            cv.Required(CONF_ID): cv.declare_id(DisplayPage),
+            cv.Required(CONF_ID): cv.string,
+            cv.Optional(CONF_PAGE_ID): cv.declare_id(DisplayPage),
         }, extra=cv.ALLOW_EXTRA)),
         cv.Optional(CONF_SYSTEM_PAGES): cv.ensure_list(cv.Schema({
             cv.Required(CONF_ID): cv.declare_id(DisplayPage),
@@ -392,7 +407,7 @@ def generate_init_tiles_cpp(
         available_globals,
         declared_dynamic_entities=declared_dynamic_entities,
     )
-    _, fixed_dynamic_entities = parse_dynamic_entities_config(declared_dynamic_entities)
+    _, fixed_dynamic_entries = parse_dynamic_entities_with_labels(declared_dynamic_entities)
     
     lambdas = []
     
@@ -401,11 +416,11 @@ def generate_init_tiles_cpp(
         "// Initialize view",
         "view_ptr.reset(new View());",
     ]
-    if fixed_dynamic_entities:
+    if fixed_dynamic_entries:
         view_init.append("// Initialize fixed dynamic entities")
-        for var_name, entity_list in fixed_dynamic_entities.items():
+        for var_name, entry_list in fixed_dynamic_entries.items():
             var_cpp = json.dumps(var_name, ensure_ascii=True)
-            vals_cpp = ", ".join(json.dumps(ent, ensure_ascii=True) for ent in entity_list)
+            vals_cpp = ", ".join(json.dumps(ent, ensure_ascii=True) for ent, _ in entry_list)
             view_init.append(
                 f"EMSet(Pointer({var_cpp}), Pointer(std::vector<std::string>{{{vals_cpp}}}));"
             )
@@ -423,13 +438,20 @@ def generate_init_tiles_cpp(
         cols_cpp = str(cols) if cols is not None else "id(cols)"
         
         flags_cpp = flags_to_cpp(flags)
+        page_id_cpp = screen_page_id(screen_id)
+        tiles_var = f"tiles_{page_id_cpp}"
         lines = [
             f"// Screen: {screen_id}",
-            f"std::vector<Tile*> tiles_{screen_id} = {{",
+            f"std::vector<Tile*> {tiles_var} = {{",
         ]
         
         for tile in tiles:
-            tile_cpp = generate_tile_cpp(tile, available_scripts, screen_id)
+            tile_cpp = generate_tile_cpp(
+                tile,
+                available_scripts,
+                screen_id,
+                fixed_dynamic_entities=fixed_dynamic_entries,
+            )
             lines.append(f"  {tile_cpp}")
 
         # Build background method chains (drawn before tiles at runtime)
@@ -471,11 +493,11 @@ def generate_init_tiles_cpp(
             all_chains.append(time_color_chain)
 
         screen_expr = (
-            f"  new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id})"
+            f"  new TiledScreen(&id({page_id_cpp}), {flags_cpp}, {rows_cpp}, {cols_cpp}, {tiles_var})"
         )
         if all_chains:
             screen_expr = (
-                f"  (new TiledScreen(&id({screen_id}), {flags_cpp}, {rows_cpp}, {cols_cpp}, tiles_{screen_id}))"
+                f"  (new TiledScreen(&id({page_id_cpp}), {flags_cpp}, {rows_cpp}, {cols_cpp}, {tiles_var}))"
             )
             for chain in all_chains:
                 screen_expr += f"\n  {chain}"
@@ -491,13 +513,14 @@ def generate_init_tiles_cpp(
     # Generate view finalization
     view_final = [
         "view_ptr->init();",
+        "if (view_ptr->getBaseScreen()) {",
+        "  id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());",
+        "}",
         "if (view_ptr->getActiveScreen()) {",
         "  id(rows) = view_ptr->getActiveScreen()->getRows();",
         "  id(cols) = view_ptr->getActiveScreen()->getCols();",
         "}",
-        "if (view_ptr->getBaseScreen()) {",
-        "  id(disp).show_page(view_ptr->getBaseScreen()->getDisplayPage());",
-        "}",
+        "id(disp).update();",
         "ESP_LOGD(\"InitTiles\", \"Tiles initialized\");",
     ]
     lambdas.append("\n".join(view_final))
@@ -509,6 +532,30 @@ def generate_init_tiles_cpp(
 
 
 def final_validate(config):
+    """Ensure disp has a writer without show_test_card when tile_ui manages pages.
+
+    Drivers like mipi_spi set show_test_card=True during final validation if
+    neither lambda nor pages is present in the YAML display block, which takes
+    priority over runtime DisplayPage writers in Display::do_update_().
+    """
+    if config.get(CONF_SCREENS) or config.get(CONF_SYSTEM_PAGES):
+        try:
+            import esphome.final_validate as fv
+            from esphome.core import Lambda
+            global_cfg = fv.full_config.get()
+        except Exception:
+            global_cfg = None
+            Lambda = None
+        if isinstance(global_cfg, dict) and Lambda is not None:
+            for disp_conf in global_cfg.get("display", []):
+                if not isinstance(disp_conf, dict):
+                    continue
+                disp_id = disp_conf.get("id", disp_conf.get(CONF_ID, ""))
+                if str(disp_id) != "disp":
+                    continue
+                if not disp_conf.get("lambda") and not disp_conf.get("pages"):
+                    disp_conf["lambda"] = Lambda("return;")
+                    disp_conf.pop("show_test_card", None)
     return config
 
 FINAL_VALIDATE_SCHEMA = final_validate
@@ -529,35 +576,55 @@ async def to_code(config):
              var = cg.new_Pvariable(page_id, lambda_expr)
              all_pages.append(var)
 
-    # Register screen pages
+    # Register screen pages using namespaced C++ IDs (e.g. tile_page_main)
     for screen_conf in config.get(CONF_SCREENS, []):
-        screen_id = screen_conf[CONF_ID]
+        page_id = screen_conf.get(CONF_PAGE_ID) or screen_conf[CONF_ID]
         lambda_str = f"[](esphome::display::Display &it) {{ id(_draw_page).execute(); }}"
         lambda_expr = cg.RawExpression(lambda_str)
-        var = cg.new_Pvariable(screen_id, lambda_expr)
+        var = cg.new_Pvariable(page_id, lambda_expr)
         all_pages.append(var)
 
     # Now generate code to set pages
     if all_pages:
-        pages_list = ", ".join([str(p) for p in all_pages])
-        stmt = f"""
-        std::vector<esphome::display::DisplayPage*> tile_pages = {{{pages_list}}};
-        ((esphome::display::Display*)&id(disp))->set_pages(tile_pages);
+        from esphome.components import display as display_mod
+        from esphome.core import ID
 
-        auto *page_change_trigger = new esphome::display::DisplayOnPageChangeTrigger((esphome::display::Display*)&id(disp));
-        auto *automation = new esphome::Automation<esphome::display::DisplayPage *, esphome::display::DisplayPage *>(page_change_trigger);
-        automation->add_action(new esphome::LambdaAction<esphome::display::DisplayPage *, esphome::display::DisplayPage *>([=](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{
+        pages_list = ", ".join([str(p) for p in all_pages])
+        on_page_change_body = """
             id(change_page_ms) = millis();
             id(disp).fill(Color::BLACK);
-            if (view_ptr != nullptr) {{
+            if (view_ptr != nullptr) {
                 Screen* screen = view_ptr->getScreen(to);
-                if (screen != nullptr) {{
+                if (screen != nullptr) {
                     id(rows) = screen->getRows();
                     id(cols) = screen->getCols();
                     screen->onScreenEnter();
-                }}
-            }}
-        }}));
+                }
+            }"""
+
+        if getattr(display_mod, "DisplayOnPageChangeTrigger", None) is not None:
+            page_change_cpp = f"""
+        auto *page_change_trigger = new esphome::display::DisplayOnPageChangeTrigger((esphome::display::Display*)&id(disp));
+        auto *automation = new esphome::Automation<esphome::display::DisplayPage *, esphome::display::DisplayPage *>(page_change_trigger);
+        automation->add_action(new esphome::LambdaAction<esphome::display::DisplayPage *, esphome::display::DisplayPage *>([=](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{{on_page_change_body}
+        }}));"""
+        else:
+            req_slot = getattr(display_mod, "request_page_change_slot", None) or getattr(
+                display_mod, "_request_page_change_slot", None
+            )
+            if callable(req_slot):
+                disp_var = await cg.get_variable(ID("disp", is_declaration=False))
+                req_slot(str(disp_var))
+            else:
+                cg.add_define("DISPLAY_PAGE_CHANGE_CALLBACK_COUNT", 1)
+            page_change_cpp = f"""
+        ((esphome::display::Display*)&id(disp))->add_on_page_change_callback([](esphome::display::DisplayPage *from, esphome::display::DisplayPage *to) {{{on_page_change_body}
+        }});"""
+
+        stmt = f"""
+        std::vector<esphome::display::DisplayPage*> tile_pages = {{{pages_list}}};
+        ((esphome::display::Display*)&id(disp))->set_pages(tile_pages);
+{page_change_cpp}
         """
         cg.add(cg.RawStatement(stmt))
 

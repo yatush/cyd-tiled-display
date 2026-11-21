@@ -6,7 +6,7 @@ from typing import Any
 from .tile_utils import (
     format_display_list, format_functions_list, format_entity_value,
     build_fast_refresh_lambda, build_expression, format_entity_cpp, get_tile_modifiers,
-    flags_to_cpp, format_single_function
+    flags_to_cpp, format_single_function, screen_page_id
 )
 from .schema import TileType
 
@@ -113,11 +113,11 @@ def generate_action_tile(config, available_scripts, screen_id=None):
     long_destination = config.get("long_destination")
     if long_perform or long_destination:
         long_cpp = format_functions_list(long_perform, available_scripts, [('entities', 'string[]')])
-        destination_cpp = f'&id({long_destination})' if long_destination else 'nullptr'
+        destination_cpp = f'&id({screen_page_id(long_destination)})' if long_destination else 'nullptr'
         dynamic_entity = config.get("long_dynamic_entity", "")
         modifiers.append(f'setLongPress({long_cpp}, {destination_cpp}, {json.dumps(dynamic_entity, ensure_ascii=True)})')
     if display_page:
-        modifiers.append(f'setDisplayPageIfNoEntity(&id({display_page}))')
+        modifiers.append(f'setDisplayPageIfNoEntity(&id({screen_page_id(display_page)}))')
     
     x = config.get("x", "?")
     y = config.get("y", "?")
@@ -170,7 +170,7 @@ def generate_move_page_tile(config, available_scripts, screen_id=None):
     
     entities = config.get("entities")
     entity_arg = f', {format_entity_cpp(format_entity_value(entities))}' if entities else ''
-    tile_cpp = f'new MovePageTile({x}, {y}, {display_cpp}, &id({destination}){entity_arg})'
+    tile_cpp = f'new MovePageTile({x}, {y}, {display_cpp}, &id({screen_page_id(destination)}){entity_arg})'
     
     modifiers = []
     if dynamic_entry:
@@ -243,8 +243,11 @@ def generate_toggle_entity_tile(config, available_scripts, screen_id=None):
     return tile_cpp
 
 
-def generate_cycle_entity_tile(config, available_scripts, screen_id=None):
+def generate_cycle_entity_tile(config, available_scripts, screen_id=None, fixed_dynamic_entities=None):
     """Generate C++ for a cycle entity tile."""
+    import json as _json
+    from .data_collection import format_entity_label
+
     _display_params = [('x_start', 'int'), ('x_end', 'int'), ('y_start', 'int'), ('y_end', 'int'), ('name', 'string'), (['options', 'entities'], 'string[]')]
     x, y, display_cpp = _generate_base_tile_args(config, available_scripts, _display_params)
     display_cpp = _override_display_with_image(display_cpp, config, _display_params)
@@ -258,10 +261,29 @@ def generate_cycle_entity_tile(config, available_scripts, screen_id=None):
     if not options or len(options) == 0:
         raise ValueError(f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}) must have 'options' list with at least one item")
     
+    fixed_map = fixed_dynamic_entities or {}
     options_cpp_pairs = []
     
     for option_item in options:
         if isinstance(option_item, dict):
+            if "dynamic_entity" in option_item:
+                source_de = option_item.get("dynamic_entity", "")
+                if not source_de or source_de not in fixed_map:
+                    raise ValueError(
+                        f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                        f"option references '{source_de}' which is not a fixed dynamic entity"
+                    )
+                for entry in fixed_map[source_de]:
+                    if isinstance(entry, tuple):
+                        ent_id, custom_label = entry
+                    else:
+                        ent_id, custom_label = entry, None
+                    label_str = custom_label if custom_label else format_entity_label(ent_id)
+                    entities_cpp = format_entity_cpp(ent_id)
+                    label_cpp = _json.dumps(label_str, ensure_ascii=True)
+                    options_cpp_pairs.append(f'{{ {entities_cpp}, {label_cpp} }}')
+                continue
+
             entity = option_item.get("entity", "")
             label = option_item.get("label", "")
             if entity and label:
@@ -281,7 +303,7 @@ def generate_cycle_entity_tile(config, available_scripts, screen_id=None):
     return tile_cpp
 
 
-def generate_tile_cpp(tile: dict, available_scripts=None, screen_id=None) -> str:
+def generate_tile_cpp(tile: dict, available_scripts=None, screen_id=None, fixed_dynamic_entities=None) -> str:
     """Generate C++ code for a single tile."""
     if TileType.BLIND_POSITION.value in tile:
         config = tile[TileType.BLIND_POSITION.value]
@@ -301,6 +323,11 @@ def generate_tile_cpp(tile: dict, available_scripts=None, screen_id=None) -> str
     elif TileType.TOGGLE_ENTITY.value in tile:
         return generate_toggle_entity_tile(tile[TileType.TOGGLE_ENTITY.value], available_scripts, screen_id)
     elif TileType.CYCLE_ENTITY.value in tile:
-        return generate_cycle_entity_tile(tile[TileType.CYCLE_ENTITY.value], available_scripts, screen_id)
+        return generate_cycle_entity_tile(
+            tile[TileType.CYCLE_ENTITY.value],
+            available_scripts,
+            screen_id,
+            fixed_dynamic_entities=fixed_dynamic_entities,
+        )
     else:
         return f'// Unknown tile structure: {list(tile.keys())}'

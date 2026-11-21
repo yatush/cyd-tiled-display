@@ -70,17 +70,18 @@ class GitHubSyncTests(unittest.TestCase):
         with patch.object(github_sync.requests, "get", return_value=FakeResponse(make_archive(files))):
             return github_sync.sync_github_files(self.base, validator)
 
-    def test_sync_preserves_custom_files_and_backs_up_replacements(self):
-        count, backup = self.sync()
+    def test_sync_preserves_custom_files_and_leaves_no_backups(self):
+        count = self.sync()
         self.assertEqual(count, 6)
         self.assertEqual((self.base / "lib/lib.yaml").read_text(), "new lib")
-        self.assertEqual((self.base / backup / "lib/lib.yaml").read_text(), "old lib")
-        self.assertEqual((self.base / backup / "external_components/tile_ui/__init__.py").read_text(), "old component")
-        self.assertEqual((self.base / backup / "test_device.yaml").read_text(), "old device")
+        self.assertEqual((self.base / "external_components/tile_ui/__init__.py").read_text(), "new component")
+        self.assertEqual((self.base / "test_device.yaml").read_text(), "new device")
         self.assertEqual((self.base / "lib/lib_custom.yaml").read_text(), "my custom")
         self.assertEqual((self.base / "lib/hw_overrides.yaml").read_text(), "my override")
         self.assertEqual((self.base / "lib/user_config.yaml").read_text(), "my config")
         self.assertFalse((self.base / "lib/images/picture.png").exists())
+        self.assertEqual(list(self.base.glob("cyd-github-backup-*")), [])
+        self.assertEqual(list(self.base.glob(".cyd-sync-*")), [])
 
     def test_missing_files_or_invalid_device_config_do_not_modify_targets(self):
         files = {key: value for key, value in FILES.items() if key != "lib/lib_common.yaml"}
@@ -106,6 +107,8 @@ class GitHubSyncTests(unittest.TestCase):
                 self.sync()
         self.assertEqual((self.base / "lib/lib.yaml").read_text(), "old lib")
         self.assertFalse((self.base / "lib/lib_common.yaml").exists())
+        self.assertEqual(list(self.base.glob("cyd-github-backup-*")), [])
+        self.assertEqual(list(self.base.glob(".cyd-sync-*")), [])
 
     def test_symlink_targets_are_rejected(self):
         (self.base / "lib/lib_common.yaml").symlink_to(self.base / "lib/lib_custom.yaml")

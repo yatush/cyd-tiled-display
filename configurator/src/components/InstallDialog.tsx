@@ -25,6 +25,10 @@ interface InstallDialogProps {
   onCompileActiveChange?: (active: boolean) => void;
   /** Called when OTA install starts/finishes to control stayMounted from parent */
   onOtaActiveChange?: (active: boolean) => void;
+  /** Optional device filename to pre-select and auto-start OTA install */
+  initialDeviceFilename?: string | null;
+  autoStartOta?: boolean;
+  onAutoStartHandled?: () => void;
 }
 
 type InstallStatus = 'idle' | 'loading' | 'saving' | 'installing' | 'success' | 'error' | 'cancelled';
@@ -38,6 +42,9 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
   stayMounted,
   onCompileActiveChange,
   onOtaActiveChange,
+  initialDeviceFilename,
+  autoStartOta,
+  onAutoStartHandled,
 }) => {
   const [activeTab, setActiveTab] = useState<InstallTab>('ota');
   const [devices, setDevices] = useState<Device[]>([]);
@@ -231,11 +238,9 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     }
   };
 
-  const doInstall = async () => {
-    if (!selectedDevice) return;
-
-    const device = devices.find(d => d.filename === selectedDevice);
-    if (!device) return;
+  const doInstall = async (targetFilename?: string) => {
+    const target = targetFilename || selectedDevice;
+    if (!target) return;
 
     setLogs([]);
     setStatusMessage('');
@@ -243,29 +248,29 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
 
     // Step 1: Save the current editor config into the device file
     setStatus('saving');
-    setLogs(prev => [...prev, `Loading device settings from ${selectedDevice}...`]);
+    setLogs(prev => [...prev, `Loading device settings from ${target}...`]);
 
-    const info = await loadDeviceInfo(selectedDevice);
+    const info = await loadDeviceInfo(target);
     if (!info) {
       setStatus('error');
-      setStatusMessage(`Failed to read device settings from ${selectedDevice}`);
+      setStatusMessage(`Failed to read device settings from ${target}`);
       return;
     }
 
     if (!info.encryptionKey) {
       setStatus('error');
-      setStatusMessage(`No API encryption key found in ${selectedDevice}. Please save the device config first via "Save Device".`);
+      setStatusMessage(`No API encryption key found in ${target}. Please save the device config first via "Save Device As...".`);
       return;
     }
 
-    setLogs(prev => [...prev, `Saving current tile configuration to ${selectedDevice}...`]);
+    setLogs(prev => [...prev, `Saving current tile configuration to ${target}...`]);
 
     try {
       await onSaveAndInstall(
         info.deviceName,
         info.friendlyName,
         info.screenType,
-        selectedDevice,
+        target,
         info.encryptionKey,
         info.otaPassword,
         info.ipAddress
@@ -285,7 +290,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
       const res = await apiFetch('/esphome/install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: selectedDevice }),
+        body: JSON.stringify({ filename: target }),
       });
 
       if (!res.ok) {
@@ -365,11 +370,12 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     }
   };
 
-  const handleInstall = async () => {
-    if (!selectedDevice) return;
+  const handleInstall = async (targetFilename?: string) => {
+    const target = typeof targetFilename === 'string' ? targetFilename : selectedDevice;
+    if (!target) return;
     // Check for active overrides before proceeding
     setOverridesChecking(true);
-    const devScreenType = devices.find(d => d.filename === selectedDevice)?.screen_type || null;
+    const devScreenType = devices.find(d => d.filename === target)?.screen_type || null;
     try {
       const stParam = devScreenType ? `?screen_type=${encodeURIComponent(devScreenType)}` : '';
       const res = await apiFetch(`/hw_overrides/validate${stParam}`);
@@ -378,14 +384,25 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         if (result.overrides && result.overrides.length > 0) {
           setOverridesResult(result);
           setShowOverridesConfirm(true);
-          pendingInstallRef.current = doInstall;
+          pendingInstallRef.current = () => doInstall(target);
           return;
         }
       }
     } catch { /* non-fatal — proceed without check */ }
     finally { setOverridesChecking(false); }
-    doInstall();
+    doInstall(target);
   };
+
+  // Auto-start OTA for a specific device when triggered from the TopBar "Update" button
+  useEffect(() => {
+    if (isOpen && autoStartOta && initialDeviceFilename && !otaRunningRef.current) {
+      setActiveTab('ota');
+      setSelectedDevice(initialDeviceFilename);
+      onAutoStartHandled?.();
+      handleInstall(initialDeviceFilename);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, autoStartOta, initialDeviceFilename]);
 
   const handleCancel = async () => {
     if (pollRef.current) {
@@ -731,7 +748,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
                 Cancel
               </button>
               <button
-                onClick={handleInstall}
+                onClick={() => handleInstall()}
                 disabled={!selectedDevice || overridesChecking}
                 className="px-4 py-2 text-sm font-bold bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >

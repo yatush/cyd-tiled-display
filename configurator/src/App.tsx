@@ -15,6 +15,7 @@ import { InstallDialog } from './components/InstallDialog';
 import { ScreensFileDialog } from './components/ScreensFileDialog';
 import { EmulatorDialog } from './components/EmulatorDialog';
 import { HwOverridesDialog } from './components/HwOverridesDialog';
+import { BatchUpdateDialog } from './components/BatchUpdateDialog';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -136,6 +137,13 @@ function App() {
   const [sidebarKey, setSidebarKey] = useState(0);
   const [usbCompileActive, setUsbCompileActive] = useState(false);
   const [otaInstallActive, setOtaInstallActive] = useState(false);
+  const [isBatchUpdateOpen, setIsBatchUpdateOpen] = useState(false);
+  const [batchUpdateActive, setBatchUpdateActive] = useState(false);
+  const [batchUpdateLabel, setBatchUpdateLabel] = useState<string | undefined>(undefined);
+  const [quickUpdateDevice, setQuickUpdateDevice] = useState<string | null>(null);
+  const [autoStartOta, setAutoStartOta] = useState(false);
+  const [isSaveAndUpdateConfirmOpen, setIsSaveAndUpdateConfirmOpen] = useState(false);
+  const [isSavingBeforeUpdate, setIsSavingBeforeUpdate] = useState(false);
 
   // Hooks
   const {
@@ -199,6 +207,11 @@ function App() {
 
   const {
     fileInputRef,
+    fileContext,
+    isDirty,
+    saveStatus,
+    clearFileContext,
+    handleQuickSave,
     handleSaveYaml,
     handleDownloadYaml,
     handleLoadProject,
@@ -207,6 +220,65 @@ function App() {
     handleSaveDeviceConfig,
     handleLoadDeviceConfig
   } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus, () => setSidebarKey(prev => prev + 1));
+
+  const handleSaveOrSaveAs = () => {
+    if (fileContext) {
+      handleQuickSave();
+    } else {
+      setIsFileManagementOpen(true);
+    }
+  };
+
+  const handleUpdateCurrentDevice = () => {
+    if (otaInstallActive) {
+      setIsInstallDeviceOpen(true);
+      return;
+    }
+    if (!fileContext || fileContext.kind !== 'device') return;
+    if (isDirty) {
+      setIsSaveAndUpdateConfirmOpen(true);
+    } else {
+      setQuickUpdateDevice(fileContext.path);
+      setAutoStartOta(true);
+      setIsInstallDeviceOpen(true);
+    }
+  };
+
+  const handleConfirmSaveAndUpdate = async () => {
+    if (!fileContext || fileContext.kind !== 'device') return;
+    setIsSavingBeforeUpdate(true);
+    try {
+      const saved = await handleQuickSave();
+      if (!saved) return;
+      setIsSaveAndUpdateConfirmOpen(false);
+      setQuickUpdateDevice(fileContext.path);
+      setAutoStartOta(true);
+      setIsInstallDeviceOpen(true);
+    } finally {
+      setIsSavingBeforeUpdate(false);
+    }
+  };
+
+  const handleClearWithContext = () => {
+    handleClearConfig();
+    clearFileContext();
+  };
+
+  // Ctrl+S / Cmd+S shortcut for 1-click Save (or Save As when no file context)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (fileContext) {
+          if (isDirty) handleQuickSave();
+        } else {
+          setIsFileManagementOpen(true);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [fileContext, isDirty, handleQuickSave]);
 
   // Image management handlers
   const handleAddImage = (id: string, entry: ImageEntry) => {
@@ -388,6 +460,12 @@ function App() {
         onUndo={undo}
         onRedo={redo}
         onOpenFileManagement={() => setIsFileManagementOpen(true)}
+        fileContext={fileContext}
+        isDirty={isDirty}
+        saveStatus={saveStatus}
+        onQuickSave={handleSaveOrSaveAs}
+        onUpdateCurrentDevice={handleUpdateCurrentDevice}
+        otaInstallActive={otaInstallActive}
         updateAvailable={updateAvailable}
         emulatorStatus={emulatorStatus}
         onStartEmulator={() => setIsEmulatorDevicePickerOpen(true)}
@@ -437,7 +515,7 @@ function App() {
           setIsPageDialogOpen={setIsPageDialogOpen}
           fileInputRef={fileInputRef}
           handleLoadProject={handleLoadProject}
-          handleClearConfig={handleClearConfig}
+          handleClearConfig={handleClearWithContext}
           haEntities={haEntities}
         />
 
@@ -550,6 +628,24 @@ function App() {
           setIsFileManagementOpen(false);
           setIsHwOverridesOpen(true);
         }}
+        fileContext={fileContext}
+        isDirty={isDirty}
+        onQuickSave={handleQuickSave}
+        onBatchUpdate={() => {
+          setIsFileManagementOpen(false);
+          setIsBatchUpdateOpen(true);
+        }}
+      />
+
+      <BatchUpdateDialog
+        isOpen={isBatchUpdateOpen}
+        onClose={() => setIsBatchUpdateOpen(false)}
+        autoStart={true}
+        stayMounted={batchUpdateActive}
+        onActiveChange={(active, label) => {
+          setBatchUpdateActive(active);
+          setBatchUpdateLabel(label);
+        }}
       />
 
       <SaveDeviceDialog 
@@ -589,7 +685,53 @@ function App() {
         stayMounted={usbCompileActive || otaInstallActive}
         onCompileActiveChange={setUsbCompileActive}
         onOtaActiveChange={setOtaInstallActive}
+        initialDeviceFilename={quickUpdateDevice}
+        autoStartOta={autoStartOta}
+        onAutoStartHandled={() => setAutoStartOta(false)}
       />
+
+      {/* Save-before-update confirmation popup when active device file has unsaved changes */}
+      {isSaveAndUpdateConfirmOpen && fileContext && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[260] p-4 backdrop-blur-sm"
+          onClick={() => !isSavingBeforeUpdate && setIsSaveAndUpdateConfirmOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b bg-amber-50">
+              <h3 className="font-bold text-slate-800 text-base">Save Changes Before Updating?</h3>
+            </div>
+            <div className="p-5 space-y-2 text-sm text-slate-600">
+              <p>
+                You have unsaved changes to{' '}
+                <span className="font-mono font-bold text-slate-800">{fileContext.path}</span>.
+              </p>
+              <p className="text-xs text-slate-500">
+                The file will be saved first, then the OTA update will start for this device.
+              </p>
+            </div>
+            <div className="px-5 py-3 border-t bg-slate-50 flex justify-end gap-2">
+              <button
+                onClick={() => setIsSaveAndUpdateConfirmOpen(false)}
+                disabled={isSavingBeforeUpdate}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSaveAndUpdate}
+                disabled={isSavingBeforeUpdate}
+                className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isSavingBeforeUpdate && <RefreshCw size={13} className="animate-spin" />}
+                {isSavingBeforeUpdate ? 'Saving...' : 'Save & Update Device'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       <ScreensFileDialog 
         isOpen={isScreensFileOpen}
@@ -672,6 +814,17 @@ function App() {
         >
           <RefreshCw size={14} className="animate-spin" />
           <span className="text-sm font-bold">OTA Installing...</span>
+        </button>
+      )}
+
+      {/* Floating Batch OTA Update indicator — shown when dialog is closed while updating */}
+      {batchUpdateActive && !isBatchUpdateOpen && (
+        <button
+          onClick={() => setIsBatchUpdateOpen(true)}
+          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-all animate-pulse"
+        >
+          <RefreshCw size={14} className="animate-spin" />
+          <span className="text-sm font-bold">{batchUpdateLabel || 'Updating Devices...'}</span>
         </button>
       )}
     </div>

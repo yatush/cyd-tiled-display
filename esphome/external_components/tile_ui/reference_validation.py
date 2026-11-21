@@ -190,6 +190,19 @@ def _validate_dynamic_entity_references(
                             label = f"dynamic_entry[{idx}].dynamic_entity" if isinstance(dynamic_entry, list) else "dynamic_entry.dynamic_entity"
                             _check(de, label, mutates=True)
 
+            # cycle_entity options[i].dynamic_entity (read-only — must be a fixed dynamic entity)
+            if tile_type == TileType.CYCLE_ENTITY.value:
+                for idx, option in enumerate(config.get("options", [])):
+                    if isinstance(option, dict) and option.get("dynamic_entity"):
+                        de = option["dynamic_entity"]
+                        _check(de, f"options[{idx}].dynamic_entity", mutates=False)
+                        if de not in fixed:
+                            raise ValueError(
+                                f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                                f"options[{idx}].dynamic_entity references '{de}' which is not a fixed dynamic entity. "
+                                f"Bind '{de}' to fixed entity ID(s) in dynamic_entities."
+                            )
+
 
 def _validate_tile_positions(screen_id, tiles):
     """Validate tile positions and stacking rules.

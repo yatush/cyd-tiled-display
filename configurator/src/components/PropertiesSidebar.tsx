@@ -55,6 +55,9 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   const mutableDynamicEntities = dynamicEntities.filter(
     d => !Object.prototype.hasOwnProperty.call(fixedValuesMap, d)
   );
+  const fixedDynamicEntities = dynamicEntities.filter(
+    d => Object.prototype.hasOwnProperty.call(fixedValuesMap, d)
+  );
   const tileSchema = selectedTile ? schema?.types?.find((t: any) => t.type === selectedTile.type) : null;
   const images = config.images || {};
   const tileIds = new Set(config.pages.flatMap(page => page.tiles.map(tile => tile.id)));
@@ -889,6 +892,12 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                       );
                     }
                     if (field.type === 'object_list') {
+                      const allowedDynamicEntities =
+                        field.name === 'dynamic_entry'
+                          ? mutableDynamicEntities
+                          : field.name === 'options'
+                            ? fixedDynamicEntities
+                            : dynamicEntities;
                       return (
                         <ObjectArrayInput
                           key={field.name}
@@ -896,7 +905,7 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           values={selectedTile[field.name] || []}
                           fields={field.objectFields}
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
-                          dynamicEntities={field.name === 'dynamic_entry' ? mutableDynamicEntities : dynamicEntities}
+                          dynamicEntities={allowedDynamicEntities}
                           haEntities={haEntities}
                         />
                       );

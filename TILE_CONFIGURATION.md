@@ -292,18 +292,23 @@ screens:
 dynamic_entities: [FAN]
 ```
 
-The power tile toggles on a short release; holding it for two seconds opens
-settings even when the fan is off. Its fan icon is yellow when on and gray
-when off. To change its size, use `display: [{tile_fan: {size: small}}]`;
-the default is `big`, and `tiny`, `small`, `medium`, and `big` are available.
-For multiple fans, power is on only when all available fans are on; tapping
-turns all on if any is off, otherwise it turns all off. Speed displays the
-lowest percentage and applies the next step from that fan to all fans, wrapping
-to its lowest nonzero step. Fans with different steps may round the requested
-percentage differently. Direction displays reverse if any fan is reverse;
-tapping sets all to forward, otherwise it sets all to reverse. Unavailable
-fans and fans without the relevant supported control or valid attributes are
-skipped; if none can be controlled, the tile shows `--` and sends no action.
+The power tile toggles on a short release; holding it for 1.5 seconds opens
+settings even when the fan is off. It shows a yellow `mode_fan` icon when on
+and a gray `mode_fan_off` icon when off or unavailable. To change its size, use
+`display: [{tile_fan: {size: small}}]`; the default is `big`, and `tiny`,
+`small`, `medium`, and `big` are available. For multiple fans, power is on only
+when all available fans are on; tapping turns all on if any is off, otherwise
+it turns all off. Speed displays the lowest percentage (with optional
+`icon_size`, default `tiny`, and `text_size`, default `text_bold`) and applies
+the next step from that fan to all fans, wrapping to its lowest nonzero step;
+repeated taps update the displayed speed immediately and send the action to
+Home Assistant 3 seconds after the last tap.
+Fans with different steps may round the requested percentage differently.
+Direction displays a blue cool-down arrow (forward) or red warm-up arrow
+(reverse) centered over a white fan icon (with optional `size`, default `big`); if any fan is reverse, it displays reverse and tapping sets all to
+forward, otherwise it sets all to reverse. Unavailable fans and fans without
+the relevant supported control or valid attributes are skipped; if none can be
+controlled, the speed and direction tiles show `--` and send no action.
 Applying a speed while off may turn the fan on.
 
 For a blinds up/down control with configurable arrow size:
@@ -539,11 +544,14 @@ Cycles through multiple options on each press. Sets the value of the dynamic_ent
     - `presentation_name`: String - The label for the currently selected option
     - `options`: String array - All entity IDs from the currently selected option (one or more if comma-separated). **Note**: If the option is `"*"` (All), this list will contain **all other entities** defined in the `options` list, instead of the literal string `"*"`.
 - **dynamic_entity**: *(Required)* Key for the entity whose value is being changed when pressing the tile.
-- **options**: *(Required)* List of options to cycle through (at least one required)
-  - Each item must have:
+- **options**: *(Required)* List of options to cycle through (at least one required). Each item is either:
+  - A manual option with:
     - **entity**: *(Required)* The entity ID that will be set for the *dynamic_entity*. Can be a **comma-separated list** of entities.
-      - **Special Value `"*"`**: If set to `"*"`, the dynamic entity will be populated with **all other entities** defined in the `options` list.
+      - **Special Value `"*"`**: If set to `"*"`, the dynamic entity will be populated with **all other entities** defined in the `options` list (including entities expanded from fixed `dynamic_entity` items).
     - **label**: *(Required)* Display name for this option, passed to the display script
+  - A fixed dynamic entity reference `{ dynamic_entity: VAR_NAME }`:
+    - Expands into one cycle option per entity bound to `VAR_NAME` in top-level `dynamic_entities:`.
+    - Each fixed entity in `dynamic_entities:` can optionally specify a custom label (`{ entity: light.living_room, label: Living }`); otherwise the label falls back to a formatted version of the entity ID (`Living Room`).
 - **reset_on_leave**: (Optional, default: false) Reset to first option when leaving screen
 - **activation_var**: (Optional) See [Common Modifiers](#activation-variable)
 - **display_assets**: (Optional) See [Display Assets](#display-assets)

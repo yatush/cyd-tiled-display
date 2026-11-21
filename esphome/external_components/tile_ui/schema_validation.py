@@ -1,7 +1,7 @@
 """Script, global, condition, and tile schema validators."""
 from typing import Any
 
-from .script_types import script_parameter_defaults, validate_script_type
+from .script_types import BUILTIN_FONT_PARAMETER_DEFAULTS, script_parameter_defaults, validate_script_type
 from .data_collection import collect_referenced_scripts, collect_referenced_globals
 from .schema import VALID_TILE_TYPES, TileType, SCHEMA_DEF, tile_schema
 from .tile_images import is_image_param_type
@@ -57,10 +57,11 @@ def _validate_script_parameters(script_id, script_info, provided_params, context
                 f"Valid parameters are: {', '.join(sorted(script_params.keys()))}"
             )
 
-    if script_id in ('tile_ac', 'tile_fan') and 'size' in provided_params:
-        size = provided_params['size']
-        if not isinstance(size, str) or not size.strip() or size.strip() == 'nullptr':
-            raise ValueError(f"{context}: Script '{script_id}' requires a valid font for 'size'.")
+    for font_param in BUILTIN_FONT_PARAMETER_DEFAULTS.get(script_id, ()):
+        if font_param in provided_params:
+            font_val = provided_params[font_param]
+            if not isinstance(font_val, str) or not font_val.strip() or font_val.strip() == 'nullptr':
+                raise ValueError(f"{context}: Script '{script_id}' requires a valid font for '{font_param}'.")
 
     for param, param_type in script_params.items():
         if is_image_param_type(param_type) and param in provided_params:
@@ -158,6 +159,19 @@ def _validate_tile_fields(
                     f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
                     f"option {idx} must be a dict"
                 )
+            if "dynamic_entity" in option:
+                if "entity" in option or "label" in option:
+                    raise ValueError(
+                        f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                        f"option {idx} cannot combine 'dynamic_entity' with 'entity' or 'label'"
+                    )
+                de = option.get("dynamic_entity")
+                if not isinstance(de, str) or not de.strip():
+                    raise ValueError(
+                        f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "
+                        f"option {idx} 'dynamic_entity' must be a non-empty string"
+                    )
+                continue
             if "entity" not in option:
                 raise ValueError(
                     f"Screen '{screen_id}', cycle_entity tile at ({x}, {y}): "

@@ -44,7 +44,8 @@ class FanActionsTest(unittest.TestCase):
         library = yaml.load((ROOT / "esphome/lib/lib_common.yaml").read_text(), Loader=Loader)
         scripts = {script["id"]: script for script in library["script"]}
         glyphs = yaml.safe_load((ROOT / "esphome/lib/mdi_glyphs.yaml").read_text())
-        self.assertIn("\uf168", glyphs)
+        for glyph in ("\uf168", "\uec17", "\uf4b5", "\uf4b6"):
+            self.assertIn(glyph, glyphs)
         source = (ROOT / "esphome/lib/utils.h").read_text()
         pending = source.split("struct PendingFanAttribute {", 1)[1].split(
             "\nstd::map<std::string, PendingClimateMode>", 1
@@ -62,6 +63,7 @@ class FanActionsTest(unittest.TestCase):
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 #define id(x) x
 template<class... Args> void log_warning(Args...) {}
@@ -73,8 +75,25 @@ template<class T> std::optional<T> parse_number(const std::string& value) {
   return {};
 }
 struct Scheduler {
-  std::vector<std::function<void()>> callbacks;
-  void set_timeout(void*, const char*, int, std::function<void()> cb) { callbacks.push_back(cb); }
+  std::vector<std::pair<int, std::function<void()>>> callbacks;
+  void set_timeout(void*, const char*, int delay_ms, std::function<void()> cb) {
+    callbacks.push_back({delay_ms, cb});
+  }
+  void run_delay(int delay_ms) {
+    auto pending = std::move(callbacks);
+    callbacks.clear();
+    for (auto& [delay, cb] : pending) {
+      if (delay == delay_ms) cb();
+      else callbacks.push_back({delay, cb});
+    }
+  }
+  void flush() {
+    while (!callbacks.empty()) {
+      auto pending = std::move(callbacks);
+      callbacks.clear();
+      for (auto& [delay, cb] : pending) cb();
+    }
+  }
 };
 struct Application { Scheduler scheduler; } App;
 }
@@ -92,19 +111,35 @@ struct PendingFanAttribute {
 std::string GetFanAttribute(
 """ + actions + r"""
 enum TextAlign { CENTER, TOP_LEFT };
-enum Font { big, small, tiny, text_small, text_bold };
-enum Color { yellow, gray, white };
+enum Font { big, medium, small, tiny, text_small, text_bold, text_big_bold };
+enum Color { yellow, gray, white, blue, red };
 struct Draw { int x, y; Font font; Color color; TextAlign align; std::string text; };
 std::vector<Draw> draws;
 void print(int x, int y, Font font, Color color, TextAlign align, const char* text) {
   draws.push_back({x, y, font, color, align, text});
 }
+std::pair<int, int> measure(Font font, const char*) {
+  switch (font) {
+    case big: return {80, 80};
+    case medium: return {60, 60};
+    case small: return {40, 40};
+    case tiny: return {24, 24};
+    case text_big_bold: return {30, 30};
+    case text_bold: return {20, 20};
+    case text_small: return {12, 12};
+  }
+  return {20, 20};
+}
 """
-        for name in ("tile_fan", "tile_fan_speed", "tile_fan_direction"):
-            size_parameter = ", Font size" if name == "tile_fan" else ""
+        extra_params = {
+            "tile_fan": ", Font size",
+            "tile_fan_speed": ", Font icon_size, Font text_size",
+            "tile_fan_direction": ", Font size",
+        }
+        for name, extra in extra_params.items():
             code += (
                 f"\nvoid {name}(int x_start, int x_end, int y_start, int y_end, "
-                f"std::vector<std::string> entities{size_parameter}) {{\n"
+                f"std::vector<std::string> entities{extra}) {{\n"
                 + scripts[name]["then"][0]["lambda"] + "\n}\n"
             )
         code += r"""
@@ -123,65 +158,93 @@ int main() {
   values[second + "|direction"] = "reverse";
   std::vector<std::string> fans = {fan, second, "fan.missing", fan + "|percentage"};
   tile_fan(10, 110, 20, 120, fans, small);
-  assert(draws.size() == 1 && draws[0].color == gray && draws[0].font == small);
+  assert(draws.size() == 1 && draws[0].color == gray && draws[0].font == small && draws[0].text == "\U0000ec17");
   ToggleFanPower(fans);
   assert((calls == std::vector<std::string>{fan + ":turn_on", second + ":turn_on"}));
   calls.clear(); values[second] = "on";
   draws.clear(); tile_fan(10, 110, 20, 120, fans, big);
-  assert(draws.size() == 1 && draws[0].color == yellow && draws[0].text == "\U0000f168");
+  assert(draws.size() == 1 && draws[0].color == yellow && draws[0].font == big && draws[0].text == "\U0000f168");
   ToggleFanPower(fans);
   assert((calls == std::vector<std::string>{fan + ":turn_off", second + ":turn_off"}));
   calls.clear();
-  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans);
+  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, small, text_big_bold);
   assert(draws.size() == 2 && draws[0].color == white && draws[0].align == TOP_LEFT);
-  assert(draws[0].x == 12 && draws[0].y == 22 && draws[0].font == tiny && draws[0].text == "\U0000f168");
-  assert(draws[1].text == "33%" && draws[1].color == white);
+  assert(draws[0].x == 12 && draws[0].y == 22 && draws[0].font == small && draws[0].text == "\U0000f168");
+  assert(draws[1].text == "33%" && draws[1].color == white && draws[1].font == text_big_bold);
+  // Rapid taps update optimistic UI immediately and debounce HA send for 3000ms after the last tap
   CycleFanSpeed(fans);
-  assert((calls == std::vector<std::string>{fan + ":set_percentage:66", second + ":set_percentage:66"}));
-  calls.clear();
+  assert(calls.empty());
+  assert(GetFanAttribute(fan + "|percentage") == "66");
+  assert(esphome::App.scheduler.callbacks.size() == 2);
+  auto first_batch = std::move(esphome::App.scheduler.callbacks);
+  esphome::App.scheduler.callbacks.clear();
   CycleFanSpeed(fans);
-  assert((calls == std::vector<std::string>{fan + ":set_percentage:100", second + ":set_percentage:100"}));
-  ReconcileFanAttribute(fan + "|percentage", "66");
+  assert(calls.empty());
   assert(GetFanAttribute(fan + "|percentage") == "100");
+  // Stale 3000ms timers from first tap must not send anything
+  for (auto& [delay, cb] : first_batch) { assert(delay == 3000); cb(); }
+  assert(calls.empty());
+  // Incoming HA update while unsent must not clobber pending target
+  ReconcileFanAttribute(fan + "|percentage", "33");
+  assert(GetFanAttribute(fan + "|percentage") == "100");
+  // Firing the latest 3000ms debounce timers sends only the final speed (100%)
+  esphome::App.scheduler.run_delay(3000);
+  assert((calls == std::vector<std::string>{fan + ":set_percentage:100", second + ":set_percentage:100"}));
   calls.clear();
+  // Tapping again after send wraps to 33% and waits 3000ms; stale 100% confirmation is absorbed
   CycleFanSpeed(fans);
+  assert(calls.empty());
+  assert(GetFanAttribute(fan + "|percentage") == "33");
+  ReconcileFanAttribute(fan + "|percentage", "100");
+  assert(GetFanAttribute(fan + "|percentage") == "33");
+  esphome::App.scheduler.run_delay(3000);
   assert((calls == std::vector<std::string>{fan + ":set_percentage:33", second + ":set_percentage:33"}));
   calls.clear();
-  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans);
-  assert(draws[1].text == "Reverse" && draws[1].color == white);
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, medium);
+  assert(draws.size() == 2);
+  assert(draws[0].text == "\U0000f168" && draws[0].color == white && draws[0].font == medium && draws[0].x == 60 && draws[0].y == 70);
+  assert(draws[1].text == "\U0000f4b5" && draws[1].color == red && draws[1].font == medium && draws[1].x == 60 && draws[1].y == 70);
   CycleFanDirection(fans);
   assert((calls == std::vector<std::string>{fan + ":set_direction:forward", second + ":set_direction:forward"}));
-  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans);
-  assert(draws[1].text == "Forward");
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, small);
+  assert(draws.size() == 2);
+  assert(draws[0].text == "\U0000f168" && draws[0].color == white && draws[0].font == small && draws[0].x == 60 && draws[0].y == 70);
+  assert(draws[1].text == "\U0000f4b6" && draws[1].color == blue && draws[1].font == small && draws[1].x == 60 && draws[1].y == 70);
   calls.clear(); CycleFanDirection(fans);
   assert((calls == std::vector<std::string>{fan + ":set_direction:reverse", second + ":set_direction:reverse"}));
-  for (auto& callback : esphome::App.scheduler.callbacks) callback();
+  esphome::App.scheduler.flush();
   assert(pending_fan_attributes.empty());
   calls.clear();
   values[fan + "|percentage"] = "80";
   values[second + "|percentage"] = "25";
   CycleFanSpeed(fans);
+  assert(calls.empty());
+  esphome::App.scheduler.run_delay(3000);
   assert((calls == std::vector<std::string>{fan + ":set_percentage:50", second + ":set_percentage:50"}));
-  for (auto& callback : esphome::App.scheduler.callbacks) callback();
-  esphome::App.scheduler.callbacks.clear();
+  esphome::App.scheduler.flush();
   calls.clear();
   values[fan + "|percentage_step"] = "unknown";
-  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans);
-  assert(draws[1].text == "25%");
+  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, tiny, text_bold);
+  assert(draws[1].text == "25%" && draws[1].font == text_bold);
   CycleFanSpeed(fans);
+  assert(calls.empty());
+  esphome::App.scheduler.run_delay(3000);
   assert((calls == std::vector<std::string>{second + ":set_percentage:50"}));
+  esphome::App.scheduler.flush();
   calls.clear();
   values[second + "|supported_features"] = "0";
-  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans);
+  draws.clear(); tile_fan_speed(10, 110, 20, 120, fans, tiny, text_bold);
   assert(draws[1].text == "--");
   CycleFanSpeed(fans);
+  esphome::App.scheduler.flush();
   assert(calls.empty());
   values[fan] = "unavailable";
   values[second] = "unavailable";
   draws.clear(); tile_fan(10, 110, 20, 120, fans, big);
-  assert(draws.size() == 2 && draws[0].color == gray && draws[1].text == "--");
-  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans);
-  assert(draws[1].text == "--");
+  assert(draws.size() == 1 && draws[0].color == gray && draws[0].text == "\U0000ec17");
+  draws.clear(); tile_fan_direction(10, 110, 20, 120, fans, big);
+  assert(draws.size() == 2 && draws[0].text == "\U0000f168" && draws[0].font == tiny && draws[0].align == TOP_LEFT);
+  assert(draws[1].text == "--" && draws[1].color == white && draws[1].font == text_bold && draws[1].x == 60 && draws[1].y == 70);
   ToggleFanPower(fans); CycleFanDirection(fans);
   assert(calls.empty());
 }
@@ -204,19 +267,45 @@ int main() {
 #include <vector>
 #define id(x) x
 template<class T> using optional = std::optional<T>;
+uint32_t clock_ms = 0;
+uint32_t millis() { return clock_ms; }
 namespace esphome {
 namespace display { struct DisplayPage {}; }
 struct Scheduler {
-  std::vector<std::function<void()>> callbacks;
-  void set_timeout(void*, const char*, int delay, std::function<void()> cb) {
-    assert(delay == 2000); callbacks.push_back(cb);
+  struct Entry { uint32_t due_ms; std::function<void()> cb; };
+  std::vector<Entry> entries;
+  void set_timeout(void*, const char*, uint32_t delay, std::function<void()> cb) {
+    assert(delay == 1500 || delay == 150 || delay == 75);
+    entries.push_back({clock_ms + delay, std::move(cb)});
   }
-  void fire() { auto pending = callbacks; callbacks.clear(); for (auto& cb : pending) cb(); }
+  void run_due() {
+    bool ran = true;
+    while (ran) {
+      ran = false;
+      for (size_t i = 0; i < entries.size(); ++i) {
+        if (entries[i].due_ms <= clock_ms) {
+          auto cb = std::move(entries[i].cb);
+          entries.erase(entries.begin() + i);
+          cb();
+          ran = true;
+          break;
+        }
+      }
+    }
+  }
+  void advance_to(uint32_t target_ms) {
+    while (clock_ms < target_ms) {
+      clock_ms = (clock_ms + 25 < target_ms) ? (clock_ms + 25) : target_ms;
+      run_due();
+    }
+  }
+  void stall_to(uint32_t target_ms) {
+    clock_ms = target_ms;
+    run_due();
+  }
 };
 struct Application { Scheduler scheduler; } App;
 }
-uint32_t clock_ms = 0;
-uint32_t millis() { return clock_ms; }
 int last_x = 20, last_y = 30;
 bool ignore_touch = false;
 int x_start(int x) { return x * 100; }
@@ -240,12 +329,48 @@ struct LambdaFilter { template<class T> explicit LambdaFilter(T) {} };
 }}
 class Tile {
 public:
+  static constexpr uint32_t kTouchReleaseGraceMs = 150;
   Tile(int x, int y) : x_(x), y_(y) {}
   virtual ~Tile() = default;
   virtual bool requiresFastRefresh() { return false; }
   virtual bool updateOnEntitiesMapChange() { return false; }
   virtual void initSensors() {}
   virtual void decodeEntities() {}
+  static bool isTouchBlockedFor(const Tile* tile) {
+    return active_touch_tile_ != nullptr && active_touch_tile_ != tile;
+  }
+  static bool hasActiveTouchSession() {
+    return screen_touch_active_ || active_touch_tile_ != nullptr;
+  }
+  static bool isScreenTouchActive() { return screen_touch_active_; }
+  static void claimTouchTile(Tile* tile) {
+    if (active_touch_tile_ == nullptr) active_touch_tile_ = tile;
+  }
+  static void releaseTouchTile(const Tile* tile) {
+    if (active_touch_tile_ == tile) active_touch_tile_ = nullptr;
+  }
+  static void notifyScreenTouch() {
+    screen_touch_active_ = true;
+    ++screen_release_gen_;
+    if (active_touch_tile_ != nullptr) active_touch_tile_->onScreenTouchResume();
+  }
+  static void notifyScreenRelease() {
+    screen_touch_active_ = false;
+    const uint32_t gen = ++screen_release_gen_;
+    if (active_touch_tile_ != nullptr) {
+      if (active_touch_tile_->holdsTouchDuringReleaseGrace()) {
+        active_touch_tile_->onScreenTouchPause();
+      } else {
+        active_touch_tile_ = nullptr;
+      }
+    }
+    if (id(ignore_touch)) {
+      esphome::App.scheduler.set_timeout(
+          nullptr, static_cast<const char*>(nullptr), kTouchReleaseGraceMs, [gen]() {
+            if (!screen_touch_active_ && gen == screen_release_gen_) id(ignore_touch) = false;
+          });
+    }
+  }
   void start(esphome::display::DisplayPage* page) { display_page_ = page; customInit(); }
   void touch(bool b) { sensor.send(b); }
   void leave() { onScreenLeave(); }
@@ -257,10 +382,17 @@ protected:
   virtual void customInit() = 0;
   virtual void customDraw() = 0;
   virtual void onScreenLeave() {}
+  virtual bool holdsTouchDuringReleaseGrace() const { return false; }
+  virtual void onScreenTouchPause() {}
+  virtual void onScreenTouchResume() {}
   Sensor sensor;
   Sensor* binary_sensor_ = &sensor;
   esphome::display::DisplayPage* display_page_ = nullptr;
   int x_, y_, x_span_ = 1, y_span_ = 1;
+private:
+  inline static Tile* active_touch_tile_ = nullptr;
+  inline static bool screen_touch_active_ = false;
+  inline static uint32_t screen_release_gen_ = 0;
 };
 std::set<std::string> repository;
 const std::string* Pointer(const std::string& s) { return &*repository.insert(s).first; }
@@ -292,26 +424,143 @@ int main() {
   };
   std::function<void(std::vector<std::string>)> long_action = [&](auto) { ++long_count; };
   HAActionTile tile(0, 0, {}, {short_action}, {"fan.one|percentage"});
+  HAActionTile other_tile(1, 0, {}, {short_action}, {"fan.one|percentage"});
   tile.setLongPress({long_action}, &destination, "FAN");
   tile.change_entities_callback_ = [&]() { ++changes; };
   tile.change_screen_callback_ = [&]() { ++leaves; tile.leave(); };
   tile.start(&page); tile.decodeEntities();
-  tile.touch(true); assert(short_count == 0);
-  clock_ms = 100; tile.touch(false); assert(short_count == 1);
-  esphome::App.scheduler.fire(); assert(long_count == 0);
-  clock_ms = 200; tile.touch(true); clock_ms = 2200;
-  esphome::App.scheduler.fire();
+  other_tile.start(&page); other_tile.decodeEntities();
+
+  // 1. Short tap (100ms hold, confirmed after 150ms release debounce)
+  Tile::notifyScreenTouch(); tile.touch(true); assert(short_count == 0);
+  esphome::App.scheduler.advance_to(100);
+  Tile::notifyScreenRelease(); tile.touch(false); assert(short_count == 0);
+  esphome::App.scheduler.advance_to(250);
+  assert(short_count == 1 && long_count == 0);
+  esphome::App.scheduler.advance_to(1600);
+  assert(short_count == 1 && long_count == 0);
+
+  // 2. Steady 1.5s (1500ms) hold triggers long press and keeps ignore_touch across 50ms dropout
+  Tile::notifyScreenTouch(); tile.touch(true);
+  assert(Tile::isTouchBlockedFor(&other_tile));
+  esphome::App.scheduler.advance_to(3100);
   assert(long_count == 1 && short_count == 1 && changes == 1 && leaves == 1);
   assert(disp.page == &destination && ignore_touch && Deref(dynamic["FAN"]) == std::vector<std::string>{"fan.one"});
-  tile.touch(false); assert(short_count == 1);
-  disp.page = &page; tile.touch(true); tile.leave(); esphome::App.scheduler.fire();
-  assert(long_count == 1 && short_count == 1);
-  clock_ms = 3000; tile.touch(true); clock_ms = 5000; tile.touch(false);
-  assert(long_count == 2 && short_count == 1 && disp.page == &destination);
-  esphome::App.scheduler.fire(); assert(long_count == 2);
+  // Brief 50ms dropout while finger is still resting on new page must NOT clear ignore_touch
+  esphome::App.scheduler.advance_to(3150);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.advance_to(3200);
+  Tile::notifyScreenTouch();
+  esphome::App.scheduler.advance_to(3400);
+  assert(ignore_touch);
+  // Genuine lift clears ignore_touch after 150ms
+  Tile::notifyScreenRelease();
+  esphome::App.scheduler.advance_to(3550);
+  assert(!ignore_touch && short_count == 1);
+
+  // 3. Leaving screen cancels active hold without firing short or long press
   disp.page = &page;
+  Tile::notifyScreenTouch(); tile.touch(true); tile.leave(); Tile::notifyScreenRelease();
+  esphome::App.scheduler.advance_to(5200);
+  assert(long_count == 1 && short_count == 1);
+
+  // 4. Mid-hold 50ms touch dropout on same tile does NOT fire short press in the middle and fires long press at 1500ms
+  esphome::App.scheduler.advance_to(6000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(6600);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  assert(short_count == 1 && long_count == 1);
+  esphome::App.scheduler.advance_to(6650);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  assert(short_count == 1 && long_count == 1);
+  esphome::App.scheduler.advance_to(7500);
+  assert(long_count == 2 && short_count == 1 && disp.page == &destination);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.advance_to(7700);
+  disp.page = &page;
+
+  // 5. Mid-hold dropout + finger drift onto another tile/padding keeps long press alive and blocks other tile
+  esphome::App.scheduler.advance_to(8000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(8500);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.advance_to(8550);
+  Tile::notifyScreenTouch(); // touch re-landed outside `tile`, on `other_tile` / padding!
+  assert(Tile::isTouchBlockedFor(&other_tile));
+  esphome::App.scheduler.advance_to(9500);
+  assert(long_count == 3 && short_count == 1 && disp.page == &destination);
+  Tile::notifyScreenRelease();
+  esphome::App.scheduler.advance_to(9700);
+  disp.page = &page;
+
+  // 6. Glitch straddling the 1500ms mark fires long press as soon as touch resumes
+  esphome::App.scheduler.advance_to(10000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(11450);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.advance_to(11500); // 1500ms mark while mid-glitch -> waits!
+  assert(long_count == 3 && short_count == 1);
+  esphome::App.scheduler.advance_to(11520);
+  Tile::notifyScreenTouch(); // touch was still there!
+  assert(long_count == 4 && short_count == 1 && disp.page == &destination);
+  Tile::notifyScreenRelease();
+  esphome::App.scheduler.advance_to(11700);
+  disp.page = &page;
+
+  // 7. Genuine release at 1420ms (< 1500ms) fires short press, NOT long press
+  esphome::App.scheduler.advance_to(12000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(13420);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.advance_to(13500); // 1500ms mark while releasing -> does NOT false-fire long press
+  assert(long_count == 4 && short_count == 1);
+  esphome::App.scheduler.advance_to(13570); // 150ms release debounce completes
+  assert(long_count == 4 && short_count == 2);
+
+  // 8. Late release event arriving after >= 1500ms before scheduler tick fires long press immediately
+  esphome::App.scheduler.advance_to(14000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  clock_ms = 15600;
+  Tile::notifyScreenRelease(); tile.touch(false);
+  assert(long_count == 5 && short_count == 2 && disp.page == &destination);
+  esphome::App.scheduler.advance_to(15800);
+  assert(long_count == 5 && short_count == 2);
+  disp.page = &page;
+
+  // 9. Non-long-press tile fires immediately on press and unlocks immediately on release
   HAActionTile legacy(0, 0, {}, {short_action}, {"fan.one|percentage"});
-  legacy.start(&page); legacy.decodeEntities(); legacy.touch(true); assert(short_count == 2);
+  legacy.start(&page); legacy.decodeEntities();
+  Tile::notifyScreenTouch(); legacy.touch(true);
+  assert(short_count == 3 && Tile::isTouchBlockedFor(&other_tile));
+  Tile::notifyScreenRelease(); legacy.touch(false);
+  assert(!Tile::hasActiveTouchSession() && !Tile::isTouchBlockedFor(&other_tile));
+
+  // 10. Touch dropout followed by a 250ms display redraw stall does NOT false-fire short press;
+  //     when touchscreen polls on the next frame and sees the finger still down, long press completes.
+  esphome::App.scheduler.advance_to(17000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(17400);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  // Display draw blocks the main loop for 250ms (> 150ms debounce!), then scheduler runs before touchscreen->loop()
+  esphome::App.scheduler.stall_to(17650);
+  assert(short_count == 3 && long_count == 5);
+  // touchscreen->loop() runs in that frame and sees finger still touching
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(18500);
+  assert(long_count == 6 && short_count == 3 && disp.page == &destination);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.advance_to(18700);
+  disp.page = &page;
+
+  // 11. Genuine short tap followed by repeated 250ms display stalls still confirms after kMaxStallRetries loop cycles
+  esphome::App.scheduler.advance_to(20000);
+  Tile::notifyScreenTouch(); tile.touch(true);
+  esphome::App.scheduler.advance_to(20100);
+  Tile::notifyScreenRelease(); tile.touch(false);
+  esphome::App.scheduler.stall_to(20350); assert(short_count == 3);
+  esphome::App.scheduler.stall_to(20600); assert(short_count == 3);
+  esphome::App.scheduler.stall_to(20850); assert(short_count == 3);
+  esphome::App.scheduler.stall_to(21100); assert(short_count == 4 && long_count == 6);
 
   HAActionTile cover(0, 0, {}, {short_action}, {"cover.one"});
   cover.start(&page); cover.decodeEntities();
@@ -322,6 +571,133 @@ int main() {
 }
 """
         compile_and_run(code)
+
+    def test_perform_ha_action_string_ref_and_progmem_string_ref(self):
+        source = (ROOT / "esphome/lib/utils.h").read_text()
+        perform_ha_action = (
+            "void PerformHaAction("
+            + source.split("void PerformHaAction(", 1)[1].split(
+                "\nstd::string GetFanAttribute(", 1
+            )[0]
+        )
+        template = r"""
+#include <cassert>
+#include <cstddef>
+#include <string>
+#include <utility>
+#include <vector>
+
+#define id(x) x
+template<class... Args> void log_info(Args...) {}
+#define ESP_LOGI(...) log_info(__VA_ARGS__)
+
+namespace esphome {
+class StringRef {
+ public:
+  constexpr StringRef() = default;
+  explicit StringRef(const std::string& s) : ptr_(s.data()), len_(s.size()) {}
+  template<size_t N>
+  static constexpr StringRef from_lit(const char (&s)[N]) {
+    return StringRef(s, N - 1);
+  }
+  constexpr const char* c_str() const { return ptr_; }
+  constexpr size_t size() const { return len_; }
+ private:
+  constexpr StringRef(const char* ptr, size_t len) : ptr_(ptr), len_(len) {}
+  const char* ptr_ = "";
+  size_t len_ = 0;
+};
+
+class ProgmemStringRef {
+ public:
+  constexpr ProgmemStringRef() = default;
+  explicit constexpr ProgmemStringRef(const StringRef& ref)
+      : ptr_(ref.c_str()), len_(ref.size()) {}
+  constexpr const char* c_str() const { return ptr_; }
+  constexpr size_t size() const { return len_; }
+ private:
+  const char* ptr_ = "";
+  size_t len_ = 0;
+};
+
+template<typename T>
+struct FixedVector {
+  bool initialized = false;
+  size_t capacity = 0;
+  std::vector<T> items;
+  void init(size_t n) {
+    initialized = true;
+    capacity = n;
+    items.clear();
+    items.reserve(n);
+  }
+  void push_back(const T& item) {
+    assert(initialized && items.size() < capacity);
+    items.push_back(item);
+  }
+};
+
+namespace api {
+struct HomeassistantServiceMap {
+  __FIELD_TYPE__ key;
+  __FIELD_TYPE__ value;
+};
+
+struct HomeassistantActionRequest {
+  __FIELD_TYPE__ service;
+  FixedVector<HomeassistantServiceMap> data;
+};
+}  // namespace api
+}  // namespace esphome
+
+using esphome::StringRef;
+
+struct CapturedCall {
+  std::string service;
+  std::vector<std::pair<std::string, std::string>> data;
+};
+
+struct ApiServer {
+  std::vector<CapturedCall> sent;
+  void send_homeassistant_action(const esphome::api::HomeassistantActionRequest& req) {
+    CapturedCall call;
+    call.service.assign(req.service.c_str(), req.service.size());
+    for (const auto& kv : req.data.items) {
+      call.data.emplace_back(
+          std::string(kv.key.c_str(), kv.key.size()),
+          std::string(kv.value.c_str(), kv.value.size()));
+    }
+    sent.push_back(std::move(call));
+  }
+} api_server;
+
+__PERFORM_HA_ACTION__
+
+int main() {
+  PerformHaAction("light.kitchen", "toggle", {{"brightness_pct", "80"}});
+  assert(api_server.sent.size() == 1);
+  assert(api_server.sent[0].service == "light.toggle");
+  assert((api_server.sent[0].data == std::vector<std::pair<std::string, std::string>>{
+      {"entity_id", "light.kitchen"},
+      {"brightness_pct", "80"},
+  }));
+
+  PerformHaAction("fan.bedroom", "homeassistant.turn_off");
+  assert(api_server.sent.size() == 2);
+  assert(api_server.sent[1].service == "homeassistant.turn_off");
+  assert((api_server.sent[1].data == std::vector<std::pair<std::string, std::string>>{
+      {"entity_id", "fan.bedroom"},
+  }));
+}
+"""
+        for field_type in ("esphome::StringRef", "esphome::ProgmemStringRef"):
+            with self.subTest(field_type=field_type):
+                code = (
+                    template
+                    .replace("__FIELD_TYPE__", field_type)
+                    .replace("__PERFORM_HA_ACTION__", perform_ha_action)
+                )
+                compile_and_run(code)
 
 
 if __name__ == "__main__":

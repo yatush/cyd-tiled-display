@@ -144,7 +144,7 @@ export const DisplayListInput = ({ value, onChange, tileType, images }: { value:
                         );
                     }
 
-                    if (p.name === 'size') {
+                    if (p.name === 'size' || p.type === 'font' || p.type.includes('BaseFont')) {
                         options = fonts.map(f => ({ value: f }));
                     }
 
@@ -165,8 +165,14 @@ export const DisplayListInput = ({ value, onChange, tileType, images }: { value:
                                     value={currentValue}
                                     onChange={e => {
                                         const newParams = { ...params, [p.name]: e.target.value };
-                                        if ((scriptId === 'tile_ac' || scriptId === 'tile_fan') && p.name === 'size' && !e.target.value) {
-                                            delete newParams.size;
+                                        const optionalFontParams: Record<string, string[]> = {
+                                            tile_ac: ['size'],
+                                            tile_fan: ['size'],
+                                            tile_fan_direction: ['size'],
+                                            tile_fan_speed: ['icon_size', 'text_size'],
+                                        };
+                                        if (optionalFontParams[scriptId]?.includes(p.name) && !e.target.value) {
+                                            delete newParams[p.name];
                                         }
                                         const newValues = [...safeValue];
                                         newValues[i] = Object.keys(newParams).length ? { [scriptId]: newParams } : scriptId;

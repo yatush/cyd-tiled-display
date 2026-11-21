@@ -307,6 +307,7 @@ struct PendingFanAttribute {
   std::string target;
   std::vector<std::string> previous_targets;
   uint32_t request_id;
+  bool sent;
 };
 std::map<std::string, PendingFanAttribute> pending_fan_attributes;
 uint32_t fan_request_id = 0;
@@ -314,6 +315,14 @@ uint32_t fan_request_id = 0;
 void ReconcileFanAttribute(const std::string& key, const std::string& value) {
   auto pending = pending_fan_attributes.find(key);
   if (pending == pending_fan_attributes.end()) return;
+  if (!pending->second.sent) {
+    auto previous = std::find(pending->second.previous_targets.begin(),
+                              pending->second.previous_targets.end(), value);
+    if (previous != pending->second.previous_targets.end()) {
+      pending->second.previous_targets.erase(pending->second.previous_targets.begin(), previous + 1);
+    }
+    return;
+  }
   if (value != pending->second.target) {
     auto previous = std::find(pending->second.previous_targets.begin(),
                               pending->second.previous_targets.end(), value);
@@ -493,7 +502,7 @@ void PerformHaAction(
     const std::string& entity, const std::string& action,
     std::vector<std::pair<std::string, std::string>> data = {}) {
   
-  std::string service_name = (action.find('.') == -1)
+  std::string service_name = (action.find('.') == std::string::npos)
           ? entity.substr(0, entity.find('.')).append(".").append(action)
           : action;
 
@@ -503,23 +512,25 @@ void PerformHaAction(
   }
 
   esphome::api::HomeassistantActionRequest request;
-  // Set the service name using StringRef
-  request.service = StringRef(service_name);
+  // ESPHome >= 2026.11 uses ProgmemStringRef (explicitly constructible from StringRef),
+  // whereas older ESPHome versions use StringRef directly.
+  using ServiceStringType = decltype(request.service);
+  request.service = ServiceStringType(StringRef(service_name));
   
   // IMPORTANT: Must call init() before push_back - FixedVector requires this!
   request.data.init(1 + data.size());
   
   // Add entity_id as the first data item  
   esphome::api::HomeassistantServiceMap entity_id_kv;
-  entity_id_kv.key = StringRef("entity_id");
-  entity_id_kv.value = StringRef(entity);
+  entity_id_kv.key = ServiceStringType(StringRef::from_lit("entity_id"));
+  entity_id_kv.value = ServiceStringType(StringRef(entity));
   request.data.push_back(entity_id_kv);
   
   // Add any additional data to the service call
   for (const auto& pair : data) {
     esphome::api::HomeassistantServiceMap kv;
-    kv.key = StringRef(pair.first);
-    kv.value = StringRef(pair.second);
+    kv.key = ServiceStringType(StringRef(pair.first));
+    kv.value = ServiceStringType(StringRef(pair.second));
     request.data.push_back(kv);
   }
   
@@ -532,26 +543,42 @@ std::string GetFanAttribute(const std::string& key) {
 }
 
 void SetFanAttribute(const std::string& entity, const std::string& attribute,
-                     const std::string& value, const std::string& action) {
+                     const std::string& value, const std::string& action,
+                     uint32_t debounce_ms = 0) {
   const std::string key = entity + "|" + attribute;
   auto pending = pending_fan_attributes.find(key);
   if (pending == pending_fan_attributes.end()) {
-    pending = pending_fan_attributes.emplace(key, PendingFanAttribute{value, {}, ++fan_request_id}).first;
+    pending = pending_fan_attributes.emplace(
+        key, PendingFanAttribute{value, {}, ++fan_request_id, debounce_ms == 0}).first;
   } else {
-    pending->second.previous_targets.push_back(pending->second.target);
+    if (pending->second.sent) {
+      pending->second.previous_targets.push_back(pending->second.target);
+    }
     pending->second.target = value;
     pending->second.request_id = ++fan_request_id;
+    pending->second.sent = (debounce_ms == 0);
   }
   const uint32_t request_id = pending->second.request_id;
-  esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 10000, [key, request_id]() {
+  auto send_now = [entity, attribute, action, key, request_id]() {
     auto pending = pending_fan_attributes.find(key);
-    if (pending != pending_fan_attributes.end() && pending->second.request_id == request_id) {
-      ESP_LOGW("Fan", "No confirmation for %s", key.c_str());
-      pending_fan_attributes.erase(pending);
-      id(disp).update();
-    }
-  });
-  PerformHaAction(entity, action, {{attribute, value}});
+    if (pending == pending_fan_attributes.end() || pending->second.request_id != request_id) return;
+    pending->second.sent = true;
+    const std::string target = pending->second.target;
+    esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), 10000, [key, request_id]() {
+      auto pending = pending_fan_attributes.find(key);
+      if (pending != pending_fan_attributes.end() && pending->second.request_id == request_id) {
+        ESP_LOGW("Fan", "No confirmation for %s", key.c_str());
+        pending_fan_attributes.erase(pending);
+        id(disp).update();
+      }
+    });
+    PerformHaAction(entity, action, {{attribute, target}});
+  };
+  if (debounce_ms > 0) {
+    esphome::App.scheduler.set_timeout(nullptr, static_cast<const char*>(nullptr), debounce_ms, send_now);
+  } else {
+    send_now();
+  }
   id(disp).update();
 }
 
@@ -648,7 +675,7 @@ void CycleFanSpeed(const std::vector<std::string>& entities) {
   const float next = group.lowest >= 100 ? group.step : (std::floor((group.lowest + 0.999f) / group.step) + 1) * group.step;
   const int percentage = std::max(1, std::min(100, static_cast<int>(std::floor((next > 100.001f ? group.step : next) + 0.001f))));
   for (const auto& fan : group.fans)
-    SetFanAttribute(fan, "percentage", std::to_string(percentage), "set_percentage");
+    SetFanAttribute(fan, "percentage", std::to_string(percentage), "set_percentage", 3000);
 }
 
 void CycleFanDirection(const std::vector<std::string>& entities) {
