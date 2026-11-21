@@ -187,6 +187,58 @@ class TestApplyImageVariants(unittest.TestCase):
             "img_off",
         )
 
+    def test_spanned_tile_variants(self):
+        """Spanned tiles track (x_span, y_span) so images resize to the full spanned tile dimensions."""
+        scripts = {
+            "tile_lights_images": {
+                "parameters": {
+                    "x_start": "int",
+                    "x_end": "int",
+                    "y_start": "int",
+                    "y_end": "int",
+                    "entities": "string[]",
+                    "image_off": "esphome::image::Image*",
+                    "image_on": "esphome::image::Image*",
+                }
+            }
+        }
+        # Single spanned tile -> unsuffixed variant ID with 5-tuple key carrying span
+        screens_single = [
+            {"id": "p1", "rows": 5, "cols": 4, "tiles": [
+                {"ha_action": {
+                    "x": 1, "y": 0, "x_span": 3, "y_span": 3,
+                    "display": [{"tile_lights_images": {"image_off": "img_off", "image_on": "img_on"}}],
+                }}
+            ]}
+        ]
+        vmap = compute_image_variants(screens_single, available_scripts=scripts)
+        self.assertEqual(vmap, {
+            ("img_off", 5, 4, 3, 3): "img_off",
+            ("img_on", 5, 4, 3, 3): "img_on",
+        })
+
+        # Same image on both 1x1 and 3x3 tiles on the same page -> distinct suffixed variants
+        screens_mixed = [
+            {"id": "p1", "rows": 5, "cols": 4, "tiles": [
+                {"ha_action": {"x": 0, "y": 0, "display_assets": [{"image": "img_off"}]}},
+                {"ha_action": {
+                    "x": 1, "y": 0, "x_span": 3, "y_span": 3,
+                    "display": [{"tile_lights_images": {"image_off": "img_off", "image_on": "img_on"}}],
+                }},
+            ]}
+        ]
+        vmap_mixed = compute_image_variants(screens_mixed, available_scripts=scripts)
+        self.assertEqual(vmap_mixed[("img_off", 5, 4)], "img_off_r5c4")
+        self.assertEqual(vmap_mixed[("img_off", 5, 4, 3, 3)], "img_off_r5c4_s3x3")
+        self.assertEqual(vmap_mixed[("img_on", 5, 4, 3, 3)], "img_on")
+
+        applied = apply_image_variants(screens_mixed, vmap_mixed, available_scripts=scripts)
+        self.assertEqual(applied[0]["tiles"][0]["ha_action"]["display_assets"][0]["image"], "img_off_r5c4")
+        self.assertEqual(
+            applied[0]["tiles"][1]["ha_action"]["display"][0]["tile_lights_images"],
+            {"image_off": "img_off_r5c4_s3x3", "image_on": "img_on"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

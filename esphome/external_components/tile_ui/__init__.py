@@ -332,7 +332,12 @@ async def _register_images(
     _TILE_PAD, _FIXED_PAD = 10, 5
 
     registered: set = set()
-    for (img_id, _rows, _cols), vid in variant_id.items():
+    for _key, vid in variant_id.items():
+        if len(_key) == 5:
+            img_id, _rows, _cols, _x_span, _y_span = _key
+        else:
+            img_id, _rows, _cols = _key
+            _x_span, _y_span = 1, 1
         if vid in registered or ctx.already_registered(vid):
             registered.add(vid)
             continue
@@ -353,11 +358,15 @@ async def _register_images(
             print(f"[tile_ui] Warning: could not decode image '{vid}': {_e}", file=sys.stderr)
             continue
 
-        # Compute resize — mirrors generate_tiles_api.py formula:
-        #   tile_w = (screen_w - (cols+1)*pad) / cols  ;  max_dim = (tile_dim - 2*FIXED_PAD) * scale
+        # Compute resize — matches C++ x_rect()/y_rect() + span formula in utils.h / lib_common.yaml:
+        #   cell_dim = (screen_dim - (count+1)*pad) / count
+        #   tile_dim = cell_dim * span + (span - 1) * pad
+        #   max_dim  = (tile_dim - 2*FIXED_PAD) * scale
         _scale = max(0.1, min(1.0, (img_data.get("scale") or 100) / 100.0))
-        _tile_w = max(8, (screen_w - (_cols + 1) * _TILE_PAD) // _cols)
-        _tile_h = max(8, (screen_h - (_rows + 1) * _TILE_PAD) // _rows)
+        _cell_w = max(8, (screen_w - (_cols + 1) * _TILE_PAD) // _cols)
+        _cell_h = max(8, (screen_h - (_rows + 1) * _TILE_PAD) // _rows)
+        _tile_w = _cell_w * _x_span + (_x_span - 1) * _TILE_PAD
+        _tile_h = _cell_h * _y_span + (_y_span - 1) * _TILE_PAD
         resize_val = (
             max(8, int((_tile_w - _FIXED_PAD * 2) * _scale)),
             max(8, int((_tile_h - _FIXED_PAD * 2) * _scale)),

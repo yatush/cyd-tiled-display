@@ -40,17 +40,24 @@ def _get_script_params(available_scripts: dict | None, script_id: str) -> dict:
     return info.get('parameters', {}) if isinstance(info, dict) else {}
 
 
+def _variant_key(img_id: str, rows: int, cols: int, x_span: int = 1, y_span: int = 1) -> tuple:
+    if x_span == 1 and y_span == 1:
+        return (img_id, rows, cols)
+    return (img_id, rows, cols, x_span, y_span)
+
+
 def compute_image_variants(screens: list, available_scripts: dict | None = None) -> dict:
     """
-    Scan screens and return a mapping ``(img_id, rows, cols) -> variant_id``.
+    Scan screens and return a mapping ``(img_id, rows, cols[, x_span, y_span]) -> variant_id``.
 
-    * When an image appears in only one page layout (rows×cols), the
+    * When an image appears in only one tile size (rows×cols×x_span×y_span), the
       variant_id is kept as the original image ID (no suffix).
-    * When the same image appears in multiple layouts a unique suffix
-      ``_r{rows}c{cols}`` is appended so that ESPHome can declare
-      separate, correctly-sized image objects for each layout.
+    * When the same image appears in multiple tile sizes a unique suffix
+      ``_r{rows}c{cols}`` (plus ``_s{x_span}x{y_span}`` for spanned tiles) is
+      appended so that ESPHome can declare separate, correctly-sized image
+      objects for each tile size.
     """
-    img_sizes: dict = {}  # img_id -> set of (rows, cols)
+    img_sizes: dict = {}  # img_id -> set of (rows, cols, x_span, y_span)
     for screen in screens:
         rows = screen.get('rows', 2)
         cols = screen.get('cols', 2)
@@ -60,16 +67,19 @@ def compute_image_variants(screens: list, available_scripts: dict | None = None)
             for _tname, tdata in tile_obj.items():
                 if not isinstance(tdata, dict):
                     continue
+                x_span = max(1, int(tdata.get('x_span', 1) or 1))
+                y_span = max(1, int(tdata.get('y_span', 1) or 1))
+                size_key = (rows, cols, x_span, y_span)
                 for entry in (tdata.get('display_assets') or []):
                     if isinstance(entry, dict):
                         if entry.get('image') and entry['image'] != 'none':
-                            img_sizes.setdefault(entry['image'], set()).add((rows, cols))
+                            img_sizes.setdefault(entry['image'], set()).add(size_key)
                         # Track per-step image overrides
                         anim = entry.get('animation')
                         if isinstance(anim, dict) and isinstance(anim.get('steps'), list):
                             for step in anim['steps']:
                                 if isinstance(step, dict) and step.get('image') and step['image'] != 'none':
-                                    img_sizes.setdefault(step['image'], set()).add((rows, cols))
+                                    img_sizes.setdefault(step['image'], set()).add(size_key)
                 if available_scripts:
                     display_list = tdata.get('display')
                     if isinstance(display_list, list):
@@ -84,17 +94,18 @@ def compute_image_variants(screens: list, available_scripts: dict | None = None)
                                     if is_image_param_type(script_params.get(param_name)):
                                         img_id = normalize_image_param_id(param_val)
                                         if img_id and img_id not in ('none', 'nullptr'):
-                                            img_sizes.setdefault(img_id, set()).add((rows, cols))
+                                            img_sizes.setdefault(img_id, set()).add(size_key)
 
-    variant_id: dict = {}  # (img_id, rows, cols) -> variant_id
+    variant_id: dict = {}  # (img_id, rows, cols[, x_span, y_span]) -> variant_id
     for iid, sizes in img_sizes.items():
         sorted_sizes = sorted(sizes)
         if len(sorted_sizes) == 1:
-            r, c = sorted_sizes[0]
-            variant_id[(iid, r, c)] = iid
+            r, c, xs, ys = sorted_sizes[0]
+            variant_id[_variant_key(iid, r, c, xs, ys)] = iid
         else:
-            for (r, c) in sorted_sizes:
-                variant_id[(iid, r, c)] = f"{iid}_r{r}c{c}"
+            for (r, c, xs, ys) in sorted_sizes:
+                suffix = f"_r{r}c{c}" if (xs == 1 and ys == 1) else f"_r{r}c{c}_s{xs}x{ys}"
+                variant_id[_variant_key(iid, r, c, xs, ys)] = f"{iid}{suffix}"
 
     return variant_id
 
@@ -102,7 +113,7 @@ def compute_image_variants(screens: list, available_scripts: dict | None = None)
 def apply_image_variants(screens: list, variant_id: dict, available_scripts: dict | None = None) -> list:
     """
     Return a deep copy of ``screens`` where every tile’s image references
-    have been replaced with their per-layout variant IDs.
+    have been replaced with their per-layout/per-span variant IDs.
     """
     result = copy.deepcopy(screens)
     for screen in result:
@@ -114,6 +125,8 @@ def apply_image_variants(screens: list, variant_id: dict, available_scripts: dic
             for _tname, tdata in tile_obj.items():
                 if not isinstance(tdata, dict):
                     continue
+                x_span = max(1, int(tdata.get('x_span', 1) or 1))
+                y_span = max(1, int(tdata.get('y_span', 1) or 1))
                 timages = tdata.get('display_assets')
                 if isinstance(timages, list):
                     new_entries = []
@@ -123,7 +136,7 @@ def apply_image_variants(screens: list, variant_id: dict, available_scripts: dic
                             continue
                         ne = dict(e)
                         if ne.get('image') and ne['image'] != 'none':
-                            ne['image'] = variant_id.get((ne['image'], rows, cols), ne['image'])
+                            ne['image'] = variant_id.get(_variant_key(ne['image'], rows, cols, x_span, y_span), ne['image'])
                         # Substitute per-step image overrides
                         anim = ne.get('animation')
                         if isinstance(anim, dict) and isinstance(anim.get('steps'), list):
@@ -131,7 +144,7 @@ def apply_image_variants(screens: list, variant_id: dict, available_scripts: dic
                             for step in anim['steps']:
                                 s = dict(step)
                                 if s.get('image') and s['image'] != 'none':
-                                    s['image'] = variant_id.get((s['image'], rows, cols), s['image'])
+                                    s['image'] = variant_id.get(_variant_key(s['image'], rows, cols, x_span, y_span), s['image'])
                                 new_steps.append(s)
                             ne['animation'] = {**anim, 'steps': new_steps}
                         new_entries.append(ne)
@@ -153,7 +166,7 @@ def apply_image_variants(screens: list, variant_id: dict, available_scripts: dic
                                 if is_image_param_type(script_params.get(param_name)):
                                     img_id = normalize_image_param_id(param_val)
                                     if img_id and img_id not in ('none', 'nullptr'):
-                                        new_params[param_name] = variant_id.get((img_id, rows, cols), img_id)
+                                        new_params[param_name] = variant_id.get(_variant_key(img_id, rows, cols, x_span, y_span), img_id)
                             new_item[script_id] = new_params
                         new_display.append(new_item)
                     tdata['display'] = new_display

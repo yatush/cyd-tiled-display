@@ -205,7 +205,8 @@ def generate_cpp_from_yaml(input_data, user_lib_dir=None, images_dir=None, scree
         # Write source PNGs (one per unique image ID) for debugging purposes.
         _written_pngs: set = set()  # track which source PNGs have been written
 
-        for (_iid, _rows, _cols), _vid in sorted(_variant_id.items()):
+        for _key, _vid in sorted(_variant_id.items()):
+            _iid = _key[0]
             img_entry = images.get(_iid)
             if not isinstance(img_entry, dict):
                 continue
