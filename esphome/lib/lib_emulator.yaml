@@ -140,6 +140,7 @@ light:
     red: led_red
     green: led_green
     blue: led_blue
+    entity_category: "config"
 
 button:
   - platform: template

@@ -179,6 +179,7 @@ light:
     name: Display Backlight
     id: backlight
     restore_mode: RESTORE_DEFAULT_ON
+    entity_category: "config"
     on_turn_on:
       then:
         - component.update: disp
