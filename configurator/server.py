@@ -3227,12 +3227,7 @@ def compute_ble_resource_plan(fan_count, has_ble_proxy=False):
     total_connections = min(3, fan_slots + proxy_slots)
     persistent = count > 0 and count <= fan_slots
     idle_disconnect_s = 0 if persistent else 30
-    if has_ble_proxy or total_connections >= 3:
-        display_buffer_size = '20%'
-    elif total_connections == 2:
-        display_buffer_size = '30%'
-    else:
-        display_buffer_size = '40%'
+    display_buffer_size = '15%' if total_connections >= 3 else '20%'
     return {
         'fan_count': count,
         'fan_slots': fan_slots,

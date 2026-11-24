@@ -161,12 +161,7 @@ export function computeBleResourcePlan(
   const totalConnections = Math.min(3, fanSlots + proxySlots);
   const persistent = count > 0 && count <= fanSlots;
   const idleDisconnectS = persistent ? 0 : 30;
-  const displayBufferSize =
-    hasBleProxy || totalConnections >= 3
-      ? '20%'
-      : totalConnections === 2
-      ? '30%'
-      : '40%';
+  const displayBufferSize = totalConnections >= 3 ? '15%' : '20%';
 
   return {
     fanCount: count,

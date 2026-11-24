@@ -2,9 +2,9 @@
 # Automatically included in packages when any fan/light entity is configured for BLE control.
 
 substitutions:
-  # Balanced display buffer on 3.5" panels (trimmed BLE stack saves ~30-40 KB SRAM vs bluetooth_proxy)
-  display_buffer_size: "40%"
-  # 1 shared GATT slot for tuya_ble_fan (bumped to 2 automatically if ble_proxy is also enabled)
+  # Compact display buffer on 3.5" panels so Wi-Fi + HA API + BLE all have safe heap headroom
+  display_buffer_size: "20%"
+  # 1 shared GATT slot for tuya_ble_fan (bumped automatically for multi-fan / ble_proxy)
   ble_max_connections: "1"
 
 esp32:
@@ -20,6 +20,9 @@ esp32:
 api:
   custom_services: true
   homeassistant_services: true
+
+esp32_ble:
+  max_connections: ${ble_max_connections}
 
 esp32_ble_tracker:
   id: ble_tracker

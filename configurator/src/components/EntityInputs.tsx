@@ -638,11 +638,9 @@ export const BleFansManagerPanel = ({
       {bleFans.length > 0 && (
         <div
           className={`rounded border p-2 text-[10px] space-y-1 ${
-            resourcePlan.displayBufferSize === '20%'
+            resourcePlan.displayBufferSize === '15%'
               ? 'bg-amber-50/80 border-amber-200 text-amber-900'
-              : resourcePlan.displayBufferSize === '30%'
-              ? 'bg-sky-50/80 border-sky-200 text-sky-900'
-              : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+              : 'bg-sky-50/80 border-sky-200 text-sky-900'
           }`}
         >
           <div className="flex items-center justify-between font-semibold">
@@ -668,11 +666,9 @@ export const BleFansManagerPanel = ({
             <span className="font-mono font-bold">{resourcePlan.displayBufferSize}</span>
           </div>
           <div className="opacity-80 leading-snug">
-            {resourcePlan.displayBufferSize === '40%'
-              ? 'Balanced buffer — minimal redraw overhead (~46 KB RAM freed for 1 BLE slot).'
-              : resourcePlan.displayBufferSize === '30%'
-              ? 'Slightly smaller buffer to keep headroom for 2 simultaneous BLE connections (slightly more SPI passes on 3.5" redraws).'
-              : 'Compact 20% buffer for 3 BLE connections / BLE Proxy — safe RAM headroom, slightly slower full-screen 3.5" redraws.'}
+            {resourcePlan.displayBufferSize === '15%'
+              ? 'Extra-compact 15% buffer (~23 KB) to keep safe RAM headroom for 3 simultaneous BLE connections + HA API.'
+              : 'Compact 20% buffer (~31 KB, matching BLE Proxy) to keep safe RAM headroom alongside Wi-Fi + HA API.'}
           </div>
         </div>
       )}

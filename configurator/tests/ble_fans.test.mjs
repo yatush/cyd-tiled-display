@@ -59,7 +59,7 @@ test('YAML generation emits persistent mode for 1 fan, on-demand for multiple, a
   assert.match(singleSections.packageLine, /tuya_ble_fan: !include lib\/tuya_ble_fan\.yaml/);
   assert.deepEqual(singleSections.extraSubstitutions, {
     ble_max_connections: '1',
-    display_buffer_size: '40%',
+    display_buffer_size: '20%',
   });
   const parsedSingle = load(singleSections.componentSection);
   assert.equal(parsedSingle.tuya_ble_fan.idle_disconnect_s, 0);
@@ -78,7 +78,7 @@ test('YAML generation emits persistent mode for 1 fan, on-demand for multiple, a
   const multiNoProxy = buildTuyaBleFanYamlSections(multi, false);
   assert.deepEqual(multiNoProxy.extraSubstitutions, {
     ble_max_connections: '2',
-    display_buffer_size: '30%',
+    display_buffer_size: '20%',
   });
   const parsedMultiNoProxy = load(multiNoProxy.componentSection);
   assert.equal(parsedMultiNoProxy.tuya_ble_fan.max_connections, 2);
@@ -87,7 +87,7 @@ test('YAML generation emits persistent mode for 1 fan, on-demand for multiple, a
   const multiWithProxy = buildTuyaBleFanYamlSections(multi, true);
   assert.deepEqual(multiWithProxy.extraSubstitutions, {
     ble_max_connections: '3',
-    display_buffer_size: '20%',
+    display_buffer_size: '15%',
   });
   const parsedMulti = load(multiWithProxy.componentSection);
   assert.equal(parsedMulti.tuya_ble_fan.max_connections, 2);

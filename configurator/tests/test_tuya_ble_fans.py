@@ -286,6 +286,7 @@ def test_add_ble_fan_to_device_yaml_preserves_tags_and_upserts(tmp_path):
     assert len(fans2) == 2
     text2 = dev_yaml.read_text(encoding="utf-8")
     assert 'ble_max_connections: "3"' in text2
+    assert 'display_buffer_size: "15%"' in text2
     assert "max_connections: 2" in text2
     assert "idle_disconnect_s: 0" in text2
 
