@@ -389,5 +389,45 @@ class TestScriptValidation(unittest.TestCase):
         self.assertIn("&id(img_off_r2c3), &id(img_on)", full_cpp)
         self.assertIn("&id(img_off_r3c4), &id(img_on_only_p2)", full_cpp)
 
+    def test_tile_switch_and_action_switch(self):
+        import os
+        from configurator.generate_tiles_api import load_merged_lib_doc
+        from tile_ui.tile_generation import generate_tile_cpp
+
+        lib_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "lib"))
+        doc = load_merged_lib_doc(lib_dir)
+        lib_scripts = {s["id"]: s for s in doc.get("script", []) if isinstance(s, dict) and "id" in s}
+
+        self.assertIn("tile_switch", lib_scripts)
+        self.assertIn("action_switch", lib_scripts)
+        self.assertEqual(lib_scripts["tile_switch"]["parameters"].get("size"), "esphome::display::BaseFont*")
+        self.assertEqual(lib_scripts["action_switch"]["parameters"], {"entities": "string[]"})
+
+        tile = {"ha_action": {
+            "x": 0, "y": 0,
+            "entities": [{"entity": "switch.desk_lamp"}],
+            "display": ["tile_switch"],
+            "perform": ["action_switch"],
+        }}
+        screens = [{"id": "main", "flags": ["BASE"], "tiles": [tile]}]
+
+        for display, expected in [
+            (["tile_switch"], "&id(big)"),
+            ([{"tile_switch": {}}], "&id(big)"),
+            ([{"tile_switch": {"size": "medium"}}], "&id(medium)"),
+            ([{"tile_switch": {"size": "id(small)"}}], "&id(small)"),
+        ]:
+            with self.subTest(display=display):
+                tile["ha_action"]["display"] = display
+                validate_tiles_config(screens, lib_scripts)
+                cpp = generate_tile_cpp(tile, lib_scripts, "main")
+                self.assertIn(f"id(tile_switch).execute(arg0, arg1, arg2, arg3, arg4, {expected})", cpp)
+                self.assertIn("id(action_switch).execute(arg0)", cpp)
+
+        for bad_size in ("", "nullptr"):
+            tile["ha_action"]["display"] = [{"tile_switch": {"size": bad_size}}]
+            with self.assertRaisesRegex(ValueError, "valid font"):
+                validate_tiles_config(screens, lib_scripts)
+
 if __name__ == '__main__':
     unittest.main()

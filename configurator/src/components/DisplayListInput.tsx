@@ -170,6 +170,7 @@ export const DisplayListInput = ({ value, onChange, tileType, images }: { value:
                                             tile_fan: ['size'],
                                             tile_fan_direction: ['size'],
                                             tile_fan_speed: ['icon_size', 'text_size'],
+                                            tile_switch: ['size'],
                                         };
                                         if (optionalFontParams[scriptId]?.includes(p.name) && !e.target.value) {
                                             delete newParams[p.name];

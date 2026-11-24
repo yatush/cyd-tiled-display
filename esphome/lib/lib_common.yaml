@@ -745,6 +745,33 @@ script:
             PerformHaAction(light, action);
           }
 
+  - id: tile_switch
+    parameters:
+      x_start: int
+      x_end: int
+      y_start: int
+      y_end: int
+      entities: string[]
+      size: esphome::display::BaseFont*
+    then:
+      - lambda: |-
+          const bool is_on = IsAnyOn(entities);
+          auto color = is_on ? id(yellow) : id(gray);
+          const char* icon = is_on ? "\U0000e9f6" : "\U0000e9f5";
+          print((x_start + x_end) / 2, (y_start + y_end) / 2, size, color, TextAlign::CENTER, icon);
+
+  - id: action_switch
+    parameters:
+      entities: string[]
+    then:
+      - lambda: |-
+          static const char* TURN_ON = "turn_on";
+          static const char* TURN_OFF = "turn_off";
+          std::string action = IsAnyOn(entities) ? TURN_OFF : TURN_ON;
+          for (const std::string& sw : entities) {
+            PerformHaAction(sw, action);
+          }
+
   - id: action_fan_power
     parameters:
       entities: string[]
