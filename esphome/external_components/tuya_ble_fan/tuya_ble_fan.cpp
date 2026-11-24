@@ -363,7 +363,6 @@ void TuyaBleLightOutput::write_state(light::LightState *state) {
 
 void TuyaBleLightOutput::sync_from_device() {
   if (light_state_ == nullptr || in_write_state_) return;
-  initial_write_skipped_ = true;
 
   const bool target_on = parent_->light_on();
   const float target_b = tuya_brightness_to_float(parent_->light_brightness());
@@ -376,6 +375,7 @@ void TuyaBleLightOutput::sync_from_device() {
     return;
   }
 
+  initial_write_skipped_ = true;
   syncing_ = true;
   auto call = light_state_->make_call();
   call.set_state(target_on);
@@ -419,9 +419,32 @@ void TuyaBleFanDevice::setup() {
              static_cast<unsigned long long>(mac_address_), uuid_.c_str());
   }
 
+  uint32_t state_hash = fnv1a_hash("tuya_ble_state_v1:" + device_id_);
+  state_pref_ = global_preferences->make_preference<CachedDeviceState>(state_hash);
+  CachedDeviceState saved{};
+  if (state_pref_.load(&saved) && saved.magic == 0xA5) {
+    fan_on_ = saved.fan_on != 0;
+    fan_speed_ = std::max(1, std::min(6, static_cast<int>(saved.fan_speed)));
+    fan_reverse_ = saved.fan_reverse != 0;
+    fan_preset_ = saved.fan_preset > 0 ? 1 : 0;
+    light_on_ = saved.light_on != 0;
+    light_brightness_ = std::max(10, std::min(1000, static_cast<int>(saved.light_brightness)));
+    light_color_temp_ = std::max(0, std::min(1000, static_cast<int>(saved.light_color_temp)));
+    last_saved_state_ = saved;
+    ESP_LOGI(TAG, "[%s] Restored cached state: fan=%s (spd=%d), light=%s (bri=%d, ct=%d)",
+             name_.c_str(), fan_on_ ? "ON" : "OFF", fan_speed_,
+             light_on_ ? "ON" : "OFF", light_brightness_, light_color_temp_);
+  }
+
   TuyaBleFanRegistry::instance().register_fan_entity(fan_entity_id_, this);
   if (!light_entity_id_.empty()) {
     TuyaBleFanRegistry::instance().register_light_entity(light_entity_id_, this);
+  }
+  if (fan_entity_ != nullptr) {
+    fan_entity_->sync_from_device();
+  }
+  if (light_output_ != nullptr) {
+    light_output_->sync_from_device();
   }
 }
 
@@ -640,7 +663,25 @@ void TuyaBleFanDevice::apply_incoming_dps(const std::vector<TuyaDp> &dps) {
   if (timer_changed) notify_timer_changed();
 }
 
+void TuyaBleFanDevice::save_cached_state() {
+  CachedDeviceState cur{};
+  cur.magic = 0xA5;
+  cur.fan_on = fan_on_ ? 1 : 0;
+  cur.fan_speed = static_cast<uint8_t>(std::max(1, std::min(6, fan_speed_)));
+  cur.fan_reverse = fan_reverse_ ? 1 : 0;
+  cur.fan_preset = fan_preset_ > 0 ? 1 : 0;
+  cur.light_on = light_on_ ? 1 : 0;
+  cur.light_brightness = static_cast<uint16_t>(std::max(10, std::min(1000, light_brightness_)));
+  cur.light_color_temp = static_cast<uint16_t>(std::max(0, std::min(1000, light_color_temp_)));
+  if (std::memcmp(&cur, &last_saved_state_, sizeof(cur)) == 0) {
+    return;
+  }
+  last_saved_state_ = cur;
+  state_pref_.save(&cur);
+}
+
 void TuyaBleFanDevice::notify_fan_changed() {
+  save_cached_state();
   if (fan_entity_ != nullptr) {
     fan_entity_->sync_from_device();
   }
@@ -654,6 +695,7 @@ void TuyaBleFanDevice::notify_fan_changed() {
 }
 
 void TuyaBleFanDevice::notify_light_changed() {
+  save_cached_state();
   if (light_output_ != nullptr) {
     light_output_->sync_from_device();
   }

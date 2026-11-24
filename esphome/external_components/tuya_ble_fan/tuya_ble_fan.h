@@ -152,6 +152,18 @@ class TuyaBleFanDevice {
     char uuid[17];
   };
 
+  struct CachedDeviceState {
+    uint8_t magic;
+    uint8_t fan_on;
+    uint8_t fan_speed;
+    uint8_t fan_reverse;
+    uint8_t fan_preset;
+    uint8_t light_on;
+    uint16_t light_brightness;
+    uint16_t light_color_temp;
+  };
+
+  void save_cached_state();
   void notify_fan_changed();
   void notify_light_changed();
   void notify_timer_changed();
@@ -168,6 +180,8 @@ class TuyaBleFanDevice {
   uint64_t mac_address_{0};
   esp_ble_addr_type_t addr_type_{BLE_ADDR_TYPE_PUBLIC};
   ESPPreferenceObject identity_pref_;
+  ESPPreferenceObject state_pref_;
+  CachedDeviceState last_saved_state_{};
   BleConnStatus conn_status_{BleConnStatus::DISCONNECTED};
 
   // Fan state
