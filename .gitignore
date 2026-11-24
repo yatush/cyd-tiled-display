@@ -22,3 +22,6 @@ configurator/.DS_Store
 configurator/__pycache__*
 .env
 esphome/lib/secrets.yaml
+
+# Local BLE fan credential vault
+.cyd_ble_fans.json

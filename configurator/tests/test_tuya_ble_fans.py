@@ -424,3 +424,37 @@ def test_discover_tuya_ble_fans_reads_device_registry_mac_and_isolates_localtuya
     assert "lt_plug_1" not in by_id
 
 
+def test_ble_fan_vault_persists_after_yaml_and_ha_removal(tmp_path):
+    esphome_dir = tmp_path / "esphome"
+    esphome_dir.mkdir()
+    ha_dir = tmp_path / "ha"
+    ha_dir.mkdir()
+    dev_yaml = esphome_dir / "office-cyd.yaml"
+    dev_yaml.write_text(
+        "substitutions:\n  device_name: office-cyd\npackages:\n  device_base: !include lib/3248s035.yaml\n",
+        encoding="utf-8",
+    )
+
+    server.add_ble_fan_to_device_yaml(str(dev_yaml), {
+        "name": "Office Fan",
+        "device_id": "bf_office_vault_001",
+        "local_key": "vault_secret_key",
+        "mac_address": "b8:06:0d:54:04:f6",
+        "uuid": "9fdb2c8416a6872a",
+        "fan_entity_id": "fan.office_cyd_office_fan",
+        "light_entity_id": "light.office_cyd_office_fan_light",
+    })
+
+    # Simulate deleting the fan from the CYD YAML (and having no HA Tuya integration)
+    dev_yaml.write_text(
+        "substitutions:\n  device_name: office-cyd\npackages:\n  device_base: !include lib/3248s035.yaml\n",
+        encoding="utf-8",
+    )
+
+    known = server.get_all_known_tuya_ble_fans(str(ha_dir), str(esphome_dir))
+    assert len(known) == 1
+    assert known[0]["device_id"] == "bf_office_vault_001"
+    assert known[0]["local_key"] == "vault_secret_key"
+    assert known[0]["mac_address"] == "B8:06:0D:54:04:F6"
+    assert known[0]["uuid"] == "9fdb2c8416a6872a"
+    assert (esphome_dir / ".cyd_ble_fans.json").is_file()

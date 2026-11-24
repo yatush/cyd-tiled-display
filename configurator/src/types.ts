@@ -56,6 +56,8 @@ export interface TuyaBleCandidate {
   device_id: string;
   local_key: string;
   product_id: string;
+  mac_address?: string;
+  uuid?: string;
   fan_entity_id: string;
   light_entity_id: string;
   supported: boolean;

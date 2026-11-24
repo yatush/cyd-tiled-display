@@ -579,13 +579,17 @@ export const BleFansManagerPanel = ({
   const handleAddCandidate = (deviceId: string) => {
     const cand = availableCandidates.find(c => c.device_id === deviceId);
     if (!cand) return;
+    const fanName = cand.name || cand.fan_entity_id || cand.device_id;
+    const defaults = deriveDefaultBleEntityIds(fanName, currentDevicePath);
     const next = upsertBleFan(bleFans, {
-      name: cand.name || cand.fan_entity_id || cand.device_id,
+      name: fanName,
       device_id: cand.device_id,
       local_key: cand.local_key,
       product_id: cand.product_id || '',
-      fan_entity_id: cand.fan_entity_id || '',
-      light_entity_id: cand.light_entity_id || '',
+      mac_address: cand.mac_address || '',
+      uuid: cand.uuid || '',
+      fan_entity_id: cand.fan_entity_id || defaults.fan_entity_id,
+      light_entity_id: cand.light_entity_id || defaults.light_entity_id,
       expose_to_ha: true,
     });
     onUpdateBleFans(next);
@@ -838,7 +842,7 @@ export const BleFansManagerPanel = ({
           }}
           className="w-full border border-blue-200 rounded p-1.5 text-xs bg-white text-blue-700 font-medium"
         >
-          <option value="">+ Add discovered Tuya fan...</option>
+          <option value="">+ Import saved / discovered BLE fan...</option>
           {availableCandidates.map(c => {
             const hosts = getOtherBleFanHosts(c.device_id, bleFanHosts, currentDevicePath);
             const suffix = hosts.length > 0 ? ` [⚠ on ${hosts.join(', ')}]` : '';

@@ -716,6 +716,16 @@ def save_config():
         if isinstance(config_data, str):
             with open(target_path, 'w') as f:
                 f.write(config_data)
+            if re.search(r'^tuya_ble_fan:', config_data, flags=re.MULTILINE):
+                try:
+                    loader_cls = generate_tiles_api.create_safe_yaml_loader()
+                    parsed_saved = yaml.load(config_data, Loader=loader_cls)
+                    if isinstance(parsed_saved, dict):
+                        saved_fans = (parsed_saved.get('tuya_ble_fan') or {}).get('fans')
+                        if isinstance(saved_fans, list):
+                            save_ble_fans_to_vault(saved_fans, os.path.dirname(target_path))
+                except Exception:
+                    pass
         else:
             with open(target_path, 'w') as f:
                 yaml.dump(config_data, f, sort_keys=False)
@@ -2876,6 +2886,136 @@ def discover_tuya_ble_fans(ha_config_dir=None):
     return fans
 
 
+BLE_FAN_VAULT_FILENAME = '.cyd_ble_fans.json'
+
+
+def _ble_fan_vault_path(esphome_dir=None):
+    root_dir = esphome_dir or BASE_DIR
+    return os.path.join(root_dir, BLE_FAN_VAULT_FILENAME)
+
+
+def load_ble_fan_vault(esphome_dir=None):
+    """Load persisted BLE fan credentials from /config/esphome/.cyd_ble_fans.json."""
+    path = _ble_fan_vault_path(esphome_dir)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get('fans'), dict):
+            return dict(data['fans'])
+    except Exception:
+        pass
+    return {}
+
+
+def save_ble_fans_to_vault(fans, esphome_dir=None):
+    """Upsert BLE fan credentials (device_id + local_key) into .cyd_ble_fans.json without deleting existing entries."""
+    if not fans:
+        return load_ble_fan_vault(esphome_dir)
+    root_dir = esphome_dir or BASE_DIR
+    if not root_dir or not os.path.isdir(root_dir):
+        return {}
+
+    vault = load_ble_fan_vault(root_dir)
+    changed = False
+    for fan in fans:
+        if not isinstance(fan, dict):
+            continue
+        dev_id = str(fan.get('device_id') or '').strip()
+        local_key = str(fan.get('local_key') or '').strip()
+        if not dev_id or not local_key:
+            continue
+        prev = dict(vault.get(dev_id) or {})
+        merged = {
+            'name': str(fan.get('name') or prev.get('name') or dev_id).strip(),
+            'device_id': dev_id,
+            'local_key': local_key,
+            'product_id': str(fan.get('product_id') or prev.get('product_id') or '').strip(),
+            'mac_address': str(fan.get('mac_address') or prev.get('mac_address') or '').strip().upper(),
+            'uuid': str(fan.get('uuid') or prev.get('uuid') or '').strip(),
+            'fan_entity_id': str(fan.get('fan_entity_id') or prev.get('fan_entity_id') or '').strip(),
+            'light_entity_id': str(fan.get('light_entity_id') or prev.get('light_entity_id') or '').strip(),
+            'supported': True,
+        }
+        if merged != prev:
+            vault[dev_id] = merged
+            changed = True
+
+    if changed:
+        path = _ble_fan_vault_path(root_dir)
+        tmp_path = f'{path}.tmp'
+        try:
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump({'version': 1, 'fans': vault}, f, indent=2, sort_keys=True)
+            try:
+                os.chmod(tmp_path, 0o600)
+            except OSError:
+                pass
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+    return vault
+
+
+def collect_yaml_ble_fans(esphome_dir=None):
+    """Extract all tuya_ble_fan.fans entries currently configured in CYD device YAMLs."""
+    root_dir = esphome_dir or BASE_DIR
+    collected = []
+    if not root_dir or not os.path.isdir(root_dir):
+        return collected
+    loader_cls = generate_tiles_api.create_safe_yaml_loader()
+    for fname in sorted(os.listdir(root_dir)):
+        if not (fname.endswith('.yaml') or fname.endswith('.yml')) or fname in ('secrets.yaml', 'images.yaml'):
+            continue
+        fpath = os.path.join(root_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                raw_text = f.read()
+            if not re.search(r'^tuya_ble_fan:', raw_text, flags=re.MULTILINE):
+                continue
+            parsed = yaml.load(raw_text, Loader=loader_cls)
+            if not isinstance(parsed, dict):
+                continue
+            fans = (parsed.get('tuya_ble_fan') or {}).get('fans')
+            if isinstance(fans, list):
+                for item in fans:
+                    if isinstance(item, dict) and item.get('device_id') and item.get('local_key'):
+                        collected.append(dict(item))
+        except Exception:
+            continue
+    return collected
+
+
+def get_all_known_tuya_ble_fans(ha_config_dir=None, esphome_dir=None):
+    """Return deduplicated BLE fans from HA storage, CYD YAMLs, and the persistent .cyd_ble_fans.json vault."""
+    ha_fans = discover_tuya_ble_fans(ha_config_dir)
+    yaml_fans = collect_yaml_ble_fans(esphome_dir)
+    vault = save_ble_fans_to_vault(ha_fans + yaml_fans, esphome_dir)
+
+    by_id = {}
+    for fan in ha_fans:
+        dev_id = str(fan.get('device_id') or '').strip()
+        if dev_id:
+            by_id[dev_id] = dict(fan)
+    for dev_id, vfan in vault.items():
+        if dev_id in by_id:
+            # Enrich HA entry with cached MAC/UUID if missing
+            for k in ('mac_address', 'uuid', 'product_id'):
+                if not by_id[dev_id].get(k) and vfan.get(k):
+                    by_id[dev_id][k] = vfan[k]
+        else:
+            by_id[dev_id] = dict(vfan)
+
+    return sorted(by_id.values(), key=lambda x: (str(x.get('name') or '').lower(), str(x.get('device_id') or '')))
+
+
 def find_ble_fan_hosts(esphome_dir=None):
     """Scan ESPHome device YAMLs to find which device files already host each Tuya BLE fan device_id."""
     by_id, _by_mac, _by_uuid = _find_ble_fan_hosts_extended(esphome_dir)
@@ -2885,7 +3025,7 @@ def find_ble_fan_hosts(esphome_dir=None):
 @app.route('/api/tuya_ble_fans', methods=['GET'])
 def get_tuya_ble_fans():
     try:
-        fans = discover_tuya_ble_fans()
+        fans = get_all_known_tuya_ble_fans()
         hosted_by = find_ble_fan_hosts()
         for fan in fans:
             fan['hosted_by'] = hosted_by.get(fan['device_id'], [])
@@ -3390,11 +3530,13 @@ def add_ble_fan_to_device_yaml(filepath, fan_entry):
         f.write(updated_text)
     os.replace(tmp_path, filepath)
 
-    # Return plain JSON-serializable fan dicts
-    return [
+    # Return plain JSON-serializable fan dicts and back up to persistent vault
+    plain_fans = [
         {k: (str(v) if isinstance(v, _YamlSecret) else v) for k, v in fan.items()}
         for fan in existing_fans
     ]
+    save_ble_fans_to_vault(plain_fans, os.path.dirname(filepath))
+    return plain_fans
 
 
 async def _exec_esphome_service(client, service, data):
@@ -3627,7 +3769,7 @@ def scan_tuya_ble_whole_house():
             })
         cyd_statuses.extend(offline_cyds)
 
-        tuya_local_fans = discover_tuya_ble_fans()
+        tuya_local_fans = get_all_known_tuya_ble_fans()
         hosted_by_id, hosted_by_mac, hosted_by_uuid = _find_ble_fan_hosts_extended()
         aggregated = aggregate_ble_scan_sightings(
             all_sightings,
