@@ -770,14 +770,14 @@ TuyaBleFanHub::FanSession *TuyaBleFanHub::find_evictable_session(uint32_t now) {
   return best;
 }
 
-void TuyaBleFanHub::on_scan_service(int duration_s) {
+void TuyaBleFanHub::on_scan_service(int32_t duration_s) {
   if (pair_job_.active) {
     ESP_LOGW(TAG, "Ignoring scan_tuya_ble_fans while unbound pairing is in progress");
     emit_ha_event("esphome.tuya_ble_scan_done", {{"count", "0"}});
     return;
   }
-  int clamped = std::max(3, std::min(30, duration_s <= 0 ? 10 : duration_s));
-  ESP_LOGI(TAG, "On-demand Tuya BLE scan requested for %d s", clamped);
+  int32_t clamped = std::max<int32_t>(3, std::min<int32_t>(30, duration_s <= 0 ? 10 : duration_s));
+  ESP_LOGI(TAG, "On-demand Tuya BLE scan requested for %ld s", static_cast<long>(clamped));
   discovery_sightings_.clear();
   discovery_scan_active_ = true;
   discovery_scan_end_ms_ = millis() + static_cast<uint32_t>(clamped) * 1000u;
@@ -801,7 +801,7 @@ void TuyaBleFanHub::finish_discovery_scan() {
   emit_ha_event("esphome.tuya_ble_scan_done", {{"count", std::to_string(count)}});
 }
 
-void TuyaBleFanHub::on_pair_service(std::string mac, int addr_type, std::string uuid,
+void TuyaBleFanHub::on_pair_service(std::string mac, int32_t addr_type, std::string uuid,
                                     std::string device_id, std::string local_key,
                                     bool blink_confirm) {
   uint64_t parsed_mac = parse_mac_str(mac);

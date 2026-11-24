@@ -225,8 +225,8 @@ class TuyaBleFanHub : public Component,
   void request_activity(TuyaBleFanDevice *device);
 
   // On-demand Native API services (zero idle RAM overhead)
-  void on_scan_service(int duration_s);
-  void on_pair_service(std::string mac, int addr_type, std::string uuid,
+  void on_scan_service(int32_t duration_s);
+  void on_pair_service(std::string mac, int32_t addr_type, std::string uuid,
                        std::string device_id, std::string local_key, bool blink_confirm);
 
  protected:
