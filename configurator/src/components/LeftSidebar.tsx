@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth, AlertTriangle } from 'lucide-react';
 import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity, BleFanConfig, TuyaBleCandidate } from '../types';
-import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel } from './FormInputs';
+import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel, BleFansManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange, updateDynamicEntityFixedValues } from '../utils/tileUtils';
 import { configHasBleProxy } from '../utils/bleFanUtils';
 
@@ -81,6 +81,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   tuyaBleCandidates,
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
+  const [isBleFansOpen, setIsBleFansOpen] = useState(false);
+
+  const handleUpdateBleFans = (next: BleFanConfig[]) => setConfig(prev => {
+    const updated: Config = { ...prev };
+    if (next.length > 0) updated.ble_fans = next;
+    else delete updated.ble_fans;
+    return updated;
+  });
 
   useEffect(() => {
     setExpandedPages(prev => {
@@ -198,12 +206,35 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           haEntities={haEntities}
                           bleFans={config.ble_fans || []}
                           tuyaBleCandidates={tuyaBleCandidates}
-                          onUpdateBleFans={(next: BleFanConfig[]) => setConfig(prev => {
-                            const updated: Config = { ...prev };
-                            if (next.length > 0) updated.ble_fans = next;
-                            else delete updated.ble_fans;
-                            return updated;
-                          })}
+                          onUpdateBleFans={handleUpdateBleFans}
+                      />
+                  </div>
+              </div>
+          )}
+        </div>
+
+        {/* BLE Fans (Device-level, no tile required) */}
+        <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
+          <div 
+              className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
+              onClick={() => setIsBleFansOpen(!isBleFansOpen)}
+          >
+              <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                  {isBleFansOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <Bluetooth size={14} className="text-blue-600" /> BLE Fans
+              </h3>
+              <span className={`text-[10px] font-bold px-1.5 rounded-full ${(config.ble_fans || []).length > 0 ? 'bg-blue-100 text-blue-700' : 'text-slate-400 bg-slate-200'}`}>
+                  {(config.ble_fans || []).length}
+              </span>
+          </div>
+          
+          {isBleFansOpen && (
+              <div className="p-3 pt-0 border-t border-slate-100 mt-2">
+                  <div className="pt-2">
+                      <BleFansManagerPanel
+                          bleFans={config.ble_fans || []}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          onUpdateBleFans={handleUpdateBleFans}
                       />
                   </div>
               </div>

@@ -6,7 +6,7 @@ import { ConditionBuilder } from './ConditionBuilder';
 import { EntityListInput, BleFanToggle, BleFanProps } from './EntityInputs';
 
 export { ConditionBuilder } from './ConditionBuilder';
-export { EntityListInput, DynamicEntitiesEditor, EntityArrayInput, BleFanToggle } from './EntityInputs';
+export { EntityListInput, DynamicEntitiesEditor, EntityArrayInput, BleFanToggle, BleFansManagerPanel } from './EntityInputs';
 export type { BleFanProps } from './EntityInputs';
 export {
   generateImageId,

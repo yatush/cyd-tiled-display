@@ -95,3 +95,27 @@ test('configHasBleProxy and getConfigSnapshot track BLE proxy and ble_fans', () 
   };
   assert.notEqual(getConfigSnapshot(baseConfig), getConfigSnapshot(withBleFan));
 });
+
+test('headless BLE fan (no tile, no fan_entity_id) serializes and round-trips cleanly', () => {
+  const headless = [{
+    name: 'Pergula Fan',
+    device_id: 'bf_pergula_999',
+    local_key: 'secret_pergula_key',
+    product_id: 'vfqiwthdnlkynebk',
+    fan_entity_id: '',
+    light_entity_id: '',
+    expose_to_ha: true,
+  }];
+  const sections = buildTuyaBleFanYamlSections(headless, false);
+  assert.match(sections.packageLine, /tuya_ble_fan: !include lib\/tuya_ble_fan\.yaml/);
+  const parsed = load(sections.componentSection);
+  assert.equal(parsed.tuya_ble_fan.fans.length, 1);
+  assert.equal(parsed.tuya_ble_fan.fans[0].name, 'Pergula Fan');
+  assert.equal(parsed.tuya_ble_fan.fans[0].fan_entity_id, undefined);
+  assert.equal(parsed.tuya_ble_fan.fans[0].expose_to_ha, true);
+
+  const extracted = extractBleFansFromDeviceYaml(parsed);
+  assert.equal(extracted.length, 1);
+  assert.equal(extracted[0].device_id, 'bf_pergula_999');
+  assert.equal(extracted[0].fan_entity_id, '');
+});

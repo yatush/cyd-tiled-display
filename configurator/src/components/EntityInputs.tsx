@@ -504,3 +504,221 @@ export const EntityArrayInput = ({
     </div>
   );
 };
+
+export const BleFansManagerPanel = ({
+  bleFans = [],
+  tuyaBleCandidates = [],
+  onUpdateBleFans,
+}: {
+  bleFans?: BleFanConfig[];
+  tuyaBleCandidates?: TuyaBleCandidate[];
+  onUpdateBleFans: (next: BleFanConfig[]) => void;
+}) => {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState('');
+
+  const availableCandidates = tuyaBleCandidates.filter(
+    c =>
+      !bleFans.some(
+        f =>
+          (c.device_id && f.device_id === c.device_id) ||
+          (c.fan_entity_id && normalizeEntityId(f.fan_entity_id) === normalizeEntityId(c.fan_entity_id))
+      )
+  );
+
+  const handleAddCandidate = (deviceId: string) => {
+    const cand = availableCandidates.find(c => c.device_id === deviceId);
+    if (!cand) return;
+    const next = upsertBleFan(bleFans, {
+      name: cand.name || cand.fan_entity_id || cand.device_id,
+      device_id: cand.device_id,
+      local_key: cand.local_key,
+      product_id: cand.product_id || '',
+      fan_entity_id: cand.fan_entity_id || '',
+      light_entity_id: cand.light_entity_id || '',
+      expose_to_ha: true,
+    });
+    onUpdateBleFans(next);
+    setSelectedCandidateId('');
+  };
+
+  const handleAddManual = () => {
+    const next: BleFanConfig[] = [
+      ...bleFans,
+      {
+        name: `BLE Fan ${bleFans.length + 1}`,
+        device_id: '',
+        local_key: '',
+        product_id: '',
+        fan_entity_id: '',
+        light_entity_id: '',
+        expose_to_ha: true,
+      },
+    ];
+    onUpdateBleFans(next);
+    setExpandedIdx(next.length - 1);
+  };
+
+  const updateAt = (idx: number, patch: Partial<BleFanConfig>) => {
+    const copy = [...bleFans];
+    copy[idx] = { ...copy[idx], ...patch };
+    onUpdateBleFans(copy);
+  };
+
+  const removeAt = (idx: number) => {
+    onUpdateBleFans(bleFans.filter((_, i) => i !== idx));
+    if (expandedIdx === idx) setExpandedIdx(null);
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] text-slate-500 leading-snug">
+        Host Tuya BLE fans on this CYD and expose them to Home Assistant — no tile required.
+      </p>
+
+      {bleFans.length > 0 && (
+        <div className="space-y-1.5">
+          {bleFans.map((fan, idx) => {
+            const missingCreds = !fan.device_id?.trim() || !fan.local_key?.trim();
+            const isExpanded = expandedIdx === idx || missingCreds;
+            return (
+              <div key={`${fan.device_id || fan.name}-${idx}`} className="border border-blue-200 rounded p-2 bg-white space-y-1.5 shadow-sm">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Bluetooth size={12} className="text-blue-600 flex-shrink-0" />
+                    <span className="text-xs font-semibold text-slate-700 truncate">
+                      {fan.name || fan.fan_entity_id || 'Unnamed BLE Fan'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedIdx(isExpanded && !missingCreds ? null : idx)}
+                      className={`p-1 rounded hover:bg-blue-50 ${missingCreds ? 'text-amber-600' : 'text-slate-500'}`}
+                      title="Edit BLE fan settings"
+                    >
+                      <Settings2 size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeAt(idx)}
+                      className="p-1 rounded text-red-500 hover:bg-red-50"
+                      title="Remove BLE fan"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {(fan.fan_entity_id || fan.light_entity_id) && (
+                  <div className="flex flex-wrap gap-1">
+                    {fan.fan_entity_id && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-full">
+                        {fan.fan_entity_id}
+                      </span>
+                    )}
+                    {fan.light_entity_id && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-700 truncate max-w-full">
+                        {fan.light_entity_id}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {isExpanded && (
+                  <div className="pt-1.5 border-t border-slate-100 space-y-1">
+                    <input
+                      type="text"
+                      value={fan.name}
+                      onChange={e => updateAt(idx, { name: e.target.value })}
+                      placeholder="Friendly Name (e.g. Office Fan)"
+                      className="w-full border rounded px-1.5 py-1 text-[11px]"
+                    />
+                    <div className="grid grid-cols-2 gap-1">
+                      <input
+                        type="text"
+                        value={fan.device_id}
+                        onChange={e => updateAt(idx, { device_id: e.target.value })}
+                        placeholder="Device ID *"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                      <input
+                        type="text"
+                        value={fan.local_key}
+                        onChange={e => updateAt(idx, { local_key: e.target.value })}
+                        placeholder="Local Key *"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                      <input
+                        type="text"
+                        value={fan.product_id || ''}
+                        onChange={e => updateAt(idx, { product_id: e.target.value })}
+                        placeholder="Product ID (optional)"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                      <input
+                        type="text"
+                        value={fan.mac_address || ''}
+                        onChange={e => updateAt(idx, { mac_address: e.target.value })}
+                        placeholder="BLE MAC (auto)"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={fan.fan_entity_id || ''}
+                      onChange={e => updateAt(idx, { fan_entity_id: e.target.value })}
+                      placeholder="Local tile fan entity (optional)"
+                      className="w-full border rounded px-1.5 py-1 text-[10px]"
+                    />
+                    <input
+                      type="text"
+                      value={fan.light_entity_id || ''}
+                      onChange={e => updateAt(idx, { light_entity_id: e.target.value })}
+                      placeholder="Local tile light entity (optional)"
+                      className="w-full border rounded px-1.5 py-1 text-[10px]"
+                    />
+                    <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer pt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={fan.expose_to_ha !== false}
+                        onChange={e => updateAt(idx, { expose_to_ha: e.target.checked })}
+                        className="rounded border-slate-300 text-blue-600"
+                      />
+                      <span>Expose fan, light &amp; timer to Home Assistant</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {availableCandidates.length > 0 && (
+        <select
+          value={selectedCandidateId}
+          onChange={e => {
+            if (e.target.value) handleAddCandidate(e.target.value);
+          }}
+          className="w-full border border-blue-200 rounded p-1.5 text-xs bg-white text-blue-700 font-medium"
+        >
+          <option value="">+ Add discovered Tuya fan...</option>
+          {availableCandidates.map(c => (
+            <option key={c.device_id} value={c.device_id}>
+              {c.name} ({c.fan_entity_id || c.device_id})
+            </option>
+          ))}
+        </select>
+      )}
+
+      <button
+        type="button"
+        onClick={handleAddManual}
+        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+      >
+        <Plus size={12} /> Add Manual BLE Fan
+      </button>
+    </div>
+  );
+};

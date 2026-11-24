@@ -126,14 +126,14 @@ export function extractBleFansFromDeviceYaml(rawData: any): BleFanConfig[] {
   const fans = rawData?.tuya_ble_fan?.fans;
   if (!Array.isArray(fans)) return [];
   return fans
-    .filter((f: any) => f && typeof f === 'object' && (f.fan_entity_id || f.light_entity_id))
+    .filter((f: any) => f && typeof f === 'object' && (f.device_id || f.fan_entity_id || f.light_entity_id))
     .map((f: any) => ({
-      name: String(f.name || f.fan_entity_id || ''),
+      name: String(f.name || f.fan_entity_id || f.device_id || ''),
       device_id: String(f.device_id || ''),
       local_key: String(f.local_key || ''),
       product_id: f.product_id ? String(f.product_id) : '',
       mac_address: f.mac_address ? String(f.mac_address) : '',
-      fan_entity_id: String(f.fan_entity_id || ''),
+      fan_entity_id: f.fan_entity_id ? String(f.fan_entity_id) : '',
       light_entity_id: f.light_entity_id ? String(f.light_entity_id) : '',
       expose_to_ha: f.expose_to_ha !== false,
     }));
@@ -150,7 +150,7 @@ export function buildTuyaBleFanYamlSections(
   hasBleProxy: boolean = false
 ): TuyaBleYamlSections {
   const validFans = (bleFans || []).filter(
-    f => f && f.device_id?.trim() && f.local_key?.trim() && (f.fan_entity_id?.trim() || f.light_entity_id?.trim())
+    f => f && f.device_id?.trim() && f.local_key?.trim() && (f.name?.trim() || f.fan_entity_id?.trim() || f.light_entity_id?.trim())
   );
   if (validFans.length === 0) {
     return {
@@ -162,13 +162,13 @@ export function buildTuyaBleFanYamlSections(
 
   const serializedFans = validFans.map(f => {
     const entry: Record<string, any> = {
-      name: f.name || f.fan_entity_id,
+      name: (f.name || f.fan_entity_id || f.device_id).trim(),
       device_id: f.device_id.trim(),
       local_key: f.local_key.trim(),
     };
     if (f.product_id?.trim()) entry.product_id = f.product_id.trim();
     if (f.mac_address?.trim()) entry.mac_address = f.mac_address.trim();
-    entry.fan_entity_id = f.fan_entity_id.trim();
+    if (f.fan_entity_id?.trim()) entry.fan_entity_id = f.fan_entity_id.trim();
     if (f.light_entity_id?.trim()) entry.light_entity_id = f.light_entity_id.trim();
     entry.expose_to_ha = f.expose_to_ha !== false;
     return entry;

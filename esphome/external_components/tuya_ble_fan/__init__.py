@@ -50,7 +50,7 @@ FAN_ITEM_SCHEMA = cv.Schema(
         cv.Optional(CONF_PRODUCT_ID, default=""): cv.string,
         cv.Optional(CONF_UUID, default=""): cv.string,
         cv.Optional(CONF_MAC_ADDRESS, default=""): _validate_optional_mac,
-        cv.Required(CONF_FAN_ENTITY_ID): cv.string,
+        cv.Optional(CONF_FAN_ENTITY_ID, default=""): cv.string,
         cv.Optional(CONF_LIGHT_ENTITY_ID, default=""): cv.string,
         cv.Optional(CONF_EXPOSE_TO_HA, default=True): cv.boolean,
         cv.GenerateID(CONF_FAN_COMPONENT_ID): cv.declare_id(TuyaBleFanEntity),
