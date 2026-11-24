@@ -236,6 +236,18 @@ export function updateDynamicEntityFixedValues(
   return nextConfig;
 }
 
+export const getTileNavigationTarget = (
+  tile: { type: string; destination?: unknown; long_destination?: unknown }
+): { destination: string; isLongPress: boolean } | null => {
+  if (tile.type === 'move_page' && typeof tile.destination === 'string' && tile.destination) {
+    return { destination: tile.destination, isLongPress: false };
+  }
+  if (tile.type === 'ha_action' && typeof tile.long_destination === 'string' && tile.long_destination) {
+    return { destination: tile.long_destination, isLongPress: true };
+  }
+  return null;
+};
+
 export const getTileLabel = (tile: Tile): string => {
   if (typeof tile.title === 'string') return tile.title;
   if (typeof tile.label === 'string') return tile.label;
