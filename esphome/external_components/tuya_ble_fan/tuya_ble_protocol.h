@@ -22,6 +22,7 @@ constexpr uint16_t FUN_SENDER_PAIR = 0x0001;
 constexpr uint16_t FUN_SENDER_DPS = 0x0002;
 constexpr uint16_t FUN_SENDER_DEVICE_STATUS = 0x0003;
 constexpr uint16_t FUN_SENDER_DPS_V4 = 0x0027;
+constexpr uint16_t FUN_RPT_NET_STAT_REQ = 0x001E;
 
 constexpr uint16_t FUN_RECEIVE_DP = 0x8001;
 constexpr uint16_t FUN_RECEIVE_TIME_DP = 0x8003;
@@ -29,6 +30,8 @@ constexpr uint16_t FUN_RECEIVE_SIGN_DP = 0x8004;
 constexpr uint16_t FUN_RECEIVE_SIGN_TIME_DP = 0x8005;
 constexpr uint16_t FUN_RECEIVE_DP_V4 = 0x8006;
 constexpr uint16_t FUN_RECEIVE_TIME_DP_V4 = 0x8007;
+constexpr uint16_t FUN_RECEIVE_TIME1_REQ = 0x8011;
+constexpr uint16_t FUN_RECEIVE_TIME2_REQ = 0x8012;
 
 // Tuya BLE security flags
 constexpr uint8_t SECURITY_FLAG_LOGIN = 0x04;

@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
 #include "esphome/components/esp32_ble/ble.h"
 #include "esphome/core/hal.h"
@@ -1413,6 +1414,17 @@ void TuyaBleFanHub::loop() {
       }
 
       if (slot.device != nullptr) {
+        if (!slot.got_dp_report && !slot.explicit_status_queried &&
+            now - slot.ready_entered_ms >= 1500) {
+          slot.explicit_status_queried = true;
+          ESP_LOGD(TAG, "[%s] No DP report yet — querying explicit DP IDs (conn_id=%u)",
+                   slot.device->name().c_str(), slot.conn_id);
+          enqueue_gatt_packet(
+              slot, FUN_SENDER_DEVICE_STATUS,
+              {DP_LIGHT_POWER, DP_LIGHT_BRIGHTNESS, DP_LIGHT_COLOR_TEMP, DP_FAN_POWER,
+               DP_FAN_PRESET, DP_FAN_SPEED, DP_FAN_DIRECTION, DP_FAN_TIMER},
+              SECURITY_FLAG_SESSION);
+        }
         if (slot.device->has_pending_dps()) {
           flush_device_dps(slot, slot.device);
         }
@@ -1821,7 +1833,10 @@ void TuyaBleFanHub::handle_decrypted_frame(FanSession &slot, const TuyaDecrypted
     }
     slot.state = SessionState::READY;
     slot.last_activity_ms = millis();
+    slot.ready_entered_ms = slot.last_activity_ms;
     slot.last_rssi_poll_ms = slot.last_activity_ms;
+    slot.got_dp_report = false;
+    slot.explicit_status_queried = false;
     slot.device->set_conn_status(BleConnStatus::CONNECTED);
     ESP_LOGI(TAG, "[%s] Tuya BLE session READY (conn_id=%u)", slot.device->name().c_str(), slot.conn_id);
 
@@ -1834,10 +1849,52 @@ void TuyaBleFanHub::handle_decrypted_frame(FanSession &slot, const TuyaDecrypted
 
   if (slot.device == nullptr) return;
 
+  // Device time sync requests (0x8011 = Unix ms ASCII + tz, 0x8012 = local date/time)
+  if (frame.code == FUN_RECEIVE_TIME1_REQ) {
+    time_t now_s = std::time(nullptr);
+    int64_t ts_ms = (now_s > 1700000000) ? static_cast<int64_t>(now_s) * 1000LL : 1700000000000LL;
+    char ts_buf[20];
+    snprintf(ts_buf, sizeof(ts_buf), "%013lld", static_cast<long long>(ts_ms));
+    std::vector<uint8_t> resp(ts_buf, ts_buf + 13);
+    resp.push_back(0x00);
+    resp.push_back(0x00);
+    ESP_LOGD(TAG, "[%s] Replying to TIME1_REQ (0x8011)", slot.device->name().c_str());
+    enqueue_gatt_packet(slot, FUN_RECEIVE_TIME1_REQ, resp, SECURITY_FLAG_SESSION, frame.seq_num);
+    return;
+  }
+
+  if (frame.code == FUN_RECEIVE_TIME2_REQ) {
+    time_t now_s = std::time(nullptr);
+    if (now_s < 1700000000) now_s = 1700000000;
+    struct tm tm_buf{};
+    localtime_r(&now_s, &tm_buf);
+    std::vector<uint8_t> resp = {
+        static_cast<uint8_t>((tm_buf.tm_year + 1900) % 100),
+        static_cast<uint8_t>(tm_buf.tm_mon + 1),
+        static_cast<uint8_t>(tm_buf.tm_mday),
+        static_cast<uint8_t>(tm_buf.tm_hour),
+        static_cast<uint8_t>(tm_buf.tm_min),
+        static_cast<uint8_t>(tm_buf.tm_sec),
+        static_cast<uint8_t>(tm_buf.tm_wday),
+        0x00,
+        0x00,
+    };
+    ESP_LOGD(TAG, "[%s] Replying to TIME2_REQ (0x8012)", slot.device->name().c_str());
+    enqueue_gatt_packet(slot, FUN_RECEIVE_TIME2_REQ, resp, SECURITY_FLAG_SESSION, frame.seq_num);
+    return;
+  }
+
+  if (frame.code == FUN_RPT_NET_STAT_REQ) {
+    ESP_LOGD(TAG, "[%s] ACKing RPT_NET_STAT_REQ (0x001E)", slot.device->name().c_str());
+    enqueue_gatt_packet(slot, FUN_RPT_NET_STAT_REQ, {0x00}, SECURITY_FLAG_SESSION, frame.seq_num);
+    return;
+  }
+
   // Incoming DP reports (v3, signed v3, and v4)
   if (frame.code == FUN_RECEIVE_DP || frame.code == FUN_RECEIVE_TIME_DP ||
       frame.code == FUN_RECEIVE_SIGN_DP || frame.code == FUN_RECEIVE_SIGN_TIME_DP ||
       frame.code == FUN_RECEIVE_DP_V4 || frame.code == FUN_RECEIVE_TIME_DP_V4) {
+    slot.got_dp_report = true;
     const uint8_t *ptr = frame.data.data();
     size_t len = frame.data.size();
     std::vector<TuyaDp> dps;
@@ -1899,8 +1956,11 @@ void TuyaBleFanHub::handle_decrypted_frame(FanSession &slot, const TuyaDecrypted
     if (send_ack) {
       enqueue_gatt_packet(slot, frame.code, ack_payload, SECURITY_FLAG_SESSION, frame.seq_num);
     }
-  } else if (frame.code != FUN_SENDER_DEVICE_STATUS && frame.code != FUN_SENDER_DPS &&
-             frame.code != FUN_SENDER_DPS_V4) {
+  } else if (frame.code == FUN_SENDER_DEVICE_STATUS) {
+    ESP_LOGD(TAG, "[%s] DEVICE_STATUS response (len=%u, status=%u)",
+             slot.device->name().c_str(), static_cast<unsigned>(frame.data.size()),
+             frame.data.empty() ? 255u : static_cast<unsigned>(frame.data[0]));
+  } else if (frame.code != FUN_SENDER_DPS && frame.code != FUN_SENDER_DPS_V4) {
     ESP_LOGD(TAG, "[%s] Unhandled Tuya BLE frame code=0x%04X (len=%u)",
              slot.device->name().c_str(), frame.code, static_cast<unsigned>(frame.data.size()));
   }

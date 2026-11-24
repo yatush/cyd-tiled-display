@@ -290,8 +290,11 @@ class TuyaBleFanHub : public Component,
     GattPacketReassembler reassembler;
     std::deque<std::vector<uint8_t>> write_queue;
     uint32_t state_entered_ms{0};
+    uint32_t ready_entered_ms{0};
     uint32_t last_activity_ms{0};
     uint32_t last_rssi_poll_ms{0};
+    bool got_dp_report{false};
+    bool explicit_status_queried{false};
   };
 
   bool is_persistent_mode() const { return fans_.size() <= max_connections_ && idle_disconnect_s_ == 0; }
