@@ -72,18 +72,55 @@ CONFIG_SCHEMA = cv.Schema(
 ).extend(cv.COMPONENT_SCHEMA)
 
 
+def _validate_light_subconfig(light_id, output_id, name):
+    raw = {
+        CONF_ID: light_id,
+        CONF_OUTPUT_ID: output_id,
+        CONF_NAME: name,
+    }
+    if hasattr(light, "LIGHT_SCHEMA"):
+        return light.LIGHT_SCHEMA.extend(
+            {cv.GenerateID(CONF_OUTPUT_ID): cv.declare_id(TuyaBleLightOutput)}
+        )(raw)
+    return raw
+
+
+def _validate_fan_subconfig(fan_id, name):
+    raw = {
+        CONF_ID: fan_id,
+        CONF_NAME: name,
+    }
+    if hasattr(fan, "fan_schema"):
+        return fan.fan_schema(TuyaBleFanEntity)(raw)
+    if hasattr(fan, "FAN_SCHEMA"):
+        return fan.FAN_SCHEMA(raw)
+    return raw
+
+
+def _validate_number_subconfig(num_id, name):
+    raw = {
+        CONF_ID: num_id,
+        CONF_NAME: name,
+    }
+    if hasattr(number, "number_schema"):
+        return number.number_schema(TuyaBleTimerNumber)(raw)
+    if hasattr(number, "NUMBER_SCHEMA"):
+        return number.NUMBER_SCHEMA(raw)
+    return raw
+
+
 async def to_code(config):
     cg.add_define("USE_TUYA_BLE_FAN")
 
     hub = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(hub, config)
+    await esp32_ble_tracker.register_client(hub, config)
 
     tracker = await cg.get_variable(config[esp32_ble_tracker.CONF_ESP32_BLE_ID])
     cg.add(hub.set_parent(tracker))
 
     fans_cfg = config[CONF_FANS]
     idle_s = config[CONF_IDLE_DISCONNECT_S]
-    # Single fan defaults to persistent unless explicitly overridden
     if len(fans_cfg) == 1 and CONF_IDLE_DISCONNECT_S not in config:
         idle_s = 0
     cg.add(hub.set_idle_disconnect_s(idle_s))
@@ -105,38 +142,29 @@ async def to_code(config):
             cg.add(dev.set_light_entity_id(fan_cfg[CONF_LIGHT_ENTITY_ID]))
 
         if fan_cfg[CONF_EXPOSE_TO_HA]:
-            fan_entity = cg.new_Pvariable(fan_cfg[CONF_FAN_COMPONENT_ID], dev)
-            await fan.register_fan(
-                fan_entity,
-                {
-                    CONF_ID: fan_cfg[CONF_FAN_COMPONENT_ID],
-                    CONF_NAME: name,
-                },
-            )
+            fan_sub = _validate_fan_subconfig(fan_cfg[CONF_FAN_COMPONENT_ID], name)
+            fan_entity = cg.new_Pvariable(fan_sub[CONF_ID], dev)
+            await fan.register_fan(fan_entity, fan_sub)
             cg.add(dev.set_fan_entity(fan_entity))
 
-            light_out = cg.new_Pvariable(fan_cfg[CONF_LIGHT_OUTPUT_ID], dev)
-            light_state = cg.new_Pvariable(
-                fan_cfg[CONF_LIGHT_COMPONENT_ID], light_out
+            light_sub = _validate_light_subconfig(
+                fan_cfg[CONF_LIGHT_COMPONENT_ID],
+                fan_cfg[CONF_LIGHT_OUTPUT_ID],
+                f"{name} Light",
             )
-            await light.register_light(
-                light_state,
-                {
-                    CONF_ID: fan_cfg[CONF_LIGHT_COMPONENT_ID],
-                    CONF_OUTPUT_ID: fan_cfg[CONF_LIGHT_OUTPUT_ID],
-                    CONF_NAME: f"{name} Light",
-                },
-            )
+            light_out = cg.new_Pvariable(light_sub[CONF_OUTPUT_ID], dev)
+            await light.register_light(light_out, light_sub)
+            light_state = await cg.get_variable(light_sub[CONF_ID])
             cg.add(light_out.set_light_state(light_state))
             cg.add(dev.set_light_output(light_out))
 
-            timer_num = cg.new_Pvariable(fan_cfg[CONF_TIMER_COMPONENT_ID], dev)
+            num_sub = _validate_number_subconfig(
+                fan_cfg[CONF_TIMER_COMPONENT_ID], f"{name} Timer"
+            )
+            timer_num = cg.new_Pvariable(num_sub[CONF_ID], dev)
             await number.register_number(
                 timer_num,
-                {
-                    CONF_ID: fan_cfg[CONF_TIMER_COMPONENT_ID],
-                    CONF_NAME: f"{name} Timer",
-                },
+                num_sub,
                 min_value=0,
                 max_value=540,
                 step=1,

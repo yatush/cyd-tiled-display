@@ -194,6 +194,7 @@ class TuyaBleFanHub : public Component,
                            esp_ble_gattc_cb_param_t *param) override;
   void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) override;
   void connect() override;
+  void disconnect() override;
 
   void request_activity(TuyaBleFanDevice *device);
 
@@ -227,9 +228,13 @@ class TuyaBleFanHub : public Component,
 
   TuyaBleFanDevice *pick_next_device_with_work();
 
-  esp32_ble_tracker::ESP32BLETracker *parent_{nullptr};
   std::vector<TuyaBleFanDevice *> fans_;
   uint32_t idle_disconnect_s_{30};
+
+  esp_gatt_if_t gattc_if_{ESP_GATT_IF_NONE};
+  uint16_t conn_id_{0};
+  bool has_conn_id_{false};
+  esp_bd_addr_t remote_bda_{0};
 
   SessionState session_state_{SessionState::IDLE};
   TuyaBleFanDevice *active_device_{nullptr};

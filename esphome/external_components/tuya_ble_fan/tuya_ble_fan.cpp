@@ -558,9 +558,6 @@ void TuyaBleFanHub::setup() {
     fan->set_hub(this);
     fan->setup();
   }
-  if (parent_ != nullptr) {
-    parent_->register_client(this);
-  }
   state_entered_ms_ = millis();
   last_activity_ms_ = millis();
 }
@@ -649,7 +646,7 @@ void TuyaBleFanHub::stop_scan_if_running() {
 
 void TuyaBleFanHub::start_connect(TuyaBleFanDevice *device) {
   if (device == nullptr || !device->has_mac()) return;
-  if (this->gattc_if_ == 0) {
+  if (this->gattc_if_ == ESP_GATT_IF_NONE) {
     // Wait until ESP_GATTC_REG_EVT registers gattc_if_
     return;
   }
@@ -668,7 +665,6 @@ void TuyaBleFanHub::start_connect(TuyaBleFanDevice *device) {
   write_queue_.clear();
 
   mac_u64_to_bda(device->mac_address(), this->remote_bda_);
-  this->address_ = device->mac_address();
   session_state_ = SessionState::CONNECTING;
   state_entered_ms_ = millis();
   last_activity_ms_ = millis();
@@ -691,7 +687,7 @@ void TuyaBleFanHub::disconnect_current() {
   ESP_LOGD(TAG, "Disconnecting BLE GATT session");
   session_state_ = SessionState::DISCONNECTING;
   state_entered_ms_ = millis();
-  if (this->gattc_if_ != 0 && this->conn_id_ != 0) {
+  if (this->gattc_if_ != ESP_GATT_IF_NONE && this->has_conn_id_) {
     esp_ble_gattc_close(this->gattc_if_, this->conn_id_);
   } else {
     reset_session();
@@ -701,6 +697,7 @@ void TuyaBleFanHub::disconnect_current() {
 void TuyaBleFanHub::reset_session() {
   session_state_ = SessionState::IDLE;
   active_device_ = nullptr;
+  has_conn_id_ = false;
   write_char_handle_ = 0;
   notify_char_handle_ = 0;
   notify_cccd_handle_ = 0;
@@ -712,6 +709,10 @@ void TuyaBleFanHub::reset_session() {
 
 void TuyaBleFanHub::connect() {
   // Handled directly via esp_ble_gattc_open in start_connect()
+}
+
+void TuyaBleFanHub::disconnect() {
+  disconnect_current();
 }
 
 bool TuyaBleFanHub::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
@@ -847,9 +848,12 @@ void TuyaBleFanHub::gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_
 bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if,
                                         esp_ble_gattc_cb_param_t *param) {
   if (event == ESP_GATTC_REG_EVT) {
+    if (param->reg.app_id != this->app_id) {
+      return false;
+    }
     if (param->reg.status == ESP_GATT_OK) {
       this->gattc_if_ = gattc_if;
-      ESP_LOGD(TAG, "Registered GATTC interface %d", gattc_if);
+      ESP_LOGD(TAG, "Registered GATTC interface %d (app_id=%u)", gattc_if, this->app_id);
     }
     return true;
   }
@@ -868,6 +872,7 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         break;
       }
       this->conn_id_ = param->open.conn_id;
+      this->has_conn_id_ = true;
       reconnect_backoff_ms_ = 2000;
       session_state_ = SessionState::DISCOVERING;
       state_entered_ms_ = millis();
@@ -1007,7 +1012,7 @@ void TuyaBleFanHub::enqueue_gatt_packet(uint16_t code, const std::vector<uint8_t
 }
 
 void TuyaBleFanHub::flush_write_queue() {
-  if (write_queue_.empty() || write_char_handle_ == 0 || this->gattc_if_ == 0) return;
+  if (write_queue_.empty() || write_char_handle_ == 0 || this->gattc_if_ == ESP_GATT_IF_NONE || !this->has_conn_id_) return;
   auto &front = write_queue_.front();
   esp_err_t err = esp_ble_gattc_write_char(this->gattc_if_, this->conn_id_, write_char_handle_,
                                            front.size(), front.data(),
