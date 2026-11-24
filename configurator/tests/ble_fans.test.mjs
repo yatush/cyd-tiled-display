@@ -157,39 +157,39 @@ test('getOtherBleFanHosts excludes current device and flags other CYD hosts', ()
 
 test('deriveDefaultBleEntityIds and mergeBleFansIntoHaEntities expose [BLE] entities at top of dropdowns', () => {
   assert.deepEqual(
-    deriveDefaultBleEntityIds('Office Fan', '/config/esphome/office-cyd.yaml'),
+    deriveDefaultBleEntityIds('office', '/config/esphome/office-cyd.yaml'),
     {
-      fan_entity_id: 'fan.office_cyd_office_fan',
-      light_entity_id: 'light.office_cyd_office_fan_light',
+      fan_entity_id: 'fan.office_fan',
+      light_entity_id: 'light.office_light',
     }
   );
   assert.deepEqual(
-    deriveDefaultBleEntityIds('Office Fan', undefined),
+    deriveDefaultBleEntityIds('Living Room', undefined),
     {
-      fan_entity_id: 'fan.office_fan',
-      light_entity_id: 'light.office_fan_light',
+      fan_entity_id: 'fan.living_room_fan',
+      light_entity_id: 'light.living_room_light',
     }
   );
 
   const merged = mergeBleFansIntoHaEntities(
     [
       { entity_id: 'light.kitchen', friendly_name: 'Kitchen' },
-      { entity_id: 'fan.office_cyd_office_fan', friendly_name: 'Office CYD Office Fan' },
+      { entity_id: 'fan.office_fan', friendly_name: 'Office Fan' },
     ],
     [
       {
-        name: 'Office Fan',
+        name: 'Office',
         device_id: 'bf_1',
         local_key: 'key_1',
-        fan_entity_id: 'fan.office_cyd_office_fan',
-        light_entity_id: 'light.office_cyd_office_fan_light',
+        fan_entity_id: 'fan.office_fan',
+        light_entity_id: 'light.office_light',
       },
     ]
   );
 
   assert.deepEqual(merged, [
-    { entity_id: 'fan.office_cyd_office_fan', friendly_name: '[BLE] Office Fan' },
-    { entity_id: 'light.office_cyd_office_fan_light', friendly_name: '[BLE] Office Fan Light' },
+    { entity_id: 'fan.office_fan', friendly_name: '[BLE] Office' },
+    { entity_id: 'light.office_light', friendly_name: '[BLE] Office Light' },
     { entity_id: 'light.kitchen', friendly_name: 'Kitchen' },
   ]);
 });

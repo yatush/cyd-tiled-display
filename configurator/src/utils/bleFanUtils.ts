@@ -18,17 +18,15 @@ export function slugifyEspHomeId(value: string | undefined | null): string {
 
 export function deriveDefaultBleEntityIds(
   fanName: string | undefined | null,
-  deviceNameOrPath?: string | null
+  _deviceNameOrPath?: string | null
 ): { fan_entity_id: string; light_entity_id: string } {
   const fanSlug = slugifyEspHomeId(fanName);
   if (!fanSlug) {
     return { fan_entity_id: '', light_entity_id: '' };
   }
-  const deviceSlug = slugifyEspHomeId(deviceNameOrPath);
-  const prefix = deviceSlug ? `${deviceSlug}_${fanSlug}` : fanSlug;
   return {
-    fan_entity_id: `fan.${prefix}`,
-    light_entity_id: `light.${prefix}_light`,
+    fan_entity_id: `fan.${fanSlug}_fan`,
+    light_entity_id: `light.${fanSlug}_light`,
   };
 }
 

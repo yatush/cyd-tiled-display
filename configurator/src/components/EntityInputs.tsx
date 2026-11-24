@@ -765,7 +765,7 @@ export const BleFansManagerPanel = ({
                       type="text"
                       value={fan.name}
                       onChange={e => updateAt(idx, { name: e.target.value })}
-                      placeholder="Friendly Name (e.g. Office Fan)"
+                      placeholder="Room / Fan Name (e.g. Office)"
                       className="w-full border rounded px-1.5 py-1 text-[11px]"
                     />
                     <div className="grid grid-cols-2 gap-1">
@@ -806,14 +806,14 @@ export const BleFansManagerPanel = ({
                         type="text"
                         value={fan.fan_entity_id || ''}
                         onChange={e => updateAt(idx, { fan_entity_id: e.target.value })}
-                        placeholder="fan.office_cyd_office_fan"
+                        placeholder="fan.office_fan"
                         className="w-full border rounded px-1.5 py-1 text-[10px] font-mono"
                       />
                       <input
                         type="text"
                         value={fan.light_entity_id || ''}
                         onChange={e => updateAt(idx, { light_entity_id: e.target.value })}
-                        placeholder="light.office_cyd_office_fan_light"
+                        placeholder="light.office_light"
                         className="w-full border rounded px-1.5 py-1 text-[10px] font-mono"
                       />
                     </div>

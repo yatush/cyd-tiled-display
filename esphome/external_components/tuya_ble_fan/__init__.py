@@ -1,8 +1,10 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+import esphome.final_validate as fv
 from esphome.components import esp32, esp32_ble_tracker, fan, light, number, sensor
 from esphome.core import CORE
 from esphome.const import (
+    CONF_ESPHOME,
     CONF_ID,
     CONF_MAC_ADDRESS,
     CONF_NAME,
@@ -12,6 +14,19 @@ from esphome.const import (
     STATE_CLASS_MEASUREMENT,
     UNIT_DECIBEL_MILLIWATT,
 )
+
+try:
+    from esphome.const import CONF_DEVICES, CONF_DEVICE_ID as ESPHOME_CONF_DEVICE_ID
+    from esphome.core.config import CONF_RELATION, DEFAULT_DEVICE_RELATION, Device
+
+    HAS_SUB_DEVICES = True
+except ImportError:
+    CONF_DEVICES = "devices"
+    ESPHOME_CONF_DEVICE_ID = "device_id"
+    CONF_RELATION = "relation"
+    DEFAULT_DEVICE_RELATION = "via"
+    Device = None
+    HAS_SUB_DEVICES = False
 
 DEPENDENCIES = ["esp32_ble_tracker"]
 AUTO_LOAD = ["fan", "light", "number", "sensor"]
@@ -26,6 +41,7 @@ CONF_LIGHT_ENTITY_ID = "light_entity_id"
 CONF_EXPOSE_TO_HA = "expose_to_ha"
 CONF_IDLE_DISCONNECT_S = "idle_disconnect_s"
 CONF_MAX_CONNECTIONS = "max_connections"
+CONF_SUB_DEVICE_ID = "sub_device_id"
 CONF_FAN_COMPONENT_ID = "fan_component_id"
 CONF_LIGHT_COMPONENT_ID = "light_component_id"
 CONF_LIGHT_OUTPUT_ID = "light_output_id"
@@ -48,25 +64,27 @@ def _validate_optional_mac(value):
     return str(cv.mac_address(value))
 
 
-FAN_ITEM_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(TuyaBleFanDevice),
-        cv.Required(CONF_NAME): cv.string,
-        cv.Required(CONF_DEVICE_ID): cv.string,
-        cv.Required(CONF_LOCAL_KEY): cv.string,
-        cv.Optional(CONF_PRODUCT_ID, default=""): cv.string,
-        cv.Optional(CONF_UUID, default=""): cv.string,
-        cv.Optional(CONF_MAC_ADDRESS, default=""): _validate_optional_mac,
-        cv.Optional(CONF_FAN_ENTITY_ID, default=""): cv.string,
-        cv.Optional(CONF_LIGHT_ENTITY_ID, default=""): cv.string,
-        cv.Optional(CONF_EXPOSE_TO_HA, default=True): cv.boolean,
-        cv.GenerateID(CONF_FAN_COMPONENT_ID): cv.declare_id(TuyaBleFanEntity),
-        cv.GenerateID(CONF_LIGHT_COMPONENT_ID): cv.declare_id(light.LightState),
-        cv.GenerateID(CONF_LIGHT_OUTPUT_ID): cv.declare_id(TuyaBleLightOutput),
-        cv.GenerateID(CONF_TIMER_COMPONENT_ID): cv.declare_id(TuyaBleTimerNumber),
-        cv.GenerateID(CONF_RSSI_SENSOR_ID): cv.declare_id(sensor.Sensor),
-    }
-)
+_FAN_ITEM_DICT = {
+    cv.GenerateID(): cv.declare_id(TuyaBleFanDevice),
+    cv.Required(CONF_NAME): cv.string,
+    cv.Required(CONF_DEVICE_ID): cv.string,
+    cv.Required(CONF_LOCAL_KEY): cv.string,
+    cv.Optional(CONF_PRODUCT_ID, default=""): cv.string,
+    cv.Optional(CONF_UUID, default=""): cv.string,
+    cv.Optional(CONF_MAC_ADDRESS, default=""): _validate_optional_mac,
+    cv.Optional(CONF_FAN_ENTITY_ID, default=""): cv.string,
+    cv.Optional(CONF_LIGHT_ENTITY_ID, default=""): cv.string,
+    cv.Optional(CONF_EXPOSE_TO_HA, default=True): cv.boolean,
+    cv.GenerateID(CONF_FAN_COMPONENT_ID): cv.declare_id(TuyaBleFanEntity),
+    cv.GenerateID(CONF_LIGHT_COMPONENT_ID): cv.declare_id(light.LightState),
+    cv.GenerateID(CONF_LIGHT_OUTPUT_ID): cv.declare_id(TuyaBleLightOutput),
+    cv.GenerateID(CONF_TIMER_COMPONENT_ID): cv.declare_id(TuyaBleTimerNumber),
+    cv.GenerateID(CONF_RSSI_SENSOR_ID): cv.declare_id(sensor.Sensor),
+}
+if HAS_SUB_DEVICES:
+    _FAN_ITEM_DICT[cv.GenerateID(CONF_SUB_DEVICE_ID)] = cv.declare_id(Device)
+
+FAN_ITEM_SCHEMA = cv.Schema(_FAN_ITEM_DICT)
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -79,6 +97,34 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_FANS, default=[]): cv.ensure_list(FAN_ITEM_SCHEMA),
     }
 ).extend(cv.COMPONENT_SCHEMA)
+
+
+def _register_sub_devices(config):
+    if not HAS_SUB_DEVICES:
+        return config
+    fconf = fv.full_config.get()
+    esphome_conf = fconf.setdefault(CONF_ESPHOME, {})
+    devices = esphome_conf.setdefault(CONF_DEVICES, [])
+    existing_ids = {
+        d[CONF_ID].id for d in devices if isinstance(d, dict) and CONF_ID in d
+    }
+    for fan_cfg in config.get(CONF_FANS, []):
+        if not fan_cfg.get(CONF_EXPOSE_TO_HA, True):
+            continue
+        sub_id = fan_cfg.get(CONF_SUB_DEVICE_ID)
+        if sub_id is not None and sub_id.id not in existing_ids:
+            devices.append(
+                {
+                    CONF_ID: sub_id,
+                    CONF_NAME: fan_cfg[CONF_NAME],
+                    CONF_RELATION: DEFAULT_DEVICE_RELATION,
+                }
+            )
+            existing_ids.add(sub_id.id)
+    return config
+
+
+FINAL_VALIDATE_SCHEMA = _register_sub_devices
 
 
 def _validate_light_subconfig(light_id, output_id, name):
@@ -177,7 +223,13 @@ async def to_code(config):
             cg.add(dev.set_light_entity_id(fan_cfg[CONF_LIGHT_ENTITY_ID]))
 
         if fan_cfg[CONF_EXPOSE_TO_HA]:
-            fan_sub = _validate_fan_subconfig(fan_cfg[CONF_FAN_COMPONENT_ID], name)
+            sub_dev_id = fan_cfg.get(CONF_SUB_DEVICE_ID) if HAS_SUB_DEVICES else None
+
+            fan_sub = _validate_fan_subconfig(
+                fan_cfg[CONF_FAN_COMPONENT_ID], "Fan" if sub_dev_id is not None else name
+            )
+            if sub_dev_id is not None:
+                fan_sub[ESPHOME_CONF_DEVICE_ID] = sub_dev_id
             fan_entity = cg.new_Pvariable(fan_sub[CONF_ID], dev)
             await fan.register_fan(fan_entity, fan_sub)
             cg.add(dev.set_fan_entity(fan_entity))
@@ -185,8 +237,10 @@ async def to_code(config):
             light_sub = _validate_light_subconfig(
                 fan_cfg[CONF_LIGHT_COMPONENT_ID],
                 fan_cfg[CONF_LIGHT_OUTPUT_ID],
-                f"{name} Light",
+                "Light" if sub_dev_id is not None else f"{name} Light",
             )
+            if sub_dev_id is not None:
+                light_sub[ESPHOME_CONF_DEVICE_ID] = sub_dev_id
             light_out = cg.new_Pvariable(light_sub[CONF_OUTPUT_ID], dev)
             await light.register_light(light_out, light_sub)
             light_state = await cg.get_variable(light_sub[CONF_ID])
@@ -195,8 +249,11 @@ async def to_code(config):
             cg.add(dev.set_light_output(light_out))
 
             num_sub = _validate_number_subconfig(
-                fan_cfg[CONF_TIMER_COMPONENT_ID], f"{name} Timer"
+                fan_cfg[CONF_TIMER_COMPONENT_ID],
+                "Timer" if sub_dev_id is not None else f"{name} Timer",
             )
+            if sub_dev_id is not None:
+                num_sub[ESPHOME_CONF_DEVICE_ID] = sub_dev_id
             timer_num = cg.new_Pvariable(num_sub[CONF_ID], dev)
             await number.register_number(
                 timer_num,
@@ -208,8 +265,13 @@ async def to_code(config):
             cg.add(dev.set_timer_number(timer_num))
 
             rssi_sub = _validate_rssi_sensor_subconfig(
-                fan_cfg[CONF_RSSI_SENSOR_ID], f"{name} BLE Signal Strength"
+                fan_cfg[CONF_RSSI_SENSOR_ID],
+                "BLE Signal Strength"
+                if sub_dev_id is not None
+                else f"{name} BLE Signal Strength",
             )
+            if sub_dev_id is not None:
+                rssi_sub[ESPHOME_CONF_DEVICE_ID] = sub_dev_id
             rssi_sens = await sensor.new_sensor(rssi_sub)
             cg.add(dev.set_rssi_sensor(rssi_sens))
 
