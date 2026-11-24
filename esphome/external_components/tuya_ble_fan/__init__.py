@@ -86,7 +86,6 @@ def _validate_light_subconfig(light_id, output_id, name):
         CONF_ID: light_id,
         CONF_OUTPUT_ID: output_id,
         CONF_NAME: name,
-        "default_transition_length": "0s",
     }
     if hasattr(light, "LIGHT_SCHEMA"):
         return light.LIGHT_SCHEMA.extend(
@@ -191,6 +190,7 @@ async def to_code(config):
             light_out = cg.new_Pvariable(light_sub[CONF_OUTPUT_ID], dev)
             await light.register_light(light_out, light_sub)
             light_state = await cg.get_variable(light_sub[CONF_ID])
+            cg.add(light_state.set_default_transition_length(0))
             cg.add(light_out.set_light_state(light_state))
             cg.add(dev.set_light_output(light_out))
 
