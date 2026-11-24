@@ -1,7 +1,8 @@
 import { useDraggable } from '@dnd-kit/core';
-import { Trash2, ArrowRightCircle } from 'lucide-react';
-import { Tile, ImageEntry } from '../types';
+import { Trash2, ArrowRightCircle, Bluetooth } from 'lucide-react';
+import { Tile, ImageEntry, BleFanConfig, FixedEntityEntry } from '../types';
 import { iconCodeToChar } from '../utils/iconUtils';
+import { findConfiguredBleFan } from '../utils/bleFanUtils';
 import { getTileNavigationTarget } from '../utils/tileUtils';
 
 // Resolves a fill_color value (named id or Color(r,g,b)) to a CSS color string.
@@ -38,7 +39,7 @@ function isColorDark(css: string): boolean {
   return L < 0.35;
 }
 
-export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage, images = {}, colorList = [] }: { 
+export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage, images = {}, colorList = [], bleFans = [], dynamicEntityValues = {} }: { 
   tile: Tile, 
   isSelected: boolean, 
   onClick: () => void, 
@@ -47,7 +48,9 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
   dynamicEntities?: string[],
   onNavigateToPage?: (pageId: string) => void,
   images?: Record<string, ImageEntry>,
-  colorList?: {id: string, value: string}[]
+  colorList?: {id: string, value: string}[],
+  bleFans?: BleFanConfig[],
+  dynamicEntityValues?: Record<string, FixedEntityEntry[]>
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: tile.id,
@@ -314,6 +317,47 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
           )}
         </div>
       )}
+      {(() => {
+        if (!bleFans || bleFans.length === 0) return null;
+        const candidateEntities: string[] = [];
+        for (const ei of entityItems) {
+          candidateEntities.push(ei.name);
+          const fixed = dynamicEntityValues?.[ei.name];
+          if (Array.isArray(fixed)) {
+            for (const entry of fixed) {
+              const id = typeof entry === 'string' ? entry : entry?.entity;
+              if (id) candidateEntities.push(id);
+            }
+          }
+        }
+        if (Array.isArray(tile.options)) {
+          for (const opt of tile.options) {
+            if (typeof opt?.entity === 'string') candidateEntities.push(opt.entity);
+            else if (Array.isArray(opt?.entity)) {
+              for (const e of opt.entity) if (typeof e === 'string') candidateEntities.push(e);
+            }
+            if (typeof opt?.dynamic_entity === 'string') {
+              const fixed = dynamicEntityValues?.[opt.dynamic_entity];
+              if (Array.isArray(fixed)) {
+                for (const entry of fixed) {
+                  const id = typeof entry === 'string' ? entry : entry?.entity;
+                  if (id) candidateEntities.push(id);
+                }
+              }
+            }
+          }
+        }
+        const isBleControlled = candidateEntities.some(e => Boolean(findConfiguredBleFan(e, bleFans)));
+        if (!isBleControlled) return null;
+        return (
+          <div
+            className="absolute bottom-0.5 right-0.5 pointer-events-none p-0.5 rounded bg-blue-600/90 text-white shadow-sm z-20"
+            title="Controlled via local Tuya BLE"
+          >
+            <Bluetooth size={9} />
+          </div>
+        );
+      })()}
     </div>
   );
 };

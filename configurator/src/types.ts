@@ -39,10 +39,33 @@ export interface ScreenImageEntry {
 
 export type FixedEntityEntry = string | { entity: string; label?: string };
 
+export interface BleFanConfig {
+  name: string;
+  device_id: string;
+  local_key: string;
+  product_id?: string;
+  mac_address?: string;
+  uuid?: string;
+  fan_entity_id: string;
+  light_entity_id?: string;
+  expose_to_ha?: boolean;
+}
+
+export interface TuyaBleCandidate {
+  name: string;
+  device_id: string;
+  local_key: string;
+  product_id: string;
+  fan_entity_id: string;
+  light_entity_id: string;
+  supported: boolean;
+}
+
 export interface Config {
   pages: Page[];
   dynamic_entities?: string[];
   dynamic_entity_values?: Record<string, FixedEntityEntry[]>;
+  ble_fans?: BleFanConfig[];
   project_name?: string;
   project_path?: string;
   images?: Record<string, ImageEntry>;

@@ -1,12 +1,183 @@
-import { Trash2, Plus } from 'lucide-react';
-import { FixedEntityEntry, HaEntity } from '../types';
+import { useState } from 'react';
+import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle, Radar } from 'lucide-react';
+import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
+import {
+  computeBleResourcePlan,
+  findCandidateForEntity,
+  getOtherBleFanHosts,
+  normalizeEntityId,
+  toggleBleFanForEntity,
+  upsertBleFan,
+} from '../utils/bleFanUtils';
 
-export const EntityListInput = ({ label, values, onChange, haEntities }: {
+export interface BleFanProps {
+  bleFans?: BleFanConfig[];
+  tuyaBleCandidates?: TuyaBleCandidate[];
+  bleFanHosts?: Record<string, string[]>;
+  currentDevicePath?: string;
+  onUpdateBleFans?: (next: BleFanConfig[]) => void;
+}
+
+export const BleFanToggle = ({
+  entityId,
+  bleFans = [],
+  tuyaBleCandidates = [],
+  bleFanHosts = {},
+  currentDevicePath,
+  onUpdateBleFans,
+}: {
+  entityId: string;
+} & BleFanProps) => {
+  const [showDetails, setShowDetails] = useState(false);
+  if (!onUpdateBleFans) return null;
+
+  const norm = normalizeEntityId(entityId);
+  if (!norm) return null;
+
+  const candidate = findCandidateForEntity(norm, tuyaBleCandidates);
+  const configuredIdx = bleFans.findIndex(
+    f =>
+      normalizeEntityId(f.fan_entity_id) === norm ||
+      (f.light_entity_id && normalizeEntityId(f.light_entity_id) === norm)
+  );
+  const configured = configuredIdx >= 0 ? bleFans[configuredIdx] : undefined;
+  const isFanEntity = norm.startsWith('fan.');
+  const hasAnyBleContext = bleFans.length > 0 || tuyaBleCandidates.length > 0;
+
+  if (!candidate && !configured && !(isFanEntity && hasAnyBleContext)) {
+    return null;
+  }
+
+  const updateConfigured = (patch: Partial<BleFanConfig>) => {
+    if (configuredIdx < 0) return;
+    const copy = [...bleFans];
+    copy[configuredIdx] = { ...copy[configuredIdx], ...patch };
+    onUpdateBleFans(copy);
+  };
+
+  const isChecked = Boolean(configured);
+  const missingCreds = isChecked && (!configured?.device_id?.trim() || !configured?.local_key?.trim());
+  const companionLight = configured?.light_entity_id || candidate?.light_entity_id || '';
+  const companionFan = configured?.fan_entity_id || candidate?.fan_entity_id || '';
+  const effectiveDeviceId = configured?.device_id || candidate?.device_id || '';
+  const otherHosts = getOtherBleFanHosts(effectiveDeviceId, bleFanHosts, currentDevicePath);
+
+  return (
+    <div className="mt-1 px-1.5 py-1 rounded bg-blue-50/70 border border-blue-100 text-[11px]">
+      <div className="flex items-center justify-between gap-1.5">
+        <label className="flex items-center gap-1.5 cursor-pointer select-none text-blue-800 font-medium">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={e => {
+              const next = toggleBleFanForEntity(bleFans, norm, e.target.checked, candidate);
+              onUpdateBleFans(next);
+              if (e.target.checked && !candidate) {
+                setShowDetails(true);
+              }
+            }}
+            className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+          />
+          <Bluetooth size={11} className="text-blue-600 flex-shrink-0" />
+          <span>Control via BLE</span>
+        </label>
+        <div className="flex items-center gap-1">
+          {companionLight && companionFan && (
+            <span
+              className="text-[10px] px-1 py-0.2 rounded bg-blue-100 text-blue-700"
+              title={`Routes both ${companionFan} and ${companionLight} over BLE`}
+            >
+              fan + light
+            </span>
+          )}
+          {isChecked && (
+            <button
+              type="button"
+              onClick={() => setShowDetails(s => !s)}
+              className={`p-0.5 rounded hover:bg-blue-100 ${missingCreds ? 'text-amber-600' : 'text-blue-600'}`}
+              title="Edit BLE credentials"
+            >
+              <Settings2 size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {otherHosts.length > 0 && (
+        <div className="mt-1 px-1.5 py-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-800 flex items-start gap-1">
+          <AlertTriangle size={11} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <span>
+            Already hosted via BLE by <strong>{otherHosts.join(', ')}</strong>. Tuya fans only accept 1 BLE connection at a time — consider controlling via Home Assistant instead.
+          </span>
+        </div>
+      )}
+
+      {isChecked && (showDetails || missingCreds) && configured && (
+        <div className="mt-1.5 pt-1.5 border-t border-blue-100 space-y-1">
+          {missingCreds && (
+            <div className="text-[10px] text-amber-700 font-medium">
+              Enter Tuya device_id &amp; local_key (auto-filled when tuya_local is present in HA).
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-1">
+            <input
+              type="text"
+              value={configured.device_id}
+              onChange={e => updateConfigured({ device_id: e.target.value })}
+              placeholder="Device ID"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+            <input
+              type="text"
+              value={configured.local_key}
+              onChange={e => updateConfigured({ local_key: e.target.value })}
+              placeholder="Local Key"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+            <input
+              type="text"
+              value={configured.product_id || ''}
+              onChange={e => updateConfigured({ product_id: e.target.value })}
+              placeholder="Product ID (optional)"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+            <input
+              type="text"
+              value={configured.mac_address || ''}
+              onChange={e => updateConfigured({ mac_address: e.target.value })}
+              placeholder="BLE MAC (auto-discover)"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+          </div>
+          <input
+            type="text"
+            value={configured.light_entity_id || ''}
+            onChange={e => updateConfigured({ light_entity_id: e.target.value })}
+            placeholder="Companion light entity (e.g. light.office_fan_light)"
+            className="w-full border rounded px-1 py-0.5 text-[10px] bg-white"
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const EntityListInput = ({
+  label,
+  values,
+  onChange,
+  haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
+  onUpdateBleFans,
+}: {
   label: string,
   values: string[],
   onChange: (v: string[]) => void,
   haEntities?: HaEntity[]
-}) => {
+} & BleFanProps) => {
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
   const listId = `ha-entities-list-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -15,24 +186,34 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
       {label && <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>}
       <div className="space-y-1">
         {safeValues.map((v, i) => (
-          <div key={i} className="flex gap-1">
-            <input
-              type="text"
-              value={v}
-              onChange={e => {
-                const newValues = [...safeValues];
-                newValues[i] = e.target.value;
-                onChange(newValues);
-              }}
-              list={listId}
-              className="flex-1 border rounded p-1 text-sm"
+          <div key={i}>
+            <div className="flex gap-1">
+              <input
+                type="text"
+                value={v}
+                onChange={e => {
+                  const newValues = [...safeValues];
+                  newValues[i] = e.target.value;
+                  onChange(newValues);
+                }}
+                list={listId}
+                className="flex-1 border rounded p-1 text-sm"
+              />
+              <button
+                onClick={() => onChange(safeValues.filter((_, idx) => idx !== i))}
+                className="text-red-500 hover:bg-red-50 p-1 rounded"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <BleFanToggle
+              entityId={v}
+              bleFans={bleFans}
+              tuyaBleCandidates={tuyaBleCandidates}
+              bleFanHosts={bleFanHosts}
+              currentDevicePath={currentDevicePath}
+              onUpdateBleFans={onUpdateBleFans}
             />
-            <button
-              onClick={() => onChange(safeValues.filter((_, idx) => idx !== i))}
-              className="text-red-500 hover:bg-red-50 p-1 rounded"
-            >
-              <Trash2 size={14} />
-            </button>
           </div>
         ))}
         <datalist id={listId}>
@@ -59,13 +240,18 @@ export const DynamicEntitiesEditor = ({
   onChange,
   onFixedChange,
   haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
+  onUpdateBleFans,
 }: {
   entities: string[];
   fixedValues?: Record<string, FixedEntityEntry[]>;
   onChange: (v: string[]) => void;
   onFixedChange?: (varName: string, values: FixedEntityEntry[] | null) => void;
   haEntities?: HaEntity[];
-}) => {
+} & BleFanProps) => {
   const safeEntities = Array.isArray(entities) ? entities : (entities ? [entities] : []);
   const listId = `ha-dyn-fixed-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -176,6 +362,14 @@ export const DynamicEntitiesEditor = ({
                           placeholder="Label (optional, for cycle_entity)"
                           className="w-full border rounded p-1 text-[11px] text-slate-700 bg-slate-50"
                         />
+                        <BleFanToggle
+                          entityId={entVal}
+                          bleFans={bleFans}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
+                          onUpdateBleFans={onUpdateBleFans}
+                        />
                       </div>
                     );
                   })}
@@ -211,13 +405,24 @@ export const DynamicEntitiesEditor = ({
   );
 };
 
-export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haEntities }: {
+export const EntityArrayInput = ({
+  label,
+  values,
+  onChange,
+  dynamicEntities,
+  haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
+  onUpdateBleFans,
+}: {
   label: string,
   values: any[],
   onChange: (v: any[]) => void,
   dynamicEntities: string[],
   haEntities?: HaEntity[]
-}) => {
+} & BleFanProps) => {
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
   const listId = `ha-entities-arr-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -293,6 +498,14 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
                       list={listId}
                       className="w-full border rounded p-1 text-xs"
                     />
+                    <BleFanToggle
+                      entityId={item.entity || ''}
+                      bleFans={bleFans}
+                      tuyaBleCandidates={tuyaBleCandidates}
+                      bleFanHosts={bleFanHosts}
+                      currentDevicePath={currentDevicePath}
+                      onUpdateBleFans={onUpdateBleFans}
+                    />
                   </div>
                 )}
 
@@ -329,6 +542,298 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
           ))}
         </datalist>
       )}
+    </div>
+  );
+};
+
+export const BleFansManagerPanel = ({
+  bleFans = [],
+  tuyaBleCandidates = [],
+  bleFanHosts = {},
+  currentDevicePath,
+  hasBleProxy = false,
+  onUpdateBleFans,
+  onOpenFindBleFans,
+}: {
+  bleFans?: BleFanConfig[];
+  tuyaBleCandidates?: TuyaBleCandidate[];
+  bleFanHosts?: Record<string, string[]>;
+  currentDevicePath?: string;
+  hasBleProxy?: boolean;
+  onUpdateBleFans: (next: BleFanConfig[]) => void;
+  onOpenFindBleFans?: () => void;
+}) => {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const resourcePlan = computeBleResourcePlan(bleFans.length, hasBleProxy);
+
+  const availableCandidates = tuyaBleCandidates.filter(
+    c =>
+      !bleFans.some(
+        f =>
+          (c.device_id && f.device_id === c.device_id) ||
+          (c.fan_entity_id && normalizeEntityId(f.fan_entity_id) === normalizeEntityId(c.fan_entity_id))
+      )
+  );
+
+  const handleAddCandidate = (deviceId: string) => {
+    const cand = availableCandidates.find(c => c.device_id === deviceId);
+    if (!cand) return;
+    const next = upsertBleFan(bleFans, {
+      name: cand.name || cand.fan_entity_id || cand.device_id,
+      device_id: cand.device_id,
+      local_key: cand.local_key,
+      product_id: cand.product_id || '',
+      fan_entity_id: cand.fan_entity_id || '',
+      light_entity_id: cand.light_entity_id || '',
+      expose_to_ha: true,
+    });
+    onUpdateBleFans(next);
+  };
+
+  const handleAddManual = () => {
+    const next: BleFanConfig[] = [
+      ...bleFans,
+      {
+        name: `BLE Fan ${bleFans.length + 1}`,
+        device_id: '',
+        local_key: '',
+        product_id: '',
+        fan_entity_id: '',
+        light_entity_id: '',
+        expose_to_ha: true,
+      },
+    ];
+    onUpdateBleFans(next);
+    setExpandedIdx(next.length - 1);
+  };
+
+  const updateAt = (idx: number, patch: Partial<BleFanConfig>) => {
+    const copy = [...bleFans];
+    copy[idx] = { ...copy[idx], ...patch };
+    onUpdateBleFans(copy);
+  };
+
+  const removeAt = (idx: number) => {
+    onUpdateBleFans(bleFans.filter((_, i) => i !== idx));
+    setExpandedIdx(prev => (prev === null || prev === idx ? null : prev > idx ? prev - 1 : prev));
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] text-slate-500 leading-snug">
+        Host Tuya BLE fans on this CYD and expose them to Home Assistant — no tile required.
+      </p>
+
+      {onOpenFindBleFans && (
+        <button
+          type="button"
+          onClick={onOpenFindBleFans}
+          className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold bg-sky-600 text-white hover:bg-sky-700 shadow-sm transition-colors"
+        >
+          <Radar size={13} />
+          <span>Find &amp; Pair BLE Fans</span>
+        </button>
+      )}
+
+      {bleFans.length > 0 && (
+        <div
+          className={`rounded border p-2 text-[10px] space-y-1 ${
+            resourcePlan.displayBufferSize === '20%'
+              ? 'bg-amber-50/80 border-amber-200 text-amber-900'
+              : resourcePlan.displayBufferSize === '30%'
+              ? 'bg-sky-50/80 border-sky-200 text-sky-900'
+              : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+          }`}
+        >
+          <div className="flex items-center justify-between font-semibold">
+            <span>BLE Connections</span>
+            <span>
+              {resourcePlan.fanSlots} fan{resourcePlan.fanSlots > 1 ? 's' : ''}
+              {resourcePlan.proxySlots > 0 ? ' + 1 proxy' : ''} ({resourcePlan.totalConnections} total)
+            </span>
+          </div>
+          <div className="opacity-85 leading-snug">
+            {resourcePlan.persistent ? (
+              <span>
+                All {bleFans.length} fan{bleFans.length > 1 ? 's' : ''} stay persistently connected simultaneously (instant control &amp; live RSSI).
+              </span>
+            ) : (
+              <span>
+                {resourcePlan.fanSlots} simultaneous slots shared across {bleFans.length} fans (on-demand switch, {resourcePlan.idleDisconnectS}s idle disconnect).
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-between pt-1 border-t border-current/15">
+            <span className="font-semibold">3.5&quot; Display Buffer</span>
+            <span className="font-mono font-bold">{resourcePlan.displayBufferSize}</span>
+          </div>
+          <div className="opacity-80 leading-snug">
+            {resourcePlan.displayBufferSize === '40%'
+              ? 'Balanced buffer — minimal redraw overhead (~46 KB RAM freed for 1 BLE slot).'
+              : resourcePlan.displayBufferSize === '30%'
+              ? 'Slightly smaller buffer to keep headroom for 2 simultaneous BLE connections (slightly more SPI passes on 3.5" redraws).'
+              : 'Compact 20% buffer for 3 BLE connections / BLE Proxy — safe RAM headroom, slightly slower full-screen 3.5" redraws.'}
+          </div>
+        </div>
+      )}
+
+      {bleFans.length > 0 && (
+        <div className="space-y-1.5">
+          {bleFans.map((fan, idx) => {
+            const missingCreds = !fan.device_id?.trim() || !fan.local_key?.trim();
+            const isExpanded = expandedIdx === idx || missingCreds;
+            const otherHosts = getOtherBleFanHosts(fan.device_id, bleFanHosts, currentDevicePath);
+            return (
+              <div key={idx} className="border border-blue-200 rounded p-2 bg-white space-y-1.5 shadow-sm">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Bluetooth size={12} className="text-blue-600 flex-shrink-0" />
+                    <span className="text-xs font-semibold text-slate-700 truncate">
+                      {fan.name || fan.fan_entity_id || 'Unnamed BLE Fan'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedIdx(isExpanded && !missingCreds ? null : idx)}
+                      className={`p-1 rounded hover:bg-blue-50 ${missingCreds ? 'text-amber-600' : 'text-slate-500'}`}
+                      title="Edit BLE fan settings"
+                    >
+                      <Settings2 size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeAt(idx)}
+                      className="p-1 rounded text-red-500 hover:bg-red-50"
+                      title="Remove BLE fan"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {otherHosts.length > 0 && (
+                  <div className="px-1.5 py-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-800 flex items-start gap-1">
+                    <AlertTriangle size={11} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <span>
+                      Already hosted via BLE by <strong>{otherHosts.join(', ')}</strong>. Tuya fans only accept 1 BLE connection at a time.
+                    </span>
+                  </div>
+                )}
+
+                {(fan.fan_entity_id || fan.light_entity_id) && (
+                  <div className="flex flex-wrap gap-1">
+                    {fan.fan_entity_id && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-slate-100 text-slate-600 truncate max-w-full">
+                        {fan.fan_entity_id}
+                      </span>
+                    )}
+                    {fan.light_entity_id && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-700 truncate max-w-full">
+                        {fan.light_entity_id}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {isExpanded && (
+                  <div className="pt-1.5 border-t border-slate-100 space-y-1">
+                    <input
+                      type="text"
+                      value={fan.name}
+                      onChange={e => updateAt(idx, { name: e.target.value })}
+                      placeholder="Friendly Name (e.g. Office Fan)"
+                      className="w-full border rounded px-1.5 py-1 text-[11px]"
+                    />
+                    <div className="grid grid-cols-2 gap-1">
+                      <input
+                        type="text"
+                        value={fan.device_id}
+                        onChange={e => updateAt(idx, { device_id: e.target.value })}
+                        placeholder="Device ID *"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                      <input
+                        type="text"
+                        value={fan.local_key}
+                        onChange={e => updateAt(idx, { local_key: e.target.value })}
+                        placeholder="Local Key *"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                      <input
+                        type="text"
+                        value={fan.product_id || ''}
+                        onChange={e => updateAt(idx, { product_id: e.target.value })}
+                        placeholder="Product ID (optional)"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                      <input
+                        type="text"
+                        value={fan.mac_address || ''}
+                        onChange={e => updateAt(idx, { mac_address: e.target.value })}
+                        placeholder="BLE MAC (auto)"
+                        className="border rounded px-1.5 py-1 text-[10px]"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={fan.fan_entity_id || ''}
+                      onChange={e => updateAt(idx, { fan_entity_id: e.target.value })}
+                      placeholder="Local tile fan entity (optional)"
+                      className="w-full border rounded px-1.5 py-1 text-[10px]"
+                    />
+                    <input
+                      type="text"
+                      value={fan.light_entity_id || ''}
+                      onChange={e => updateAt(idx, { light_entity_id: e.target.value })}
+                      placeholder="Local tile light entity (optional)"
+                      className="w-full border rounded px-1.5 py-1 text-[10px]"
+                    />
+                    <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer pt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={fan.expose_to_ha !== false}
+                        onChange={e => updateAt(idx, { expose_to_ha: e.target.checked })}
+                        className="rounded border-slate-300 text-blue-600"
+                      />
+                      <span>Expose fan, light &amp; timer to Home Assistant</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {availableCandidates.length > 0 && (
+        <select
+          value=""
+          onChange={e => {
+            if (e.target.value) handleAddCandidate(e.target.value);
+          }}
+          className="w-full border border-blue-200 rounded p-1.5 text-xs bg-white text-blue-700 font-medium"
+        >
+          <option value="">+ Add discovered Tuya fan...</option>
+          {availableCandidates.map(c => {
+            const hosts = getOtherBleFanHosts(c.device_id, bleFanHosts, currentDevicePath);
+            const suffix = hosts.length > 0 ? ` [⚠ on ${hosts.join(', ')}]` : '';
+            return (
+              <option key={c.device_id} value={c.device_id}>
+                {c.name} ({c.fan_entity_id || c.device_id}){suffix}
+              </option>
+            );
+          })}
+        </select>
+      )}
+
+      <button
+        type="button"
+        onClick={handleAddManual}
+        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+      >
+        <Plus size={12} /> Add Manual BLE Fan
+      </button>
     </div>
   );
 };

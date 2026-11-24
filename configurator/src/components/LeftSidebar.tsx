@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth } from 'lucide-react';
-import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity } from '../types';
-import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel } from './FormInputs';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth, AlertTriangle } from 'lucide-react';
+import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity, BleFanConfig, TuyaBleCandidate } from '../types';
+import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel, BleFansManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange, updateDynamicEntityFixedValues } from '../utils/tileUtils';
+import { configHasBleProxy } from '../utils/bleFanUtils';
 
 interface LeftSidebarProps {
   width: number;
@@ -39,6 +40,10 @@ interface LeftSidebarProps {
   handleLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleClearConfig: () => void;
   haEntities?: HaEntity[];
+  tuyaBleCandidates?: TuyaBleCandidate[];
+  bleFanHosts?: Record<string, string[]>;
+  currentDevicePath?: string;
+  onOpenFindBleFans?: () => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -76,8 +81,20 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   handleLoadProject,
   handleClearConfig,
   haEntities,
+  tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
+  onOpenFindBleFans,
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
+  const [isBleFansOpen, setIsBleFansOpen] = useState(false);
+
+  const handleUpdateBleFans = (next: BleFanConfig[]) => setConfig(prev => {
+    const updated: Config = { ...prev };
+    if (next.length > 0) updated.ble_fans = next;
+    else delete updated.ble_fans;
+    return updated;
+  });
 
   useEffect(() => {
     setExpandedPages(prev => {
@@ -193,6 +210,43 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           onChange={v => setConfig(prev => applyDynamicEntityListChange(prev, v))} 
                           onFixedChange={(varName, vals) => setConfig(prev => updateDynamicEntityFixedValues(prev, varName, vals))}
                           haEntities={haEntities}
+                          bleFans={config.ble_fans || []}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
+                          onUpdateBleFans={handleUpdateBleFans}
+                      />
+                  </div>
+              </div>
+          )}
+        </div>
+
+        {/* BLE Fans (Device-level, no tile required) */}
+        <div className="mb-6 bg-slate-50 border rounded-lg overflow-hidden">
+          <div 
+              className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
+              onClick={() => setIsBleFansOpen(!isBleFansOpen)}
+          >
+              <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                  {isBleFansOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <Bluetooth size={14} className="text-blue-600" /> BLE Fans
+              </h3>
+              <span className={`text-[10px] font-bold px-1.5 rounded-full ${(config.ble_fans || []).length > 0 ? 'bg-blue-100 text-blue-700' : 'text-slate-400 bg-slate-200'}`}>
+                  {(config.ble_fans || []).length}
+              </span>
+          </div>
+          
+          {isBleFansOpen && (
+              <div className="p-3 pt-0 border-t border-slate-100 mt-2">
+                  <div className="pt-2">
+                      <BleFansManagerPanel
+                          bleFans={config.ble_fans || []}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
+                          hasBleProxy={configHasBleProxy(config)}
+                          onUpdateBleFans={handleUpdateBleFans}
+                          onOpenFindBleFans={onOpenFindBleFans}
                       />
                   </div>
               </div>
@@ -233,6 +287,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           <Bluetooth size={14} /> BLE Proxy
                       </button>
                   </div>
+                  {configHasBleProxy(config) && (
+                    <div className="mt-2 p-2 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5">
+                      <AlertTriangle size={13} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                      <span>
+                        BLE Proxy runs continuous scanning and reduces the display buffer, which may make the screen less responsive
+                        {(config.ble_fans?.length || 0) > 0 ? ' (especially when combined with BLE fans)' : ''}.
+                      </span>
+                    </div>
+                  )}
               </div>
           )}
         </div>

@@ -16,6 +16,7 @@ import { ScreensFileDialog } from './components/ScreensFileDialog';
 import { EmulatorDialog } from './components/EmulatorDialog';
 import { HwOverridesDialog } from './components/HwOverridesDialog';
 import { BatchUpdateDialog } from './components/BatchUpdateDialog';
+import { FindBleFansDialog } from './components/FindBleFansDialog';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -23,6 +24,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
+import { extractBleFansFromDeviceYaml } from './utils/bleFanUtils';
 import { apiFetch } from './utils/api';
 import { ImageEntry, ScreenImageEntry } from './types';
 
@@ -158,9 +160,13 @@ function App() {
     haToken, setHaToken,
     connectionType, setConnectionType,
     haEntities,
+    tuyaBleCandidates,
+    bleFanHosts,
+    setBleFanHosts,
     haStatus,
     fetchHaEntities
   } = useHaConnection();
+  const [isFindBleFansOpen, setIsFindBleFansOpen] = useState(false);
 
   const {
     config, setConfig,
@@ -211,6 +217,7 @@ function App() {
     isDirty,
     saveStatus,
     clearFileContext,
+    syncSavedSnapshot,
     handleQuickSave,
     handleSaveYaml,
     handleDownloadYaml,
@@ -219,7 +226,23 @@ function App() {
     handleLoadFromHa,
     handleSaveDeviceConfig,
     handleLoadDeviceConfig
-  } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus, () => setSidebarKey(prev => prev + 1));
+  } = useFileOperations(
+    config,
+    setConfig,
+    setActivePageId,
+    () => {
+      checkLibStatus();
+      apiFetch('/tuya_ble_fans')
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (d && d.hosted_by && typeof d.hosted_by === 'object') {
+            setBleFanHosts(d.hosted_by);
+          }
+        })
+        .catch(() => {});
+    },
+    () => setSidebarKey(prev => prev + 1)
+  );
 
   const handleSaveOrSaveAs = () => {
     if (fileContext) {
@@ -517,6 +540,10 @@ function App() {
           handleLoadProject={handleLoadProject}
           handleClearConfig={handleClearWithContext}
           haEntities={haEntities}
+          tuyaBleCandidates={tuyaBleCandidates}
+          bleFanHosts={bleFanHosts}
+          currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
+          onOpenFindBleFans={() => setIsFindBleFansOpen(true)}
         />
 
       {/* Left Resizer */}
@@ -566,6 +593,9 @@ function App() {
           activePage={activePage}
           setActivePageId={setActivePageId}
           haEntities={haEntities}
+          tuyaBleCandidates={tuyaBleCandidates}
+          bleFanHosts={bleFanHosts}
+          currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
           onUpdatePage={handleUpdatePage}
           onRenamePage={handleRenamePage}
           setConfig={setConfig}
@@ -583,6 +613,32 @@ function App() {
         }}
         existingIds={config.pages.map(p => p.id)}
       />
+
+      {isFindBleFansOpen && (
+        <FindBleFansDialog
+          isOpen={isFindBleFansOpen}
+          onClose={() => setIsFindBleFansOpen(false)}
+          tuyaBleCandidates={tuyaBleCandidates}
+          openDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
+          openDeviceDirty={fileContext?.kind === 'device' ? isDirty : false}
+          onFanAdded={(targetCyd, updatedFans, hostedBy) => {
+            setBleFanHosts(hostedBy);
+            if (fileContext?.kind === 'device' && fileContext.path) {
+              const openBase = (fileContext.path.split(/[\\/]/).pop() || '').toLowerCase();
+              if (openBase && openBase === targetCyd.toLowerCase()) {
+                const normalized = extractBleFansFromDeviceYaml({
+                  tuya_ble_fan: { fans: updatedFans },
+                });
+                const nextConfig = { ...config, ble_fans: normalized };
+                setConfig(nextConfig);
+                if (!isDirty) {
+                  syncSavedSnapshot(nextConfig);
+                }
+              }
+            }
+          }}
+        />
+      )}
 
       <HASettingsDialog 
         isOpen={isHaSettingsOpen}

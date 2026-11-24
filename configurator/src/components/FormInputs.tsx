@@ -3,10 +3,11 @@ import { Trash2, Plus } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { HaEntity } from '../types';
 import { ConditionBuilder } from './ConditionBuilder';
-import { EntityListInput } from './EntityInputs';
+import { EntityListInput, BleFanToggle, BleFanProps } from './EntityInputs';
 
 export { ConditionBuilder } from './ConditionBuilder';
-export { EntityListInput, DynamicEntitiesEditor, EntityArrayInput } from './EntityInputs';
+export { EntityListInput, DynamicEntitiesEditor, EntityArrayInput, BleFanToggle, BleFansManagerPanel } from './EntityInputs';
+export type { BleFanProps } from './EntityInputs';
 export {
   generateImageId,
   generateScreenImageId,
@@ -29,7 +30,17 @@ export const NumberInput = ({ label, value, onChange, min = 0 }: { label: string
   </div>
 );
 
-export const TextInput = ({ label, value, onChange, haEntities }: { label: string, value: string, onChange: (v: string) => void, haEntities?: HaEntity[] }) => {
+export const TextInput = ({
+  label,
+  value,
+  onChange,
+  haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
+  onUpdateBleFans,
+}: { label: string, value: string, onChange: (v: string) => void, haEntities?: HaEntity[] } & BleFanProps) => {
   const listId = `ha-entities-text-${Math.random().toString(36).substr(2, 9)}`;
   return (
   <div className="mb-2">
@@ -49,6 +60,16 @@ export const TextInput = ({ label, value, onChange, haEntities }: { label: strin
                 </option>
             ))}
         </datalist>
+    )}
+    {haEntities && (
+      <BleFanToggle
+        entityId={value || ''}
+        bleFans={bleFans}
+        tuyaBleCandidates={tuyaBleCandidates}
+        bleFanHosts={bleFanHosts}
+        currentDevicePath={currentDevicePath}
+        onUpdateBleFans={onUpdateBleFans}
+      />
     )}
   </div>
   );
@@ -262,14 +283,26 @@ export const ArrayInput = ({ label, values, onChange, suggestionType, allowedVal
   );
 };
 
-export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, haEntities }: { 
+export const ObjectInput = ({
+  label,
+  value,
+  fields,
+  onChange,
+  dynamicEntities,
+  haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
+  onUpdateBleFans,
+}: { 
   label: string, 
   value: any, 
   fields: { key: string, label: string, type?: string }[],
   onChange: (v: any) => void,
   dynamicEntities?: string[],
   haEntities?: HaEntity[]
-}) => {
+} & BleFanProps) => {
   const listId = `ha-entities-obj-${Math.random().toString(36).substr(2, 9)}`;
   return (
   <div className="mb-4">
@@ -310,6 +343,14 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
                             </option>
                         ))}
                     </datalist>
+                    <BleFanToggle
+                      entityId={value?.[field.key] || ''}
+                      bleFans={bleFans}
+                      tuyaBleCandidates={tuyaBleCandidates}
+                      bleFanHosts={bleFanHosts}
+                      currentDevicePath={currentDevicePath}
+                      onUpdateBleFans={onUpdateBleFans}
+                    />
                 </div>
             ) : field.type === 'ha_entity_list' ? (
                 <EntityListInput 
@@ -320,6 +361,11 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
                         onChange(newValue);
                     }}
                     haEntities={haEntities}
+                    bleFans={bleFans}
+                    tuyaBleCandidates={tuyaBleCandidates}
+                    bleFanHosts={bleFanHosts}
+                    currentDevicePath={currentDevicePath}
+                    onUpdateBleFans={onUpdateBleFans}
                 />
             ) : field.type === 'string_list' ? (
                 <ArrayInput 
@@ -357,14 +403,26 @@ export const ObjectInput = ({ label, value, fields, onChange, dynamicEntities, h
   );
 };
 
-export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntities, haEntities }: { 
+export const ObjectArrayInput = ({
+  label,
+  values,
+  fields,
+  onChange,
+  dynamicEntities,
+  haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
+  onUpdateBleFans,
+}: { 
   label: string, 
   values: any[], 
   fields: { key: string, label: string, type?: string }[],
   onChange: (v: any[]) => void,
   dynamicEntities?: string[],
   haEntities?: HaEntity[]
-}) => {
+} & BleFanProps) => {
   const listId = `ha-entities-obj-arr-${Math.random().toString(36).substr(2, 9)}`;
   // Check if one of the fields is 'entity' (cycle_entity options)
   const hasEntityField = fields.some(f => f.key === 'entity');
@@ -520,19 +578,36 @@ export const ObjectArrayInput = ({ label, values, fields, onChange, dynamicEntit
                       onChange(newValues);
                     }}
                     haEntities={haEntities}
+                    bleFans={bleFans}
+                    tuyaBleCandidates={tuyaBleCandidates}
+                    bleFanHosts={bleFanHosts}
+                    currentDevicePath={currentDevicePath}
+                    onUpdateBleFans={onUpdateBleFans}
                   />
                 ) : (
-                  <input 
-                    type="text" 
-                    value={item[field.key] || ''} 
-                    onChange={e => {
-                      const newValues = [...safeValues];
-                      newValues[i] = { ...item, [field.key]: e.target.value };
-                      onChange(newValues);
-                    }}
-                    list={field.type === 'ha_entity' ? listId : undefined}
-                    className="w-full border rounded p-1 text-xs"
-                  />
+                  <div>
+                    <input 
+                      type="text" 
+                      value={item[field.key] || ''} 
+                      onChange={e => {
+                        const newValues = [...safeValues];
+                        newValues[i] = { ...item, [field.key]: e.target.value };
+                        onChange(newValues);
+                      }}
+                      list={field.type === 'ha_entity' ? listId : undefined}
+                      className="w-full border rounded p-1 text-xs"
+                    />
+                    {field.type === 'ha_entity' && (
+                      <BleFanToggle
+                        entityId={item[field.key] || ''}
+                        bleFans={bleFans}
+                        tuyaBleCandidates={tuyaBleCandidates}
+                        bleFanHosts={bleFanHosts}
+                        currentDevicePath={currentDevicePath}
+                        onUpdateBleFans={onUpdateBleFans}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             )})}

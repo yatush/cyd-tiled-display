@@ -14,6 +14,11 @@ import {
   loadStoredSnapshot,
   saveStoredSnapshot,
 } from '../utils/fileContext';
+import {
+  buildTuyaBleFanYamlSections,
+  configHasBleProxy,
+  extractBleFansFromDeviceYaml,
+} from '../utils/bleFanUtils';
 
 export type QuickSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -138,7 +143,12 @@ export function useFileOperations(
           return;
         }
 
-        const loadedConfig: Config = { ...data, project_path: targetPath };
+        const loadedBleFans = isFullDevice ? extractBleFansFromDeviceYaml(rawData) : [];
+        const loadedConfig: Config = {
+          ...data,
+          project_path: targetPath,
+          ...(loadedBleFans.length > 0 ? { ble_fans: loadedBleFans } : {}),
+        };
         setConfig(loadedConfig);
         setFileContext(
           isFullDevice && deviceMeta
@@ -344,22 +354,15 @@ export function useFileOperations(
       const screensYaml = generateYaml(config, false, false);
 
       // Check if any tile in the config uses the BLE proxy display script or action
-      const hasBleProxy = config.pages?.some(page =>
-        page.tiles?.some(tile => {
-          const displayList = Array.isArray(tile.display) ? tile.display : (tile.display ? [tile.display] : []);
-          const hasBleDisplay = displayList.some((d: any) =>
-            d === 'tile_ble_proxy' || (typeof d === 'object' && d !== null && 'tile_ble_proxy' in d)
-          );
-          const hasBleAction = tile.on_press === 'action_toggle_ble_proxy' || tile.on_release === 'action_toggle_ble_proxy';
-          return hasBleDisplay || hasBleAction;
-        })
-      ) || false;
+      const hasBleProxy = configHasBleProxy(config);
+      const tuyaBle = buildTuyaBleFanYamlSections(config.ble_fans, hasBleProxy);
 
-      const blePackageSection = hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : '';
+      const blePackageSection = `${tuyaBle.packageLine}${hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : ''}`;
       const substitutionsSection = dump({
         substitutions: {
           device_name: deviceName,
           friendly_name: friendlyName,
+          ...tuyaBle.extraSubstitutions,
         }
       });
       const apiSection = dump({
@@ -369,6 +372,7 @@ export function useFileOperations(
           }
         }
       });
+      const tuyaBleComponentSection = tuyaBle.componentSection ? `${tuyaBle.componentSection}\n` : '';
 
       const fullYaml = `${substitutionsSection}
 packages:
@@ -384,7 +388,7 @@ ${apiSection}
 ${otaSection}
 ${wifiSection}
 ${timeSection}
-tile_ui:
+${tuyaBleComponentSection}tile_ui:
 ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
 `;
 
@@ -432,6 +436,7 @@ ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
       if (res.ok) {
         const rawData = await res.json();
         const deviceMeta = extractDeviceMetaFromYamlData(rawData);
+        const extractedBleFans = extractBleFansFromDeviceYaml(rawData);
         let data = rawData;
 
         // Use the tile_ui section if this is a full device configuration
@@ -454,6 +459,10 @@ ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
         if (!data || !data.pages || !Array.isArray(data.pages)) {
           alert('Failed to load: No valid tile configuration found in file.');
           return;
+        }
+
+        if (extractedBleFans.length > 0) {
+          data = { ...data, ble_fans: extractedBleFans };
         }
 
         setConfig(data);
@@ -525,12 +534,17 @@ ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
     return handleDownloadYaml(fileContext.path);
   }, [fileContext, handleSaveDeviceConfig, handleSaveToHa, handleDownloadYaml, markSavedStatus]);
 
+  const syncSavedSnapshot = useCallback((nextConfig: Config) => {
+    setSavedSnapshot(getConfigSnapshot(nextConfig));
+  }, []);
+
   return {
     fileInputRef,
     fileContext,
     isDirty,
     saveStatus,
     clearFileContext,
+    syncSavedSnapshot,
     handleQuickSave,
     handleSaveYaml,
     handleDownloadYaml,

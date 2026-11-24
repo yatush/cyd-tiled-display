@@ -12,6 +12,10 @@
 #include <type_traits>
 #include <mutex>
 
+#ifdef USE_TUYA_BLE_FAN
+#include "esphome/components/tuya_ble_fan/tuya_ble_fan_registry.h"
+#endif
+
 // --- String repository ---
 
 class Repository {
@@ -438,6 +442,22 @@ void InitSensor(const std::string& key, const std::string& sensor,
 // Initializes a sensor and its required attributes.
 void InitSensor(const std::string& sensor) {
   const std::string entity = GetSensor(sensor);
+#ifdef USE_TUYA_BLE_FAN
+  static bool ble_cb_registered = false;
+  if (!ble_cb_registered) {
+    ble_cb_registered = true;
+    esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().set_state_change_callback(
+        [](const std::string& key, const std::string& value) {
+          ReconcileFanAttribute(key, value);
+          id(disp).update();
+        });
+  }
+  if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().handles_entity(entity)) {
+    ESP_LOGI("Init sensor", "Entity %s handled locally via Tuya BLE (skipping HA sensor)",
+             entity.c_str());
+    return;
+  }
+#endif
   InitSensor(sensor, entity, GetAtt(sensor));
   if (entity.find("climate.") == 0 || entity.find("fan.") == 0) {
     InitSensor(entity, entity);
@@ -451,6 +471,12 @@ void InitSensor(const std::string& sensor) {
 
 // Retrieves the value of a text sensor.
 std::string GetTextSensorValue(const std::string& key) {
+#ifdef USE_TUYA_BLE_FAN
+  std::string ble_val;
+  if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().get_text_state(key, ble_val)) {
+    return ble_val;
+  }
+#endif
   if (!IsTextSensor(key) || id(text_sensors).count(key) == 0) {
     return "";
   }
@@ -474,6 +500,12 @@ std::string GetClimateTemperatureValue(const std::string& ac) {
 
 // Retrieves the value of a binary sensor.
 bool GetBinSensorValue(const std::string& key) {
+#ifdef USE_TUYA_BLE_FAN
+  bool ble_val = false;
+  if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().get_binary_state(key, ble_val)) {
+    return ble_val;
+  }
+#endif
   if (!IsBinSensor(key) || id(binary_sensors).count(key) == 0) {
     return false;
   }
@@ -497,10 +529,88 @@ std::function<bool(const std::vector<std::string>&)> IsAnyOn =
                          });
     };
 
+#ifdef USE_TUYA_BLE_FAN
+bool IsAnyBleControlled(const std::vector<std::string>& entities) {
+  return std::any_of(entities.begin(), entities.end(), [](const std::string& item) {
+    return esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().handles_entity(GetSensor(item));
+  });
+}
+
+// Returns true if any entity in `entities` is BLE-controlled, setting `worst_status`
+// to the least progressive connection state among all BLE-controlled entities.
+bool GetWorstBleStatus(const std::vector<std::string>& entities,
+                       esphome::tuya_ble_fan::BleConnStatus& worst_status) {
+  bool found = false;
+  auto worst = esphome::tuya_ble_fan::BleConnStatus::CONNECTED;
+  for (const auto& item : entities) {
+    esphome::tuya_ble_fan::BleConnStatus st;
+    if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().get_connection_status(
+            GetSensor(item), st)) {
+      if (!found || static_cast<uint8_t>(st) < static_cast<uint8_t>(worst)) {
+        worst = st;
+      }
+      found = true;
+    }
+  }
+  if (found) {
+    worst_status = worst;
+  }
+  return found;
+}
+
+void DrawBleIndicator(int x_end, int y_end, esphome::tuya_ble_fan::BleConnStatus status) {
+  using esphome::tuya_ble_fan::BleConnStatus;
+  Color icon_color = id(light_blue);
+  const char* label = nullptr;
+
+  switch (status) {
+    case BleConnStatus::CONNECTED:
+      icon_color = id(light_blue);
+      label = nullptr;
+      break;
+    case BleConnStatus::PAIRING:
+      icon_color = id(yellow);
+      label = "pair";
+      break;
+    case BleConnStatus::CONNECTING:
+      icon_color = id(yellow);
+      label = "conn";
+      break;
+    case BleConnStatus::SCANNING:
+      icon_color = id(yellow);
+      label = "scan";
+      break;
+    case BleConnStatus::DISCONNECTED:
+    default:
+      icon_color = id(gray);
+      label = "disc";
+      break;
+  }
+
+  // Tiny Bluetooth icon in the bottom-right corner of BLE-controlled tiles
+  id(disp).print(x_end - 2, y_end - 2, &id(tiny), icon_color, TextAlign::BOTTOM_RIGHT, "\U0000e1a7");
+
+  if (label != nullptr) {
+    int x_off = 0, y_off = 0, icon_w = 0, icon_h = 0;
+    id(disp).get_text_bounds(0, 0, "\U0000e1a7", &id(tiny), TextAlign::BOTTOM_RIGHT,
+                             &x_off, &y_off, &icon_w, &icon_h);
+    id(disp).print(x_end - 4 - icon_w, y_end - 4, &id(text_small), icon_color,
+                   TextAlign::BOTTOM_RIGHT, label);
+  }
+}
+#endif
+
 // Performs a Home Assistant service call.
 void PerformHaAction(
     const std::string& entity, const std::string& action,
     std::vector<std::pair<std::string, std::string>> data = {}) {
+#ifdef USE_TUYA_BLE_FAN
+  if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().handle_action(entity, action, data)) {
+    ESP_LOGI("ble_action", "Action: %s, Entity: %s (routed over Tuya BLE)", action.c_str(),
+             entity.c_str());
+    return;
+  }
+#endif
   
   std::string service_name = (action.find('.') == std::string::npos)
           ? entity.substr(0, entity.find('.')).append(".").append(action)

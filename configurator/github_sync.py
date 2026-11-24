@@ -31,7 +31,7 @@ def _managed_path(name):
                 or filename.startswith("user_config_") or "_custom." in filename):
             return None
         return path
-    if path.parts[:2] == ("external_components", "tile_ui") and len(path.parts) > 2:
+    if path.parts[:2] in (("external_components", "tile_ui"), ("external_components", "tuya_ble_fan")) and len(path.parts) > 2:
         return path
     return None
 

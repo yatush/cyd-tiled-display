@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Copy, Layout, Settings2, Plus } from 'lucide-react';
-import { Tile, Config, Page, HaEntity, ScreenImageEntry } from '../types';
+import { Tile, Config, Page, HaEntity, ScreenImageEntry, BleFanConfig, TuyaBleCandidate } from '../types';
 import { 
   TextInput, 
   Checkbox, 
@@ -23,7 +23,7 @@ import { useYamlDraft } from '../hooks/useYamlDraft';
 import { OrphanDraftsBanner, YamlEditorSection, YamlModeToggle } from './YamlEditorPanel';
 import { PagePropertiesPanel } from './PagePropertiesPanel';
 
-export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config, schema, activePage, setActivePageId, onUpdatePage, onRenamePage, haEntities, setConfig, screenImages }: {
+export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config, schema, activePage, setActivePageId, onUpdatePage, onRenamePage, haEntities, tuyaBleCandidates, bleFanHosts, currentDevicePath, setConfig, screenImages }: {
   selectedTile: Tile | null, 
   onUpdate: (t: Tile, discoverDynamicEntities?: boolean) => void,
   onDelete: () => void,
@@ -35,6 +35,9 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
   onUpdatePage: (p: Page) => void,
   onRenamePage: (oldId: string, newId: string) => void,
   haEntities: HaEntity[],
+  tuyaBleCandidates?: TuyaBleCandidate[],
+  bleFanHosts?: Record<string, string[]>,
+  currentDevicePath?: string,
   setConfig?: (config: Config) => void,
   screenImages?: Record<string, ScreenImageEntry>
 }) => {
@@ -49,6 +52,16 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
     currentItem: activePage,
     generateYaml: generatePageYaml,
   });
+
+  const bleFans = config.ble_fans || [];
+  const handleUpdateBleFans = setConfig
+    ? (next: BleFanConfig[]) => {
+        const updated: Config = { ...config };
+        if (next.length > 0) updated.ble_fans = next;
+        else delete updated.ble_fans;
+        setConfig(updated);
+      }
+    : undefined;
 
   const dynamicEntities = config.dynamic_entities || [];
   const fixedValuesMap = config.dynamic_entity_values || {};
@@ -781,6 +794,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           value={selectedTile[field.name] || ''}
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                           haEntities={field.type === 'ha_entity' ? haEntities : undefined}
+                          bleFans={field.type === 'ha_entity' ? bleFans : undefined}
+                          tuyaBleCandidates={field.type === 'ha_entity' ? tuyaBleCandidates : undefined}
+                          bleFanHosts={field.type === 'ha_entity' ? bleFanHosts : undefined}
+                          currentDevicePath={field.type === 'ha_entity' ? currentDevicePath : undefined}
+                          onUpdateBleFans={field.type === 'ha_entity' ? handleUpdateBleFans : undefined}
                         />
                       );
                     }
@@ -792,6 +810,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           values={selectedTile[field.name] || []}
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                           haEntities={haEntities}
+                          bleFans={bleFans}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
+                          onUpdateBleFans={handleUpdateBleFans}
                         />
                       );
                     }
@@ -836,6 +859,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                           dynamicEntities={dynamicEntities}
                           haEntities={haEntities}
+                          bleFans={bleFans}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
+                          onUpdateBleFans={handleUpdateBleFans}
                         />
                       );
                     }
@@ -873,6 +901,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                                   onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                                   dynamicEntities={dynamicEntities}
                                   haEntities={haEntities}
+                                  bleFans={bleFans}
+                                  tuyaBleCandidates={tuyaBleCandidates}
+                                  bleFanHosts={bleFanHosts}
+                                  currentDevicePath={currentDevicePath}
+                                  onUpdateBleFans={handleUpdateBleFans}
                                 />
                               </div>
                             )}
@@ -888,6 +921,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                           dynamicEntities={dynamicEntities}
                           haEntities={haEntities}
+                          bleFans={bleFans}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
+                          onUpdateBleFans={handleUpdateBleFans}
                         />
                       );
                     }
@@ -907,6 +945,11 @@ export const Sidebar = ({ selectedTile, onUpdate, onDelete, onDuplicate, config,
                           onChange={v => onUpdate({...selectedTile, [field.name]: v})}
                           dynamicEntities={allowedDynamicEntities}
                           haEntities={haEntities}
+                          bleFans={bleFans}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
+                          onUpdateBleFans={handleUpdateBleFans}
                         />
                       );
                     }
