@@ -360,7 +360,7 @@ void TuyaBleLightOutput::write_state(light::LightState *state) {
 }
 
 void TuyaBleLightOutput::sync_from_device() {
-  if (light_state_ == nullptr || syncing_ || in_write_state_) return;
+  if (light_state_ == nullptr || in_write_state_) return;
   initial_write_skipped_ = true;
 
   const bool target_on = parent_->light_on();
@@ -1828,12 +1828,15 @@ void TuyaBleFanHub::handle_decrypted_frame(FanSession &slot, const TuyaDecrypted
 
   if (slot.device == nullptr) return;
 
-  // Incoming DP reports (v3 and v4)
+  // Incoming DP reports (v3, signed v3, and v4)
   if (frame.code == FUN_RECEIVE_DP || frame.code == FUN_RECEIVE_TIME_DP ||
+      frame.code == FUN_RECEIVE_SIGN_DP || frame.code == FUN_RECEIVE_SIGN_TIME_DP ||
       frame.code == FUN_RECEIVE_DP_V4 || frame.code == FUN_RECEIVE_TIME_DP_V4) {
     const uint8_t *ptr = frame.data.data();
     size_t len = frame.data.size();
     std::vector<TuyaDp> dps;
+    std::vector<uint8_t> ack_payload;
+    bool send_ack = true;
 
     if (frame.code == FUN_RECEIVE_DP) {
       decode_dps_v3(ptr, len, dps);
@@ -1841,22 +1844,59 @@ void TuyaBleFanHub::handle_decrypted_frame(FanSession &slot, const TuyaDecrypted
       uint8_t time_type = ptr[0];
       size_t skip = 1 + (time_type == 0 ? 13 : 4);
       if (skip < len) decode_dps_v3(ptr + skip, len - skip, dps);
-    } else if (frame.code == FUN_RECEIVE_DP_V4 && len > 3) {
-      decode_dps_v4(ptr + 3, len - 3, dps);
-    } else if (frame.code == FUN_RECEIVE_TIME_DP_V4 && len > 4) {
+    } else if (frame.code == FUN_RECEIVE_SIGN_DP && len > 3) {
+      decode_dps_v3(ptr + 3, len - 3, dps);
+      ack_payload = {ptr[0], ptr[1], ptr[2], 0x00};
+    } else if (frame.code == FUN_RECEIVE_SIGN_TIME_DP && len > 4) {
       uint8_t time_type = ptr[3];
       size_t skip = 4 + (time_type == 0 ? 13 : 4);
-      if (skip < len) decode_dps_v4(ptr + skip, len - skip, dps);
+      if (skip < len) decode_dps_v3(ptr + skip, len - skip, dps);
+      ack_payload = {ptr[0], ptr[1], ptr[2], 0x00};
+    } else if (frame.code == FUN_RECEIVE_DP_V4) {
+      // Official Tuya BLE v4 header: version(1) + sn(4) + type_ack(1) + mode(1) = 7 bytes
+      if (len > 7 && decode_dps_v4(ptr + 7, len - 7, dps) && !dps.empty()) {
+        send_ack = (ptr[5] & 0x80) == 0;
+        ack_payload.assign(ptr, ptr + 7);
+        ack_payload.push_back(0x00);
+      } else if (len > 3) {
+        // Fallback for non-standard 3-byte v4 header
+        decode_dps_v4(ptr + 3, len - 3, dps);
+      }
+    } else if (frame.code == FUN_RECEIVE_TIME_DP_V4) {
+      // Official Tuya BLE v4 header (7 bytes) + time_type(1) + timestamp(13 or 4 bytes)
+      if (len > 8) {
+        uint8_t time_type = ptr[7];
+        size_t skip = 8 + (time_type == 0 ? 13 : 4);
+        if (skip < len && decode_dps_v4(ptr + skip, len - skip, dps) && !dps.empty()) {
+          send_ack = (ptr[5] & 0x80) == 0;
+          ack_payload.assign(ptr, ptr + 7);
+          ack_payload.push_back(0x00);
+        }
+      }
+      if (dps.empty() && len > 4) {
+        uint8_t time_type = ptr[3];
+        size_t skip = 4 + (time_type == 0 ? 13 : 4);
+        if (skip < len) decode_dps_v4(ptr + skip, len - skip, dps);
+      }
     }
 
     if (!dps.empty()) {
-      ESP_LOGD(TAG, "[%s] Received %u DP(s)", slot.device->name().c_str(),
-               static_cast<unsigned>(dps.size()));
+      ESP_LOGD(TAG, "[%s] Received %u DP(s) (code=0x%04X)", slot.device->name().c_str(),
+               static_cast<unsigned>(dps.size()), frame.code);
       slot.device->apply_incoming_dps(dps);
+    } else {
+      ESP_LOGD(TAG, "[%s] Received DP frame 0x%04X with 0 parsed DPs (len=%u)",
+               slot.device->name().c_str(), frame.code, static_cast<unsigned>(len));
     }
 
     // Send ACK response so device stops retrying the notification
-    enqueue_gatt_packet(slot, frame.code, {}, SECURITY_FLAG_SESSION, frame.seq_num);
+    if (send_ack) {
+      enqueue_gatt_packet(slot, frame.code, ack_payload, SECURITY_FLAG_SESSION, frame.seq_num);
+    }
+  } else if (frame.code != FUN_SENDER_DEVICE_STATUS && frame.code != FUN_SENDER_DPS &&
+             frame.code != FUN_SENDER_DPS_V4) {
+    ESP_LOGD(TAG, "[%s] Unhandled Tuya BLE frame code=0x%04X (len=%u)",
+             slot.device->name().c_str(), frame.code, static_cast<unsigned>(frame.data.size()));
   }
 }
 

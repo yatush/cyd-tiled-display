@@ -25,6 +25,8 @@ constexpr uint16_t FUN_SENDER_DPS_V4 = 0x0027;
 
 constexpr uint16_t FUN_RECEIVE_DP = 0x8001;
 constexpr uint16_t FUN_RECEIVE_TIME_DP = 0x8003;
+constexpr uint16_t FUN_RECEIVE_SIGN_DP = 0x8004;
+constexpr uint16_t FUN_RECEIVE_SIGN_TIME_DP = 0x8005;
 constexpr uint16_t FUN_RECEIVE_DP_V4 = 0x8006;
 constexpr uint16_t FUN_RECEIVE_TIME_DP_V4 = 0x8007;
 
