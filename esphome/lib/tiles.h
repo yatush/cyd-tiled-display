@@ -818,8 +818,9 @@ protected:
     auto entities = Deref(this->decoded_entities_);
     ExecuteScripts(this->draw_funcs_, x0, x1, y0, y1, entities);
 #ifdef USE_TUYA_BLE_FAN
-    if (IsAnyBleControlled(entities)) {
-      DrawBleIndicator(x1, y1);
+    esphome::tuya_ble_fan::BleConnStatus ble_status;
+    if (GetWorstBleStatus(entities, ble_status)) {
+      DrawBleIndicator(x1, y1, ble_status);
     }
 #endif
   }
@@ -1034,8 +1035,9 @@ protected:
       this->draw_funcs_, x_start(this->x_), x1, y_start(this->y_), y1,
       this->presentation_name_, isOn);
 #ifdef USE_TUYA_BLE_FAN
-    if (IsAnyBleControlled(Deref(this->entities_))) {
-      DrawBleIndicator(x1, y1);
+    esphome::tuya_ble_fan::BleConnStatus ble_status;
+    if (GetWorstBleStatus(Deref(this->entities_), ble_status)) {
+      DrawBleIndicator(x1, y1, ble_status);
     }
 #endif
   }
@@ -1116,8 +1118,9 @@ protected:
     int y1 = y_start(y_end_idx) + y_rect();
     ExecuteScripts(this->draw_funcs_, x_start(this->x_), x1, y_start(this->y_), y1, *current_option.second, args);
 #ifdef USE_TUYA_BLE_FAN
-    if (IsAnyBleControlled(args)) {
-      DrawBleIndicator(x1, y1);
+    esphome::tuya_ble_fan::BleConnStatus ble_status;
+    if (GetWorstBleStatus(args, ble_status)) {
+      DrawBleIndicator(x1, y1, ble_status);
     }
 #endif
   }

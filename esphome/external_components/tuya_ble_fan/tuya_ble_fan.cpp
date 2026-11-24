@@ -102,6 +102,22 @@ float tuya_brightness_to_float(int b) {
 // TuyaBleFanRegistry
 // ============================================================================
 
+bool TuyaBleFanRegistry::get_connection_status(const std::string &entity_or_key,
+                                               BleConnStatus &out) const {
+  const std::string base = base_entity(entity_or_key);
+  auto fan_it = fan_entities_.find(base);
+  if (fan_it != fan_entities_.end() && fan_it->second != nullptr) {
+    out = fan_it->second->conn_status();
+    return true;
+  }
+  auto light_it = light_entities_.find(base);
+  if (light_it != light_entities_.end() && light_it->second != nullptr) {
+    out = light_it->second->conn_status();
+    return true;
+  }
+  return false;
+}
+
 bool TuyaBleFanRegistry::get_text_state(const std::string &key, std::string &out) const {
   const std::string base = base_entity(key);
   const std::string attr = attr_name(key);
@@ -649,6 +665,12 @@ void TuyaBleFanDevice::clear_rssi() {
   }
 }
 
+void TuyaBleFanDevice::set_conn_status(BleConnStatus status) {
+  if (conn_status_ == status) return;
+  conn_status_ = status;
+  TuyaBleFanRegistry::instance().notify_state_changed("", "");
+}
+
 // ============================================================================
 // TuyaBleFanHub
 // ============================================================================
@@ -960,6 +982,11 @@ void TuyaBleFanHub::start_bounded_scan() {
   scan_active_ = true;
   hub_scanning_ = true;
   hub_scan_started_ms_ = millis();
+  for (auto *fan : fans_) {
+    if (!fan->has_mac()) {
+      fan->set_conn_status(BleConnStatus::SCANNING);
+    }
+  }
   parent_->start_scan();
 }
 
@@ -983,6 +1010,7 @@ void TuyaBleFanHub::start_connect(FanSession &slot, TuyaBleFanDevice *device) {
   slot.state = SessionState::CONNECTING;
   slot.state_entered_ms = millis();
   slot.last_activity_ms = slot.state_entered_ms;
+  device->set_conn_status(BleConnStatus::CONNECTING);
 
   ESP_LOGI(TAG, "[%s] Connecting to %012llX...", device->name().c_str(),
            static_cast<unsigned long long>(device->mac_address()));
@@ -1011,6 +1039,7 @@ void TuyaBleFanHub::start_probe(FanSession &slot, TuyaBleFanDevice *device,
   slot.state = SessionState::CONNECTING;
   slot.state_entered_ms = millis();
   slot.last_activity_ms = slot.state_entered_ms;
+  device->set_conn_status(BleConnStatus::CONNECTING);
 
   ESP_LOGI(TAG, "[%s] Probing Tuya v3 candidate %012llX (uuid=%s)...", device->name().c_str(),
            static_cast<unsigned long long>(candidate.mac), candidate.uuid.c_str());
@@ -1075,6 +1104,7 @@ void TuyaBleFanHub::disconnect_session(FanSession &slot) {
 void TuyaBleFanHub::reset_session(FanSession &slot) {
   if (slot.device != nullptr) {
     slot.device->clear_rssi();
+    slot.device->set_conn_status(BleConnStatus::DISCONNECTED);
   }
   slot = FanSession{};
   bool any_active = false;
@@ -1242,6 +1272,11 @@ void TuyaBleFanHub::on_scan_end() {
   if (scan_active_) {
     scan_active_ = false;
     hub_scanning_ = false;
+    for (auto *fan : fans_) {
+      if (fan->conn_status() == BleConnStatus::SCANNING) {
+        fan->set_conn_status(BleConnStatus::DISCONNECTED);
+      }
+    }
   }
 }
 
@@ -1256,6 +1291,9 @@ void TuyaBleFanHub::ble_before_disabled_event_handler() {
   hub_scanning_ = false;
   for (auto &s : sessions_) {
     reset_session(s);
+  }
+  for (auto *fan : fans_) {
+    fan->set_conn_status(BleConnStatus::DISCONNECTED);
   }
   this->gattc_if_ = ESP_GATT_IF_NONE;
   this->set_state(esp32_ble_tracker::ClientState::INIT);
@@ -1640,6 +1678,9 @@ void TuyaBleFanHub::flush_write_queue(FanSession &slot) {
 void TuyaBleFanHub::send_device_info_request(FanSession &slot) {
   slot.state = SessionState::HANDSHAKE_DEVICE_INFO;
   slot.state_entered_ms = millis();
+  if (slot.device != nullptr) {
+    slot.device->set_conn_status(BleConnStatus::PAIRING);
+  }
   ESP_LOGD(TAG, "Sending FUN_SENDER_DEVICE_INFO (conn_id=%u)", slot.conn_id);
   enqueue_gatt_packet(slot, FUN_SENDER_DEVICE_INFO, {}, SECURITY_FLAG_LOGIN);
 }
@@ -1762,6 +1803,7 @@ void TuyaBleFanHub::handle_decrypted_frame(FanSession &slot, const TuyaDecrypted
     slot.state = SessionState::READY;
     slot.last_activity_ms = millis();
     slot.last_rssi_poll_ms = slot.last_activity_ms;
+    slot.device->set_conn_status(BleConnStatus::CONNECTED);
     ESP_LOGI(TAG, "[%s] Tuya BLE session READY (conn_id=%u)", slot.device->name().c_str(), slot.conn_id);
 
     // Flush any queued user commands immediately, query full status, and read live RSSI

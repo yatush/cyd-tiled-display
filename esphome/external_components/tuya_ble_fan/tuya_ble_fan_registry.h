@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -10,6 +11,15 @@ namespace esphome {
 namespace tuya_ble_fan {
 
 class TuyaBleFanDevice;
+
+// Ordered from least progressive (0) to most progressive (4)
+enum class BleConnStatus : uint8_t {
+  DISCONNECTED = 0,
+  SCANNING = 1,
+  CONNECTING = 2,
+  PAIRING = 3,
+  CONNECTED = 4,
+};
 
 class TuyaBleFanRegistry {
  public:
@@ -45,6 +55,7 @@ class TuyaBleFanRegistry {
     return fan_entities_.count(base) > 0 || light_entities_.count(base) > 0;
   }
 
+  bool get_connection_status(const std::string &entity_or_key, BleConnStatus &out) const;
   bool get_text_state(const std::string &key, std::string &out) const;
   bool get_binary_state(const std::string &key, bool &out) const;
   bool handle_action(const std::string &entity_id, const std::string &action,

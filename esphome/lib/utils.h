@@ -536,9 +536,67 @@ bool IsAnyBleControlled(const std::vector<std::string>& entities) {
   });
 }
 
-void DrawBleIndicator(int x_end, int y_end) {
+// Returns true if any entity in `entities` is BLE-controlled, setting `worst_status`
+// to the least progressive connection state among all BLE-controlled entities.
+bool GetWorstBleStatus(const std::vector<std::string>& entities,
+                       esphome::tuya_ble_fan::BleConnStatus& worst_status) {
+  bool found = false;
+  auto worst = esphome::tuya_ble_fan::BleConnStatus::CONNECTED;
+  for (const auto& item : entities) {
+    esphome::tuya_ble_fan::BleConnStatus st;
+    if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().get_connection_status(
+            GetSensor(item), st)) {
+      if (!found || static_cast<uint8_t>(st) < static_cast<uint8_t>(worst)) {
+        worst = st;
+      }
+      found = true;
+    }
+  }
+  if (found) {
+    worst_status = worst;
+  }
+  return found;
+}
+
+void DrawBleIndicator(int x_end, int y_end, esphome::tuya_ble_fan::BleConnStatus status) {
+  using esphome::tuya_ble_fan::BleConnStatus;
+  Color icon_color = id(light_blue);
+  const char* label = nullptr;
+
+  switch (status) {
+    case BleConnStatus::CONNECTED:
+      icon_color = id(light_blue);
+      label = nullptr;
+      break;
+    case BleConnStatus::PAIRING:
+      icon_color = id(yellow);
+      label = "pair";
+      break;
+    case BleConnStatus::CONNECTING:
+      icon_color = id(yellow);
+      label = "conn";
+      break;
+    case BleConnStatus::SCANNING:
+      icon_color = id(yellow);
+      label = "scan";
+      break;
+    case BleConnStatus::DISCONNECTED:
+    default:
+      icon_color = id(gray);
+      label = "disc";
+      break;
+  }
+
   // Tiny Bluetooth icon in the bottom-right corner of BLE-controlled tiles
-  id(disp).print(x_end - 2, y_end - 2, &id(tiny), id(light_blue), TextAlign::BOTTOM_RIGHT, "\U0000e1a7");
+  id(disp).print(x_end - 2, y_end - 2, &id(tiny), icon_color, TextAlign::BOTTOM_RIGHT, "\U0000e1a7");
+
+  if (label != nullptr) {
+    int x_off = 0, y_off = 0, icon_w = 0, icon_h = 0;
+    id(disp).get_text_bounds(0, 0, "\U0000e1a7", &id(tiny), TextAlign::BOTTOM_RIGHT,
+                             &x_off, &y_off, &icon_w, &icon_h);
+    id(disp).print(x_end - 4 - icon_w, y_end - 4, &id(text_small), icon_color,
+                   TextAlign::BOTTOM_RIGHT, label);
+  }
 }
 #endif
 

@@ -133,6 +133,8 @@ class TuyaBleFanDevice {
   void set_rssi_sensor(sensor::Sensor *sensor) { rssi_sensor_ = sensor; }
   void publish_rssi(int rssi);
   void clear_rssi();
+  BleConnStatus conn_status() const { return conn_status_; }
+  void set_conn_status(BleConnStatus status);
 
   // Incoming DP updates from BLE device
   void apply_incoming_dps(const std::vector<TuyaDp> &dps);
@@ -166,6 +168,7 @@ class TuyaBleFanDevice {
   uint64_t mac_address_{0};
   esp_ble_addr_type_t addr_type_{BLE_ADDR_TYPE_PUBLIC};
   ESPPreferenceObject identity_pref_;
+  BleConnStatus conn_status_{BleConnStatus::DISCONNECTED};
 
   // Fan state
   bool fan_on_{false};
