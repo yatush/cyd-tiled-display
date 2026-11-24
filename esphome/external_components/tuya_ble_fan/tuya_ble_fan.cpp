@@ -552,25 +552,38 @@ void TuyaBleFanDevice::set_light_color_temp(int color_temp_0_to_1000) {
 
 void TuyaBleFanDevice::set_light_state(bool on, int brightness_10_to_1000, int color_temp_0_to_1000) {
   bool was_on = light_on_;
+  int clamped_b = std::max(10, std::min(1000, brightness_10_to_1000));
+  int clamped_ct = std::max(0, std::min(1000, color_temp_0_to_1000));
+  bool b_changed = std::abs(clamped_b - light_brightness_) > 10;
+  bool ct_changed = std::abs(clamped_ct - light_color_temp_) > 10;
   light_on_ = on;
-  light_brightness_ = std::max(10, std::min(1000, brightness_10_to_1000));
-  light_color_temp_ = std::max(0, std::min(1000, color_temp_0_to_1000));
+  if (b_changed) light_brightness_ = clamped_b;
+  if (ct_changed) light_color_temp_ = clamped_ct;
   followup_dps_.clear();
   if (!on) {
     queue_dps({TuyaDp::make_bool(DP_LIGHT_POWER, false)});
   } else if (!was_on) {
-    // FlyFan MCU ignores brightness/CT in the same packet as OFF->ON; send power ON first
-    // and follow up with brightness & color temperature in a second DP packet.
-    followup_dps_ = {
-        TuyaDp::make_int(DP_LIGHT_BRIGHTNESS, light_brightness_),
-        TuyaDp::make_int(DP_LIGHT_COLOR_TEMP, light_color_temp_),
-    };
+    // FlyFan MCU ignores brightness/CT in the same packet as OFF->ON; only send a
+    // follow-up packet when brightness or color temperature actually changed so a
+    // plain power-on from HA does not trigger a second beep.
+    if (b_changed) {
+      followup_dps_.push_back(TuyaDp::make_int(DP_LIGHT_BRIGHTNESS, light_brightness_));
+    }
+    if (ct_changed) {
+      followup_dps_.push_back(TuyaDp::make_int(DP_LIGHT_COLOR_TEMP, light_color_temp_));
+    }
     queue_dps({TuyaDp::make_bool(DP_LIGHT_POWER, true)});
   } else {
-    queue_dps({
-        TuyaDp::make_int(DP_LIGHT_BRIGHTNESS, light_brightness_),
-        TuyaDp::make_int(DP_LIGHT_COLOR_TEMP, light_color_temp_),
-    });
+    std::vector<TuyaDp> dps;
+    if (b_changed) {
+      dps.push_back(TuyaDp::make_int(DP_LIGHT_BRIGHTNESS, light_brightness_));
+    }
+    if (ct_changed) {
+      dps.push_back(TuyaDp::make_int(DP_LIGHT_COLOR_TEMP, light_color_temp_));
+    }
+    if (!dps.empty()) {
+      queue_dps(dps);
+    }
   }
   notify_light_changed();
 }

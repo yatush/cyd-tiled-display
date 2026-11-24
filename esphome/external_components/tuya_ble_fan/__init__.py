@@ -86,6 +86,7 @@ def _validate_light_subconfig(light_id, output_id, name):
         CONF_ID: light_id,
         CONF_OUTPUT_ID: output_id,
         CONF_NAME: name,
+        "default_transition_length": "0s",
     }
     if hasattr(light, "LIGHT_SCHEMA"):
         return light.LIGHT_SCHEMA.extend(
