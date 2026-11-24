@@ -24,6 +24,7 @@ export function useHaConnection() {
   });
   const [haEntities, setHaEntities] = useState<HaEntity[]>([]);
   const [tuyaBleCandidates, setTuyaBleCandidates] = useState<TuyaBleCandidate[]>([]);
+  const [bleFanHosts, setBleFanHosts] = useState<Record<string, string[]>>({});
   const [haStatus, setHaStatus] = useState<HaStatus>('idle');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -58,6 +59,9 @@ export function useHaConnection() {
           const bleData = await bleRes.json();
           if (Array.isArray(bleData?.fans)) {
             setTuyaBleCandidates(bleData.fans);
+          }
+          if (bleData?.hosted_by && typeof bleData.hosted_by === 'object') {
+            setBleFanHosts(bleData.hosted_by);
           }
         } catch {
           // ignore malformed BLE fan response
@@ -98,6 +102,7 @@ export function useHaConnection() {
     setConnectionType,
     haEntities,
     tuyaBleCandidates,
+    bleFanHosts,
     haStatus,
     fetchHaEntities: () => setRefreshTrigger(prev => prev + 1)
   };

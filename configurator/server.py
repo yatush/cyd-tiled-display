@@ -2827,13 +2827,58 @@ def discover_tuya_ble_fans(ha_config_dir=None):
     return fans
 
 
+def find_ble_fan_hosts(esphome_dir=None):
+    """Scan ESPHome device YAMLs to find which device files already host each Tuya BLE fan device_id."""
+    root_dir = esphome_dir or BASE_DIR
+    hosts = {}
+    if not root_dir or not os.path.isdir(root_dir):
+        return hosts
+
+    loader_cls = generate_tiles_api.create_safe_yaml_loader()
+    for fname in sorted(os.listdir(root_dir)):
+        if not fname.endswith('.yaml') or fname in ('secrets.yaml', 'images.yaml'):
+            continue
+        fpath = os.path.join(root_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                raw_text = f.read()
+            if 'tuya_ble_fan:' not in raw_text:
+                continue
+            parsed = yaml.load(raw_text, Loader=loader_cls)
+            if not isinstance(parsed, dict):
+                continue
+            ble_cfg = parsed.get('tuya_ble_fan')
+            if not isinstance(ble_cfg, dict):
+                continue
+            fans = ble_cfg.get('fans')
+            if not isinstance(fans, list):
+                continue
+            for fan in fans:
+                if not isinstance(fan, dict):
+                    continue
+                dev_id = str(fan.get('device_id') or '').strip()
+                if dev_id:
+                    entry_list = hosts.setdefault(dev_id, [])
+                    if fname not in entry_list:
+                        entry_list.append(fname)
+        except Exception:
+            continue
+
+    return hosts
+
+
 @app.route('/api/tuya_ble_fans', methods=['GET'])
 def get_tuya_ble_fans():
     try:
         fans = discover_tuya_ble_fans()
-        return jsonify({'fans': fans})
+        hosted_by = find_ble_fan_hosts()
+        for fan in fans:
+            fan['hosted_by'] = hosted_by.get(fan['device_id'], [])
+        return jsonify({'fans': fans, 'hosted_by': hosted_by})
     except Exception as e:
-        return jsonify({'fans': [], 'error': str(e)}), 500
+        return jsonify({'fans': [], 'hosted_by': {}, 'error': str(e)}), 500
 
 @app.route('/api/scripts')
 def get_scripts():

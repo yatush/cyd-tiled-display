@@ -187,3 +187,21 @@ export function buildTuyaBleFanYamlSections(
     componentSection: dump(tuyaBlock, { lineWidth: -1, noCompatMode: true, sortKeys: false }),
   };
 }
+
+export function getOtherBleFanHosts(
+  deviceId: string | undefined | null,
+  bleFanHosts: Record<string, string[]> = {},
+  currentDevicePath?: string | null
+): string[] {
+  const id = typeof deviceId === 'string' ? deviceId.trim() : '';
+  if (!id) return [];
+  const hosts = bleFanHosts?.[id];
+  if (!Array.isArray(hosts) || hosts.length === 0) return [];
+  const currentBase = currentDevicePath
+    ? currentDevicePath.replace(/\\/g, '/').split('/').pop()?.trim().toLowerCase()
+    : '';
+  return hosts.filter(h => {
+    const hBase = h.replace(/\\/g, '/').split('/').pop()?.trim().toLowerCase() || '';
+    return !currentBase || hBase !== currentBase;
+  });
+}

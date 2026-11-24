@@ -9,6 +9,7 @@ import {
   buildTuyaBleFanYamlSections,
   extractBleFansFromDeviceYaml,
   configHasBleProxy,
+  getOtherBleFanHosts,
 } from '../src/utils/bleFanUtils.ts';
 import { getConfigSnapshot } from '../src/utils/fileContext.ts';
 
@@ -118,4 +119,11 @@ test('headless BLE fan (no tile, no fan_entity_id) serializes and round-trips cl
   assert.equal(extracted.length, 1);
   assert.equal(extracted[0].device_id, 'bf_pergula_999');
   assert.equal(extracted[0].fan_entity_id, '');
+});
+
+test('getOtherBleFanHosts excludes current device and flags other CYD hosts', () => {
+  const hosts = { bf_office_123: ['office-cyd.yaml', 'cyd-sahar.yaml'] };
+  assert.deepEqual(getOtherBleFanHosts('bf_office_123', hosts, '/config/esphome/office-cyd.yaml'), ['cyd-sahar.yaml']);
+  assert.deepEqual(getOtherBleFanHosts('bf_office_123', hosts, 'living-cyd.yaml'), ['office-cyd.yaml', 'cyd-sahar.yaml']);
+  assert.deepEqual(getOtherBleFanHosts('bf_office_123', { bf_office_123: ['office-cyd.yaml'] }, 'office-cyd.yaml'), []);
 });

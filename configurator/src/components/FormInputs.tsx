@@ -37,6 +37,8 @@ export const TextInput = ({
   haEntities,
   bleFans,
   tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
   onUpdateBleFans,
 }: { label: string, value: string, onChange: (v: string) => void, haEntities?: HaEntity[] } & BleFanProps) => {
   const listId = `ha-entities-text-${Math.random().toString(36).substr(2, 9)}`;
@@ -64,6 +66,8 @@ export const TextInput = ({
         entityId={value || ''}
         bleFans={bleFans}
         tuyaBleCandidates={tuyaBleCandidates}
+        bleFanHosts={bleFanHosts}
+        currentDevicePath={currentDevicePath}
         onUpdateBleFans={onUpdateBleFans}
       />
     )}
@@ -288,6 +292,8 @@ export const ObjectInput = ({
   haEntities,
   bleFans,
   tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
   onUpdateBleFans,
 }: { 
   label: string, 
@@ -341,6 +347,8 @@ export const ObjectInput = ({
                       entityId={value?.[field.key] || ''}
                       bleFans={bleFans}
                       tuyaBleCandidates={tuyaBleCandidates}
+                      bleFanHosts={bleFanHosts}
+                      currentDevicePath={currentDevicePath}
                       onUpdateBleFans={onUpdateBleFans}
                     />
                 </div>
@@ -355,6 +363,8 @@ export const ObjectInput = ({
                     haEntities={haEntities}
                     bleFans={bleFans}
                     tuyaBleCandidates={tuyaBleCandidates}
+                    bleFanHosts={bleFanHosts}
+                    currentDevicePath={currentDevicePath}
                     onUpdateBleFans={onUpdateBleFans}
                 />
             ) : field.type === 'string_list' ? (
@@ -402,6 +412,8 @@ export const ObjectArrayInput = ({
   haEntities,
   bleFans,
   tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
   onUpdateBleFans,
 }: { 
   label: string, 
@@ -568,6 +580,8 @@ export const ObjectArrayInput = ({
                     haEntities={haEntities}
                     bleFans={bleFans}
                     tuyaBleCandidates={tuyaBleCandidates}
+                    bleFanHosts={bleFanHosts}
+                    currentDevicePath={currentDevicePath}
                     onUpdateBleFans={onUpdateBleFans}
                   />
                 ) : (
@@ -588,6 +602,8 @@ export const ObjectArrayInput = ({
                         entityId={item[field.key] || ''}
                         bleFans={bleFans}
                         tuyaBleCandidates={tuyaBleCandidates}
+                        bleFanHosts={bleFanHosts}
+                        currentDevicePath={currentDevicePath}
                         onUpdateBleFans={onUpdateBleFans}
                       />
                     )}

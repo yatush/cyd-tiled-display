@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Trash2, Plus, Bluetooth, Settings2 } from 'lucide-react';
+import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle } from 'lucide-react';
 import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
 import {
   findCandidateForEntity,
   findConfiguredBleFan,
+  getOtherBleFanHosts,
   normalizeEntityId,
   toggleBleFanForEntity,
   upsertBleFan,
@@ -12,6 +13,8 @@ import {
 export interface BleFanProps {
   bleFans?: BleFanConfig[];
   tuyaBleCandidates?: TuyaBleCandidate[];
+  bleFanHosts?: Record<string, string[]>;
+  currentDevicePath?: string;
   onUpdateBleFans?: (next: BleFanConfig[]) => void;
 }
 
@@ -19,6 +22,8 @@ export const BleFanToggle = ({
   entityId,
   bleFans = [],
   tuyaBleCandidates = [],
+  bleFanHosts = {},
+  currentDevicePath,
   onUpdateBleFans,
 }: {
   entityId: string;
@@ -41,6 +46,8 @@ export const BleFanToggle = ({
   const missingCreds = isChecked && (!configured?.device_id?.trim() || !configured?.local_key?.trim());
   const companionLight = configured?.light_entity_id || candidate?.light_entity_id || '';
   const companionFan = configured?.fan_entity_id || candidate?.fan_entity_id || '';
+  const effectiveDeviceId = configured?.device_id || candidate?.device_id || '';
+  const otherHosts = getOtherBleFanHosts(effectiveDeviceId, bleFanHosts, currentDevicePath);
 
   return (
     <div className="mt-1 px-1.5 py-1 rounded bg-blue-50/70 border border-blue-100 text-[11px]">
@@ -82,6 +89,15 @@ export const BleFanToggle = ({
           )}
         </div>
       </div>
+
+      {otherHosts.length > 0 && (
+        <div className="mt-1 px-1.5 py-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-800 flex items-start gap-1">
+          <AlertTriangle size={11} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <span>
+            Already hosted via BLE by <strong>{otherHosts.join(', ')}</strong>. Tuya fans only accept 1 BLE connection at a time — consider controlling via Home Assistant instead.
+          </span>
+        </div>
+      )}
 
       {isChecked && (showDetails || missingCreds) && configured && (
         <div className="mt-1.5 pt-1.5 border-t border-blue-100 space-y-1">
@@ -140,6 +156,8 @@ export const EntityListInput = ({
   haEntities,
   bleFans,
   tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
   onUpdateBleFans,
 }: {
   label: string,
@@ -179,6 +197,8 @@ export const EntityListInput = ({
               entityId={v}
               bleFans={bleFans}
               tuyaBleCandidates={tuyaBleCandidates}
+              bleFanHosts={bleFanHosts}
+              currentDevicePath={currentDevicePath}
               onUpdateBleFans={onUpdateBleFans}
             />
           </div>
@@ -209,6 +229,8 @@ export const DynamicEntitiesEditor = ({
   haEntities,
   bleFans,
   tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
   onUpdateBleFans,
 }: {
   entities: string[];
@@ -331,6 +353,8 @@ export const DynamicEntitiesEditor = ({
                           entityId={entVal}
                           bleFans={bleFans}
                           tuyaBleCandidates={tuyaBleCandidates}
+                          bleFanHosts={bleFanHosts}
+                          currentDevicePath={currentDevicePath}
                           onUpdateBleFans={onUpdateBleFans}
                         />
                       </div>
@@ -376,6 +400,8 @@ export const EntityArrayInput = ({
   haEntities,
   bleFans,
   tuyaBleCandidates,
+  bleFanHosts,
+  currentDevicePath,
   onUpdateBleFans,
 }: {
   label: string,
@@ -463,6 +489,8 @@ export const EntityArrayInput = ({
                       entityId={item.entity || ''}
                       bleFans={bleFans}
                       tuyaBleCandidates={tuyaBleCandidates}
+                      bleFanHosts={bleFanHosts}
+                      currentDevicePath={currentDevicePath}
                       onUpdateBleFans={onUpdateBleFans}
                     />
                   </div>
@@ -508,10 +536,14 @@ export const EntityArrayInput = ({
 export const BleFansManagerPanel = ({
   bleFans = [],
   tuyaBleCandidates = [],
+  bleFanHosts = {},
+  currentDevicePath,
   onUpdateBleFans,
 }: {
   bleFans?: BleFanConfig[];
   tuyaBleCandidates?: TuyaBleCandidate[];
+  bleFanHosts?: Record<string, string[]>;
+  currentDevicePath?: string;
   onUpdateBleFans: (next: BleFanConfig[]) => void;
 }) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
@@ -581,6 +613,7 @@ export const BleFansManagerPanel = ({
           {bleFans.map((fan, idx) => {
             const missingCreds = !fan.device_id?.trim() || !fan.local_key?.trim();
             const isExpanded = expandedIdx === idx || missingCreds;
+            const otherHosts = getOtherBleFanHosts(fan.device_id, bleFanHosts, currentDevicePath);
             return (
               <div key={`${fan.device_id || fan.name}-${idx}`} className="border border-blue-200 rounded p-2 bg-white space-y-1.5 shadow-sm">
                 <div className="flex items-center justify-between gap-1">
@@ -609,6 +642,15 @@ export const BleFansManagerPanel = ({
                     </button>
                   </div>
                 </div>
+
+                {otherHosts.length > 0 && (
+                  <div className="px-1.5 py-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-800 flex items-start gap-1">
+                    <AlertTriangle size={11} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <span>
+                      Already hosted via BLE by <strong>{otherHosts.join(', ')}</strong>. Tuya fans only accept 1 BLE connection at a time.
+                    </span>
+                  </div>
+                )}
 
                 {(fan.fan_entity_id || fan.light_entity_id) && (
                   <div className="flex flex-wrap gap-1">
@@ -704,11 +746,15 @@ export const BleFansManagerPanel = ({
           className="w-full border border-blue-200 rounded p-1.5 text-xs bg-white text-blue-700 font-medium"
         >
           <option value="">+ Add discovered Tuya fan...</option>
-          {availableCandidates.map(c => (
-            <option key={c.device_id} value={c.device_id}>
-              {c.name} ({c.fan_entity_id || c.device_id})
-            </option>
-          ))}
+          {availableCandidates.map(c => {
+            const hosts = getOtherBleFanHosts(c.device_id, bleFanHosts, currentDevicePath);
+            const suffix = hosts.length > 0 ? ` [⚠ on ${hosts.join(', ')}]` : '';
+            return (
+              <option key={c.device_id} value={c.device_id}>
+                {c.name} ({c.fan_entity_id || c.device_id}){suffix}
+              </option>
+            );
+          })}
         </select>
       )}
 

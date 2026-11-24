@@ -1,8 +1,13 @@
 import json
 from pathlib import Path
 import sys
+import types
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if "api_proxy" not in sys.modules:
+    sys.modules["api_proxy"] = types.SimpleNamespace(run_proxy_thread=lambda *a, **kw: None)
+if "aioesphomeapi" not in sys.modules:
+    sys.modules["aioesphomeapi"] = types.SimpleNamespace(APIClient=object)
 
 import github_sync
 import server
@@ -119,3 +124,26 @@ def test_github_sync_includes_tuya_ble_fan_component():
         str(github_sync._managed_path("repo-main/esphome/lib/tuya_ble_fan.yaml"))
         == "lib/tuya_ble_fan.yaml"
     )
+
+
+def test_find_ble_fan_hosts_detects_existing_device_yamls(tmp_path):
+    esphome_dir = tmp_path / "esphome"
+    esphome_dir.mkdir()
+    (esphome_dir / "office-cyd.yaml").write_text(
+        "packages:\n"
+        "  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n"
+        "tuya_ble_fan:\n"
+        "  fans:\n"
+        "    - name: Office Fan\n"
+        "      device_id: bf_office_123\n"
+        "      local_key: secret\n",
+        encoding="utf-8",
+    )
+    (esphome_dir / "living-cyd.yaml").write_text(
+        "esphome:\n"
+        "  name: living-cyd\n",
+        encoding="utf-8",
+    )
+
+    hosts = server.find_ble_fan_hosts(str(esphome_dir))
+    assert hosts == {"bf_office_123": ["office-cyd.yaml"]}

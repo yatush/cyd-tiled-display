@@ -159,6 +159,7 @@ function App() {
     connectionType, setConnectionType,
     haEntities,
     tuyaBleCandidates,
+    bleFanHosts,
     haStatus,
     fetchHaEntities
   } = useHaConnection();
@@ -519,6 +520,8 @@ function App() {
           handleClearConfig={handleClearWithContext}
           haEntities={haEntities}
           tuyaBleCandidates={tuyaBleCandidates}
+          bleFanHosts={bleFanHosts}
+          currentDevicePath={fileContext?.path}
         />
 
       {/* Left Resizer */}
@@ -569,6 +572,8 @@ function App() {
           setActivePageId={setActivePageId}
           haEntities={haEntities}
           tuyaBleCandidates={tuyaBleCandidates}
+          bleFanHosts={bleFanHosts}
+          currentDevicePath={fileContext?.path}
           onUpdatePage={handleUpdatePage}
           onRenamePage={handleRenamePage}
           setConfig={setConfig}
