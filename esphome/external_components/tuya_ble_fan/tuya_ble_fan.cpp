@@ -2,6 +2,7 @@
 
 #ifdef USE_ESP32
 
+#include <esp_bt.h>
 #include <esp_random.h>
 
 #include <algorithm>
@@ -1473,7 +1474,12 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
     if (param->reg.status == ESP_GATT_OK) {
       this->gattc_if_ = gattc_if;
-      ESP_LOGD(TAG, "Registered GATTC interface %d (app_id=%u)", gattc_if, this->app_id);
+      esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P9);
+      esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, ESP_PWR_LVL_P9);
+      esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_CONN_HDL0, ESP_PWR_LVL_P9);
+      esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_CONN_HDL1, ESP_PWR_LVL_P9);
+      esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_CONN_HDL2, ESP_PWR_LVL_P9);
+      ESP_LOGD(TAG, "Registered GATTC interface %d (app_id=%u, BLE TX power +9 dBm)", gattc_if, this->app_id);
     }
     return true;
   }
