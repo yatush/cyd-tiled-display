@@ -122,6 +122,16 @@ if [ -n "$SUPERVISOR_TOKEN" ] && [ ! -L /root/.platformio ]; then
     echo "Linked /root/.platformio → /data/.platformio (HA persistent storage)"
 fi
 
+# Link ESPHome's managed ESP-IDF cache synchronously BEFORE gunicorn starts so
+# clicking Install right after an addon restart never races with toolchain_setup.py
+# and never triggers a cold ESP-IDF re-download into ephemeral /root/.cache.
+mkdir -p /root/.platformio/esphome_idf /root/.cache/esphome
+if [ ! -L /root/.cache/esphome/idf ]; then
+    rm -rf /root/.cache/esphome/idf
+    ln -sf /root/.platformio/esphome_idf /root/.cache/esphome/idf
+    echo "Linked /root/.cache/esphome/idf → /root/.platformio/esphome_idf (persistent)"
+fi
+
 # ---- Persist emulator build cache across addon updates ----------------------
 # The emulator seed dir lives under /app/esphome/lib/.esphome/build/emulator/
 # which is inside the container image and gets wiped on every addon update,
