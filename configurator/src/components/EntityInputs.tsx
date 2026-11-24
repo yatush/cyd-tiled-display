@@ -3,6 +3,7 @@ import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle, Radar } from 'lucide
 import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
 import {
   computeBleResourcePlan,
+  deriveDefaultBleEntityIds,
   findCandidateForEntity,
   getOtherBleFanHosts,
   normalizeEntityId,
@@ -591,15 +592,17 @@ export const BleFansManagerPanel = ({
   };
 
   const handleAddManual = () => {
+    const defaultName = `BLE Fan ${bleFans.length + 1}`;
+    const defaults = deriveDefaultBleEntityIds(defaultName, currentDevicePath);
     const next: BleFanConfig[] = [
       ...bleFans,
       {
-        name: `BLE Fan ${bleFans.length + 1}`,
+        name: defaultName,
         device_id: '',
         local_key: '',
         product_id: '',
-        fan_entity_id: '',
-        light_entity_id: '',
+        fan_entity_id: defaults.fan_entity_id,
+        light_entity_id: defaults.light_entity_id,
         expose_to_ha: true,
       },
     ];
@@ -609,7 +612,27 @@ export const BleFansManagerPanel = ({
 
   const updateAt = (idx: number, patch: Partial<BleFanConfig>) => {
     const copy = [...bleFans];
-    copy[idx] = { ...copy[idx], ...patch };
+    const prev = copy[idx];
+    const nextPatch: Partial<BleFanConfig> = { ...patch };
+
+    if (patch.name !== undefined) {
+      const prevDefaults = deriveDefaultBleEntityIds(prev.name, currentDevicePath);
+      const nextDefaults = deriveDefaultBleEntityIds(patch.name, currentDevicePath);
+      if (
+        patch.fan_entity_id === undefined &&
+        (!prev.fan_entity_id?.trim() || prev.fan_entity_id.trim() === prevDefaults.fan_entity_id)
+      ) {
+        nextPatch.fan_entity_id = nextDefaults.fan_entity_id;
+      }
+      if (
+        patch.light_entity_id === undefined &&
+        (!prev.light_entity_id?.trim() || prev.light_entity_id.trim() === prevDefaults.light_entity_id)
+      ) {
+        nextPatch.light_entity_id = nextDefaults.light_entity_id;
+      }
+    }
+
+    copy[idx] = { ...prev, ...nextPatch };
     onUpdateBleFans(copy);
   };
 
@@ -771,20 +794,25 @@ export const BleFansManagerPanel = ({
                         className="border rounded px-1.5 py-1 text-[10px]"
                       />
                     </div>
-                    <input
-                      type="text"
-                      value={fan.fan_entity_id || ''}
-                      onChange={e => updateAt(idx, { fan_entity_id: e.target.value })}
-                      placeholder="Local tile fan entity (optional)"
-                      className="w-full border rounded px-1.5 py-1 text-[10px]"
-                    />
-                    <input
-                      type="text"
-                      value={fan.light_entity_id || ''}
-                      onChange={e => updateAt(idx, { light_entity_id: e.target.value })}
-                      placeholder="Local tile light entity (optional)"
-                      className="w-full border rounded px-1.5 py-1 text-[10px]"
-                    />
+                    <div className="pt-0.5 space-y-1">
+                      <div className="text-[9px] text-slate-500">
+                        Entity IDs (auto-filled — available in tile dropdowns with <span className="font-semibold text-blue-600">[BLE]</span>):
+                      </div>
+                      <input
+                        type="text"
+                        value={fan.fan_entity_id || ''}
+                        onChange={e => updateAt(idx, { fan_entity_id: e.target.value })}
+                        placeholder="fan.office_cyd_office_fan"
+                        className="w-full border rounded px-1.5 py-1 text-[10px] font-mono"
+                      />
+                      <input
+                        type="text"
+                        value={fan.light_entity_id || ''}
+                        onChange={e => updateAt(idx, { light_entity_id: e.target.value })}
+                        placeholder="light.office_cyd_office_fan_light"
+                        className="w-full border rounded px-1.5 py-1 text-[10px] font-mono"
+                      />
+                    </div>
                     <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer pt-0.5">
                       <input
                         type="checkbox"

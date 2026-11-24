@@ -1,9 +1,74 @@
 import { dump } from 'js-yaml';
-import type { BleFanConfig, Config, TuyaBleCandidate } from '../types';
+import type { BleFanConfig, Config, HaEntity, TuyaBleCandidate } from '../types';
 
 export function normalizeEntityId(raw: string | undefined | null): string {
   if (!raw || typeof raw !== 'string') return '';
   return raw.trim().split('|')[0].trim();
+}
+
+export function slugifyEspHomeId(value: string | undefined | null): string {
+  if (!value || typeof value !== 'string') return '';
+  const base = value.replace(/\\/g, '/').split('/').pop() || value;
+  return base
+    .toLowerCase()
+    .replace(/\.ya?ml$/i, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function deriveDefaultBleEntityIds(
+  fanName: string | undefined | null,
+  deviceNameOrPath?: string | null
+): { fan_entity_id: string; light_entity_id: string } {
+  const fanSlug = slugifyEspHomeId(fanName);
+  if (!fanSlug) {
+    return { fan_entity_id: '', light_entity_id: '' };
+  }
+  const deviceSlug = slugifyEspHomeId(deviceNameOrPath);
+  const prefix = deviceSlug ? `${deviceSlug}_${fanSlug}` : fanSlug;
+  return {
+    fan_entity_id: `fan.${prefix}`,
+    light_entity_id: `light.${prefix}_light`,
+  };
+}
+
+export function mergeBleFansIntoHaEntities(
+  haEntities: HaEntity[] = [],
+  bleFans: BleFanConfig[] = []
+): HaEntity[] {
+  if (!bleFans || bleFans.length === 0) return haEntities;
+
+  const bleLabelById = new Map<string, string>();
+  for (const fan of bleFans) {
+    const labelBase = (fan.name || '').trim() || 'BLE Fan';
+    const fanId = normalizeEntityId(fan.fan_entity_id);
+    const lightId = normalizeEntityId(fan.light_entity_id);
+    if (fanId) {
+      bleLabelById.set(fanId, `[BLE] ${labelBase}`);
+    }
+    if (lightId) {
+      bleLabelById.set(lightId, `[BLE] ${labelBase} Light`);
+    }
+  }
+
+  if (bleLabelById.size === 0) return haEntities;
+
+  const bleEntries: HaEntity[] = [];
+  const restEntries: HaEntity[] = [];
+  const seen = new Set<string>();
+
+  for (const [entity_id, friendly_name] of bleLabelById.entries()) {
+    seen.add(entity_id);
+    bleEntries.push({ entity_id, friendly_name });
+  }
+
+  for (const e of haEntities) {
+    const norm = normalizeEntityId(e.entity_id);
+    if (seen.has(norm)) continue;
+    restEntries.push(e);
+  }
+
+  return [...bleEntries, ...restEntries];
 }
 
 export function findCandidateForEntity(

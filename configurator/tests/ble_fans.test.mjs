@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { load } from 'js-yaml';
 
 import {
+  deriveDefaultBleEntityIds,
+  mergeBleFansIntoHaEntities,
   findCandidateForEntity,
   findConfiguredBleFan,
   toggleBleFanForEntity,
@@ -151,4 +153,43 @@ test('getOtherBleFanHosts excludes current device and flags other CYD hosts', ()
   assert.deepEqual(getOtherBleFanHosts('bf_office_123', hosts, '/config/esphome/office-cyd.yaml'), ['cyd-sahar.yaml']);
   assert.deepEqual(getOtherBleFanHosts('bf_office_123', hosts, 'living-cyd.yaml'), ['office-cyd.yaml', 'cyd-sahar.yaml']);
   assert.deepEqual(getOtherBleFanHosts('bf_office_123', { bf_office_123: ['office-cyd.yaml'] }, 'office-cyd.yaml'), []);
+});
+
+test('deriveDefaultBleEntityIds and mergeBleFansIntoHaEntities expose [BLE] entities at top of dropdowns', () => {
+  assert.deepEqual(
+    deriveDefaultBleEntityIds('Office Fan', '/config/esphome/office-cyd.yaml'),
+    {
+      fan_entity_id: 'fan.office_cyd_office_fan',
+      light_entity_id: 'light.office_cyd_office_fan_light',
+    }
+  );
+  assert.deepEqual(
+    deriveDefaultBleEntityIds('Office Fan', undefined),
+    {
+      fan_entity_id: 'fan.office_fan',
+      light_entity_id: 'light.office_fan_light',
+    }
+  );
+
+  const merged = mergeBleFansIntoHaEntities(
+    [
+      { entity_id: 'light.kitchen', friendly_name: 'Kitchen' },
+      { entity_id: 'fan.office_cyd_office_fan', friendly_name: 'Office CYD Office Fan' },
+    ],
+    [
+      {
+        name: 'Office Fan',
+        device_id: 'bf_1',
+        local_key: 'key_1',
+        fan_entity_id: 'fan.office_cyd_office_fan',
+        light_entity_id: 'light.office_cyd_office_fan_light',
+      },
+    ]
+  );
+
+  assert.deepEqual(merged, [
+    { entity_id: 'fan.office_cyd_office_fan', friendly_name: '[BLE] Office Fan' },
+    { entity_id: 'light.office_cyd_office_fan_light', friendly_name: '[BLE] Office Fan Light' },
+    { entity_id: 'light.kitchen', friendly_name: 'Kitchen' },
+  ]);
 });

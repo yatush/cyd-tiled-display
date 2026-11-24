@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Sidebar } from './components/PropertiesSidebar';
@@ -24,7 +24,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
-import { extractBleFansFromDeviceYaml } from './utils/bleFanUtils';
+import { extractBleFansFromDeviceYaml, mergeBleFansIntoHaEntities } from './utils/bleFanUtils';
 import { apiFetch } from './utils/api';
 import { ImageEntry, ScreenImageEntry } from './types';
 
@@ -178,6 +178,11 @@ function App() {
     handleDeletePage, handleUpdatePage, handleRenamePage, handleClearConfig,
     handleDragEnd
   } = useTileConfig();
+
+  const mergedHaEntities = useMemo(
+    () => mergeBleFansIntoHaEntities(haEntities, config.ble_fans || []),
+    [haEntities, config.ble_fans]
+  );
 
   const {
     isValidating,
@@ -539,7 +544,7 @@ function App() {
           fileInputRef={fileInputRef}
           handleLoadProject={handleLoadProject}
           handleClearConfig={handleClearWithContext}
-          haEntities={haEntities}
+          haEntities={mergedHaEntities}
           tuyaBleCandidates={tuyaBleCandidates}
           bleFanHosts={bleFanHosts}
           currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
@@ -592,7 +597,7 @@ function App() {
           schema={schema}
           activePage={activePage}
           setActivePageId={setActivePageId}
-          haEntities={haEntities}
+          haEntities={mergedHaEntities}
           tuyaBleCandidates={tuyaBleCandidates}
           bleFanHosts={bleFanHosts}
           currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
