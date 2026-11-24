@@ -19,6 +19,9 @@
 #include "esphome/components/light/light_output.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/number/number.h"
+#ifdef USE_API_CUSTOM_SERVICES
+#include "esphome/components/api/custom_api_device.h"
+#endif
 #include "tuya_ble_fan_registry.h"
 #include "tuya_ble_protocol.h"
 
@@ -182,6 +185,9 @@ class TuyaBleFanDevice {
 
 // Single-slot BLE GATT hub managing 1 or more TuyaBleFanDevice instances
 class TuyaBleFanHub : public Component,
+#ifdef USE_API_CUSTOM_SERVICES
+                      public api::CustomAPIDevice,
+#endif
                       public esp32_ble_tracker::ESPBTClient {
  public:
   void set_parent(esp32_ble_tracker::ESP32BLETracker *parent) { parent_ = parent; }
@@ -205,6 +211,11 @@ class TuyaBleFanHub : public Component,
 
   void request_activity(TuyaBleFanDevice *device);
 
+  // On-demand Native API services (zero idle RAM overhead)
+  void on_scan_service(int duration_s);
+  void on_pair_service(std::string mac, int addr_type, std::string uuid,
+                       std::string device_id, std::string local_key, bool blink_confirm);
+
  protected:
   enum class SessionState : uint8_t {
     IDLE = 0,
@@ -224,11 +235,35 @@ class TuyaBleFanHub : public Component,
     std::string uuid;
   };
 
+  struct ScanSighting {
+    uint64_t mac{0};
+    int rssi{-127};
+  };
+
+  struct UnboundPairJob {
+    bool active{false};
+    bool waiting_disconnect{false};
+    uint64_t mac{0};
+    esp_ble_addr_type_t addr_type{BLE_ADDR_TYPE_PUBLIC};
+    std::string mac_str;
+    std::string uuid;
+    std::string device_id;
+    std::string local_key;
+    bool blink_confirm{true};
+    bool blink_sent_on{false};
+    uint32_t blink_on_ms{0};
+    bool blink_sent_off{false};
+    uint32_t blink_off_ms{0};
+  };
+
   bool is_persistent_mode() const { return fans_.size() == 1 && idle_disconnect_s_ == 0; }
   void start_bounded_scan();
   void stop_scan_if_running();
+  void finish_discovery_scan();
   void start_connect(TuyaBleFanDevice *device);
   void start_probe(TuyaBleFanDevice *device, const ProbeCandidate &candidate);
+  void start_unbound_pair_connect();
+  void finish_unbound_pair(bool ok, const std::string &error);
   bool find_next_probe_candidate(TuyaBleFanDevice *device, ProbeCandidate &out) const;
   void record_probe_failure();
   void disconnect_current();
@@ -242,6 +277,7 @@ class TuyaBleFanHub : public Component,
   void enqueue_gatt_packet(uint16_t code, const std::vector<uint8_t> &payload, uint8_t security_flag);
   void flush_write_queue();
   void handle_decrypted_frame(const TuyaDecryptedFrame &frame);
+  void emit_ha_event(const std::string &event_name, const std::map<std::string, std::string> &data);
 
   TuyaBleFanDevice *pick_next_device_with_work();
 
@@ -261,6 +297,14 @@ class TuyaBleFanHub : public Component,
   std::vector<std::pair<TuyaBleFanDevice *, uint64_t>> failed_probes_;
   bool is_probing_{false};
   ProbeCandidate active_probe_{};
+
+  // Transient on-demand discovery scan state (cleared when scan ends)
+  bool discovery_scan_active_{false};
+  uint32_t discovery_scan_end_ms_{0};
+  std::vector<ScanSighting> discovery_sightings_;
+
+  // Transient unbound pairing job state
+  UnboundPairJob pair_job_{};
 
   uint16_t write_char_handle_{0};
   uint16_t notify_char_handle_{0};

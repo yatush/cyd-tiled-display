@@ -548,5 +548,88 @@ bool extract_tuya_v3_uuid(const uint8_t *service_data_a201, size_t service_data_
   return true;
 }
 
+static bool is_printable_ascii(const uint8_t *data, size_t len) {
+  if (data == nullptr || len == 0) return false;
+  for (size_t i = 0; i < len; i++) {
+    if (data[i] < 0x20 || data[i] > 0x7E) return false;
+  }
+  return true;
+}
+
+TuyaBleAdvInfo parse_tuya_ble_advertisement(const uint8_t *svc_a201, size_t svc_a201_len,
+                                            const uint8_t *svc_fd50, size_t svc_fd50_len,
+                                            const uint8_t *mfg_07d0, size_t mfg_07d0_len) {
+  TuyaBleAdvInfo info;
+  if (svc_a201 == nullptr && svc_fd50 == nullptr && mfg_07d0 == nullptr) {
+    return info;
+  }
+
+  info.valid = true;
+
+  // Bound flag: mfg[0] & 0x80 on 0x07D0 (v3/v4), or svc_fd50[0] & 0x01
+  if (mfg_07d0 != nullptr && mfg_07d0_len >= 1) {
+    info.bound = (mfg_07d0[0] & 0x80) != 0;
+  } else if (svc_fd50 != nullptr && svc_fd50_len >= 1) {
+    info.bound = (svc_fd50[0] & 0x01) != 0;
+  }
+
+  // 0xA201 + 0x07D0 (Tuya BLE v3)
+  if (svc_a201 != nullptr && svc_a201_len >= 2) {
+    const uint8_t *pid_bytes = svc_a201 + 1;
+    size_t pid_len = svc_a201_len - 1;
+    if (!info.bound && is_printable_ascii(pid_bytes, pid_len)) {
+      info.product_id.assign(reinterpret_cast<const char *>(pid_bytes), pid_len);
+    }
+    if (mfg_07d0 != nullptr && mfg_07d0_len >= 22) {
+      std::string uuid;
+      if (svc_a201_len >= 17 && extract_tuya_v3_uuid(svc_a201, svc_a201_len, mfg_07d0, mfg_07d0_len, uuid)) {
+        info.uuid = uuid;
+      } else {
+        // Unbound 0xA201 may have shorter product_id (e.g. 8 or 16 bytes) used as MD5 key/iv
+        uint8_t key_iv[16];
+        md5_hash(pid_bytes, pid_len, key_iv);
+        std::vector<uint8_t> dec;
+        if (aes128_cbc_decrypt(key_iv, key_iv, mfg_07d0 + 6, 16, dec) && dec.size() >= 16 &&
+            is_printable_ascii(dec.data(), 16)) {
+          info.uuid.assign(reinterpret_cast<const char *>(dec.data()), 16);
+        }
+      }
+    }
+  }
+
+  // 0xFD50 + 0x07D0 (Tuya BLE v4)
+  if (svc_fd50 != nullptr && svc_fd50_len >= 3) {
+    const uint8_t *pid_bytes = svc_fd50 + 2;
+    size_t pid_len = svc_fd50_len - 2;
+    uint8_t pid_type = svc_fd50[1] & 0x0F;
+    if (info.product_id.empty() && pid_type == 0 && is_printable_ascii(pid_bytes, pid_len)) {
+      info.product_id.assign(reinterpret_cast<const char *>(pid_bytes), pid_len);
+    }
+    if (info.uuid.empty() && mfg_07d0 != nullptr && mfg_07d0_len >= 18) {
+      uint8_t key_iv[16];
+      md5_hash(pid_bytes, pid_len, key_iv);
+      std::vector<uint8_t> dec;
+      if (aes128_cbc_decrypt(key_iv, key_iv, mfg_07d0 + 2, 16, dec) && dec.size() >= 16 &&
+          is_printable_ascii(dec.data(), 16)) {
+        info.uuid.assign(reinterpret_cast<const char *>(dec.data()), 16);
+      }
+    }
+  }
+
+  return info;
+}
+
+void derive_unbound_login_key(const std::string &uuid, uint8_t out_key[16]) {
+  md5_hash(reinterpret_cast<const uint8_t *>(uuid.data()), uuid.size(), out_key);
+}
+
+void derive_unbound_session_key(const std::string &uuid, const uint8_t srand[6], uint8_t out_key[16]) {
+  std::vector<uint8_t> buf;
+  buf.reserve(uuid.size() + 6);
+  buf.insert(buf.end(), uuid.begin(), uuid.end());
+  buf.insert(buf.end(), srand, srand + 6);
+  md5_hash(buf.data(), buf.size(), out_key);
+}
+
 }  // namespace tuya_ble_fan
 }  // namespace esphome

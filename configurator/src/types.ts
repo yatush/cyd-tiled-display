@@ -45,6 +45,7 @@ export interface BleFanConfig {
   local_key: string;
   product_id?: string;
   mac_address?: string;
+  uuid?: string;
   fan_entity_id: string;
   light_entity_id?: string;
   expose_to_ha?: boolean;

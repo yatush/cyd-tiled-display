@@ -2880,6 +2880,625 @@ def get_tuya_ble_fans():
     except Exception as e:
         return jsonify({'fans': [], 'hosted_by': {}, 'error': str(e)}), 500
 
+
+def generate_tuya_ble_credentials():
+    """Generate a random Tuya-compatible 22-char device_id and 16-char local_key."""
+    import secrets as py_secrets
+    import string
+
+    id_alphabet = string.ascii_lowercase + string.digits
+    key_alphabet = string.ascii_letters + string.digits
+    device_id = 'bf' + ''.join(py_secrets.choice(id_alphabet) for _ in range(20))
+    local_key = ''.join(py_secrets.choice(key_alphabet) for _ in range(16))
+    return device_id, local_key
+
+
+def _load_esphome_secrets(esphome_dir=None):
+    root_dir = esphome_dir or BASE_DIR
+    secrets_path = os.path.join(root_dir, 'secrets.yaml')
+    if not os.path.isfile(secrets_path):
+        return {}
+    try:
+        with open(secrets_path, 'r', encoding='utf-8', errors='replace') as f:
+            data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _extract_device_api_info(filepath, secrets_map=None):
+    """Extract api.encryption.key and api.password from an ESPHome device YAML, resolving !secret."""
+    secrets_map = secrets_map or {}
+    base_loader = generate_tiles_api.create_safe_yaml_loader()
+
+    class SecretResolvingLoader(base_loader):
+        pass
+
+    def _secret_ctor(loader, node):
+        key_name = loader.construct_scalar(node)
+        return secrets_map.get(key_name)
+
+    SecretResolvingLoader.add_constructor('!secret', _secret_ctor)
+
+    try:
+        lines = []
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            for line in f:
+                if line.startswith('tile_ui:') or line.startswith('tile_ui '):
+                    break
+                lines.append(line)
+        data = yaml.load(''.join(lines), Loader=SecretResolvingLoader)
+    except Exception:
+        return {'api_key': None, 'api_password': ''}
+
+    if not isinstance(data, dict):
+        return {'api_key': None, 'api_password': ''}
+
+    api_cfg = data.get('api')
+    api_key = None
+    api_password = ''
+    if isinstance(api_cfg, dict):
+        enc = api_cfg.get('encryption')
+        if isinstance(enc, dict) and enc.get('key'):
+            api_key = str(enc['key']).strip()
+        if api_cfg.get('password'):
+            api_password = str(api_cfg['password'])
+    return {'api_key': api_key, 'api_password': api_password}
+
+
+def _list_cyd_devices_with_api(esphome_dir=None):
+    """Return metadata + API credentials for all CYD YAML files in esphome_dir."""
+    root_dir = esphome_dir or BASE_DIR
+    if not root_dir or not os.path.isdir(root_dir):
+        return []
+    secrets_map = _load_esphome_secrets(root_dir)
+    skip_files = {'secrets.yaml', 'images.yaml'}
+    devices = []
+    for fname in sorted(os.listdir(root_dir)):
+        if not fname.endswith('.yaml') or fname in skip_files:
+            continue
+        fpath = os.path.join(root_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        meta = _parse_device_yaml(fpath)
+        if not meta or not meta.get('is_cyd'):
+            continue
+        api_info = _extract_device_api_info(fpath, secrets_map)
+        meta['filename'] = fname
+        meta['path'] = fname
+        meta['filepath'] = fpath
+        meta['api_key'] = api_info['api_key']
+        meta['api_password'] = api_info['api_password']
+        devices.append(meta)
+    return devices
+
+
+def _find_ble_fan_hosts_extended(esphome_dir=None):
+    """Return maps of device_id -> [files], mac -> [files], and uuid -> [files] across CYD YAMLs."""
+    root_dir = esphome_dir or BASE_DIR
+    by_id, by_mac, by_uuid = {}, {}, {}
+    if not root_dir or not os.path.isdir(root_dir):
+        return by_id, by_mac, by_uuid
+
+    loader_cls = generate_tiles_api.create_safe_yaml_loader()
+    for fname in sorted(os.listdir(root_dir)):
+        if not fname.endswith('.yaml') or fname in ('secrets.yaml', 'images.yaml'):
+            continue
+        fpath = os.path.join(root_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                raw_text = f.read()
+            if 'tuya_ble_fan:' not in raw_text:
+                continue
+            parsed = yaml.load(raw_text, Loader=loader_cls)
+            if not isinstance(parsed, dict):
+                continue
+            fans = (parsed.get('tuya_ble_fan') or {}).get('fans')
+            if not isinstance(fans, list):
+                continue
+            for fan in fans:
+                if not isinstance(fan, dict):
+                    continue
+                dev_id = str(fan.get('device_id') or '').strip()
+                mac = str(fan.get('mac_address') or '').strip().upper()
+                uuid_val = str(fan.get('uuid') or '').strip()
+                if dev_id:
+                    by_id.setdefault(dev_id, [])
+                    if fname not in by_id[dev_id]:
+                        by_id[dev_id].append(fname)
+                if mac:
+                    by_mac.setdefault(mac, [])
+                    if fname not in by_mac[mac]:
+                        by_mac[mac].append(fname)
+                if uuid_val:
+                    by_uuid.setdefault(uuid_val, [])
+                    if fname not in by_uuid[uuid_val]:
+                        by_uuid[uuid_val].append(fname)
+        except Exception:
+            continue
+    return by_id, by_mac, by_uuid
+
+
+def aggregate_ble_scan_sightings(sightings, tuya_local_fans=None,
+                                 hosted_by_id=None, hosted_by_mac=None, hosted_by_uuid=None):
+    """Deduplicate raw BLE sightings across CYDs by MAC, rank by strongest RSSI, and enrich with HA/CYD info."""
+    tuya_local_fans = tuya_local_fans or []
+    hosted_by_id = hosted_by_id or {}
+    hosted_by_mac = hosted_by_mac or {}
+    hosted_by_uuid = hosted_by_uuid or {}
+
+    by_mac = {}
+    for s in sightings:
+        mac = str(s.get('mac') or '').strip().upper()
+        if not mac:
+            continue
+        cyd_file = str(s.get('cyd_filename') or s.get('cyd_device') or '').strip()
+        try:
+            rssi = int(s.get('rssi', -127))
+        except (TypeError, ValueError):
+            rssi = -127
+        try:
+            addr_type = int(s.get('addr_type', 0))
+        except (TypeError, ValueError):
+            addr_type = 0
+        bound_raw = s.get('bound', False)
+        bound = bound_raw if isinstance(bound_raw, bool) else str(bound_raw).strip().lower() in ('true', '1', 'yes')
+        uuid_val = str(s.get('uuid') or '').strip()
+        product_id = str(s.get('product_id') or '').strip()
+
+        entry = by_mac.get(mac)
+        if entry is None:
+            entry = {
+                'mac': mac,
+                'addr_type': addr_type,
+                'bound': bound,
+                'uuid': uuid_val,
+                'product_id': product_id,
+                '_cyd_map': {},
+            }
+            by_mac[mac] = entry
+        else:
+            if not entry['uuid'] and uuid_val:
+                entry['uuid'] = uuid_val
+            if not entry['product_id'] and product_id:
+                entry['product_id'] = product_id
+            # If any sighting says bound=True, mark bound
+            if bound:
+                entry['bound'] = True
+
+        existing_cyd = entry['_cyd_map'].get(cyd_file)
+        if existing_cyd is None or rssi > existing_cyd['rssi']:
+            entry['_cyd_map'][cyd_file] = {
+                'cyd_filename': cyd_file,
+                'cyd_name': s.get('cyd_name') or cyd_file,
+                'friendly_name': s.get('friendly_name') or s.get('cyd_name') or cyd_file,
+                'rssi': rssi,
+            }
+
+    # Build lookup indexes for tuya_local fans
+    ha_by_mac = {str(f.get('mac_address') or '').strip().upper(): f for f in tuya_local_fans if f.get('mac_address')}
+    ha_by_uuid = {str(f.get('uuid') or '').strip(): f for f in tuya_local_fans if f.get('uuid')}
+
+    results = []
+    for mac, entry in by_mac.items():
+        ranked = sorted(entry['_cyd_map'].values(), key=lambda x: x['rssi'], reverse=True)
+        best = ranked[0] if ranked else None
+        matched_ha = ha_by_mac.get(mac) or (ha_by_uuid.get(entry['uuid']) if entry['uuid'] else None)
+
+        hosted = []
+        for h in hosted_by_mac.get(mac, []):
+            if h not in hosted:
+                hosted.append(h)
+        if entry['uuid']:
+            for h in hosted_by_uuid.get(entry['uuid'], []):
+                if h not in hosted:
+                    hosted.append(h)
+        if matched_ha and matched_ha.get('device_id'):
+            for h in hosted_by_id.get(matched_ha['device_id'], []):
+                if h not in hosted:
+                    hosted.append(h)
+
+        results.append({
+            'mac': mac,
+            'addr_type': entry['addr_type'],
+            'bound': entry['bound'],
+            'uuid': entry['uuid'],
+            'product_id': entry['product_id'] or (matched_ha.get('product_id', '') if matched_ha else ''),
+            'best_cyd': best,
+            'best_rssi': best['rssi'] if best else -127,
+            'sightings': ranked,
+            'hosted_by': hosted,
+            'matched_ha_fan': {
+                'name': matched_ha.get('name', ''),
+                'device_id': matched_ha.get('device_id', ''),
+                'local_key': matched_ha.get('local_key', ''),
+                'product_id': matched_ha.get('product_id', ''),
+                'fan_entity_id': matched_ha.get('fan_entity_id', ''),
+                'light_entity_id': matched_ha.get('light_entity_id', ''),
+            } if matched_ha else None,
+        })
+
+    results.sort(key=lambda r: r['best_rssi'], reverse=True)
+    return results
+
+
+def add_ble_fan_to_device_yaml(filepath, fan_entry):
+    """Upsert a Tuya BLE fan entry into a target CYD YAML file, preserving comments and tags."""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        raw_text = f.read()
+
+    loader_cls = generate_tiles_api.create_safe_yaml_loader()
+    parsed = yaml.load(raw_text, Loader=loader_cls) or {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    existing_fans = []
+    ble_cfg = parsed.get('tuya_ble_fan')
+    if isinstance(ble_cfg, dict) and isinstance(ble_cfg.get('fans'), list):
+        for item in ble_cfg['fans']:
+            if isinstance(item, dict):
+                existing_fans.append(dict(item))
+
+    new_fan = {
+        'name': str(fan_entry.get('name') or fan_entry.get('device_id') or 'BLE Fan').strip(),
+        'device_id': str(fan_entry.get('device_id') or '').strip(),
+        'local_key': str(fan_entry.get('local_key') or '').strip(),
+    }
+    if not new_fan['device_id'] or not new_fan['local_key']:
+        raise ValueError('device_id and local_key are required')
+
+    for opt_key in ('product_id', 'mac_address', 'uuid', 'fan_entity_id', 'light_entity_id'):
+        val = str(fan_entry.get(opt_key) or '').strip()
+        if val:
+            new_fan[opt_key] = val
+    new_fan['expose_to_ha'] = fan_entry.get('expose_to_ha', True) is not False
+
+    # Upsert by device_id or mac_address
+    replaced = False
+    new_mac = new_fan.get('mac_address', '').upper()
+    for idx, ef in enumerate(existing_fans):
+        ef_id = str(ef.get('device_id') or '').strip()
+        ef_mac = str(ef.get('mac_address') or '').strip().upper()
+        if ef_id == new_fan['device_id'] or (new_mac and ef_mac == new_mac):
+            existing_fans[idx] = new_fan
+            replaced = True
+            break
+    if not replaced:
+        existing_fans.append(new_fan)
+
+    updated_text = raw_text
+
+    # 1. Ensure tuya_ble_fan package include is present under packages:
+    if 'lib/tuya_ble_fan.yaml' not in updated_text:
+        if re.search(r'^packages:\s*$', updated_text, flags=re.MULTILINE):
+            updated_text = re.sub(
+                r'^(packages:\s*\n)',
+                r'\1  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n',
+                updated_text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        else:
+            updated_text = 'packages:\n  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n\n' + updated_text
+
+    # 2. If ble_proxy is enabled, ensure ble_max_connections: "2" is set in substitutions
+    has_ble_proxy = 'ble_proxy' in updated_text
+    if has_ble_proxy and 'ble_max_connections' not in updated_text:
+        if re.search(r'^substitutions:\s*$', updated_text, flags=re.MULTILINE):
+            updated_text = re.sub(
+                r'^(substitutions:\s*\n)',
+                r'\1  ble_max_connections: "2"\n',
+                updated_text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+
+    # 3. Render new top-level tuya_ble_fan: block
+    tuya_block = {
+        'tuya_ble_fan': {
+            'idle_disconnect_s': 0 if len(existing_fans) == 1 else 30,
+            'fans': existing_fans,
+        }
+    }
+    rendered_block = yaml.safe_dump(tuya_block, sort_keys=False, default_flow_style=False).rstrip() + '\n'
+
+    # Replace existing top-level tuya_ble_fan: block or append at end
+    block_pattern = re.compile(r'^tuya_ble_fan:.*?(?=^\S|\Z)', flags=re.MULTILINE | re.DOTALL)
+    if block_pattern.search(updated_text):
+        updated_text = block_pattern.sub(rendered_block + '\n', updated_text, count=1)
+    else:
+        if not updated_text.endswith('\n'):
+            updated_text += '\n'
+        updated_text += '\n' + rendered_block
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(updated_text)
+
+    return existing_fans
+
+
+async def _exec_esphome_service(client, service, data):
+    import inspect
+    res = client.execute_service(service, data)
+    if inspect.isawaitable(res):
+        await res
+
+
+async def _scan_single_cyd(cyd_info, duration_s=10):
+    """Connect to one CYD over ESPHome Native API, invoke scan_tuya_ble_fans, and collect sightings."""
+    cyd_file = cyd_info['filename']
+    cyd_name = cyd_info['device_name']
+    friendly = cyd_info['friendly_name']
+    address = cyd_info['address']
+    client = APIClient(
+        address=address,
+        port=6053,
+        password=cyd_info.get('api_password') or '',
+        noise_psk=cyd_info.get('api_key') or None,
+    )
+    sightings = []
+    done_event = asyncio.Event()
+
+    def on_service_call(call):
+        svc_name = getattr(call, 'service', '') or ''
+        data = dict(getattr(call, 'data', {}) or {})
+        if svc_name == 'esphome.tuya_ble_fan_found':
+            sightings.append({
+                'cyd_filename': cyd_file,
+                'cyd_name': cyd_name,
+                'friendly_name': friendly,
+                'mac': data.get('mac', ''),
+                'addr_type': data.get('addr_type', 0),
+                'rssi': data.get('rssi', -127),
+                'bound': data.get('bound', 'false'),
+                'uuid': data.get('uuid', ''),
+                'product_id': data.get('product_id', ''),
+            })
+        elif svc_name == 'esphome.tuya_ble_scan_done':
+            done_event.set()
+
+    try:
+        await asyncio.wait_for(client.connect(login=True), timeout=8.0)
+        _, services = await asyncio.wait_for(client.list_entities_services(), timeout=8.0)
+        scan_svc = next((s for s in services if getattr(s, 'name', '') == 'scan_tuya_ble_fans'), None)
+        if scan_svc is None:
+            return {
+                'cyd_filename': cyd_file,
+                'cyd_name': cyd_name,
+                'friendly_name': friendly,
+                'status': 'unsupported',
+                'error': 'Firmware does not expose scan_tuya_ble_fans (flash updated firmware)',
+                'sightings': [],
+            }
+
+        client.subscribe_service_calls(on_service_call)
+        await _exec_esphome_service(client, scan_svc, {'duration_s': int(duration_s)})
+        try:
+            await asyncio.wait_for(done_event.wait(), timeout=float(duration_s) + 5.0)
+        except asyncio.TimeoutError:
+            pass
+        return {
+            'cyd_filename': cyd_file,
+            'cyd_name': cyd_name,
+            'friendly_name': friendly,
+            'status': 'ok',
+            'error': '',
+            'sightings': sightings,
+        }
+    except Exception as e:
+        return {
+            'cyd_filename': cyd_file,
+            'cyd_name': cyd_name,
+            'friendly_name': friendly,
+            'status': 'error',
+            'error': str(e),
+            'sightings': sightings,
+        }
+    finally:
+        try:
+            res = client.disconnect()
+            import inspect
+            if inspect.isawaitable(res):
+                await res
+        except Exception:
+            pass
+
+
+async def _pair_unbound_on_cyd(cyd_info, mac, addr_type, uuid_val, device_id, local_key, blink_confirm=True):
+    """Connect to target CYD and invoke pair_unbound_tuya_fan, awaiting esphome.tuya_ble_fan_paired."""
+    client = APIClient(
+        address=cyd_info['address'],
+        port=6053,
+        password=cyd_info.get('api_password') or '',
+        noise_psk=cyd_info.get('api_key') or None,
+    )
+    result_box = {}
+    done_event = asyncio.Event()
+
+    def on_service_call(call):
+        svc_name = getattr(call, 'service', '') or ''
+        data = dict(getattr(call, 'data', {}) or {})
+        if svc_name == 'esphome.tuya_ble_fan_paired':
+            result_box['ok'] = str(data.get('ok', 'false')).lower() == 'true'
+            result_box['mac'] = data.get('mac', mac)
+            result_box['uuid'] = data.get('uuid', uuid_val)
+            result_box['error'] = data.get('error', '')
+            done_event.set()
+
+    try:
+        await asyncio.wait_for(client.connect(login=True), timeout=8.0)
+        _, services = await asyncio.wait_for(client.list_entities_services(), timeout=8.0)
+        pair_svc = next((s for s in services if getattr(s, 'name', '') == 'pair_unbound_tuya_fan'), None)
+        if pair_svc is None:
+            return {'ok': False, 'error': 'Target CYD firmware does not expose pair_unbound_tuya_fan'}
+
+        client.subscribe_service_calls(on_service_call)
+        await _exec_esphome_service(client, pair_svc, {
+            'mac': mac,
+            'addr_type': int(addr_type),
+            'uuid': uuid_val,
+            'device_id': device_id,
+            'local_key': local_key,
+            'blink_confirm': bool(blink_confirm),
+        })
+        await asyncio.wait_for(done_event.wait(), timeout=25.0)
+        return result_box
+    except asyncio.TimeoutError:
+        return {'ok': False, 'error': 'Timed out waiting for BLE pairing response from CYD'}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+    finally:
+        try:
+            res = client.disconnect()
+            import inspect
+            if inspect.isawaitable(res):
+                await res
+        except Exception:
+            pass
+
+
+@app.route('/api/tuya_ble/scan', methods=['POST'])
+def scan_tuya_ble_whole_house():
+    """Trigger an on-demand BLE scan across all online CYDs in parallel and return ranked sightings."""
+    try:
+        body = request.get_json(silent=True) or {}
+        duration_s = max(3, min(30, int(body.get('duration_s', 10))))
+        requested_devices = body.get('devices')
+
+        all_cyds = _list_cyd_devices_with_api()
+        if requested_devices and isinstance(requested_devices, list):
+            req_set = set(requested_devices)
+            all_cyds = [d for d in all_cyds if d['filename'] in req_set or d['device_name'] in req_set]
+
+        if all_cyds:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(all_cyds))) as ex:
+                all_cyds = list(ex.map(_check_device_online, all_cyds))
+
+        online_cyds = [d for d in all_cyds if d.get('online')]
+        offline_cyds = [
+            {
+                'cyd_filename': d['filename'],
+                'cyd_name': d['device_name'],
+                'friendly_name': d['friendly_name'],
+                'status': 'offline',
+                'error': 'Device is offline',
+                'sightings_count': 0,
+            }
+            for d in all_cyds if not d.get('online')
+        ]
+
+        async def _run_all():
+            if not online_cyds:
+                return []
+            return await asyncio.gather(*[_scan_single_cyd(c, duration_s) for c in online_cyds])
+
+        scan_outputs = asyncio.run(_run_all())
+
+        all_sightings = []
+        cyd_statuses = []
+        for out in scan_outputs:
+            all_sightings.extend(out.get('sightings', []))
+            cyd_statuses.append({
+                'cyd_filename': out['cyd_filename'],
+                'cyd_name': out['cyd_name'],
+                'friendly_name': out['friendly_name'],
+                'status': out['status'],
+                'error': out.get('error', ''),
+                'sightings_count': len(out.get('sightings', [])),
+            })
+        cyd_statuses.extend(offline_cyds)
+
+        tuya_local_fans = discover_tuya_ble_fans()
+        hosted_by_id, hosted_by_mac, hosted_by_uuid = _find_ble_fan_hosts_extended()
+        aggregated = aggregate_ble_scan_sightings(
+            all_sightings,
+            tuya_local_fans=tuya_local_fans,
+            hosted_by_id=hosted_by_id,
+            hosted_by_mac=hosted_by_mac,
+            hosted_by_uuid=hosted_by_uuid,
+        )
+
+        return jsonify({
+            'fans': aggregated,
+            'cyds': cyd_statuses,
+            'duration_s': duration_s,
+            'tuya_local_fans': tuya_local_fans,
+        })
+    except Exception as e:
+        return jsonify({'fans': [], 'cyds': [], 'error': str(e)}), 500
+
+
+@app.route('/api/tuya_ble/pair', methods=['POST'])
+def pair_unbound_tuya_ble_fan():
+    """Pair an unbound (bound=0) Tuya BLE fan via the selected target CYD."""
+    try:
+        body = request.get_json(silent=True) or {}
+        target_cyd = str(body.get('target_cyd') or '').strip()
+        mac = str(body.get('mac') or '').strip().upper()
+        addr_type = int(body.get('addr_type', 0))
+        uuid_val = str(body.get('uuid') or '').strip()
+        blink_confirm = body.get('blink_confirm', True) is not False
+
+        if not target_cyd or not mac or not uuid_val:
+            return jsonify({'ok': False, 'error': 'target_cyd, mac, and uuid are required'}), 400
+
+        cyds = _list_cyd_devices_with_api()
+        cyd_info = next((c for c in cyds if c['filename'] == target_cyd or c['device_name'] == target_cyd), None)
+        if cyd_info is None:
+            return jsonify({'ok': False, 'error': f'Target CYD {target_cyd} not found'}), 404
+
+        gen_id, gen_key = generate_tuya_ble_credentials()
+        device_id = str(body.get('device_id') or gen_id).strip()
+        local_key = str(body.get('local_key') or gen_key).strip()
+
+        res = asyncio.run(_pair_unbound_on_cyd(
+            cyd_info, mac, addr_type, uuid_val, device_id, local_key, blink_confirm=blink_confirm
+        ))
+        return jsonify({
+            'ok': bool(res.get('ok')),
+            'mac': res.get('mac', mac),
+            'uuid': res.get('uuid', uuid_val),
+            'device_id': device_id if res.get('ok') else '',
+            'local_key': local_key if res.get('ok') else '',
+            'error': res.get('error', ''),
+        }), (200 if res.get('ok') else 502)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/tuya_ble/add_to_device', methods=['POST'])
+def add_tuya_ble_fan_to_device():
+    """Save a discovered/paired BLE fan directly into the target CYD's YAML config."""
+    try:
+        body = request.get_json(silent=True) or {}
+        target_cyd = str(body.get('target_cyd') or '').strip()
+        fan = body.get('fan')
+        if not target_cyd or not isinstance(fan, dict):
+            return jsonify({'ok': False, 'error': 'target_cyd and fan object are required'}), 400
+
+        safe_name = os.path.basename(target_cyd)
+        if not safe_name.endswith('.yaml') or safe_name != target_cyd:
+            return jsonify({'ok': False, 'error': 'Invalid target_cyd filename'}), 400
+
+        filepath = os.path.join(BASE_DIR, safe_name)
+        if not os.path.isfile(filepath):
+            return jsonify({'ok': False, 'error': f'Device file {safe_name} not found'}), 404
+
+        fans = add_ble_fan_to_device_yaml(filepath, fan)
+        hosted_by = find_ble_fan_hosts()
+        return jsonify({
+            'ok': True,
+            'target_cyd': safe_name,
+            'fans': fans,
+            'hosted_by': hosted_by,
+        })
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
 @app.route('/api/scripts')
 def get_scripts():
     try:

@@ -43,6 +43,7 @@ interface LeftSidebarProps {
   tuyaBleCandidates?: TuyaBleCandidate[];
   bleFanHosts?: Record<string, string[]>;
   currentDevicePath?: string;
+  onOpenFindBleFans?: () => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -83,6 +84,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   tuyaBleCandidates,
   bleFanHosts,
   currentDevicePath,
+  onOpenFindBleFans,
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
   const [isBleFansOpen, setIsBleFansOpen] = useState(false);
@@ -243,6 +245,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           bleFanHosts={bleFanHosts}
                           currentDevicePath={currentDevicePath}
                           onUpdateBleFans={handleUpdateBleFans}
+                          onOpenFindBleFans={onOpenFindBleFans}
                       />
                   </div>
               </div>

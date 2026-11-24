@@ -155,5 +155,21 @@ bool extract_tuya_v3_uuid(const uint8_t *service_data_a201, size_t service_data_
                           const uint8_t *mfg_data_07d0, size_t mfg_data_len,
                           std::string &out_uuid);
 
+struct TuyaBleAdvInfo {
+  bool valid{false};
+  bool bound{false};
+  std::string uuid;
+  std::string product_id;
+};
+
+// Parse Tuya BLE advertisement fields from 0xA201 / 0xFD50 service data and 0x07D0 manufacturer data.
+TuyaBleAdvInfo parse_tuya_ble_advertisement(const uint8_t *svc_a201, size_t svc_a201_len,
+                                            const uint8_t *svc_fd50, size_t svc_fd50_len,
+                                            const uint8_t *mfg_07d0, size_t mfg_07d0_len);
+
+// Unbound (bound=0) key derivation for cloud-free local pairing
+void derive_unbound_login_key(const std::string &uuid, uint8_t out_key[16]);
+void derive_unbound_session_key(const std::string &uuid, const uint8_t srand[6], uint8_t out_key[16]);
+
 }  // namespace tuya_ble_fan
 }  // namespace esphome

@@ -67,7 +67,7 @@ CONFIG_SCHEMA = cv.Schema(
             esp32_ble_tracker.ESP32BLETracker
         ),
         cv.Optional(CONF_IDLE_DISCONNECT_S, default=30): cv.int_range(min=0, max=3600),
-        cv.Required(CONF_FANS): cv.ensure_list(FAN_ITEM_SCHEMA),
+        cv.Optional(CONF_FANS, default=[]): cv.ensure_list(FAN_ITEM_SCHEMA),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 

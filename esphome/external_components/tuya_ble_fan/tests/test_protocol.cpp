@@ -144,6 +144,58 @@ static void test_v3_a201_uuid_extraction() {
   std::string uuid;
   assert(extract_tuya_v3_uuid(sdata_a201, sizeof(sdata_a201), mfg_07d0, sizeof(mfg_07d0), uuid));
   assert(uuid == "9fdb2c8416a6872a");
+
+  // parse_tuya_ble_advertisement on real bound v3 packet
+  TuyaBleAdvInfo bound_info = parse_tuya_ble_advertisement(
+      sdata_a201, sizeof(sdata_a201), nullptr, 0, mfg_07d0, sizeof(mfg_07d0));
+  assert(bound_info.valid);
+  assert(bound_info.bound);
+  assert(bound_info.uuid == "9fdb2c8416a6872a");
+  assert(bound_info.product_id.empty());
+}
+
+void test_unbound_advertisement_and_keys() {
+  // Unbound 0xA201 with raw 16-char product_id + 0x07D0 with bound bit = 0 and encrypted UUID
+  std::string pid = "hceemlamlwxpufpa";
+  std::string raw_uuid = "1122334455667788";
+  std::vector<uint8_t> sdata_a201;
+  sdata_a201.push_back(0x00);
+  sdata_a201.insert(sdata_a201.end(), pid.begin(), pid.end());
+
+  // Encrypt raw_uuid using key = iv = MD5(sdata_a201[1..17])
+  uint8_t key_iv[16];
+  md5_hash(sdata_a201.data() + 1, 16, key_iv);
+  std::vector<uint8_t> enc_uuid;
+  assert(aes128_cbc_encrypt(key_iv, key_iv,
+                            reinterpret_cast<const uint8_t *>(raw_uuid.data()), 16, enc_uuid));
+  assert(enc_uuid.size() == 16);
+
+  std::vector<uint8_t> mfg_07d0 = {0x00, 0x02, 0x00, 0x00, 0x00, 0x00};  // bit 7 = 0 -> unbound
+  mfg_07d0.insert(mfg_07d0.end(), enc_uuid.begin(), enc_uuid.end());
+
+  TuyaBleAdvInfo unbound_info = parse_tuya_ble_advertisement(
+      sdata_a201.data(), sdata_a201.size(), nullptr, 0, mfg_07d0.data(), mfg_07d0.size());
+  assert(unbound_info.valid);
+  assert(!unbound_info.bound);
+  assert(unbound_info.product_id == pid);
+  assert(unbound_info.uuid == raw_uuid);
+
+  // Unbound login_key = MD5(uuid) and session_key = MD5(login_key + srand)
+  uint8_t login_key[16];
+  uint8_t expected_login[16];
+  derive_unbound_login_key(raw_uuid, login_key);
+  md5_hash(reinterpret_cast<const uint8_t *>(raw_uuid.data()), raw_uuid.size(), expected_login);
+  assert(std::memcmp(login_key, expected_login, 16) == 0);
+
+  uint8_t srand_bytes[6] = {1, 2, 3, 4, 5, 6};
+  uint8_t sess_key[16];
+  uint8_t expected_sess[16];
+  derive_unbound_session_key(raw_uuid, srand_bytes, sess_key);
+  uint8_t buf[22];
+  std::memcpy(buf, raw_uuid.data(), 16);
+  std::memcpy(buf + 16, srand_bytes, 6);
+  md5_hash(buf, 22, expected_sess);
+  assert(std::memcmp(sess_key, expected_sess, 16) == 0);
 }
 
 int main() {
@@ -152,6 +204,7 @@ int main() {
   test_v3_dps_and_pair_and_device_info();
   test_advertisement_matching();
   test_v3_a201_uuid_extraction();
+  test_unbound_advertisement_and_keys();
   std::cout << "All Tuya BLE protocol tests passed!" << std::endl;
   return 0;
 }

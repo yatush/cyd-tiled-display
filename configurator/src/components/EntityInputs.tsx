@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle } from 'lucide-react';
+import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle, Radar } from 'lucide-react';
 import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
 import {
   findCandidateForEntity,
@@ -539,12 +539,14 @@ export const BleFansManagerPanel = ({
   bleFanHosts = {},
   currentDevicePath,
   onUpdateBleFans,
+  onOpenFindBleFans,
 }: {
   bleFans?: BleFanConfig[];
   tuyaBleCandidates?: TuyaBleCandidate[];
   bleFanHosts?: Record<string, string[]>;
   currentDevicePath?: string;
   onUpdateBleFans: (next: BleFanConfig[]) => void;
+  onOpenFindBleFans?: () => void;
 }) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
@@ -607,6 +609,17 @@ export const BleFansManagerPanel = ({
       <p className="text-[10px] text-slate-500 leading-snug">
         Host Tuya BLE fans on this CYD and expose them to Home Assistant — no tile required.
       </p>
+
+      {onOpenFindBleFans && (
+        <button
+          type="button"
+          onClick={onOpenFindBleFans}
+          className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold bg-sky-600 text-white hover:bg-sky-700 shadow-sm transition-colors"
+        >
+          <Radar size={13} />
+          <span>Find &amp; Pair BLE Fans</span>
+        </button>
+      )}
 
       {bleFans.length > 0 && (
         <div className="space-y-1.5">

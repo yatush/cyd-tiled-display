@@ -103,6 +103,7 @@ export function useHaConnection() {
     haEntities,
     tuyaBleCandidates,
     bleFanHosts,
+    setBleFanHosts,
     haStatus,
     fetchHaEntities: () => setRefreshTrigger(prev => prev + 1)
   };

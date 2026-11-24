@@ -147,3 +147,151 @@ def test_find_ble_fan_hosts_detects_existing_device_yamls(tmp_path):
 
     hosts = server.find_ble_fan_hosts(str(esphome_dir))
     assert hosts == {"bf_office_123": ["office-cyd.yaml"]}
+
+
+def test_generate_tuya_ble_credentials():
+    dev_id1, key1 = server.generate_tuya_ble_credentials()
+    dev_id2, key2 = server.generate_tuya_ble_credentials()
+    assert len(dev_id1) == 22
+    assert dev_id1.startswith("bf")
+    assert len(key1) == 16
+    assert dev_id1 != dev_id2
+    assert key1 != key2
+
+
+def test_aggregate_ble_scan_sightings_ranks_by_rssi_and_matches_ha():
+    sightings = [
+        {
+            "cyd_filename": "hall-cyd.yaml",
+            "cyd_name": "hall-cyd",
+            "friendly_name": "Hall CYD",
+            "mac": "aa:bb:cc:dd:ee:01",
+            "addr_type": 0,
+            "rssi": -78,
+            "bound": "false",
+            "uuid": "1122334455667788",
+            "product_id": "hceemlamlwxpufpa",
+        },
+        {
+            "cyd_filename": "sahar-cyd.yaml",
+            "cyd_name": "sahar-cyd",
+            "friendly_name": "Sahar CYD",
+            "mac": "AA:BB:CC:DD:EE:01",
+            "addr_type": 0,
+            "rssi": -54,
+            "bound": False,
+            "uuid": "1122334455667788",
+            "product_id": "hceemlamlwxpufpa",
+        },
+        {
+            "cyd_filename": "office-cyd.yaml",
+            "cyd_name": "office-cyd",
+            "friendly_name": "Office CYD",
+            "mac": "B8:06:0D:54:04:F6",
+            "addr_type": 1,
+            "rssi": -62,
+            "bound": "true",
+            "uuid": "9fdb2c8416a6872a",
+            "product_id": "",
+        },
+    ]
+    ha_fans = [
+        {
+            "name": "Office Fan",
+            "device_id": "bf_office_123",
+            "local_key": "1234567890abcdef",
+            "product_id": "hceemlamlwxpufpa",
+            "mac_address": "B8:06:0D:54:04:F6",
+            "fan_entity_id": "fan.office_fan",
+            "light_entity_id": "light.office_light",
+        }
+    ]
+    hosted_by_id = {"bf_office_123": ["office-cyd.yaml"]}
+
+    ranked = server.aggregate_ble_scan_sightings(
+        sightings, tuya_local_fans=ha_fans, hosted_by_id=hosted_by_id
+    )
+    assert len(ranked) == 2
+
+    # Strongest RSSI (-54) first
+    first = ranked[0]
+    assert first["mac"] == "AA:BB:CC:DD:EE:01"
+    assert first["bound"] is False
+    assert first["best_cyd"]["cyd_filename"] == "sahar-cyd.yaml"
+    assert first["best_rssi"] == -54
+    assert [s["cyd_filename"] for s in first["sightings"]] == ["sahar-cyd.yaml", "hall-cyd.yaml"]
+    assert first["matched_ha_fan"] is None
+
+    second = ranked[1]
+    assert second["mac"] == "B8:06:0D:54:04:F6"
+    assert second["bound"] is True
+    assert second["matched_ha_fan"]["device_id"] == "bf_office_123"
+    assert second["hosted_by"] == ["office-cyd.yaml"]
+
+
+def test_extract_device_api_info_resolves_secret(tmp_path):
+    (tmp_path / "secrets.yaml").write_text("api_enc_key: mySecretKeyBase64==\n", encoding="utf-8")
+    dev_yaml = tmp_path / "sahar-cyd.yaml"
+    dev_yaml.write_text(
+        "esphome:\n  name: sahar-cyd\n"
+        "api:\n  encryption:\n    key: !secret api_enc_key\n"
+        "tile_ui:\n  screens: []\n",
+        encoding="utf-8",
+    )
+    secrets_map = server._load_esphome_secrets(str(tmp_path))
+    info = server._extract_device_api_info(str(dev_yaml), secrets_map)
+    assert info["api_key"] == "mySecretKeyBase64=="
+
+
+def test_add_ble_fan_to_device_yaml_preserves_tags_and_upserts(tmp_path):
+    dev_yaml = tmp_path / "sahar-cyd.yaml"
+    dev_yaml.write_text(
+        "substitutions:\n"
+        "  device_name: sahar-cyd\n"
+        "packages:\n"
+        "  device_base: !include lib/2432s028.yaml\n"
+        "  ble_proxy: !include lib/ble_proxy.yaml\n"
+        "wifi:\n"
+        "  ssid: !secret wifi_ssid\n"
+        "tile_ui:\n"
+        "  screens: []\n",
+        encoding="utf-8",
+    )
+
+    fans1 = server.add_ble_fan_to_device_yaml(str(dev_yaml), {
+        "name": "Sahar Fan",
+        "device_id": "bf00000000000000000001",
+        "local_key": "0123456789abcdef",
+        "product_id": "hceemlamlwxpufpa",
+        "mac_address": "AA:BB:CC:DD:EE:01",
+        "uuid": "1122334455667788",
+        "expose_to_ha": True,
+    })
+    assert len(fans1) == 1
+    text1 = dev_yaml.read_text(encoding="utf-8")
+    assert "tuya_ble_fan: !include lib/tuya_ble_fan.yaml" in text1
+    assert 'ble_max_connections: "2"' in text1
+    assert "ssid: !secret wifi_ssid" in text1
+    assert "idle_disconnect_s: 0" in text1
+
+    # Add a second fan -> idle_disconnect_s switches to 30
+    fans2 = server.add_ble_fan_to_device_yaml(str(dev_yaml), {
+        "name": "Hall Fan",
+        "device_id": "bf00000000000000000002",
+        "local_key": "fedcba9876543210",
+        "mac_address": "AA:BB:CC:DD:EE:02",
+    })
+    assert len(fans2) == 2
+    text2 = dev_yaml.read_text(encoding="utf-8")
+    assert "idle_disconnect_s: 30" in text2
+
+    # Upsert first fan by device_id -> still 2 fans, updated name
+    fans3 = server.add_ble_fan_to_device_yaml(str(dev_yaml), {
+        "name": "Sahar Bedroom Fan",
+        "device_id": "bf00000000000000000001",
+        "local_key": "0123456789abcdef",
+        "mac_address": "AA:BB:CC:DD:EE:01",
+    })
+    assert len(fans3) == 2
+    assert fans3[0]["name"] == "Sahar Bedroom Fan"
+

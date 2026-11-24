@@ -16,6 +16,7 @@ import { ScreensFileDialog } from './components/ScreensFileDialog';
 import { EmulatorDialog } from './components/EmulatorDialog';
 import { HwOverridesDialog } from './components/HwOverridesDialog';
 import { BatchUpdateDialog } from './components/BatchUpdateDialog';
+import { FindBleFansDialog } from './components/FindBleFansDialog';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -160,9 +161,11 @@ function App() {
     haEntities,
     tuyaBleCandidates,
     bleFanHosts,
+    setBleFanHosts,
     haStatus,
     fetchHaEntities
   } = useHaConnection();
+  const [isFindBleFansOpen, setIsFindBleFansOpen] = useState(false);
 
   const {
     config, setConfig,
@@ -522,6 +525,7 @@ function App() {
           tuyaBleCandidates={tuyaBleCandidates}
           bleFanHosts={bleFanHosts}
           currentDevicePath={fileContext?.path}
+          onOpenFindBleFans={() => setIsFindBleFansOpen(true)}
         />
 
       {/* Left Resizer */}
@@ -590,6 +594,19 @@ function App() {
             setActivePageId(id);
         }}
         existingIds={config.pages.map(p => p.id)}
+      />
+
+      <FindBleFansDialog
+        isOpen={isFindBleFansOpen}
+        onClose={() => setIsFindBleFansOpen(false)}
+        tuyaBleCandidates={tuyaBleCandidates}
+        onFanAdded={(targetCyd, updatedFans, hostedBy) => {
+          setBleFanHosts(hostedBy);
+          const openBase = fileContext?.path ? fileContext.path.split('/').pop() : '';
+          if (openBase && openBase === targetCyd) {
+            setConfig(prev => ({ ...prev, ble_fans: updatedFans }));
+          }
+        }}
       />
 
       <HASettingsDialog 

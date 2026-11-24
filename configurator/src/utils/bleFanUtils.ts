@@ -133,6 +133,7 @@ export function extractBleFansFromDeviceYaml(rawData: any): BleFanConfig[] {
       local_key: String(f.local_key || ''),
       product_id: f.product_id ? String(f.product_id) : '',
       mac_address: f.mac_address ? String(f.mac_address) : '',
+      uuid: f.uuid ? String(f.uuid) : '',
       fan_entity_id: f.fan_entity_id ? String(f.fan_entity_id) : '',
       light_entity_id: f.light_entity_id ? String(f.light_entity_id) : '',
       expose_to_ha: f.expose_to_ha !== false,
@@ -168,6 +169,7 @@ export function buildTuyaBleFanYamlSections(
     };
     if (f.product_id?.trim()) entry.product_id = f.product_id.trim();
     if (f.mac_address?.trim()) entry.mac_address = f.mac_address.trim();
+    if (f.uuid?.trim()) entry.uuid = f.uuid.trim();
     if (f.fan_entity_id?.trim()) entry.fan_entity_id = f.fan_entity_id.trim();
     if (f.light_entity_id?.trim()) entry.light_entity_id = f.light_entity_id.trim();
     entry.expose_to_ha = f.expose_to_ha !== false;
