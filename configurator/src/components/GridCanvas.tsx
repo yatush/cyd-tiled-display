@@ -3,10 +3,10 @@ import { Wifi } from 'lucide-react';
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { DroppableCell } from './DroppableCell';
 import { DraggableTile } from './DraggableTile';
-import { Page, Tile, ImageEntry } from '../types';
+import { Page, Tile, ImageEntry, BleFanConfig, FixedEntityEntry } from '../types';
 import { apiFetch } from '../utils/api';
 
-export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage, images = {} }: { 
+export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage, images = {}, bleFans = [], dynamicEntityValues = {} }: { 
   page: Page, 
   onSelectTile: (t: Tile) => void, 
   selectedTileId: string | null,
@@ -16,7 +16,9 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
   cols: number,
   dynamicEntities?: string[],
   onNavigateToPage?: (pageId: string) => void,
-  images?: Record<string, ImageEntry>
+  images?: Record<string, ImageEntry>,
+  bleFans?: BleFanConfig[],
+  dynamicEntityValues?: Record<string, FixedEntityEntry[]>
 }) => {
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -142,6 +144,8 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                       onNavigateToPage={onNavigateToPage}
                       images={images}
                       colorList={colorList}
+                      bleFans={bleFans}
+                      dynamicEntityValues={dynamicEntityValues}
                     />
                   ))}
                   {coveringTiles.length > 1 && (
@@ -203,6 +207,8 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                     onNavigateToPage={onNavigateToPage}
                     images={images}
                     colorList={colorList}
+                    bleFans={bleFans}
+                    dynamicEntityValues={dynamicEntityValues}
                   />
                 </div>
               ))}

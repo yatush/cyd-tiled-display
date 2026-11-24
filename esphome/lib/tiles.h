@@ -811,7 +811,17 @@ protected:
   void customDraw() override {
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), Deref(this->decoded_entities_));
+    int x0 = x_start(this->x_);
+    int x1 = x_start(x_end_idx) + x_rect();
+    int y0 = y_start(this->y_);
+    int y1 = y_start(y_end_idx) + y_rect();
+    auto entities = Deref(this->decoded_entities_);
+    ExecuteScripts(this->draw_funcs_, x0, x1, y0, y1, entities);
+#ifdef USE_TUYA_BLE_FAN
+    if (IsAnyBleControlled(entities)) {
+      DrawBleIndicator(x1, y1);
+    }
+#endif
   }
 
 private:
@@ -1018,9 +1028,16 @@ protected:
     bool isOn = EMContains(this->identifier_, this->entities_);
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
+    int x1 = x_start(x_end_idx) + x_rect();
+    int y1 = y_start(y_end_idx) + y_rect();
     ExecuteScripts(
-      this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(),
+      this->draw_funcs_, x_start(this->x_), x1, y_start(this->y_), y1,
       this->presentation_name_, isOn);
+#ifdef USE_TUYA_BLE_FAN
+    if (IsAnyBleControlled(Deref(this->entities_))) {
+      DrawBleIndicator(x1, y1);
+    }
+#endif
   }
 
   // Vector of functions to draw the tile.
@@ -1095,7 +1112,14 @@ protected:
     }
     int x_end_idx = this->x_ + this->x_span_ - 1;
     int y_end_idx = this->y_ + this->y_span_ - 1;
-    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x_start(x_end_idx) + x_rect(), y_start(this->y_), y_start(y_end_idx) + y_rect(), *current_option.second, args);
+    int x1 = x_start(x_end_idx) + x_rect();
+    int y1 = y_start(y_end_idx) + y_rect();
+    ExecuteScripts(this->draw_funcs_, x_start(this->x_), x1, y_start(this->y_), y1, *current_option.second, args);
+#ifdef USE_TUYA_BLE_FAN
+    if (IsAnyBleControlled(args)) {
+      DrawBleIndicator(x1, y1);
+    }
+#endif
   }
 
   void onActivation() override {

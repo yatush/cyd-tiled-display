@@ -26,6 +26,8 @@ export function getConfigSnapshot(config: Config): string {
   return JSON.stringify({
     pages: config.pages || [],
     dynamic_entities: config.dynamic_entities || [],
+    dynamic_entity_values: config.dynamic_entity_values || {},
+    ble_fans: config.ble_fans || [],
     images: config.images || {},
     screen_images: config.screen_images || {},
   });

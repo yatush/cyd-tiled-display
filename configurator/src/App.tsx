@@ -158,6 +158,7 @@ function App() {
     haToken, setHaToken,
     connectionType, setConnectionType,
     haEntities,
+    tuyaBleCandidates,
     haStatus,
     fetchHaEntities
   } = useHaConnection();
@@ -517,6 +518,7 @@ function App() {
           handleLoadProject={handleLoadProject}
           handleClearConfig={handleClearWithContext}
           haEntities={haEntities}
+          tuyaBleCandidates={tuyaBleCandidates}
         />
 
       {/* Left Resizer */}
@@ -566,6 +568,7 @@ function App() {
           activePage={activePage}
           setActivePageId={setActivePageId}
           haEntities={haEntities}
+          tuyaBleCandidates={tuyaBleCandidates}
           onUpdatePage={handleUpdatePage}
           onRenamePage={handleRenamePage}
           setConfig={setConfig}

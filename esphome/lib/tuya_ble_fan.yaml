@@ -1,0 +1,27 @@
+# tuya_ble_fan.yaml — Low-RAM BLE configuration for direct Tuya FlyFan control
+# Automatically included in packages when any fan/light entity is configured for BLE control.
+
+substitutions:
+  # Balanced display buffer on 3.5" panels (trimmed BLE stack saves ~30-40 KB SRAM vs bluetooth_proxy)
+  display_buffer_size: "40%"
+  # 1 shared GATT slot for tuya_ble_fan (bumped to 2 automatically if ble_proxy is also enabled)
+  ble_max_connections: "1"
+
+esp32:
+  partitions: lib/partitions_4mb_ota.csv
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      # Tuya BLE is GATT-client only and uses application-layer AES-128-CBC (no BLE SMP bonding)
+      CONFIG_BT_GATTS_ENABLE: n
+      CONFIG_BT_BLE_SMP_ENABLE: n
+      CONFIG_BTDM_CTRL_BLE_MAX_CONN: "${ble_max_connections}"
+      CONFIG_BT_ACL_CONNECTIONS: "${ble_max_connections}"
+
+esp32_ble_tracker:
+  id: ble_tracker
+  scan_parameters:
+    interval: 320ms
+    window: 160ms
+    active: true
+    continuous: false

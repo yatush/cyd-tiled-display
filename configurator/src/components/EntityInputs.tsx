@@ -1,12 +1,152 @@
-import { Trash2, Plus } from 'lucide-react';
-import { FixedEntityEntry, HaEntity } from '../types';
+import { useState } from 'react';
+import { Trash2, Plus, Bluetooth, Settings2 } from 'lucide-react';
+import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
+import {
+  findCandidateForEntity,
+  findConfiguredBleFan,
+  normalizeEntityId,
+  toggleBleFanForEntity,
+  upsertBleFan,
+} from '../utils/bleFanUtils';
 
-export const EntityListInput = ({ label, values, onChange, haEntities }: {
+export interface BleFanProps {
+  bleFans?: BleFanConfig[];
+  tuyaBleCandidates?: TuyaBleCandidate[];
+  onUpdateBleFans?: (next: BleFanConfig[]) => void;
+}
+
+export const BleFanToggle = ({
+  entityId,
+  bleFans = [],
+  tuyaBleCandidates = [],
+  onUpdateBleFans,
+}: {
+  entityId: string;
+} & BleFanProps) => {
+  const [showDetails, setShowDetails] = useState(false);
+  if (!onUpdateBleFans) return null;
+
+  const norm = normalizeEntityId(entityId);
+  if (!norm) return null;
+
+  const candidate = findCandidateForEntity(norm, tuyaBleCandidates);
+  const configured = findConfiguredBleFan(norm, bleFans);
+  const isFanEntity = norm.startsWith('fan.');
+
+  if (!candidate && !configured && !isFanEntity) {
+    return null;
+  }
+
+  const isChecked = Boolean(configured);
+  const missingCreds = isChecked && (!configured?.device_id?.trim() || !configured?.local_key?.trim());
+  const companionLight = configured?.light_entity_id || candidate?.light_entity_id || '';
+  const companionFan = configured?.fan_entity_id || candidate?.fan_entity_id || '';
+
+  return (
+    <div className="mt-1 px-1.5 py-1 rounded bg-blue-50/70 border border-blue-100 text-[11px]">
+      <div className="flex items-center justify-between gap-1.5">
+        <label className="flex items-center gap-1.5 cursor-pointer select-none text-blue-800 font-medium">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={e => {
+              const next = toggleBleFanForEntity(bleFans, norm, e.target.checked, candidate);
+              onUpdateBleFans(next);
+              if (e.target.checked && !candidate) {
+                setShowDetails(true);
+              }
+            }}
+            className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+          />
+          <Bluetooth size={11} className="text-blue-600 flex-shrink-0" />
+          <span>Control via BLE</span>
+        </label>
+        <div className="flex items-center gap-1">
+          {companionLight && companionFan && (
+            <span
+              className="text-[10px] px-1 py-0.2 rounded bg-blue-100 text-blue-700"
+              title={`Routes both ${companionFan} and ${companionLight} over BLE`}
+            >
+              fan + light
+            </span>
+          )}
+          {isChecked && (
+            <button
+              type="button"
+              onClick={() => setShowDetails(s => !s)}
+              className={`p-0.5 rounded hover:bg-blue-100 ${missingCreds ? 'text-amber-600' : 'text-blue-600'}`}
+              title="Edit BLE credentials"
+            >
+              <Settings2 size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isChecked && (showDetails || missingCreds) && configured && (
+        <div className="mt-1.5 pt-1.5 border-t border-blue-100 space-y-1">
+          {missingCreds && (
+            <div className="text-[10px] text-amber-700 font-medium">
+              Enter Tuya device_id &amp; local_key (auto-filled when tuya_local is present in HA).
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-1">
+            <input
+              type="text"
+              value={configured.device_id}
+              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, device_id: e.target.value }))}
+              placeholder="Device ID"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+            <input
+              type="text"
+              value={configured.local_key}
+              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, local_key: e.target.value }))}
+              placeholder="Local Key"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+            <input
+              type="text"
+              value={configured.product_id || ''}
+              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, product_id: e.target.value }))}
+              placeholder="Product ID (optional)"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+            <input
+              type="text"
+              value={configured.mac_address || ''}
+              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, mac_address: e.target.value }))}
+              placeholder="BLE MAC (auto-discover)"
+              className="border rounded px-1 py-0.5 text-[10px] bg-white"
+            />
+          </div>
+          <input
+            type="text"
+            value={configured.light_entity_id || ''}
+            onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, light_entity_id: e.target.value }))}
+            placeholder="Companion light entity (e.g. light.office_fan_light)"
+            className="w-full border rounded px-1 py-0.5 text-[10px] bg-white"
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const EntityListInput = ({
+  label,
+  values,
+  onChange,
+  haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  onUpdateBleFans,
+}: {
   label: string,
   values: string[],
   onChange: (v: string[]) => void,
   haEntities?: HaEntity[]
-}) => {
+} & BleFanProps) => {
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
   const listId = `ha-entities-list-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -15,24 +155,32 @@ export const EntityListInput = ({ label, values, onChange, haEntities }: {
       {label && <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>}
       <div className="space-y-1">
         {safeValues.map((v, i) => (
-          <div key={i} className="flex gap-1">
-            <input
-              type="text"
-              value={v}
-              onChange={e => {
-                const newValues = [...safeValues];
-                newValues[i] = e.target.value;
-                onChange(newValues);
-              }}
-              list={listId}
-              className="flex-1 border rounded p-1 text-sm"
+          <div key={i}>
+            <div className="flex gap-1">
+              <input
+                type="text"
+                value={v}
+                onChange={e => {
+                  const newValues = [...safeValues];
+                  newValues[i] = e.target.value;
+                  onChange(newValues);
+                }}
+                list={listId}
+                className="flex-1 border rounded p-1 text-sm"
+              />
+              <button
+                onClick={() => onChange(safeValues.filter((_, idx) => idx !== i))}
+                className="text-red-500 hover:bg-red-50 p-1 rounded"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <BleFanToggle
+              entityId={v}
+              bleFans={bleFans}
+              tuyaBleCandidates={tuyaBleCandidates}
+              onUpdateBleFans={onUpdateBleFans}
             />
-            <button
-              onClick={() => onChange(safeValues.filter((_, idx) => idx !== i))}
-              className="text-red-500 hover:bg-red-50 p-1 rounded"
-            >
-              <Trash2 size={14} />
-            </button>
           </div>
         ))}
         <datalist id={listId}>
@@ -59,13 +207,16 @@ export const DynamicEntitiesEditor = ({
   onChange,
   onFixedChange,
   haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  onUpdateBleFans,
 }: {
   entities: string[];
   fixedValues?: Record<string, FixedEntityEntry[]>;
   onChange: (v: string[]) => void;
   onFixedChange?: (varName: string, values: FixedEntityEntry[] | null) => void;
   haEntities?: HaEntity[];
-}) => {
+} & BleFanProps) => {
   const safeEntities = Array.isArray(entities) ? entities : (entities ? [entities] : []);
   const listId = `ha-dyn-fixed-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -176,6 +327,12 @@ export const DynamicEntitiesEditor = ({
                           placeholder="Label (optional, for cycle_entity)"
                           className="w-full border rounded p-1 text-[11px] text-slate-700 bg-slate-50"
                         />
+                        <BleFanToggle
+                          entityId={entVal}
+                          bleFans={bleFans}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          onUpdateBleFans={onUpdateBleFans}
+                        />
                       </div>
                     );
                   })}
@@ -211,13 +368,22 @@ export const DynamicEntitiesEditor = ({
   );
 };
 
-export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haEntities }: {
+export const EntityArrayInput = ({
+  label,
+  values,
+  onChange,
+  dynamicEntities,
+  haEntities,
+  bleFans,
+  tuyaBleCandidates,
+  onUpdateBleFans,
+}: {
   label: string,
   values: any[],
   onChange: (v: any[]) => void,
   dynamicEntities: string[],
   haEntities?: HaEntity[]
-}) => {
+} & BleFanProps) => {
   const safeValues = Array.isArray(values) ? values : (values ? [values] : []);
   const listId = `ha-entities-arr-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -292,6 +458,12 @@ export const EntityArrayInput = ({ label, values, onChange, dynamicEntities, haE
                       }}
                       list={listId}
                       className="w-full border rounded p-1 text-xs"
+                    />
+                    <BleFanToggle
+                      entityId={item.entity || ''}
+                      bleFans={bleFans}
+                      tuyaBleCandidates={tuyaBleCandidates}
+                      onUpdateBleFans={onUpdateBleFans}
                     />
                   </div>
                 )}

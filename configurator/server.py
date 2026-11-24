@@ -2569,16 +2569,15 @@ def update_lib():
             elif os.path.exists(hw_source):
                 shutil.copy2(hw_source, hw_target)
             
-        # Update tile_ui without backup
-        source_ui = os.path.join(APP_DIR, 'esphome/external_components/tile_ui')
-        target_ui = os.path.join(BASE_DIR, 'external_components/tile_ui')
-        
-        if os.path.exists(source_ui):
-            if os.path.exists(target_ui):
-                shutil.rmtree(target_ui)
-            # Ensure parent directory exists
-            os.makedirs(os.path.dirname(target_ui), exist_ok=True)
-            shutil.copytree(source_ui, target_ui, ignore=shutil.ignore_patterns('.*'))
+        # Update external components (tile_ui and tuya_ble_fan) without backup
+        for comp_name in ('tile_ui', 'tuya_ble_fan'):
+            source_comp = os.path.join(APP_DIR, 'esphome/external_components', comp_name)
+            target_comp = os.path.join(BASE_DIR, 'external_components', comp_name)
+            if os.path.exists(source_comp):
+                if os.path.exists(target_comp):
+                    shutil.rmtree(target_comp)
+                os.makedirs(os.path.dirname(target_comp), exist_ok=True)
+                shutil.copytree(source_comp, target_comp, ignore=shutil.ignore_patterns('.*'))
 
         # Update default device YAML files (overwrite if changed, seed if missing).
         for fname in _DEFAULT_DEVICE_YAMLS:
@@ -2670,6 +2669,15 @@ def check_lib_status():
         target_ui_hashes = get_directory_hashes(target_ui)
         ui_diff = get_diff(source_ui_hashes, target_ui_hashes)
 
+        source_ble_fan = os.path.join(APP_DIR, 'esphome/external_components/tuya_ble_fan')
+        target_ble_fan = os.path.join(BASE_DIR, 'external_components/tuya_ble_fan')
+        if os.path.exists(source_ble_fan):
+            ble_fan_diff = get_diff(
+                get_directory_hashes(source_ble_fan),
+                get_directory_hashes(target_ble_fan),
+            )
+            ui_diff.extend([f"tuya_ble_fan/{d}" for d in ble_fan_diff])
+
         # For device yamls: flag if missing or modified vs the shipped version,
         # but never complain about extra yamls the user added themselves.
         def _md5_file(path):
@@ -2713,6 +2721,119 @@ def check_lib_status():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+_KNOWN_TUYA_FAN_PRODUCT_IDS = {
+    "vfqiwthdnlkynebk",  # Varin VA-E002
+    "hceemlamlwxpufpa",  # Sofucor KBS
+}
+
+
+def discover_tuya_ble_fans(ha_config_dir=None):
+    """Inspect Home Assistant .storage files to discover Tuya local fans and their companion lights."""
+    cfg_dir = ha_config_dir or os.environ.get('HA_CONFIG_DIR', '/config')
+    entries_path = os.path.join(cfg_dir, '.storage', 'core.config_entries')
+    registry_path = os.path.join(cfg_dir, '.storage', 'core.entity_registry')
+
+    if not os.path.exists(entries_path):
+        return []
+
+    try:
+        with open(entries_path, 'r', encoding='utf-8') as f:
+            entries_doc = json.load(f)
+    except Exception as e:
+        print(f"[tuya_ble_fans] Failed to read {entries_path}: {e}")
+        return []
+
+    entities_by_entry = {}
+    if os.path.exists(registry_path):
+        try:
+            with open(registry_path, 'r', encoding='utf-8') as f:
+                reg_doc = json.load(f)
+            for ent in reg_doc.get('data', {}).get('entities', []):
+                if not isinstance(ent, dict):
+                    continue
+                if ent.get('disabled_by'):
+                    continue
+                entry_id = ent.get('config_entry_id')
+                entity_id = ent.get('entity_id', '')
+                if not entry_id or not entity_id:
+                    continue
+                entities_by_entry.setdefault(entry_id, []).append(entity_id)
+        except Exception as e:
+            print(f"[tuya_ble_fans] Failed to read {registry_path}: {e}")
+
+    fans = []
+    seen_device_ids = set()
+    for entry in entries_doc.get('data', {}).get('entries', []):
+        if not isinstance(entry, dict):
+            continue
+        domain = entry.get('domain', '')
+        if domain not in ('tuya_local', 'localtuya'):
+            continue
+
+        entry_id = entry.get('entry_id', '')
+        title = entry.get('title') or ''
+        data = entry.get('data') or {}
+        options = entry.get('options') or {}
+
+        # Normalize both tuya_local (single device per entry) and localtuya (devices dict)
+        raw_devices = []
+        if 'device_id' in data and 'local_key' in data:
+            raw_devices.append((title, data))
+        elif isinstance(data.get('devices'), dict):
+            for dev_id, dev_cfg in data['devices'].items():
+                if isinstance(dev_cfg, dict) and dev_cfg.get('local_key'):
+                    merged = dict(dev_cfg)
+                    merged.setdefault('device_id', dev_id)
+                    raw_devices.append((dev_cfg.get('friendly_name') or title, merged))
+
+        entry_entities = entities_by_entry.get(entry_id, [])
+        fan_entities = sorted(e for e in entry_entities if e.startswith('fan.'))
+        light_entities = sorted(e for e in entry_entities if e.startswith('light.'))
+
+        for dev_name, dev_data in raw_devices:
+            device_id = str(dev_data.get('device_id') or '').strip()
+            local_key = str(dev_data.get('local_key') or '').strip()
+            if not device_id or not local_key or device_id in seen_device_ids:
+                continue
+
+            product_id = str(
+                dev_data.get('product_id')
+                or options.get('product_id')
+                or dev_data.get('model')
+                or ''
+            ).strip()
+
+            fan_entity_id = fan_entities[0] if fan_entities else ''
+            light_entity_id = light_entities[0] if light_entities else ''
+
+            is_known_product = product_id in _KNOWN_TUYA_FAN_PRODUCT_IDS
+            if not fan_entity_id and not is_known_product:
+                # Skip non-fan tuya_local devices (plugs, heaters, etc.)
+                continue
+
+            seen_device_ids.add(device_id)
+            fans.append({
+                'name': dev_name or fan_entity_id or device_id,
+                'device_id': device_id,
+                'local_key': local_key,
+                'product_id': product_id,
+                'fan_entity_id': fan_entity_id,
+                'light_entity_id': light_entity_id,
+                'supported': is_known_product or bool(fan_entity_id),
+            })
+
+    return fans
+
+
+@app.route('/api/tuya_ble_fans', methods=['GET'])
+def get_tuya_ble_fans():
+    try:
+        fans = discover_tuya_ble_fans()
+        return jsonify({'fans': fans})
+    except Exception as e:
+        return jsonify({'fans': [], 'error': str(e)}), 500
 
 @app.route('/api/scripts')
 def get_scripts():

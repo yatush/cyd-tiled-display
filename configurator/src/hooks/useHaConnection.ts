@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch, isAddon } from '../utils/api';
-import { HaEntity } from '../types';
+import { HaEntity, TuyaBleCandidate } from '../types';
 
 export type HaStatus = 'connected' | 'error' | 'mock' | 'idle';
 export type ConnectionType = 'local' | 'remote' | 'mock';
@@ -23,6 +23,7 @@ export function useHaConnection() {
     return 'remote';
   });
   const [haEntities, setHaEntities] = useState<HaEntity[]>([]);
+  const [tuyaBleCandidates, setTuyaBleCandidates] = useState<TuyaBleCandidate[]>([]);
   const [haStatus, setHaStatus] = useState<HaStatus>('idle');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -47,7 +48,22 @@ export function useHaConnection() {
         headers['x-ha-token'] = haToken;
       }
 
-      const res = await apiFetch('/ha/states', { headers });
+      const [res, bleRes] = await Promise.all([
+        apiFetch('/ha/states', { headers }),
+        apiFetch('/tuya_ble_fans').catch(() => null),
+      ]);
+
+      if (bleRes && bleRes.ok) {
+        try {
+          const bleData = await bleRes.json();
+          if (Array.isArray(bleData?.fans)) {
+            setTuyaBleCandidates(bleData.fans);
+          }
+        } catch {
+          // ignore malformed BLE fan response
+        }
+      }
+
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -81,6 +97,7 @@ export function useHaConnection() {
     connectionType,
     setConnectionType,
     haEntities,
+    tuyaBleCandidates,
     haStatus,
     fetchHaEntities: () => setRefreshTrigger(prev => prev + 1)
   };

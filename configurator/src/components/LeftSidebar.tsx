@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth } from 'lucide-react';
-import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity } from '../types';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth, AlertTriangle } from 'lucide-react';
+import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity, BleFanConfig, TuyaBleCandidate } from '../types';
 import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange, updateDynamicEntityFixedValues } from '../utils/tileUtils';
+import { configHasBleProxy } from '../utils/bleFanUtils';
 
 interface LeftSidebarProps {
   width: number;
@@ -39,6 +40,7 @@ interface LeftSidebarProps {
   handleLoadProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleClearConfig: () => void;
   haEntities?: HaEntity[];
+  tuyaBleCandidates?: TuyaBleCandidate[];
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -76,6 +78,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   handleLoadProject,
   handleClearConfig,
   haEntities,
+  tuyaBleCandidates,
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
 
@@ -193,6 +196,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           onChange={v => setConfig(prev => applyDynamicEntityListChange(prev, v))} 
                           onFixedChange={(varName, vals) => setConfig(prev => updateDynamicEntityFixedValues(prev, varName, vals))}
                           haEntities={haEntities}
+                          bleFans={config.ble_fans || []}
+                          tuyaBleCandidates={tuyaBleCandidates}
+                          onUpdateBleFans={(next: BleFanConfig[]) => setConfig(prev => {
+                            const updated: Config = { ...prev };
+                            if (next.length > 0) updated.ble_fans = next;
+                            else delete updated.ble_fans;
+                            return updated;
+                          })}
                       />
                   </div>
               </div>
@@ -233,6 +244,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           <Bluetooth size={14} /> BLE Proxy
                       </button>
                   </div>
+                  {configHasBleProxy(config) && (
+                    <div className="mt-2 p-2 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5">
+                      <AlertTriangle size={13} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                      <span>
+                        BLE Proxy runs continuous scanning and reduces the display buffer, which may make the screen less responsive
+                        {(config.ble_fans?.length || 0) > 0 ? ' (especially when combined with BLE fans)' : ''}.
+                      </span>
+                    </div>
+                  )}
               </div>
           )}
         </div>
