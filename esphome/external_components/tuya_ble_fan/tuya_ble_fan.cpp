@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "esphome/components/esp32_ble/ble.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
@@ -782,7 +783,28 @@ void TuyaBleFanHub::on_scan_end() {
   }
 }
 
+void TuyaBleFanHub::ble_before_disabled_event_handler() {
+  reset_session();
+  this->gattc_if_ = ESP_GATT_IF_NONE;
+  this->set_state(esp32_ble_tracker::ClientState::INIT);
+}
+
 void TuyaBleFanHub::loop() {
+  if (!esp32_ble::global_ble->is_active()) {
+    return;
+  }
+
+  if (this->state() == esp32_ble_tracker::ClientState::INIT) {
+    esp_err_t ret = esp_ble_gattc_app_register(this->app_id);
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "esp_ble_gattc_app_register failed (app_id=%u, status=%d)", this->app_id, ret);
+    } else {
+      ESP_LOGD(TAG, "Called esp_ble_gattc_app_register(app_id=%u)", this->app_id);
+      this->set_state(esp32_ble_tracker::ClientState::IDLE);
+    }
+    return;
+  }
+
   const uint32_t now = millis();
 
   // Enforce bounded scan timeout

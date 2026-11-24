@@ -195,6 +195,7 @@ class TuyaBleFanHub : public Component,
   void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) override;
   void connect() override;
   void disconnect() override;
+  void ble_before_disabled_event_handler() override;
 
   void request_activity(TuyaBleFanDevice *device);
 
