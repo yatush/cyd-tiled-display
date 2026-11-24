@@ -206,19 +206,19 @@ bool TuyaBleFanRegistry::handle_action(const std::string &entity_id, const std::
       int ct = dev->light_color_temp();
       bool has_extra = false;
       if (const std::string *b = find_data("brightness")) {
-        float bf = std::max(0.0f, std::min(1.0f, std::atof(b->c_str()) / 255.0f));
+        float bf = std::max(0.0f, std::min(1.0f, static_cast<float>(std::atof(b->c_str())) / 255.0f));
         brightness = brightness_float_to_tuya(bf);
         has_extra = true;
       } else if (const std::string *bp = find_data("brightness_pct")) {
-        float bf = std::max(0.0f, std::min(1.0f, std::atof(bp->c_str()) / 100.0f));
+        float bf = std::max(0.0f, std::min(1.0f, static_cast<float>(std::atof(bp->c_str())) / 100.0f));
         brightness = brightness_float_to_tuya(bf);
         has_extra = true;
       }
       if (const std::string *m = find_data("color_temp")) {
-        ct = mireds_to_tuya_ct(std::atof(m->c_str()));
+        ct = mireds_to_tuya_ct(static_cast<float>(std::atof(m->c_str())));
         has_extra = true;
       } else if (const std::string *k = find_data("kelvin")) {
-        float kv = std::atof(k->c_str());
+        float kv = static_cast<float>(std::atof(k->c_str()));
         if (kv > 0.0f) {
           ct = mireds_to_tuya_ct(1000000.0f / kv);
           has_extra = true;
@@ -725,7 +725,6 @@ bool TuyaBleFanHub::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
       break;
     }
   }
-  if (svc_data == nullptr) return false;
 
   const uint8_t *mfg_data = nullptr;
   size_t mfg_len = 0;
@@ -737,15 +736,29 @@ bool TuyaBleFanHub::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
     }
   }
 
+  bool has_tuya_svc_uuid = false;
+  for (const auto &su : device.get_service_uuids()) {
+    if (su == esp32_ble_tracker::ESPBTUUID::from_uint16(TUYA_BLE_ADV_SERVICE_UUID) ||
+        su == esp32_ble_tracker::ESPBTUUID::from_uint16(TUYA_BLE_SERVICE_UUID)) {
+      has_tuya_svc_uuid = true;
+      break;
+    }
+  }
+
+  if (svc_data == nullptr && mfg_data == nullptr && !has_tuya_svc_uuid) return false;
+
   uint64_t addr = device.address_uint64();
-  ESP_LOGD(TAG, "Seen Tuya BLE adv from %s (RSSI %d, svc_len=%u, mfg_len=%u)",
-           device.address_str().c_str(), device.get_rssi(),
-           static_cast<unsigned>(svc_len), static_cast<unsigned>(mfg_len));
+  ESP_LOGI(TAG, "Seen Tuya BLE adv from %012llX (RSSI %d, addr_type=%d, svc_len=%u, mfg_len=%u, svc_uuid=%d)",
+           static_cast<unsigned long long>(addr), device.get_rssi(),
+           static_cast<int>(device.get_address_type()),
+           static_cast<unsigned>(svc_len), static_cast<unsigned>(mfg_len),
+           has_tuya_svc_uuid ? 1 : 0);
 
   bool all_known = true;
   for (auto *fan : fans_) {
     if (fan->has_mac()) continue;
-    if (match_tuya_advertisement(svc_data, svc_len, mfg_data, mfg_len,
+    if (svc_data != nullptr &&
+        match_tuya_advertisement(svc_data, svc_len, mfg_data, mfg_len,
                                  fan->product_id(), fan->device_id(), fan->local_key())) {
       fan->update_discovered_mac(addr, device.get_address_type());
     }

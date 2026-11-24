@@ -538,7 +538,7 @@ bool IsAnyBleControlled(const std::vector<std::string>& entities) {
 
 void DrawBleIndicator(int x_end, int y_end) {
   // Tiny Bluetooth icon in the bottom-right corner of BLE-controlled tiles
-  print(x_end - 2, y_end - 2, id(tiny), id(light_blue), TextAlign::BOTTOM_RIGHT, "\U0000e1a7");
+  id(disp).print(x_end - 2, y_end - 2, &id(tiny), id(light_blue), TextAlign::BOTTOM_RIGHT, "\U0000e1a7");
 }
 #endif
 
