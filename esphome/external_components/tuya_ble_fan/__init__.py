@@ -72,7 +72,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.GenerateID(esp32_ble_tracker.CONF_ESP32_BLE_ID): cv.use_id(
             esp32_ble_tracker.ESP32BLETracker
         ),
-        cv.Optional(CONF_IDLE_DISCONNECT_S, default=30): cv.int_range(min=0, max=3600),
+        cv.Optional(CONF_IDLE_DISCONNECT_S): cv.int_range(min=0, max=3600),
         cv.Optional(CONF_FANS, default=[]): cv.ensure_list(FAN_ITEM_SCHEMA),
     }
 ).extend(cv.COMPONENT_SCHEMA)
@@ -142,9 +142,7 @@ async def to_code(config):
     cg.add(hub.set_parent(tracker))
 
     fans_cfg = config[CONF_FANS]
-    idle_s = config[CONF_IDLE_DISCONNECT_S]
-    if len(fans_cfg) == 1 and CONF_IDLE_DISCONNECT_S not in config:
-        idle_s = 0
+    idle_s = config.get(CONF_IDLE_DISCONNECT_S, 0 if len(fans_cfg) == 1 else 30)
     cg.add(hub.set_idle_disconnect_s(idle_s))
 
     for fan_cfg in fans_cfg:

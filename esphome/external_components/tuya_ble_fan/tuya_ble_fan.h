@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -320,6 +321,7 @@ class TuyaBleFanHub : public Component,
   uint8_t session_key_[16]{0};
   bool has_session_key_{false};
   uint8_t protocol_version_{3};
+  uint8_t transport_version_{3};
   uint32_t tx_seq_num_{1};
   uint16_t dp_seq_num_{1};
 

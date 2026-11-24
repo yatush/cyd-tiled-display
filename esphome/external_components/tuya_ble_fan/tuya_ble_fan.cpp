@@ -387,9 +387,11 @@ void TuyaBleFanDevice::setup() {
   identity_pref_ = global_preferences->make_preference<CachedBleIdentity>(pref_hash);
   CachedBleIdentity cached{};
   if (identity_pref_.load(&cached) && cached.mac != 0) {
-    if (mac_address_ == 0) {
+    if (mac_address_ == 0 || mac_address_ == cached.mac) {
       mac_address_ = cached.mac;
-      addr_type_ = static_cast<esp_ble_addr_type_t>(cached.addr_type);
+      if (cached.addr_type <= BLE_ADDR_TYPE_RPA_RANDOM) {
+        addr_type_ = static_cast<esp_ble_addr_type_t>(cached.addr_type);
+      }
     }
     if (uuid_.empty() && cached.uuid[0] != '\0') {
       cached.uuid[16] = '\0';
@@ -662,7 +664,8 @@ void TuyaBleFanHub::setup() {
                    {"mac", "addr_type", "uuid", "device_id", "local_key", "blink_confirm"});
 #endif
   state_entered_ms_ = millis();
-  last_activity_ms_ = millis();
+  last_activity_ms_ = state_entered_ms_;
+  next_reconnect_ms_ = state_entered_ms_;
 }
 
 void TuyaBleFanHub::emit_ha_event(const std::string &event_name,
@@ -676,6 +679,11 @@ void TuyaBleFanHub::emit_ha_event(const std::string &event_name,
 }
 
 void TuyaBleFanHub::on_scan_service(int duration_s) {
+  if (pair_job_.active) {
+    ESP_LOGW(TAG, "Ignoring scan_tuya_ble_fans while unbound pairing is in progress");
+    emit_ha_event("esphome.tuya_ble_scan_done", {{"count", "0"}});
+    return;
+  }
   int clamped = std::max(3, std::min(30, duration_s <= 0 ? 10 : duration_s));
   ESP_LOGI(TAG, "On-demand Tuya BLE scan requested for %d s", clamped);
   discovery_sightings_.clear();
@@ -715,6 +723,16 @@ void TuyaBleFanHub::on_pair_service(std::string mac, int addr_type, std::string 
     });
     return;
   }
+  if (this->gattc_if_ == ESP_GATT_IF_NONE) {
+    ESP_LOGW(TAG, "BLE GATTC interface not ready yet for pairing");
+    emit_ha_event("esphome.tuya_ble_fan_paired", {
+        {"ok", "false"},
+        {"mac", mac},
+        {"uuid", uuid},
+        {"error", "BLE GATTC interface not ready yet"},
+    });
+    return;
+  }
 
   ESP_LOGI(TAG, "Unbound pairing requested for %s (uuid=%s, blink=%d)",
            mac.c_str(), uuid.c_str(), blink_confirm ? 1 : 0);
@@ -743,7 +761,11 @@ void TuyaBleFanHub::on_pair_service(std::string mac, int addr_type, std::string 
 }
 
 void TuyaBleFanHub::start_unbound_pair_connect() {
-  if (!pair_job_.active || this->gattc_if_ == ESP_GATT_IF_NONE) return;
+  if (!pair_job_.active) return;
+  if (this->gattc_if_ == ESP_GATT_IF_NONE) {
+    finish_unbound_pair(false, "BLE GATTC interface not ready");
+    return;
+  }
   pair_job_.waiting_disconnect = false;
   stop_scan_if_running();
 
@@ -752,6 +774,7 @@ void TuyaBleFanHub::start_unbound_pair_connect() {
   derive_unbound_login_key(pair_job_.uuid, login_key_);
   has_session_key_ = false;
   protocol_version_ = 3;
+  transport_version_ = 3;
   tx_seq_num_ = 1;
   dp_seq_num_ = 1;
   write_char_handle_ = 0;
@@ -807,7 +830,7 @@ void TuyaBleFanHub::dump_config() {
 }
 
 void TuyaBleFanHub::request_activity(TuyaBleFanDevice *device) {
-  if (device == nullptr) return;
+  if (device == nullptr || pair_job_.active) return;
   last_activity_ms_ = millis();
 
   if (session_state_ == SessionState::READY && active_device_ == device) {
@@ -828,7 +851,7 @@ void TuyaBleFanHub::request_activity(TuyaBleFanDevice *device) {
     return;
   }
 
-  if (session_state_ == SessionState::IDLE) {
+  if (session_state_ == SessionState::IDLE && !discovery_scan_active_) {
     if (device->has_mac()) {
       start_connect(device);
     } else {
@@ -882,6 +905,7 @@ void TuyaBleFanHub::start_connect(TuyaBleFanDevice *device) {
   derive_login_key(device->local_key(), login_key_);
   has_session_key_ = false;
   protocol_version_ = 3;
+  transport_version_ = 3;
   tx_seq_num_ = 1;
   dp_seq_num_ = 1;
   write_char_handle_ = 0;
@@ -917,6 +941,7 @@ void TuyaBleFanHub::start_probe(TuyaBleFanDevice *device, const ProbeCandidate &
   derive_login_key(device->local_key(), login_key_);
   has_session_key_ = false;
   protocol_version_ = 3;
+  transport_version_ = 3;
   tx_seq_num_ = 1;
   dp_seq_num_ = 1;
   write_char_handle_ = 0;
@@ -1086,7 +1111,7 @@ bool TuyaBleFanHub::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
         break;
       }
     }
-    if (!found) {
+    if (!found && discovery_sightings_.size() < 64) {
       discovery_sightings_.push_back({addr, device.get_rssi()});
       should_emit = true;
     }
@@ -1102,10 +1127,18 @@ bool TuyaBleFanHub::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
     }
   }
 
+  bool any_missing_mac = false;
+  for (auto *fan : fans_) {
+    if (!fan->has_mac()) {
+      any_missing_mac = true;
+      break;
+    }
+  }
+
   bool all_known = true;
   bool added_probe_candidate = false;
 
-  if (has_v3_uuid) {
+  if (any_missing_mac && has_v3_uuid) {
     bool already_in_list = false;
     for (auto &c : probe_candidates_) {
       if (c.mac == addr) {
@@ -1115,7 +1148,7 @@ bool TuyaBleFanHub::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
         break;
       }
     }
-    if (!already_in_list) {
+    if (!already_in_list && probe_candidates_.size() < 32) {
       probe_candidates_.push_back({addr, device.get_address_type(), extracted_v3_uuid});
       added_probe_candidate = true;
     }
@@ -1131,6 +1164,13 @@ bool TuyaBleFanHub::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
       fan->update_discovered_identity(addr, device.get_address_type(), extracted_v3_uuid);
     }
     if (!fan->has_mac()) all_known = false;
+  }
+
+  if (all_known && (!probe_candidates_.empty() || !failed_probes_.empty())) {
+    probe_candidates_.clear();
+    probe_candidates_.shrink_to_fit();
+    failed_probes_.clear();
+    failed_probes_.shrink_to_fit();
   }
 
   if (scan_active_ && !discovery_scan_active_ && (all_known || added_probe_candidate)) {
@@ -1152,6 +1192,13 @@ void TuyaBleFanHub::on_scan_end() {
 }
 
 void TuyaBleFanHub::ble_before_disabled_event_handler() {
+  if (pair_job_.active) {
+    finish_unbound_pair(false, "Bluetooth disabled");
+  }
+  if (discovery_scan_active_) {
+    finish_discovery_scan();
+  }
+  scan_active_ = false;
   reset_session();
   this->gattc_if_ = ESP_GATT_IF_NONE;
   this->set_state(esp32_ble_tracker::ClientState::INIT);
@@ -1244,8 +1291,9 @@ void TuyaBleFanHub::loop() {
     return;
   }
 
-  // Idle disconnect when in on-demand mode
-  if (session_state_ == SessionState::READY && !is_persistent_mode() && idle_disconnect_s_ > 0) {
+  // Idle disconnect when in on-demand mode (never interrupt an active pair_job_)
+  if (session_state_ == SessionState::READY && !pair_job_.active && !is_persistent_mode() &&
+      idle_disconnect_s_ > 0) {
     if (now - last_activity_ms_ >= idle_disconnect_s_ * 1000u) {
       ESP_LOGI(TAG, "[%s] Idle for %us — disconnecting BLE slot",
                active_device_ ? active_device_->name().c_str() : "?",
@@ -1255,16 +1303,26 @@ void TuyaBleFanHub::loop() {
     }
   }
 
-  // Flush any pending DPs if READY
+  // Flush any pending DPs, honor pending fan switch, and periodically poll live RSSI while READY
   if (session_state_ == SessionState::READY && active_device_ != nullptr) {
+    if (pending_switch_device_ != nullptr && pending_switch_device_ != active_device_) {
+      disconnect_current();
+      return;
+    }
     if (active_device_->has_pending_dps()) {
       flush_device_dps(active_device_);
+    }
+    if (now - last_rssi_poll_ms_ >= 60000) {
+      last_rssi_poll_ms_ = now;
+      esp_ble_gap_read_rssi(this->remote_bda_);
     }
     return;
   }
 
   // IDLE: check if any fan needs MAC discovery, candidate probing, or connection
-  if (session_state_ == SessionState::IDLE && now >= next_reconnect_ms_) {
+  // Skip while an on-demand whole-house discovery scan or unbound pair job is active
+  if (session_state_ == SessionState::IDLE && !discovery_scan_active_ && !pair_job_.active &&
+      static_cast<int32_t>(now - next_reconnect_ms_) >= 0) {
     TuyaBleFanDevice *next = pick_next_device_with_work();
     if (next != nullptr) {
       if (next->has_mac()) {
@@ -1282,8 +1340,13 @@ void TuyaBleFanHub::loop() {
 }
 
 void TuyaBleFanHub::gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
-  (void) event;
-  (void) param;
+  if (event == ESP_GAP_BLE_READ_RSSI_COMPLETE_EVT && param != nullptr) {
+    if (param->read_rssi_cmpl.status == ESP_BT_STATUS_SUCCESS &&
+        session_state_ == SessionState::READY && active_device_ != nullptr &&
+        std::memcmp(param->read_rssi_cmpl.remote_addr, this->remote_bda_, 6) == 0) {
+      active_device_->publish_rssi(param->read_rssi_cmpl.rssi);
+    }
+  }
 }
 
 bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if,
@@ -1305,13 +1368,21 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 
   switch (event) {
     case ESP_GATTC_OPEN_EVT: {
+      bool matches_target = (session_state_ == SessionState::CONNECTING &&
+                             std::memcmp(param->open.remote_bda, this->remote_bda_, 6) == 0);
+      if (!matches_target) {
+        if (param->open.status == ESP_GATT_OK) {
+          ESP_LOGW(TAG, "Closing unexpected/stale GATT open (conn_id=%u)", param->open.conn_id);
+          esp_ble_gattc_close(gattc_if, param->open.conn_id);
+        }
+        break;
+      }
       if (param->open.status != ESP_GATT_OK) {
         ESP_LOGW(TAG, "GATT open failed (status=%d)", param->open.status);
         if (pair_job_.active && !pair_job_.waiting_disconnect) {
           finish_unbound_pair(false, "GATT open failed");
           break;
         }
-        if (is_probing_) record_probe_failure();
         reset_session();
         next_reconnect_ms_ = millis() + reconnect_backoff_ms_;
         reconnect_backoff_ms_ = std::min<uint32_t>(reconnect_backoff_ms_ * 2, 30000);
@@ -1330,6 +1401,7 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
 
     case ESP_GATTC_SEARCH_RES_EVT: {
+      if (!this->has_conn_id_ || param->search_res.conn_id != this->conn_id_) break;
       if (param->search_res.srvc_id.uuid.len == ESP_UUID_LEN_16 &&
           param->search_res.srvc_id.uuid.uuid.uuid16 == TUYA_BLE_SERVICE_UUID) {
         uint16_t start_h = param->search_res.start_handle;
@@ -1370,6 +1442,7 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
 
     case ESP_GATTC_SEARCH_CMPL_EVT: {
+      if (!this->has_conn_id_ || param->search_cmpl.conn_id != this->conn_id_) break;
       if (write_char_handle_ == 0 || notify_char_handle_ == 0 || notify_cccd_handle_ == 0) {
         ESP_LOGW(TAG, "Tuya GATT characteristics not found (write=%u, notify=%u, cccd=%u)",
                  write_char_handle_, notify_char_handle_, notify_cccd_handle_);
@@ -1390,6 +1463,7 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
 
     case ESP_GATTC_WRITE_DESCR_EVT: {
+      if (!this->has_conn_id_ || param->write.conn_id != this->conn_id_) break;
       if (session_state_ == SessionState::ENABLING_NOTIFY) {
         if (param->write.status != ESP_GATT_OK) {
           ESP_LOGW(TAG, "Failed to enable notifications (status=%d)", param->write.status);
@@ -1406,6 +1480,10 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
 
     case ESP_GATTC_WRITE_CHAR_EVT: {
+      if (!this->has_conn_id_ || param->write.conn_id != this->conn_id_ ||
+          param->write.handle != write_char_handle_) {
+        break;
+      }
       if (!write_queue_.empty()) {
         write_queue_.pop_front();
         flush_write_queue();
@@ -1414,12 +1492,15 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
 
     case ESP_GATTC_NOTIFY_EVT: {
-      if (param->notify.handle != notify_char_handle_) break;
+      if (!this->has_conn_id_ || param->notify.conn_id != this->conn_id_ ||
+          param->notify.handle != notify_char_handle_) {
+        break;
+      }
       last_activity_ms_ = millis();
       std::vector<uint8_t> raw_packet;
       uint8_t proto_ver = 3;
       if (reassembler_.feed(param->notify.value, param->notify.value_len, raw_packet, proto_ver)) {
-        protocol_version_ = proto_ver;
+        transport_version_ = proto_ver;
         TuyaDecryptedFrame frame;
         if (parse_encrypted_packet(raw_packet.data(), raw_packet.size(),
                                    login_key_, session_key_, has_session_key_, frame)) {
@@ -1434,15 +1515,17 @@ bool TuyaBleFanHub::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 
     case ESP_GATTC_DISCONNECT_EVT:
     case ESP_GATTC_CLOSE_EVT: {
+      uint16_t evt_conn_id = (event == ESP_GATTC_DISCONNECT_EVT) ? param->disconnect.conn_id
+                                                                 : param->close.conn_id;
+      if (!this->has_conn_id_ || evt_conn_id != this->conn_id_) {
+        break;
+      }
       ESP_LOGI(TAG, "BLE GATT disconnected (reason=%d)",
                event == ESP_GATTC_DISCONNECT_EVT ? param->disconnect.reason : 0);
       if (pair_job_.active && !pair_job_.waiting_disconnect) {
         finish_unbound_pair(false, "BLE disconnected during pairing");
         reset_session();
         break;
-      }
-      if (is_probing_ && session_state_ != SessionState::READY) {
-        record_probe_failure();
       }
       reset_session();
       break;
@@ -1463,10 +1546,13 @@ void TuyaBleFanHub::enqueue_gatt_packet(uint16_t code, const std::vector<uint8_t
 
   uint32_t seq = tx_seq_num_++;
   auto enc = build_encrypted_packet(seq, 0, code, payload, security_flag, key, iv);
-  auto chunks = fragment_gatt_packet(enc, protocol_version_, 20);
+  if (enc.empty()) return;
+  auto chunks = fragment_gatt_packet(enc, transport_version_, 20);
   bool was_empty = write_queue_.empty();
   for (auto &c : chunks) {
-    write_queue_.push_back(std::move(c));
+    if (write_queue_.size() < 64) {
+      write_queue_.push_back(std::move(c));
+    }
   }
   if (was_empty) {
     flush_write_queue();
@@ -1632,13 +1718,13 @@ void TuyaBleFanHub::handle_decrypted_frame(const TuyaDecryptedFrame &frame) {
       decode_dps_v3(ptr, len, dps);
     } else if (frame.code == FUN_RECEIVE_TIME_DP && len > 1) {
       uint8_t time_type = ptr[0];
-      size_t skip = 1 + (time_type == 0 ? 4 : 13);
+      size_t skip = 1 + (time_type == 0 ? 13 : 4);
       if (skip < len) decode_dps_v3(ptr + skip, len - skip, dps);
     } else if (frame.code == FUN_RECEIVE_DP_V4 && len > 3) {
       decode_dps_v4(ptr + 3, len - 3, dps);
     } else if (frame.code == FUN_RECEIVE_TIME_DP_V4 && len > 4) {
       uint8_t time_type = ptr[3];
-      size_t skip = 4 + (time_type == 0 ? 4 : 13);
+      size_t skip = 4 + (time_type == 0 ? 13 : 4);
       if (skip < len) decode_dps_v4(ptr + skip, len - skip, dps);
     }
 
@@ -1653,19 +1739,12 @@ void TuyaBleFanHub::handle_decrypted_frame(const TuyaDecryptedFrame &frame) {
     esp_fill_random(iv, sizeof(iv));
     auto ack = build_encrypted_packet(tx_seq_num_++, frame.seq_num, frame.code, {},
                                       SECURITY_FLAG_SESSION, session_key_, iv);
-    auto chunks = fragment_gatt_packet(ack, protocol_version_, 20);
+    if (ack.empty()) return;
+    auto chunks = fragment_gatt_packet(ack, transport_version_, 20);
     bool was_empty = write_queue_.empty();
-    for (auto &c : chunks) write_queue_.push_back(std::move(c));
-    if (was_empty) flush_write_queue();
-  }
-}
-
-}  // namespace tuya_ble_fan
-}  // namespace esphome
-
-#endif  // USE_ESP32
-empty = write_queue_.empty();
-    for (auto &c : chunks) write_queue_.push_back(std::move(c));
+    for (auto &c : chunks) {
+      if (write_queue_.size() < 64) write_queue_.push_back(std::move(c));
+    }
     if (was_empty) flush_write_queue();
   }
 }

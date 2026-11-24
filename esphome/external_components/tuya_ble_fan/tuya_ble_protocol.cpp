@@ -187,7 +187,7 @@ bool read_varint(const uint8_t *data, size_t len, size_t &pos, uint32_t &out) {
     out |= static_cast<uint32_t>(b & 0x7F) << shift;
     if ((b & 0x80) == 0) return true;
     shift += 7;
-    if (shift >= 28) return false;
+    if (shift > 28) return false;
   }
   return false;
 }
@@ -560,32 +560,35 @@ TuyaBleAdvInfo parse_tuya_ble_advertisement(const uint8_t *svc_a201, size_t svc_
                                             const uint8_t *svc_fd50, size_t svc_fd50_len,
                                             const uint8_t *mfg_07d0, size_t mfg_07d0_len) {
   TuyaBleAdvInfo info;
-  if (svc_a201 == nullptr && svc_fd50 == nullptr && mfg_07d0 == nullptr) {
+  bool has_a201 = (svc_a201 != nullptr && svc_a201_len > 0);
+  bool has_fd50 = (svc_fd50 != nullptr && svc_fd50_len > 0);
+  bool has_mfg = (mfg_07d0 != nullptr && mfg_07d0_len > 0);
+  if (!has_a201 && !has_fd50 && !has_mfg) {
     return info;
   }
 
   info.valid = true;
 
   // Bound flag: mfg[0] & 0x80 on 0x07D0 (v3/v4), or svc_fd50[0] & 0x01
-  if (mfg_07d0 != nullptr && mfg_07d0_len >= 1) {
+  if (has_mfg) {
     info.bound = (mfg_07d0[0] & 0x80) != 0;
-  } else if (svc_fd50 != nullptr && svc_fd50_len >= 1) {
+  } else if (has_fd50) {
     info.bound = (svc_fd50[0] & 0x01) != 0;
   }
 
   // 0xA201 + 0x07D0 (Tuya BLE v3)
-  if (svc_a201 != nullptr && svc_a201_len >= 2) {
+  if (has_a201 && svc_a201_len >= 2) {
     const uint8_t *pid_bytes = svc_a201 + 1;
     size_t pid_len = svc_a201_len - 1;
     if (!info.bound && is_printable_ascii(pid_bytes, pid_len)) {
       info.product_id.assign(reinterpret_cast<const char *>(pid_bytes), pid_len);
     }
-    if (mfg_07d0 != nullptr && mfg_07d0_len >= 22) {
+    if (has_mfg && mfg_07d0_len >= 22) {
       std::string uuid;
       if (svc_a201_len >= 17 && extract_tuya_v3_uuid(svc_a201, svc_a201_len, mfg_07d0, mfg_07d0_len, uuid)) {
         info.uuid = uuid;
-      } else {
-        // Unbound 0xA201 may have shorter product_id (e.g. 8 or 16 bytes) used as MD5 key/iv
+      } else if (svc_a201_len < 17) {
+        // Unbound 0xA201 may have shorter product_id (e.g. 8 bytes) used as MD5 key/iv
         uint8_t key_iv[16];
         md5_hash(pid_bytes, pid_len, key_iv);
         std::vector<uint8_t> dec;
@@ -598,20 +601,26 @@ TuyaBleAdvInfo parse_tuya_ble_advertisement(const uint8_t *svc_a201, size_t svc_
   }
 
   // 0xFD50 + 0x07D0 (Tuya BLE v4)
-  if (svc_fd50 != nullptr && svc_fd50_len >= 3) {
+  if (has_fd50 && svc_fd50_len >= 3) {
     const uint8_t *pid_bytes = svc_fd50 + 2;
     size_t pid_len = svc_fd50_len - 2;
     uint8_t pid_type = svc_fd50[1] & 0x0F;
     if (info.product_id.empty() && pid_type == 0 && is_printable_ascii(pid_bytes, pid_len)) {
       info.product_id.assign(reinterpret_cast<const char *>(pid_bytes), pid_len);
     }
-    if (info.uuid.empty() && mfg_07d0 != nullptr && mfg_07d0_len >= 18) {
+    if (info.uuid.empty() && has_mfg) {
       uint8_t key_iv[16];
       md5_hash(pid_bytes, pid_len, key_iv);
-      std::vector<uint8_t> dec;
-      if (aes128_cbc_decrypt(key_iv, key_iv, mfg_07d0 + 2, 16, dec) && dec.size() >= 16 &&
-          is_printable_ascii(dec.data(), 16)) {
-        info.uuid.assign(reinterpret_cast<const char *>(dec.data()), 16);
+      // Try both 6-byte header (22B mfg) and 2-byte header (18B mfg) layouts
+      const size_t offsets[2] = {6, 2};
+      for (size_t off : offsets) {
+        if (mfg_07d0_len < off + 16) continue;
+        std::vector<uint8_t> dec;
+        if (aes128_cbc_decrypt(key_iv, key_iv, mfg_07d0 + off, 16, dec) && dec.size() >= 16 &&
+            is_printable_ascii(dec.data(), 16)) {
+          info.uuid.assign(reinterpret_cast<const char *>(dec.data()), 16);
+          break;
+        }
       }
     }
   }

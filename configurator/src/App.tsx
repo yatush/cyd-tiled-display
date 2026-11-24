@@ -24,6 +24,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
+import { extractBleFansFromDeviceYaml } from './utils/bleFanUtils';
 import { apiFetch } from './utils/api';
 import { ImageEntry, ScreenImageEntry } from './types';
 
@@ -216,6 +217,7 @@ function App() {
     isDirty,
     saveStatus,
     clearFileContext,
+    syncSavedSnapshot,
     handleQuickSave,
     handleSaveYaml,
     handleDownloadYaml,
@@ -224,7 +226,23 @@ function App() {
     handleLoadFromHa,
     handleSaveDeviceConfig,
     handleLoadDeviceConfig
-  } = useFileOperations(config, setConfig, setActivePageId, checkLibStatus, () => setSidebarKey(prev => prev + 1));
+  } = useFileOperations(
+    config,
+    setConfig,
+    setActivePageId,
+    () => {
+      checkLibStatus();
+      apiFetch('/tuya_ble_fans')
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (d && d.hosted_by && typeof d.hosted_by === 'object') {
+            setBleFanHosts(d.hosted_by);
+          }
+        })
+        .catch(() => {});
+    },
+    () => setSidebarKey(prev => prev + 1)
+  );
 
   const handleSaveOrSaveAs = () => {
     if (fileContext) {
@@ -524,7 +542,7 @@ function App() {
           haEntities={haEntities}
           tuyaBleCandidates={tuyaBleCandidates}
           bleFanHosts={bleFanHosts}
-          currentDevicePath={fileContext?.path}
+          currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
           onOpenFindBleFans={() => setIsFindBleFansOpen(true)}
         />
 
@@ -577,7 +595,7 @@ function App() {
           haEntities={haEntities}
           tuyaBleCandidates={tuyaBleCandidates}
           bleFanHosts={bleFanHosts}
-          currentDevicePath={fileContext?.path}
+          currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
           onUpdatePage={handleUpdatePage}
           onRenamePage={handleRenamePage}
           setConfig={setConfig}
@@ -596,18 +614,31 @@ function App() {
         existingIds={config.pages.map(p => p.id)}
       />
 
-      <FindBleFansDialog
-        isOpen={isFindBleFansOpen}
-        onClose={() => setIsFindBleFansOpen(false)}
-        tuyaBleCandidates={tuyaBleCandidates}
-        onFanAdded={(targetCyd, updatedFans, hostedBy) => {
-          setBleFanHosts(hostedBy);
-          const openBase = fileContext?.path ? fileContext.path.split('/').pop() : '';
-          if (openBase && openBase === targetCyd) {
-            setConfig(prev => ({ ...prev, ble_fans: updatedFans }));
-          }
-        }}
-      />
+      {isFindBleFansOpen && (
+        <FindBleFansDialog
+          isOpen={isFindBleFansOpen}
+          onClose={() => setIsFindBleFansOpen(false)}
+          tuyaBleCandidates={tuyaBleCandidates}
+          openDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
+          openDeviceDirty={fileContext?.kind === 'device' ? isDirty : false}
+          onFanAdded={(targetCyd, updatedFans, hostedBy) => {
+            setBleFanHosts(hostedBy);
+            if (fileContext?.kind === 'device' && fileContext.path) {
+              const openBase = (fileContext.path.split(/[\\/]/).pop() || '').toLowerCase();
+              if (openBase && openBase === targetCyd.toLowerCase()) {
+                const normalized = extractBleFansFromDeviceYaml({
+                  tuya_ble_fan: { fans: updatedFans },
+                });
+                const nextConfig = { ...config, ble_fans: normalized };
+                setConfig(nextConfig);
+                if (!isDirty) {
+                  syncSavedSnapshot(nextConfig);
+                }
+              }
+            }
+          }}
+        />
+      )}
 
       <HASettingsDialog 
         isOpen={isHaSettingsOpen}

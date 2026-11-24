@@ -2577,7 +2577,11 @@ def update_lib():
                 if os.path.exists(target_comp):
                     shutil.rmtree(target_comp)
                 os.makedirs(os.path.dirname(target_comp), exist_ok=True)
-                shutil.copytree(source_comp, target_comp, ignore=shutil.ignore_patterns('.*'))
+                shutil.copytree(
+                    source_comp,
+                    target_comp,
+                    ignore=shutil.ignore_patterns('.*', 'tests', '__pycache__'),
+                )
 
         # Update default device YAML files (overwrite if changed, seed if missing).
         for fname in _DEFAULT_DEVICE_YAMLS:
@@ -2734,6 +2738,7 @@ def discover_tuya_ble_fans(ha_config_dir=None):
     cfg_dir = ha_config_dir or os.environ.get('HA_CONFIG_DIR', '/config')
     entries_path = os.path.join(cfg_dir, '.storage', 'core.config_entries')
     registry_path = os.path.join(cfg_dir, '.storage', 'core.entity_registry')
+    device_registry_path = os.path.join(cfg_dir, '.storage', 'core.device_registry')
 
     if not os.path.exists(entries_path):
         return []
@@ -2745,28 +2750,53 @@ def discover_tuya_ble_fans(ha_config_dir=None):
         print(f"[tuya_ble_fans] Failed to read {entries_path}: {e}")
         return []
 
+    # Map config_entry_id -> list of (entity_id, unique_id)
     entities_by_entry = {}
     if os.path.exists(registry_path):
         try:
             with open(registry_path, 'r', encoding='utf-8') as f:
                 reg_doc = json.load(f)
             for ent in reg_doc.get('data', {}).get('entities', []):
-                if not isinstance(ent, dict):
-                    continue
-                if ent.get('disabled_by'):
+                if not isinstance(ent, dict) or ent.get('disabled_by'):
                     continue
                 entry_id = ent.get('config_entry_id')
                 entity_id = ent.get('entity_id', '')
+                unique_id = str(ent.get('unique_id') or '')
                 if not entry_id or not entity_id:
                     continue
-                entities_by_entry.setdefault(entry_id, []).append(entity_id)
+                entities_by_entry.setdefault(entry_id, []).append((entity_id, unique_id))
         except Exception as e:
             print(f"[tuya_ble_fans] Failed to read {registry_path}: {e}")
+
+    # Map config_entry_id / tuya device_id -> MAC address from core.device_registry
+    mac_by_entry = {}
+    mac_by_identifier = {}
+    if os.path.exists(device_registry_path):
+        try:
+            with open(device_registry_path, 'r', encoding='utf-8') as f:
+                dev_doc = json.load(f)
+            for dev in dev_doc.get('data', {}).get('devices', []):
+                if not isinstance(dev, dict):
+                    continue
+                mac_val = ''
+                for conn in dev.get('connections') or []:
+                    if isinstance(conn, (list, tuple)) and len(conn) >= 2 and str(conn[0]).lower() == 'mac':
+                        mac_val = str(conn[1]).strip().upper()
+                        break
+                if not mac_val:
+                    continue
+                for ce_id in dev.get('config_entries') or []:
+                    mac_by_entry.setdefault(ce_id, mac_val)
+                for ident in dev.get('identifiers') or []:
+                    if isinstance(ident, (list, tuple)) and len(ident) >= 2:
+                        mac_by_identifier.setdefault(str(ident[1]).strip(), mac_val)
+        except Exception as e:
+            print(f"[tuya_ble_fans] Failed to read {device_registry_path}: {e}")
 
     fans = []
     seen_device_ids = set()
     for entry in entries_doc.get('data', {}).get('entries', []):
-        if not isinstance(entry, dict):
+        if not isinstance(entry, dict) or entry.get('disabled_by'):
             continue
         domain = entry.get('domain', '')
         if domain not in ('tuya_local', 'localtuya'):
@@ -2778,10 +2808,12 @@ def discover_tuya_ble_fans(ha_config_dir=None):
         options = entry.get('options') or {}
 
         # Normalize both tuya_local (single device per entry) and localtuya (devices dict)
+        is_multi_hub = False
         raw_devices = []
         if 'device_id' in data and 'local_key' in data:
             raw_devices.append((title, data))
         elif isinstance(data.get('devices'), dict):
+            is_multi_hub = True
             for dev_id, dev_cfg in data['devices'].items():
                 if isinstance(dev_cfg, dict) and dev_cfg.get('local_key'):
                     merged = dict(dev_cfg)
@@ -2789,8 +2821,6 @@ def discover_tuya_ble_fans(ha_config_dir=None):
                     raw_devices.append((dev_cfg.get('friendly_name') or title, merged))
 
         entry_entities = entities_by_entry.get(entry_id, [])
-        fan_entities = sorted(e for e in entry_entities if e.startswith('fan.'))
-        light_entities = sorted(e for e in entry_entities if e.startswith('light.'))
 
         for dev_name, dev_data in raw_devices:
             device_id = str(dev_data.get('device_id') or '').strip()
@@ -2805,13 +2835,30 @@ def discover_tuya_ble_fans(ha_config_dir=None):
                 or ''
             ).strip()
 
+            if is_multi_hub:
+                dev_entities = [eid for eid, uid in entry_entities if device_id in uid]
+            else:
+                dev_entities = [eid for eid, _uid in entry_entities]
+
+            fan_entities = sorted(e for e in dev_entities if e.startswith('fan.'))
+            light_entities = sorted(e for e in dev_entities if e.startswith('light.'))
+
             fan_entity_id = fan_entities[0] if fan_entities else ''
             light_entity_id = light_entities[0] if light_entities else ''
 
             is_known_product = product_id in _KNOWN_TUYA_FAN_PRODUCT_IDS
             if not fan_entity_id and not is_known_product:
-                # Skip non-fan tuya_local devices (plugs, heaters, etc.)
+                # Skip non-fan tuya_local/localtuya devices (plugs, heaters, etc.)
                 continue
+
+            mac_address = str(
+                dev_data.get('mac_address')
+                or dev_data.get('mac')
+                or mac_by_identifier.get(device_id)
+                or (mac_by_entry.get(entry_id) if not is_multi_hub else '')
+                or ''
+            ).strip().upper()
+            uuid_val = str(dev_data.get('uuid') or '').strip()
 
             seen_device_ids.add(device_id)
             fans.append({
@@ -2819,6 +2866,8 @@ def discover_tuya_ble_fans(ha_config_dir=None):
                 'device_id': device_id,
                 'local_key': local_key,
                 'product_id': product_id,
+                'mac_address': mac_address,
+                'uuid': uuid_val,
                 'fan_entity_id': fan_entity_id,
                 'light_entity_id': light_entity_id,
                 'supported': is_known_product or bool(fan_entity_id),
@@ -2829,44 +2878,8 @@ def discover_tuya_ble_fans(ha_config_dir=None):
 
 def find_ble_fan_hosts(esphome_dir=None):
     """Scan ESPHome device YAMLs to find which device files already host each Tuya BLE fan device_id."""
-    root_dir = esphome_dir or BASE_DIR
-    hosts = {}
-    if not root_dir or not os.path.isdir(root_dir):
-        return hosts
-
-    loader_cls = generate_tiles_api.create_safe_yaml_loader()
-    for fname in sorted(os.listdir(root_dir)):
-        if not fname.endswith('.yaml') or fname in ('secrets.yaml', 'images.yaml'):
-            continue
-        fpath = os.path.join(root_dir, fname)
-        if not os.path.isfile(fpath):
-            continue
-        try:
-            with open(fpath, 'r', encoding='utf-8') as f:
-                raw_text = f.read()
-            if 'tuya_ble_fan:' not in raw_text:
-                continue
-            parsed = yaml.load(raw_text, Loader=loader_cls)
-            if not isinstance(parsed, dict):
-                continue
-            ble_cfg = parsed.get('tuya_ble_fan')
-            if not isinstance(ble_cfg, dict):
-                continue
-            fans = ble_cfg.get('fans')
-            if not isinstance(fans, list):
-                continue
-            for fan in fans:
-                if not isinstance(fan, dict):
-                    continue
-                dev_id = str(fan.get('device_id') or '').strip()
-                if dev_id:
-                    entry_list = hosts.setdefault(dev_id, [])
-                    if fname not in entry_list:
-                        entry_list.append(fname)
-        except Exception:
-            continue
-
-    return hosts
+    by_id, _by_mac, _by_uuid = _find_ble_fan_hosts_extended(esphome_dir)
+    return by_id
 
 
 @app.route('/api/tuya_ble_fans', methods=['GET'])
@@ -2907,9 +2920,11 @@ def _load_esphome_secrets(esphome_dir=None):
 
 
 def _extract_device_api_info(filepath, secrets_map=None):
-    """Extract api.encryption.key and api.password from an ESPHome device YAML, resolving !secret."""
+    """Extract api.encryption.key, api.password, and api.port from an ESPHome device YAML, resolving !secret and packages."""
     secrets_map = secrets_map or {}
-    base_loader = generate_tiles_api.create_safe_yaml_loader()
+    base_loader = generate_tiles_api.create_safe_yaml_loader(
+        include_base_dir=os.path.dirname(filepath)
+    )
 
     class SecretResolvingLoader(base_loader):
         pass
@@ -2921,29 +2936,63 @@ def _extract_device_api_info(filepath, secrets_map=None):
     SecretResolvingLoader.add_constructor('!secret', _secret_ctor)
 
     try:
+        # Skip only the indented tile_ui: block so top-level api: after tile_ui: is still parsed
         lines = []
+        skipping_tile_ui = False
         with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
             for line in f:
                 if line.startswith('tile_ui:') or line.startswith('tile_ui '):
-                    break
+                    skipping_tile_ui = True
+                    continue
+                if skipping_tile_ui:
+                    if line.strip() and not line[0].isspace() and not line.lstrip().startswith('#'):
+                        skipping_tile_ui = False
+                    else:
+                        continue
                 lines.append(line)
         data = yaml.load(''.join(lines), Loader=SecretResolvingLoader)
     except Exception:
-        return {'api_key': None, 'api_password': ''}
+        return {'api_key': None, 'api_password': '', 'api_port': 6053}
 
     if not isinstance(data, dict):
-        return {'api_key': None, 'api_password': ''}
+        return {'api_key': None, 'api_password': '', 'api_port': 6053}
 
-    api_cfg = data.get('api')
     api_key = None
     api_password = ''
-    if isinstance(api_cfg, dict):
-        enc = api_cfg.get('encryption')
+    api_port = 6053
+
+    # Check substitutions.api_port first
+    subs = data.get('substitutions')
+    if isinstance(subs, dict) and subs.get('api_port'):
+        try:
+            api_port = int(subs['api_port'])
+        except (TypeError, ValueError):
+            pass
+
+    def _apply_api_cfg(cfg):
+        nonlocal api_key, api_password, api_port
+        if not isinstance(cfg, dict):
+            return
+        enc = cfg.get('encryption')
         if isinstance(enc, dict) and enc.get('key'):
             api_key = str(enc['key']).strip()
-        if api_cfg.get('password'):
-            api_password = str(api_cfg['password'])
-    return {'api_key': api_key, 'api_password': api_password}
+        if cfg.get('password'):
+            api_password = str(cfg['password'])
+        if cfg.get('port'):
+            try:
+                api_port = int(cfg['port'])
+            except (TypeError, ValueError):
+                pass
+
+    # Check included packages first, then top-level api: (top-level wins)
+    packages = data.get('packages')
+    if isinstance(packages, dict):
+        for pkg_val in packages.values():
+            if isinstance(pkg_val, dict) and isinstance(pkg_val.get('api'), dict):
+                _apply_api_cfg(pkg_val['api'])
+    _apply_api_cfg(data.get('api'))
+
+    return {'api_key': api_key, 'api_password': api_password, 'api_port': api_port}
 
 
 def _list_cyd_devices_with_api(esphome_dir=None):
@@ -2955,7 +3004,7 @@ def _list_cyd_devices_with_api(esphome_dir=None):
     skip_files = {'secrets.yaml', 'images.yaml'}
     devices = []
     for fname in sorted(os.listdir(root_dir)):
-        if not fname.endswith('.yaml') or fname in skip_files:
+        if not (fname.endswith('.yaml') or fname.endswith('.yml')) or fname in skip_files:
             continue
         fpath = os.path.join(root_dir, fname)
         if not os.path.isfile(fpath):
@@ -2969,6 +3018,7 @@ def _list_cyd_devices_with_api(esphome_dir=None):
         meta['filepath'] = fpath
         meta['api_key'] = api_info['api_key']
         meta['api_password'] = api_info['api_password']
+        meta['api_port'] = api_info['api_port']
         devices.append(meta)
     return devices
 
@@ -2982,7 +3032,7 @@ def _find_ble_fan_hosts_extended(esphome_dir=None):
 
     loader_cls = generate_tiles_api.create_safe_yaml_loader()
     for fname in sorted(os.listdir(root_dir)):
-        if not fname.endswith('.yaml') or fname in ('secrets.yaml', 'images.yaml'):
+        if not (fname.endswith('.yaml') or fname.endswith('.yml')) or fname in ('secrets.yaml', 'images.yaml'):
             continue
         fpath = os.path.join(root_dir, fname)
         if not os.path.isfile(fpath):
@@ -2990,7 +3040,7 @@ def _find_ble_fan_hosts_extended(esphome_dir=None):
         try:
             with open(fpath, 'r', encoding='utf-8') as f:
                 raw_text = f.read()
-            if 'tuya_ble_fan:' not in raw_text:
+            if not re.search(r'^tuya_ble_fan:', raw_text, flags=re.MULTILINE):
                 continue
             parsed = yaml.load(raw_text, Loader=loader_cls)
             if not isinstance(parsed, dict):
@@ -3124,20 +3174,74 @@ def aggregate_ble_scan_sightings(sightings, tuya_local_fans=None,
     return results
 
 
+class _YamlSecret(str):
+    """Marker scalar that round-trips as `!secret <name>` during YAML dump."""
+
+
+class _SecretPreservingDumper(yaml.SafeDumper):
+    pass
+
+
+def _represent_yaml_secret(dumper, data):
+    return dumper.represent_scalar('!secret', str(data))
+
+
+_SecretPreservingDumper.add_representer(_YamlSecret, _represent_yaml_secret)
+
+
+def _replace_top_level_yaml_block(raw_text, block_key, rendered_block):
+    """Replace a top-level YAML block cleanly by line boundaries (preserving column-0 comments and backslashes)."""
+    lines = raw_text.splitlines(keepends=True)
+    start_idx = None
+    for i, line in enumerate(lines):
+        if re.match(rf'^{re.escape(block_key)}:\s*(?:#.*)?$', line):
+            start_idx = i
+            break
+
+    if start_idx is None:
+        prefix = raw_text
+        if prefix and not prefix.endswith('\n'):
+            prefix += '\n'
+        return prefix + ('\n' if prefix and not prefix.endswith('\n\n') else '') + rendered_block
+
+    end_idx = len(lines)
+    for j in range(start_idx + 1, len(lines)):
+        line = lines[j]
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        if not line[0].isspace():
+            end_idx = j
+            break
+
+    replacement = rendered_block + ('\n' if end_idx < len(lines) else '')
+    return ''.join(lines[:start_idx]) + replacement + ''.join(lines[end_idx:])
+
+
 def add_ble_fan_to_device_yaml(filepath, fan_entry):
-    """Upsert a Tuya BLE fan entry into a target CYD YAML file, preserving comments and tags."""
+    """Upsert a Tuya BLE fan entry into a target CYD YAML file, preserving comments, !secret tags, and existing fields."""
     with open(filepath, 'r', encoding='utf-8') as f:
         raw_text = f.read()
 
-    loader_cls = generate_tiles_api.create_safe_yaml_loader()
-    parsed = yaml.load(raw_text, Loader=loader_cls) or {}
+    base_loader = generate_tiles_api.create_safe_yaml_loader()
+
+    class SecretPreservingLoader(base_loader):
+        pass
+
+    SecretPreservingLoader.add_constructor(
+        '!secret', lambda loader, node: _YamlSecret(loader.construct_scalar(node))
+    )
+
+    parsed = yaml.load(raw_text, Loader=SecretPreservingLoader) or {}
     if not isinstance(parsed, dict):
         parsed = {}
 
+    existing_ble_cfg = parsed.get('tuya_ble_fan')
+    existing_ble_cfg = dict(existing_ble_cfg) if isinstance(existing_ble_cfg, dict) else {}
+
     existing_fans = []
-    ble_cfg = parsed.get('tuya_ble_fan')
-    if isinstance(ble_cfg, dict) and isinstance(ble_cfg.get('fans'), list):
-        for item in ble_cfg['fans']:
+    if isinstance(existing_ble_cfg.get('fans'), list):
+        for item in existing_ble_cfg['fans']:
             if isinstance(item, dict):
                 existing_fans.append(dict(item))
 
@@ -3155,14 +3259,17 @@ def add_ble_fan_to_device_yaml(filepath, fan_entry):
             new_fan[opt_key] = val
     new_fan['expose_to_ha'] = fan_entry.get('expose_to_ha', True) is not False
 
-    # Upsert by device_id or mac_address
+    # Upsert by device_id or mac_address, merging into existing entry to preserve extra fields
+    prev_count = len(existing_fans)
     replaced = False
     new_mac = new_fan.get('mac_address', '').upper()
     for idx, ef in enumerate(existing_fans):
         ef_id = str(ef.get('device_id') or '').strip()
         ef_mac = str(ef.get('mac_address') or '').strip().upper()
         if ef_id == new_fan['device_id'] or (new_mac and ef_mac == new_mac):
-            existing_fans[idx] = new_fan
+            merged = dict(ef)
+            merged.update(new_fan)
+            existing_fans[idx] = merged
             replaced = True
             break
     if not replaced:
@@ -3170,53 +3277,70 @@ def add_ble_fan_to_device_yaml(filepath, fan_entry):
 
     updated_text = raw_text
 
-    # 1. Ensure tuya_ble_fan package include is present under packages:
-    if 'lib/tuya_ble_fan.yaml' not in updated_text:
-        if re.search(r'^packages:\s*$', updated_text, flags=re.MULTILINE):
-            updated_text = re.sub(
-                r'^(packages:\s*\n)',
-                r'\1  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n',
-                updated_text,
-                count=1,
-                flags=re.MULTILINE,
-            )
+    # 1. Ensure tuya_ble_fan package include is present under packages: (using parsed dict)
+    packages = parsed.get('packages') if isinstance(parsed.get('packages'), dict) else {}
+    has_tuya_pkg = any(
+        isinstance(v, str) and 'lib/tuya_ble_fan.yaml' in v
+        for v in packages.values()
+    ) or ('tuya_ble_fan' in packages)
+    if not has_tuya_pkg:
+        pkg_match = re.search(r'^packages:\s*(?:#.*)?$', updated_text, flags=re.MULTILINE)
+        if pkg_match:
+            insert_pos = pkg_match.end()
+            prefix = updated_text[:insert_pos]
+            suffix = updated_text[insert_pos:]
+            if not suffix.startswith('\n'):
+                suffix = '\n' + suffix
+            updated_text = prefix + '\n  tuya_ble_fan: !include lib/tuya_ble_fan.yaml' + suffix
         else:
             updated_text = 'packages:\n  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n\n' + updated_text
 
-    # 2. If ble_proxy is enabled, ensure ble_max_connections: "2" is set in substitutions
-    has_ble_proxy = 'ble_proxy' in updated_text
-    if has_ble_proxy and 'ble_max_connections' not in updated_text:
-        if re.search(r'^substitutions:\s*$', updated_text, flags=re.MULTILINE):
-            updated_text = re.sub(
-                r'^(substitutions:\s*\n)',
-                r'\1  ble_max_connections: "2"\n',
-                updated_text,
-                count=1,
-                flags=re.MULTILINE,
-            )
+    # 2. If ble_proxy is enabled in packages, ensure ble_max_connections: "2" is set in substitutions
+    has_ble_proxy = any(
+        k == 'ble_proxy' or (isinstance(v, str) and 'ble_proxy' in v)
+        for k, v in packages.items()
+    )
+    subs = parsed.get('substitutions') if isinstance(parsed.get('substitutions'), dict) else {}
+    if has_ble_proxy and str(subs.get('ble_max_connections', '')) != '2':
+        if 'ble_max_connections' not in subs:
+            subs_match = re.search(r'^substitutions:\s*(?:#.*)?$', updated_text, flags=re.MULTILINE)
+            if subs_match:
+                insert_pos = subs_match.end()
+                prefix = updated_text[:insert_pos]
+                suffix = updated_text[insert_pos:]
+                if not suffix.startswith('\n'):
+                    suffix = '\n' + suffix
+                updated_text = prefix + '\n  ble_max_connections: "2"' + suffix
+            else:
+                updated_text = 'substitutions:\n  ble_max_connections: "2"\n\n' + updated_text
 
-    # 3. Render new top-level tuya_ble_fan: block
-    tuya_block = {
-        'tuya_ble_fan': {
-            'idle_disconnect_s': 0 if len(existing_fans) == 1 else 30,
-            'fans': existing_fans,
-        }
-    }
-    rendered_block = yaml.safe_dump(tuya_block, sort_keys=False, default_flow_style=False).rstrip() + '\n'
-
-    # Replace existing top-level tuya_ble_fan: block or append at end
-    block_pattern = re.compile(r'^tuya_ble_fan:.*?(?=^\S|\Z)', flags=re.MULTILINE | re.DOTALL)
-    if block_pattern.search(updated_text):
-        updated_text = block_pattern.sub(rendered_block + '\n', updated_text, count=1)
+    # 3. Render new top-level tuya_ble_fan: block (preserving extra keys & custom idle_disconnect_s)
+    new_ble_cfg = {k: v for k, v in existing_ble_cfg.items() if k not in ('fans', 'idle_disconnect_s')}
+    if 'idle_disconnect_s' in existing_ble_cfg and not (prev_count <= 1 and len(existing_fans) > 1):
+        new_ble_cfg['idle_disconnect_s'] = existing_ble_cfg['idle_disconnect_s']
     else:
-        if not updated_text.endswith('\n'):
-            updated_text += '\n'
-        updated_text += '\n' + rendered_block
+        new_ble_cfg['idle_disconnect_s'] = 0 if len(existing_fans) == 1 else 30
+    new_ble_cfg['fans'] = existing_fans
 
-    with open(filepath, 'w', encoding='utf-8') as f:
+    rendered_block = yaml.dump(
+        {'tuya_ble_fan': new_ble_cfg},
+        Dumper=_SecretPreservingDumper,
+        sort_keys=False,
+        default_flow_style=False,
+    ).rstrip() + '\n'
+
+    updated_text = _replace_top_level_yaml_block(updated_text, 'tuya_ble_fan', rendered_block)
+
+    tmp_path = f"{filepath}.tmp.{os.getpid()}"
+    with open(tmp_path, 'w', encoding='utf-8') as f:
         f.write(updated_text)
+    os.replace(tmp_path, filepath)
 
-    return existing_fans
+    # Return plain JSON-serializable fan dicts
+    return [
+        {k: (str(v) if isinstance(v, _YamlSecret) else v) for k, v in fan.items()}
+        for fan in existing_fans
+    ]
 
 
 async def _exec_esphome_service(client, service, data):
@@ -3224,6 +3348,16 @@ async def _exec_esphome_service(client, service, data):
     res = client.execute_service(service, data)
     if inspect.isawaitable(res):
         await res
+
+
+async def _disconnect_esphome_client(client):
+    import inspect
+    try:
+        res = client.disconnect()
+        if inspect.isawaitable(res):
+            await asyncio.wait_for(res, timeout=3.0)
+    except Exception:
+        pass
 
 
 async def _scan_single_cyd(cyd_info, duration_s=10):
@@ -3234,12 +3368,18 @@ async def _scan_single_cyd(cyd_info, duration_s=10):
     address = cyd_info['address']
     client = APIClient(
         address=address,
-        port=6053,
+        port=int(cyd_info.get('api_port') or 6053),
         password=cyd_info.get('api_password') or '',
         noise_psk=cyd_info.get('api_key') or None,
     )
     sightings = []
     done_event = asyncio.Event()
+    disconnect_error = []
+
+    def on_stop(expected_disconnect=False):
+        if not expected_disconnect and not done_event.is_set():
+            disconnect_error.append('CYD disconnected during scan')
+            done_event.set()
 
     def on_service_call(call):
         svc_name = getattr(call, 'service', '') or ''
@@ -3260,7 +3400,10 @@ async def _scan_single_cyd(cyd_info, duration_s=10):
             done_event.set()
 
     try:
-        await asyncio.wait_for(client.connect(login=True), timeout=8.0)
+        try:
+            await asyncio.wait_for(client.connect(login=True, on_stop=on_stop), timeout=8.0)
+        except TypeError:
+            await asyncio.wait_for(client.connect(login=True), timeout=8.0)
         _, services = await asyncio.wait_for(client.list_entities_services(), timeout=8.0)
         scan_svc = next((s for s in services if getattr(s, 'name', '') == 'scan_tuya_ble_fans'), None)
         if scan_svc is None:
@@ -3278,7 +3421,23 @@ async def _scan_single_cyd(cyd_info, duration_s=10):
         try:
             await asyncio.wait_for(done_event.wait(), timeout=float(duration_s) + 5.0)
         except asyncio.TimeoutError:
-            pass
+            return {
+                'cyd_filename': cyd_file,
+                'cyd_name': cyd_name,
+                'friendly_name': friendly,
+                'status': 'error',
+                'error': 'Timed out waiting for scan completion event from CYD',
+                'sightings': sightings,
+            }
+        if disconnect_error:
+            return {
+                'cyd_filename': cyd_file,
+                'cyd_name': cyd_name,
+                'friendly_name': friendly,
+                'status': 'error',
+                'error': disconnect_error[0],
+                'sightings': sightings,
+            }
         return {
             'cyd_filename': cyd_file,
             'cyd_name': cyd_name,
@@ -3297,38 +3456,45 @@ async def _scan_single_cyd(cyd_info, duration_s=10):
             'sightings': sightings,
         }
     finally:
-        try:
-            res = client.disconnect()
-            import inspect
-            if inspect.isawaitable(res):
-                await res
-        except Exception:
-            pass
+        await _disconnect_esphome_client(client)
 
 
 async def _pair_unbound_on_cyd(cyd_info, mac, addr_type, uuid_val, device_id, local_key, blink_confirm=True):
     """Connect to target CYD and invoke pair_unbound_tuya_fan, awaiting esphome.tuya_ble_fan_paired."""
     client = APIClient(
         address=cyd_info['address'],
-        port=6053,
+        port=int(cyd_info.get('api_port') or 6053),
         password=cyd_info.get('api_password') or '',
         noise_psk=cyd_info.get('api_key') or None,
     )
+    target_mac = mac.strip().upper()
     result_box = {}
     done_event = asyncio.Event()
+
+    def on_stop(expected_disconnect=False):
+        if not expected_disconnect and not done_event.is_set():
+            result_box['ok'] = False
+            result_box['error'] = 'CYD disconnected during pairing'
+            done_event.set()
 
     def on_service_call(call):
         svc_name = getattr(call, 'service', '') or ''
         data = dict(getattr(call, 'data', {}) or {})
         if svc_name == 'esphome.tuya_ble_fan_paired':
+            ev_mac = str(data.get('mac') or '').strip().upper()
+            if ev_mac and ev_mac != target_mac:
+                return
             result_box['ok'] = str(data.get('ok', 'false')).lower() == 'true'
-            result_box['mac'] = data.get('mac', mac)
+            result_box['mac'] = ev_mac or target_mac
             result_box['uuid'] = data.get('uuid', uuid_val)
             result_box['error'] = data.get('error', '')
             done_event.set()
 
     try:
-        await asyncio.wait_for(client.connect(login=True), timeout=8.0)
+        try:
+            await asyncio.wait_for(client.connect(login=True, on_stop=on_stop), timeout=8.0)
+        except TypeError:
+            await asyncio.wait_for(client.connect(login=True), timeout=8.0)
         _, services = await asyncio.wait_for(client.list_entities_services(), timeout=8.0)
         pair_svc = next((s for s in services if getattr(s, 'name', '') == 'pair_unbound_tuya_fan'), None)
         if pair_svc is None:
@@ -3336,7 +3502,7 @@ async def _pair_unbound_on_cyd(cyd_info, mac, addr_type, uuid_val, device_id, lo
 
         client.subscribe_service_calls(on_service_call)
         await _exec_esphome_service(client, pair_svc, {
-            'mac': mac,
+            'mac': target_mac,
             'addr_type': int(addr_type),
             'uuid': uuid_val,
             'device_id': device_id,
@@ -3350,13 +3516,7 @@ async def _pair_unbound_on_cyd(cyd_info, mac, addr_type, uuid_val, device_id, lo
     except Exception as e:
         return {'ok': False, 'error': str(e)}
     finally:
-        try:
-            res = client.disconnect()
-            import inspect
-            if inspect.isawaitable(res):
-                await res
-        except Exception:
-            pass
+        await _disconnect_esphome_client(client)
 
 
 @app.route('/api/tuya_ble/scan', methods=['POST'])
@@ -3364,7 +3524,10 @@ def scan_tuya_ble_whole_house():
     """Trigger an on-demand BLE scan across all online CYDs in parallel and return ranked sightings."""
     try:
         body = request.get_json(silent=True) or {}
-        duration_s = max(3, min(30, int(body.get('duration_s', 10))))
+        try:
+            duration_s = max(3, min(30, int(body.get('duration_s', 10))))
+        except (TypeError, ValueError):
+            return jsonify({'fans': [], 'cyds': [], 'error': 'Invalid duration_s'}), 400
         requested_devices = body.get('devices')
 
         all_cyds = _list_cyd_devices_with_api()
@@ -3437,7 +3600,12 @@ def pair_unbound_tuya_ble_fan():
         body = request.get_json(silent=True) or {}
         target_cyd = str(body.get('target_cyd') or '').strip()
         mac = str(body.get('mac') or '').strip().upper()
-        addr_type = int(body.get('addr_type', 0))
+        try:
+            addr_type = int(body.get('addr_type', 0))
+            if addr_type < 0 or addr_type > 3:
+                raise ValueError('addr_type out of range')
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': 'Invalid addr_type (expected 0..3)'}), 400
         uuid_val = str(body.get('uuid') or '').strip()
         blink_confirm = body.get('blink_confirm', True) is not False
 
@@ -3479,12 +3647,18 @@ def add_tuya_ble_fan_to_device():
             return jsonify({'ok': False, 'error': 'target_cyd and fan object are required'}), 400
 
         safe_name = os.path.basename(target_cyd)
-        if not safe_name.endswith('.yaml') or safe_name != target_cyd:
+        if not (safe_name.endswith('.yaml') or safe_name.endswith('.yml')) or safe_name != target_cyd:
             return jsonify({'ok': False, 'error': 'Invalid target_cyd filename'}), 400
+        if safe_name in ('secrets.yaml', 'images.yaml'):
+            return jsonify({'ok': False, 'error': f'{safe_name} is not a CYD device config'}), 400
 
-        filepath = os.path.join(BASE_DIR, safe_name)
-        if not os.path.isfile(filepath):
+        filepath = _resolve_safe_path(safe_name)
+        if not filepath or not os.path.isfile(filepath):
             return jsonify({'ok': False, 'error': f'Device file {safe_name} not found'}), 404
+
+        meta = _parse_device_yaml(filepath)
+        if not meta or not meta.get('is_cyd'):
+            return jsonify({'ok': False, 'error': f'{safe_name} is not a CYD device config'}), 400
 
         fans = add_ble_fan_to_device_yaml(filepath, fan)
         hosted_by = find_ble_fan_hosts()

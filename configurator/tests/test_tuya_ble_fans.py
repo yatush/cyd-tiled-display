@@ -295,3 +295,115 @@ def test_add_ble_fan_to_device_yaml_preserves_tags_and_upserts(tmp_path):
     assert len(fans3) == 2
     assert fans3[0]["name"] == "Sahar Bedroom Fan"
 
+
+def test_add_ble_fan_preserves_backslashes_comments_and_secrets(tmp_path):
+    dev_yaml = tmp_path / "office-cyd.yaml"
+    dev_yaml.write_text(
+        "packages: # inline comment\n"
+        "  device_base: !include lib/3248s035.yaml\n"
+        "  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n"
+        "tuya_ble_fan:\n"
+        "# column-0 comment inside block\n"
+        "  idle_disconnect_s: 0\n"
+        "  fans:\n"
+        "    - name: Existing Fan\n"
+        "      device_id: bf_existing_0000000001\n"
+        "      local_key: !secret office_fan_key\n"
+        "      product_id: hceemlamlwxpufpa\n"
+        "wifi:\n"
+        "  ssid: !secret wifi_ssid\n",
+        encoding="utf-8",
+    )
+
+    fans = server.add_ble_fan_to_device_yaml(str(dev_yaml), {
+        "name": "Backslash Fan",
+        "device_id": "bf_new_000000000000002",
+        "local_key": r"ab\1cd\gef\\9012",
+        "mac_address": "AA:BB:CC:DD:EE:99",
+    })
+    assert len(fans) == 2
+    text = dev_yaml.read_text(encoding="utf-8")
+    # Existing !secret must be preserved, not turned into null
+    assert "!secret 'office_fan_key'" in text or "!secret office_fan_key" in text
+    assert "local_key: null" not in text
+    # wifi section after tuya_ble_fan must remain intact
+    assert "wifi:\n  ssid: !secret wifi_ssid" in text
+    # Backslashes in new key must survive round-trip
+    parsed = server.yaml.load(text, Loader=server.generate_tiles_api.create_safe_yaml_loader())
+    assert parsed["tuya_ble_fan"]["fans"][1]["local_key"] == r"ab\1cd\gef\\9012"
+
+
+def test_extract_device_api_info_after_tile_ui_and_custom_port(tmp_path):
+    (tmp_path / "secrets.yaml").write_text("my_api_key: KeyAfterTileUi==\n", encoding="utf-8")
+    dev_yaml = tmp_path / "custom-cyd.yaml"
+    dev_yaml.write_text(
+        "substitutions:\n  api_port: \"6054\"\n"
+        "tile_ui:\n  screens:\n    - id: main\n"
+        "api:\n  encryption:\n    key: !secret my_api_key\n",
+        encoding="utf-8",
+    )
+    secrets_map = server._load_esphome_secrets(str(tmp_path))
+    info = server._extract_device_api_info(str(dev_yaml), secrets_map)
+    assert info["api_key"] == "KeyAfterTileUi=="
+    assert info["api_port"] == 6054
+
+
+def test_discover_tuya_ble_fans_reads_device_registry_mac_and_isolates_localtuya(tmp_path):
+    storage = tmp_path / ".storage"
+    storage.mkdir()
+    (storage / "core.config_entries").write_text(json.dumps({
+        "data": {
+            "entries": [
+                {
+                    "entry_id": "e_tuya",
+                    "domain": "tuya_local",
+                    "title": "Office Fan",
+                    "data": {
+                        "device_id": "bf_office_123",
+                        "local_key": "0123456789abcdef",
+                        "product_id": "hceemlamlwxpufpa",
+                    },
+                },
+                {
+                    "entry_id": "e_lt",
+                    "domain": "localtuya",
+                    "title": "LocalTuya Hub",
+                    "data": {
+                        "devices": {
+                            "lt_fan_1": {"friendly_name": "LT Fan", "local_key": "aaaaaaaaaaaaaaaa"},
+                            "lt_plug_1": {"friendly_name": "LT Plug", "local_key": "bbbbbbbbbbbbbbbb"},
+                        }
+                    },
+                },
+            ]
+        }
+    }), encoding="utf-8")
+    (storage / "core.entity_registry").write_text(json.dumps({
+        "data": {
+            "entities": [
+                {"config_entry_id": "e_tuya", "entity_id": "fan.office_fan", "unique_id": "bf_office_123_fan"},
+                {"config_entry_id": "e_lt", "entity_id": "fan.lt_fan", "unique_id": "local_lt_fan_1_1"},
+                {"config_entry_id": "e_lt", "entity_id": "switch.lt_plug", "unique_id": "local_lt_plug_1_1"},
+            ]
+        }
+    }), encoding="utf-8")
+    (storage / "core.device_registry").write_text(json.dumps({
+        "data": {
+            "devices": [
+                {
+                    "config_entries": ["e_tuya"],
+                    "identifiers": [["tuya_local", "bf_office_123"]],
+                    "connections": [["mac", "b8:06:0d:54:04:f6"]],
+                }
+            ]
+        }
+    }), encoding="utf-8")
+
+    fans = server.discover_tuya_ble_fans(str(tmp_path))
+    by_id = {f["device_id"]: f for f in fans}
+    assert "bf_office_123" in by_id
+    assert by_id["bf_office_123"]["mac_address"] == "B8:06:0D:54:04:F6"
+    assert "lt_fan_1" in by_id
+    assert "lt_plug_1" not in by_id
+
+

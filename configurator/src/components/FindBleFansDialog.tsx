@@ -53,6 +53,8 @@ interface FindBleFansDialogProps {
   isOpen: boolean;
   onClose: () => void;
   tuyaBleCandidates: TuyaBleCandidate[];
+  openDevicePath?: string;
+  openDeviceDirty?: boolean;
   onFanAdded: (
     targetCyd: string,
     updatedFans: BleFanConfig[],
@@ -73,10 +75,37 @@ interface RowFormState {
   done?: boolean;
 }
 
+const makeDefaultRow = (overrides: Partial<RowFormState> = {}): RowFormState => ({
+  targetCyd: '',
+  name: '',
+  blinkConfirm: true,
+  selectedHaDeviceId: '',
+  manualDeviceId: '',
+  manualLocalKey: '',
+  busy: false,
+  ...overrides,
+});
+
+async function parseJsonResponse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Server returned HTTP ${res.status} (non-JSON response)`);
+  }
+}
+
+function normalizeBasename(path?: string): string {
+  if (!path) return '';
+  return (path.split(/[\\/]/).pop() || '').trim().toLowerCase();
+}
+
 export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
   isOpen,
   onClose,
   tuyaBleCandidates,
+  openDevicePath,
+  openDeviceDirty = false,
   onFanAdded,
 }) => {
   const [durationS, setDurationS] = useState(10);
@@ -84,25 +113,20 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
   const [scanError, setScanError] = useState<string | null>(null);
   const [cyds, setCyds] = useState<ScannedCydStatus[]>([]);
   const [fans, setFans] = useState<DiscoveredBleFan[]>([]);
-  const [haFans, setHaFans] = useState<TuyaBleCandidate[]>(tuyaBleCandidates);
+  const [scannedHaFans, setScannedHaFans] = useState<TuyaBleCandidate[] | null>(null);
   const [hasScanned, setHasScanned] = useState(false);
   const [rowState, setRowState] = useState<Record<string, RowFormState>>({});
 
   if (!isOpen) return null;
 
+  const haFans = scannedHaFans ?? tuyaBleCandidates;
+  const openDeviceBase = normalizeBasename(openDevicePath);
+
   const updateRow = (mac: string, patch: Partial<RowFormState>) => {
     setRowState(prev => ({
       ...prev,
       [mac]: {
-        ...(prev[mac] || {
-          targetCyd: '',
-          name: '',
-          blinkConfirm: true,
-          selectedHaDeviceId: '',
-          manualDeviceId: '',
-          manualLocalKey: '',
-          busy: false,
-        }),
+        ...(prev[mac] || makeDefaultRow()),
         ...patch,
       },
     }));
@@ -117,19 +141,18 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_s: durationS }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
         throw new Error(data.error || `Scan failed (${res.status})`);
       }
       const discovered: DiscoveredBleFan[] = Array.isArray(data.fans) ? data.fans : [];
       const scannedCyds: ScannedCydStatus[] = Array.isArray(data.cyds) ? data.cyds : [];
-      const latestHaFans: TuyaBleCandidate[] = Array.isArray(data.tuya_local_fans)
-        ? data.tuya_local_fans
-        : tuyaBleCandidates;
+      if (Array.isArray(data.tuya_local_fans)) {
+        setScannedHaFans(data.tuya_local_fans);
+      }
 
       setCyds(scannedCyds);
       setFans(discovered);
-      setHaFans(latestHaFans);
       setHasScanned(true);
 
       const initialRows: Record<string, RowFormState> = {};
@@ -141,15 +164,11 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
           '';
         const suffix = fan.mac.replace(/:/g, '').slice(-4);
         const defaultName = fan.matched_ha_fan?.name || `BLE Fan ${suffix}`;
-        initialRows[fan.mac] = {
+        initialRows[fan.mac] = makeDefaultRow({
           targetCyd: defaultTarget,
           name: defaultName,
-          blinkConfirm: true,
           selectedHaDeviceId: fan.matched_ha_fan?.device_id || '',
-          manualDeviceId: '',
-          manualLocalKey: '',
-          busy: false,
-        };
+        });
       }
       setRowState(initialRows);
     } catch (err: any) {
@@ -159,10 +178,55 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
     }
   };
 
+  const saveFanToTarget = async (
+    fan: DiscoveredBleFan,
+    targetCyd: string,
+    fanPayload: Record<string, any>,
+    markBound: boolean,
+    successPrefix: string
+  ) => {
+    updateRow(fan.mac, { statusText: `Saving to ${targetCyd}...` });
+
+    const addRes = await apiFetch('/tuya_ble/add_to_device', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_cyd: targetCyd, fan: fanPayload }),
+    });
+    const addData = await parseJsonResponse(addRes);
+    if (!addRes.ok || !addData.ok) {
+      throw new Error(addData.error || 'Failed to save fan to target CYD config');
+    }
+
+    onFanAdded(targetCyd, addData.fans || [], addData.hosted_by || {});
+    setFans(prev =>
+      prev.map(f =>
+        f.mac === fan.mac
+          ? {
+              ...f,
+              bound: markBound ? true : f.bound,
+              hosted_by: Array.from(new Set([...(f.hosted_by || []), targetCyd])),
+            }
+          : f
+      )
+    );
+    updateRow(fan.mac, {
+      busy: false,
+      done: true,
+      statusText: `${successPrefix} ${targetCyd}. Compile & OTA flash ${targetCyd} to activate.`,
+    });
+  };
+
   const handlePairAndAdd = async (fan: DiscoveredBleFan) => {
     const row = rowState[fan.mac];
     if (!row?.targetCyd) {
       updateRow(fan.mac, { errorText: 'Select a target CYD first' });
+      return;
+    }
+    const targetInfo = cyds.find(c => c.cyd_filename === row.targetCyd);
+    if (targetInfo && targetInfo.status !== 'ok') {
+      updateRow(fan.mac, {
+        errorText: `Target CYD ${row.targetCyd} is ${targetInfo.status} and cannot run BLE pairing.`,
+      });
       return;
     }
     if (!fan.uuid) {
@@ -190,51 +254,26 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
           blink_confirm: row.blinkConfirm,
         }),
       });
-      const pairData = await pairRes.json();
+      const pairData = await parseJsonResponse(pairRes);
       if (!pairRes.ok || !pairData.ok) {
         throw new Error(pairData.error || 'BLE pairing failed');
       }
 
-      updateRow(fan.mac, { statusText: `Saving to ${row.targetCyd}...` });
-
-      const addRes = await apiFetch('/tuya_ble/add_to_device', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_cyd: row.targetCyd,
-          fan: {
-            name: row.name.trim() || `BLE Fan ${fan.mac.replace(/:/g, '').slice(-4)}`,
-            device_id: pairData.device_id,
-            local_key: pairData.local_key,
-            product_id: fan.product_id || '',
-            mac_address: fan.mac,
-            uuid: fan.uuid,
-            expose_to_ha: true,
-          },
-        }),
-      });
-      const addData = await addRes.json();
-      if (!addRes.ok || !addData.ok) {
-        throw new Error(addData.error || 'Failed to save fan to target CYD config');
-      }
-
-      onFanAdded(row.targetCyd, addData.fans || [], addData.hosted_by || {});
-      setFans(prev =>
-        prev.map(f =>
-          f.mac === fan.mac
-            ? {
-                ...f,
-                bound: true,
-                hosted_by: Array.from(new Set([...(f.hosted_by || []), row.targetCyd])),
-              }
-            : f
-        )
+      await saveFanToTarget(
+        fan,
+        row.targetCyd,
+        {
+          name: row.name.trim() || `BLE Fan ${fan.mac.replace(/:/g, '').slice(-4)}`,
+          device_id: pairData.device_id,
+          local_key: pairData.local_key,
+          product_id: fan.product_id || '',
+          mac_address: fan.mac,
+          uuid: fan.uuid,
+          expose_to_ha: true,
+        },
+        true,
+        'Paired & added to'
       );
-      updateRow(fan.mac, {
-        busy: false,
-        done: true,
-        statusText: `Paired & added to ${row.targetCyd}. Compile & OTA flash ${row.targetCyd} to activate.`,
-      });
     } catch (err: any) {
       updateRow(fan.mac, {
         busy: false,
@@ -272,45 +311,26 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
     });
 
     try {
-      const addRes = await apiFetch('/tuya_ble/add_to_device', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_cyd: row.targetCyd,
-          fan: {
-            name: row.name.trim() || haSource?.name || `BLE Fan ${fan.mac.replace(/:/g, '').slice(-4)}`,
-            device_id: deviceId,
-            local_key: localKey,
-            product_id: fan.product_id || haSource?.product_id || '',
-            mac_address: fan.mac,
-            uuid: fan.uuid || '',
-            fan_entity_id: haSource?.fan_entity_id || '',
-            light_entity_id: haSource?.light_entity_id || '',
-            expose_to_ha: true,
-          },
-        }),
-      });
-      const addData = await addRes.json();
-      if (!addRes.ok || !addData.ok) {
-        throw new Error(addData.error || 'Failed to save fan to target CYD config');
-      }
-
-      onFanAdded(row.targetCyd, addData.fans || [], addData.hosted_by || {});
-      setFans(prev =>
-        prev.map(f =>
-          f.mac === fan.mac
-            ? {
-                ...f,
-                hosted_by: Array.from(new Set([...(f.hosted_by || []), row.targetCyd])),
-              }
-            : f
-        )
+      await saveFanToTarget(
+        fan,
+        row.targetCyd,
+        {
+          name:
+            row.name.trim() ||
+            haSource?.name ||
+            `BLE Fan ${fan.mac.replace(/:/g, '').slice(-4)}`,
+          device_id: deviceId,
+          local_key: localKey,
+          product_id: fan.product_id || haSource?.product_id || '',
+          mac_address: fan.mac,
+          uuid: fan.uuid || '',
+          fan_entity_id: haSource?.fan_entity_id || '',
+          light_entity_id: haSource?.light_entity_id || '',
+          expose_to_ha: true,
+        },
+        false,
+        'Added to'
       );
-      updateRow(fan.mac, {
-        busy: false,
-        done: true,
-        statusText: `Added to ${row.targetCyd}. Compile & OTA flash ${row.targetCyd} to activate.`,
-      });
     } catch (err: any) {
       updateRow(fan.mac, {
         busy: false,
@@ -443,17 +463,18 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
           {fans.length > 0 && (
             <div className="space-y-3">
               {fans.map(fan => {
-                const row = rowState[fan.mac] || {
+                const row = rowState[fan.mac] || makeDefaultRow({
                   targetCyd: fan.best_cyd?.cyd_filename || '',
-                  name: '',
-                  blinkConfirm: true,
                   selectedHaDeviceId: fan.matched_ha_fan?.device_id || '',
-                  manualDeviceId: '',
-                  manualLocalKey: '',
-                  busy: false,
-                };
+                });
                 const otherSightings = fan.sightings.slice(1);
-                const otherHosts = (fan.hosted_by || []).filter(h => h !== row.targetCyd);
+                const targetBase = normalizeBasename(row.targetCyd);
+                const otherHosts = (fan.hosted_by || []).filter(
+                  h => normalizeBasename(h) !== targetBase
+                );
+                const targetLabel = row.targetCyd ? row.targetCyd.replace(/\.ya?ml$/i, '') : '';
+                const targetIsDirtyOpen =
+                  openDeviceDirty && Boolean(openDeviceBase) && openDeviceBase === targetBase;
 
                 return (
                   <div
@@ -547,21 +568,48 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
                         </label>
                         <select
                           value={row.targetCyd}
-                          onChange={e => updateRow(fan.mac, { targetCyd: e.target.value })}
+                          onChange={e =>
+                            updateRow(fan.mac, {
+                              targetCyd: e.target.value,
+                              done: false,
+                              statusText: undefined,
+                              errorText: undefined,
+                            })
+                          }
                           disabled={row.busy}
                           className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white"
                         >
-                          {cyds.map(c => (
-                            <option key={c.cyd_filename} value={c.cyd_filename}>
-                              {c.friendly_name || c.cyd_name} ({c.cyd_filename})
-                              {fan.best_cyd?.cyd_filename === c.cyd_filename ? ' ★ Best RSSI' : ''}
-                            </option>
-                          ))}
+                          {cyds.map(c => {
+                            const statusSuffix =
+                              c.status === 'ok'
+                                ? ''
+                                : c.status === 'unsupported'
+                                ? ' [update FW]'
+                                : ` [${c.status}]`;
+                            return (
+                              <option
+                                key={c.cyd_filename}
+                                value={c.cyd_filename}
+                                disabled={!fan.bound && c.status !== 'ok'}
+                              >
+                                {c.friendly_name || c.cyd_name} ({c.cyd_filename})
+                                {fan.best_cyd?.cyd_filename === c.cyd_filename
+                                  ? ' ★ Best RSSI'
+                                  : ''}
+                                {statusSuffix}
+                              </option>
+                            );
+                          })}
                         </select>
                       </div>
 
                       <div className="flex flex-col justify-end">
-                        {!fan.bound ? (
+                        {row.done ? (
+                          <div className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <CheckCircle2 size={13} />
+                            <span>Added to {targetLabel || 'CYD'}</span>
+                          </div>
+                        ) : !fan.bound ? (
                           <div className="space-y-1.5">
                             <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
                               <input
@@ -586,7 +634,7 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
                                 <Link2 size={13} />
                               )}
                               <span>
-                                Pair &amp; Add to {row.targetCyd.replace(/\.yaml$/, '')}
+                                {targetLabel ? `Pair & Add to ${targetLabel}` : 'Pair & Add'}
                               </span>
                             </button>
                           </div>
@@ -602,15 +650,15 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
                               <Plus size={13} />
                             )}
                             <span>
-                              Import &amp; Add to {row.targetCyd.replace(/\.yaml$/, '')}
+                              {targetLabel ? `Import & Add to ${targetLabel}` : 'Import & Add'}
                             </span>
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Bound fan credential selector when not auto-matched */}
-                    {fan.bound && !fan.matched_ha_fan && (
+                    {/* Bound fan credential selector when not auto-matched and not already done */}
+                    {fan.bound && !fan.matched_ha_fan && !row.done && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1.5 border-t border-slate-100 bg-slate-50/70 p-2 rounded">
                         <div>
                           <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
@@ -670,6 +718,16 @@ export const FindBleFansDialog: React.FC<FindBleFansDialogProps> = ({
                             </div>
                           </>
                         )}
+                      </div>
+                    )}
+
+                    {/* Unsaved open device warning */}
+                    {targetIsDirtyOpen && !row.done && (
+                      <div className="flex items-start gap-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+                        <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-600" />
+                        <span>
+                          <strong>{row.targetCyd}</strong> has unsaved edits in the editor. Adding this fan will update its BLE fan list on disk; save your tile edits afterward.
+                        </span>
                       </div>
                     )}
 

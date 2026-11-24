@@ -4,6 +4,8 @@
 substitutions:
   # Reduce display buffer on 3.5" panels when BLE is compiled in to prevent SRAM starvation
   display_buffer_size: "20%"
+  # Ensure 2 BLE connection slots when combined with tuya_ble_fan
+  ble_max_connections: "2"
 
 esp32:
   partitions: lib/partitions_4mb_ota.csv

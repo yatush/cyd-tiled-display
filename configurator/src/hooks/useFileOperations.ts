@@ -143,7 +143,12 @@ export function useFileOperations(
           return;
         }
 
-        const loadedConfig: Config = { ...data, project_path: targetPath };
+        const loadedBleFans = isFullDevice ? extractBleFansFromDeviceYaml(rawData) : [];
+        const loadedConfig: Config = {
+          ...data,
+          project_path: targetPath,
+          ...(loadedBleFans.length > 0 ? { ble_fans: loadedBleFans } : {}),
+        };
         setConfig(loadedConfig);
         setFileContext(
           isFullDevice && deviceMeta
@@ -529,12 +534,17 @@ ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
     return handleDownloadYaml(fileContext.path);
   }, [fileContext, handleSaveDeviceConfig, handleSaveToHa, handleDownloadYaml, markSavedStatus]);
 
+  const syncSavedSnapshot = useCallback((nextConfig: Config) => {
+    setSavedSnapshot(getConfigSnapshot(nextConfig));
+  }, []);
+
   return {
     fileInputRef,
     fileContext,
     isDirty,
     saveStatus,
     clearFileContext,
+    syncSavedSnapshot,
     handleQuickSave,
     handleSaveYaml,
     handleDownloadYaml,

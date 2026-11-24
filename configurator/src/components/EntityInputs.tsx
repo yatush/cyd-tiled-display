@@ -3,7 +3,6 @@ import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle, Radar } from 'lucide
 import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
 import {
   findCandidateForEntity,
-  findConfiguredBleFan,
   getOtherBleFanHosts,
   normalizeEntityId,
   toggleBleFanForEntity,
@@ -35,12 +34,25 @@ export const BleFanToggle = ({
   if (!norm) return null;
 
   const candidate = findCandidateForEntity(norm, tuyaBleCandidates);
-  const configured = findConfiguredBleFan(norm, bleFans);
+  const configuredIdx = bleFans.findIndex(
+    f =>
+      normalizeEntityId(f.fan_entity_id) === norm ||
+      (f.light_entity_id && normalizeEntityId(f.light_entity_id) === norm)
+  );
+  const configured = configuredIdx >= 0 ? bleFans[configuredIdx] : undefined;
   const isFanEntity = norm.startsWith('fan.');
+  const hasAnyBleContext = bleFans.length > 0 || tuyaBleCandidates.length > 0;
 
-  if (!candidate && !configured && !isFanEntity) {
+  if (!candidate && !configured && !(isFanEntity && hasAnyBleContext)) {
     return null;
   }
+
+  const updateConfigured = (patch: Partial<BleFanConfig>) => {
+    if (configuredIdx < 0) return;
+    const copy = [...bleFans];
+    copy[configuredIdx] = { ...copy[configuredIdx], ...patch };
+    onUpdateBleFans(copy);
+  };
 
   const isChecked = Boolean(configured);
   const missingCreds = isChecked && (!configured?.device_id?.trim() || !configured?.local_key?.trim());
@@ -110,28 +122,28 @@ export const BleFanToggle = ({
             <input
               type="text"
               value={configured.device_id}
-              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, device_id: e.target.value }))}
+              onChange={e => updateConfigured({ device_id: e.target.value })}
               placeholder="Device ID"
               className="border rounded px-1 py-0.5 text-[10px] bg-white"
             />
             <input
               type="text"
               value={configured.local_key}
-              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, local_key: e.target.value }))}
+              onChange={e => updateConfigured({ local_key: e.target.value })}
               placeholder="Local Key"
               className="border rounded px-1 py-0.5 text-[10px] bg-white"
             />
             <input
               type="text"
               value={configured.product_id || ''}
-              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, product_id: e.target.value }))}
+              onChange={e => updateConfigured({ product_id: e.target.value })}
               placeholder="Product ID (optional)"
               className="border rounded px-1 py-0.5 text-[10px] bg-white"
             />
             <input
               type="text"
               value={configured.mac_address || ''}
-              onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, mac_address: e.target.value }))}
+              onChange={e => updateConfigured({ mac_address: e.target.value })}
               placeholder="BLE MAC (auto-discover)"
               className="border rounded px-1 py-0.5 text-[10px] bg-white"
             />
@@ -139,7 +151,7 @@ export const BleFanToggle = ({
           <input
             type="text"
             value={configured.light_entity_id || ''}
-            onChange={e => onUpdateBleFans(upsertBleFan(bleFans, { ...configured, light_entity_id: e.target.value }))}
+            onChange={e => updateConfigured({ light_entity_id: e.target.value })}
             placeholder="Companion light entity (e.g. light.office_fan_light)"
             className="w-full border rounded px-1 py-0.5 text-[10px] bg-white"
           />
@@ -549,7 +561,6 @@ export const BleFansManagerPanel = ({
   onOpenFindBleFans?: () => void;
 }) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-  const [selectedCandidateId, setSelectedCandidateId] = useState('');
 
   const availableCandidates = tuyaBleCandidates.filter(
     c =>
@@ -573,7 +584,6 @@ export const BleFansManagerPanel = ({
       expose_to_ha: true,
     });
     onUpdateBleFans(next);
-    setSelectedCandidateId('');
   };
 
   const handleAddManual = () => {
@@ -601,7 +611,7 @@ export const BleFansManagerPanel = ({
 
   const removeAt = (idx: number) => {
     onUpdateBleFans(bleFans.filter((_, i) => i !== idx));
-    if (expandedIdx === idx) setExpandedIdx(null);
+    setExpandedIdx(prev => (prev === null || prev === idx ? null : prev > idx ? prev - 1 : prev));
   };
 
   return (
@@ -628,7 +638,7 @@ export const BleFansManagerPanel = ({
             const isExpanded = expandedIdx === idx || missingCreds;
             const otherHosts = getOtherBleFanHosts(fan.device_id, bleFanHosts, currentDevicePath);
             return (
-              <div key={`${fan.device_id || fan.name}-${idx}`} className="border border-blue-200 rounded p-2 bg-white space-y-1.5 shadow-sm">
+              <div key={idx} className="border border-blue-200 rounded p-2 bg-white space-y-1.5 shadow-sm">
                 <div className="flex items-center justify-between gap-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Bluetooth size={12} className="text-blue-600 flex-shrink-0" />
@@ -752,7 +762,7 @@ export const BleFansManagerPanel = ({
 
       {availableCandidates.length > 0 && (
         <select
-          value={selectedCandidateId}
+          value=""
           onChange={e => {
             if (e.target.value) handleAddCandidate(e.target.value);
           }}
