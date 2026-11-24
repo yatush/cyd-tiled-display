@@ -271,10 +271,12 @@ def test_add_ble_fan_to_device_yaml_preserves_tags_and_upserts(tmp_path):
     text1 = dev_yaml.read_text(encoding="utf-8")
     assert "tuya_ble_fan: !include lib/tuya_ble_fan.yaml" in text1
     assert 'ble_max_connections: "2"' in text1
+    assert 'display_buffer_size: "20%"' in text1
     assert "ssid: !secret wifi_ssid" in text1
+    assert "max_connections: 1" in text1
     assert "idle_disconnect_s: 0" in text1
 
-    # Add a second fan -> idle_disconnect_s switches to 30
+    # Add a second fan (with ble_proxy: 2 fan slots + 1 proxy = 3 total, still persistent!)
     fans2 = server.add_ble_fan_to_device_yaml(str(dev_yaml), {
         "name": "Hall Fan",
         "device_id": "bf00000000000000000002",
@@ -283,17 +285,31 @@ def test_add_ble_fan_to_device_yaml_preserves_tags_and_upserts(tmp_path):
     })
     assert len(fans2) == 2
     text2 = dev_yaml.read_text(encoding="utf-8")
-    assert "idle_disconnect_s: 30" in text2
+    assert 'ble_max_connections: "3"' in text2
+    assert "max_connections: 2" in text2
+    assert "idle_disconnect_s: 0" in text2
 
-    # Upsert first fan by device_id -> still 2 fans, updated name
+    # Add a third fan (with ble_proxy: exceeds 2 fan slots -> shared slots, idle_disconnect_s: 30)
     fans3 = server.add_ble_fan_to_device_yaml(str(dev_yaml), {
+        "name": "Guest Fan",
+        "device_id": "bf00000000000000000003",
+        "local_key": "1111222233334444",
+        "mac_address": "AA:BB:CC:DD:EE:03",
+    })
+    assert len(fans3) == 3
+    text3 = dev_yaml.read_text(encoding="utf-8")
+    assert "max_connections: 2" in text3
+    assert "idle_disconnect_s: 30" in text3
+
+    # Upsert first fan by device_id -> still 3 fans, updated name
+    fans4 = server.add_ble_fan_to_device_yaml(str(dev_yaml), {
         "name": "Sahar Bedroom Fan",
         "device_id": "bf00000000000000000001",
         "local_key": "0123456789abcdef",
         "mac_address": "AA:BB:CC:DD:EE:01",
     })
-    assert len(fans3) == 2
-    assert fans3[0]["name"] == "Sahar Bedroom Fan"
+    assert len(fans4) == 3
+    assert fans4[0]["name"] == "Sahar Bedroom Fan"
 
 
 def test_add_ble_fan_preserves_backslashes_comments_and_secrets(tmp_path):

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle, Radar } from 'lucide-react';
 import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
 import {
+  computeBleResourcePlan,
   findCandidateForEntity,
   getOtherBleFanHosts,
   normalizeEntityId,
@@ -550,6 +551,7 @@ export const BleFansManagerPanel = ({
   tuyaBleCandidates = [],
   bleFanHosts = {},
   currentDevicePath,
+  hasBleProxy = false,
   onUpdateBleFans,
   onOpenFindBleFans,
 }: {
@@ -557,10 +559,12 @@ export const BleFansManagerPanel = ({
   tuyaBleCandidates?: TuyaBleCandidate[];
   bleFanHosts?: Record<string, string[]>;
   currentDevicePath?: string;
+  hasBleProxy?: boolean;
   onUpdateBleFans: (next: BleFanConfig[]) => void;
   onOpenFindBleFans?: () => void;
 }) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const resourcePlan = computeBleResourcePlan(bleFans.length, hasBleProxy);
 
   const availableCandidates = tuyaBleCandidates.filter(
     c =>
@@ -629,6 +633,48 @@ export const BleFansManagerPanel = ({
           <Radar size={13} />
           <span>Find &amp; Pair BLE Fans</span>
         </button>
+      )}
+
+      {bleFans.length > 0 && (
+        <div
+          className={`rounded border p-2 text-[10px] space-y-1 ${
+            resourcePlan.displayBufferSize === '20%'
+              ? 'bg-amber-50/80 border-amber-200 text-amber-900'
+              : resourcePlan.displayBufferSize === '30%'
+              ? 'bg-sky-50/80 border-sky-200 text-sky-900'
+              : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+          }`}
+        >
+          <div className="flex items-center justify-between font-semibold">
+            <span>BLE Connections</span>
+            <span>
+              {resourcePlan.fanSlots} fan{resourcePlan.fanSlots > 1 ? 's' : ''}
+              {resourcePlan.proxySlots > 0 ? ' + 1 proxy' : ''} ({resourcePlan.totalConnections} total)
+            </span>
+          </div>
+          <div className="opacity-85 leading-snug">
+            {resourcePlan.persistent ? (
+              <span>
+                All {bleFans.length} fan{bleFans.length > 1 ? 's' : ''} stay persistently connected simultaneously (instant control &amp; live RSSI).
+              </span>
+            ) : (
+              <span>
+                {resourcePlan.fanSlots} simultaneous slots shared across {bleFans.length} fans (on-demand switch, {resourcePlan.idleDisconnectS}s idle disconnect).
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-between pt-1 border-t border-current/15">
+            <span className="font-semibold">3.5&quot; Display Buffer</span>
+            <span className="font-mono font-bold">{resourcePlan.displayBufferSize}</span>
+          </div>
+          <div className="opacity-80 leading-snug">
+            {resourcePlan.displayBufferSize === '40%'
+              ? 'Balanced buffer — minimal redraw overhead (~46 KB RAM freed for 1 BLE slot).'
+              : resourcePlan.displayBufferSize === '30%'
+              ? 'Slightly smaller buffer to keep headroom for 2 simultaneous BLE connections (slightly more SPI passes on 3.5" redraws).'
+              : 'Compact 20% buffer for 3 BLE connections / BLE Proxy — safe RAM headroom, slightly slower full-screen 3.5" redraws.'}
+          </div>
+        </div>
       )}
 
       {bleFans.length > 0 && (

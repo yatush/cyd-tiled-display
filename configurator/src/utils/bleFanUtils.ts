@@ -140,6 +140,45 @@ export function extractBleFansFromDeviceYaml(rawData: any): BleFanConfig[] {
     }));
 }
 
+export interface BleResourcePlan {
+  fanCount: number;
+  fanSlots: number;
+  proxySlots: number;
+  totalConnections: number;
+  persistent: boolean;
+  idleDisconnectS: number;
+  displayBufferSize: string; // e.g. "40%", "30%", "20%"
+}
+
+export function computeBleResourcePlan(
+  fanCount: number,
+  hasBleProxy: boolean = false
+): BleResourcePlan {
+  const count = Math.max(0, Math.floor(fanCount || 0));
+  const maxFanSlots = hasBleProxy ? 2 : 3;
+  const fanSlots = count > 0 ? Math.min(count, maxFanSlots) : 1;
+  const proxySlots = hasBleProxy ? 1 : 0;
+  const totalConnections = Math.min(3, fanSlots + proxySlots);
+  const persistent = count > 0 && count <= fanSlots;
+  const idleDisconnectS = persistent ? 0 : 30;
+  const displayBufferSize =
+    hasBleProxy || totalConnections >= 3
+      ? '20%'
+      : totalConnections === 2
+      ? '30%'
+      : '40%';
+
+  return {
+    fanCount: count,
+    fanSlots,
+    proxySlots,
+    totalConnections,
+    persistent,
+    idleDisconnectS,
+    displayBufferSize,
+  };
+}
+
 export interface TuyaBleYamlSections {
   packageLine: string;
   extraSubstitutions: Record<string, string>;
@@ -161,6 +200,8 @@ export function buildTuyaBleFanYamlSections(
     };
   }
 
+  const plan = computeBleResourcePlan(validFans.length, hasBleProxy);
+
   const serializedFans = validFans.map(f => {
     const entry: Record<string, any> = {
       name: (f.name || f.fan_entity_id || f.device_id).trim(),
@@ -178,14 +219,18 @@ export function buildTuyaBleFanYamlSections(
 
   const tuyaBlock: Record<string, any> = {
     tuya_ble_fan: {
-      ...(validFans.length === 1 ? { idle_disconnect_s: 0 } : { idle_disconnect_s: 30 }),
+      max_connections: plan.fanSlots,
+      idle_disconnect_s: plan.idleDisconnectS,
       fans: serializedFans,
     },
   };
 
   return {
     packageLine: '\n  tuya_ble_fan: !include lib/tuya_ble_fan.yaml',
-    extraSubstitutions: hasBleProxy ? { ble_max_connections: '2' } : {},
+    extraSubstitutions: {
+      ble_max_connections: String(plan.totalConnections),
+      display_buffer_size: plan.displayBufferSize,
+    },
     componentSection: dump(tuyaBlock, { lineWidth: -1, noCompatMode: true, sortKeys: false }),
   };
 }

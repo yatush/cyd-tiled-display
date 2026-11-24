@@ -1,6 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import esp32_ble_tracker, fan, light, number, sensor
+from esphome.components import esp32, esp32_ble_tracker, fan, light, number, sensor
+from esphome.core import CORE
 from esphome.const import (
     CONF_ID,
     CONF_MAC_ADDRESS,
@@ -24,6 +25,7 @@ CONF_FAN_ENTITY_ID = "fan_entity_id"
 CONF_LIGHT_ENTITY_ID = "light_entity_id"
 CONF_EXPOSE_TO_HA = "expose_to_ha"
 CONF_IDLE_DISCONNECT_S = "idle_disconnect_s"
+CONF_MAX_CONNECTIONS = "max_connections"
 CONF_FAN_COMPONENT_ID = "fan_component_id"
 CONF_LIGHT_COMPONENT_ID = "light_component_id"
 CONF_LIGHT_OUTPUT_ID = "light_output_id"
@@ -73,6 +75,7 @@ CONFIG_SCHEMA = cv.Schema(
             esp32_ble_tracker.ESP32BLETracker
         ),
         cv.Optional(CONF_IDLE_DISCONNECT_S): cv.int_range(min=0, max=3600),
+        cv.Optional(CONF_MAX_CONNECTIONS): cv.int_range(min=1, max=3),
         cv.Optional(CONF_FANS, default=[]): cv.ensure_list(FAN_ITEM_SCHEMA),
     }
 ).extend(cv.COMPONENT_SCHEMA)
@@ -142,7 +145,19 @@ async def to_code(config):
     cg.add(hub.set_parent(tracker))
 
     fans_cfg = config[CONF_FANS]
-    idle_s = config.get(CONF_IDLE_DISCONNECT_S, 0 if len(fans_cfg) == 1 else 30)
+    has_ble_proxy = "bluetooth_proxy" in (CORE.config or {})
+    max_fan_slots = 2 if has_ble_proxy else 3
+    default_fan_conns = max(1, min(len(fans_cfg), max_fan_slots))
+    fan_conns = config.get(CONF_MAX_CONNECTIONS, default_fan_conns)
+    total_ble_conns = min(3, fan_conns + (1 if has_ble_proxy else 0))
+
+    # Dynamically size ESP-IDF Bluedroid ACL/BLE connection slots at compile time
+    if hasattr(esp32, "add_idf_sdkconfig_option"):
+        esp32.add_idf_sdkconfig_option("CONFIG_BTDM_CTRL_BLE_MAX_CONN", total_ble_conns)
+        esp32.add_idf_sdkconfig_option("CONFIG_BT_ACL_CONNECTIONS", total_ble_conns)
+
+    cg.add(hub.set_max_connections(fan_conns))
+    idle_s = config.get(CONF_IDLE_DISCONNECT_S, 0 if len(fans_cfg) <= fan_conns else 30)
     cg.add(hub.set_idle_disconnect_s(idle_s))
 
     for fan_cfg in fans_cfg:

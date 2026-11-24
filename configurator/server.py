@@ -3218,6 +3218,71 @@ def _replace_top_level_yaml_block(raw_text, block_key, rendered_block):
     return ''.join(lines[:start_idx]) + replacement + ''.join(lines[end_idx:])
 
 
+def compute_ble_resource_plan(fan_count, has_ble_proxy=False):
+    """Compute simultaneous BLE connection slots and display buffer sizing for a CYD."""
+    count = max(0, int(fan_count or 0))
+    max_fan_slots = 2 if has_ble_proxy else 3
+    fan_slots = min(count, max_fan_slots) if count > 0 else 1
+    proxy_slots = 1 if has_ble_proxy else 0
+    total_connections = min(3, fan_slots + proxy_slots)
+    persistent = count > 0 and count <= fan_slots
+    idle_disconnect_s = 0 if persistent else 30
+    if has_ble_proxy or total_connections >= 3:
+        display_buffer_size = '20%'
+    elif total_connections == 2:
+        display_buffer_size = '30%'
+    else:
+        display_buffer_size = '40%'
+    return {
+        'fan_count': count,
+        'fan_slots': fan_slots,
+        'proxy_slots': proxy_slots,
+        'total_connections': total_connections,
+        'persistent': persistent,
+        'idle_disconnect_s': idle_disconnect_s,
+        'display_buffer_size': display_buffer_size,
+    }
+
+
+def _upsert_substitution(raw_text, key, value):
+    """Set or update a key inside the top-level substitutions: block, preserving formatting."""
+    quoted = f'"{value}"'
+    lines = raw_text.splitlines(keepends=True)
+    subs_idx = None
+    for i, line in enumerate(lines):
+        if re.match(r'^substitutions:\s*(?:#.*)?$', line):
+            subs_idx = i
+            break
+
+    if subs_idx is None:
+        return f'substitutions:\n  {key}: {quoted}\n\n' + raw_text
+
+    end_idx = len(lines)
+    key_idx = None
+    key_re = re.compile(rf'^(\s+){re.escape(key)}\s*:')
+    for j in range(subs_idx + 1, len(lines)):
+        line = lines[j]
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        if not line[0].isspace():
+            end_idx = j
+            break
+        if key_re.match(line):
+            key_idx = j
+            break
+
+    if key_idx is not None:
+        indent = key_re.match(lines[key_idx]).group(1)
+        lines[key_idx] = f'{indent}{key}: {quoted}\n'
+    else:
+        insert_line = f'  {key}: {quoted}\n'
+        if not lines[subs_idx].endswith('\n'):
+            lines[subs_idx] += '\n'
+        lines.insert(subs_idx + 1, insert_line)
+    return ''.join(lines)
+
+
 def add_ble_fan_to_device_yaml(filepath, fan_entry):
     """Upsert a Tuya BLE fan entry into a target CYD YAML file, preserving comments, !secret tags, and existing fields."""
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -3295,31 +3360,25 @@ def add_ble_fan_to_device_yaml(filepath, fan_entry):
         else:
             updated_text = 'packages:\n  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n\n' + updated_text
 
-    # 2. If ble_proxy is enabled in packages, ensure ble_max_connections: "2" is set in substitutions
+    # 2. Dynamically size ble_max_connections and display_buffer_size based on fan count & ble_proxy
     has_ble_proxy = any(
         k == 'ble_proxy' or (isinstance(v, str) and 'ble_proxy' in v)
         for k, v in packages.items()
     )
-    subs = parsed.get('substitutions') if isinstance(parsed.get('substitutions'), dict) else {}
-    if has_ble_proxy and str(subs.get('ble_max_connections', '')) != '2':
-        if 'ble_max_connections' not in subs:
-            subs_match = re.search(r'^substitutions:\s*(?:#.*)?$', updated_text, flags=re.MULTILINE)
-            if subs_match:
-                insert_pos = subs_match.end()
-                prefix = updated_text[:insert_pos]
-                suffix = updated_text[insert_pos:]
-                if not suffix.startswith('\n'):
-                    suffix = '\n' + suffix
-                updated_text = prefix + '\n  ble_max_connections: "2"' + suffix
-            else:
-                updated_text = 'substitutions:\n  ble_max_connections: "2"\n\n' + updated_text
+    plan = compute_ble_resource_plan(len(existing_fans), has_ble_proxy)
+    updated_text = _upsert_substitution(updated_text, 'ble_max_connections', str(plan['total_connections']))
+    updated_text = _upsert_substitution(updated_text, 'display_buffer_size', plan['display_buffer_size'])
 
-    # 3. Render new top-level tuya_ble_fan: block (preserving extra keys & custom idle_disconnect_s)
-    new_ble_cfg = {k: v for k, v in existing_ble_cfg.items() if k not in ('fans', 'idle_disconnect_s')}
-    if 'idle_disconnect_s' in existing_ble_cfg and not (prev_count <= 1 and len(existing_fans) > 1):
+    # 3. Render new top-level tuya_ble_fan: block (preserving extra keys)
+    new_ble_cfg = {
+        k: v for k, v in existing_ble_cfg.items()
+        if k not in ('fans', 'idle_disconnect_s', 'max_connections')
+    }
+    new_ble_cfg['max_connections'] = plan['fan_slots']
+    if 'idle_disconnect_s' in existing_ble_cfg and prev_count == len(existing_fans):
         new_ble_cfg['idle_disconnect_s'] = existing_ble_cfg['idle_disconnect_s']
     else:
-        new_ble_cfg['idle_disconnect_s'] = 0 if len(existing_fans) == 1 else 30
+        new_ble_cfg['idle_disconnect_s'] = plan['idle_disconnect_s']
     new_ble_cfg['fans'] = existing_fans
 
     rendered_block = yaml.dump(

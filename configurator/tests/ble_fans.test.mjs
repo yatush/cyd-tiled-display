@@ -57,7 +57,10 @@ test('YAML generation emits persistent mode for 1 fan, on-demand for multiple, a
   const single = toggleBleFanForEntity([], 'fan.office_fan', true, OFFICE_CANDIDATE);
   const singleSections = buildTuyaBleFanYamlSections(single, false);
   assert.match(singleSections.packageLine, /tuya_ble_fan: !include lib\/tuya_ble_fan\.yaml/);
-  assert.deepEqual(singleSections.extraSubstitutions, {});
+  assert.deepEqual(singleSections.extraSubstitutions, {
+    ble_max_connections: '1',
+    display_buffer_size: '40%',
+  });
   const parsedSingle = load(singleSections.componentSection);
   assert.equal(parsedSingle.tuya_ble_fan.idle_disconnect_s, 0);
   assert.equal(parsedSingle.tuya_ble_fan.fans.length, 1);
@@ -72,11 +75,33 @@ test('YAML generation emits persistent mode for 1 fan, on-demand for multiple, a
 
   // Multiple fans + BLE Proxy enabled
   const multi = toggleBleFanForEntity(single, 'fan.tv_room_fan', true, TV_CANDIDATE);
+  const multiNoProxy = buildTuyaBleFanYamlSections(multi, false);
+  assert.deepEqual(multiNoProxy.extraSubstitutions, {
+    ble_max_connections: '2',
+    display_buffer_size: '30%',
+  });
+  const parsedMultiNoProxy = load(multiNoProxy.componentSection);
+  assert.equal(parsedMultiNoProxy.tuya_ble_fan.max_connections, 2);
+  assert.equal(parsedMultiNoProxy.tuya_ble_fan.idle_disconnect_s, 0);
+
   const multiWithProxy = buildTuyaBleFanYamlSections(multi, true);
-  assert.deepEqual(multiWithProxy.extraSubstitutions, { ble_max_connections: '2' });
+  assert.deepEqual(multiWithProxy.extraSubstitutions, {
+    ble_max_connections: '3',
+    display_buffer_size: '20%',
+  });
   const parsedMulti = load(multiWithProxy.componentSection);
-  assert.equal(parsedMulti.tuya_ble_fan.idle_disconnect_s, 30);
+  assert.equal(parsedMulti.tuya_ble_fan.max_connections, 2);
+  assert.equal(parsedMulti.tuya_ble_fan.idle_disconnect_s, 0);
   assert.equal(parsedMulti.tuya_ble_fan.fans.length, 2);
+
+  // 3 fans + ble_proxy exceeds 2 fan slots -> shared slots with 30s idle disconnect
+  const threeFansWithProxy = buildTuyaBleFanYamlSections(
+    [...multi, { ...multi[0], name: 'Room 3', device_id: 'bf_3' }],
+    true
+  );
+  const parsedThree = load(threeFansWithProxy.componentSection);
+  assert.equal(parsedThree.tuya_ble_fan.max_connections, 2);
+  assert.equal(parsedThree.tuya_ble_fan.idle_disconnect_s, 30);
 });
 
 test('configHasBleProxy and getConfigSnapshot track BLE proxy and ble_fans', () => {

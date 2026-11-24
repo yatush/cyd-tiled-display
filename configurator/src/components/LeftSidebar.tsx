@@ -244,6 +244,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           tuyaBleCandidates={tuyaBleCandidates}
                           bleFanHosts={bleFanHosts}
                           currentDevicePath={currentDevicePath}
+                          hasBleProxy={configHasBleProxy(config)}
                           onUpdateBleFans={handleUpdateBleFans}
                           onOpenFindBleFans={onOpenFindBleFans}
                       />

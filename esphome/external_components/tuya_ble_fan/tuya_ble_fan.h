@@ -190,7 +190,7 @@ class TuyaBleFanDevice {
   sensor::Sensor *rssi_sensor_{nullptr};
 };
 
-// Single-slot BLE GATT hub managing 1 or more TuyaBleFanDevice instances
+// Multi-slot BLE GATT hub managing 1 to 3 simultaneous TuyaBleFanDevice connections
 class TuyaBleFanHub : public Component,
 #ifdef USE_API_CUSTOM_SERVICES
                       public api::CustomAPIDevice,
@@ -199,6 +199,9 @@ class TuyaBleFanHub : public Component,
  public:
   void set_parent(esp32_ble_tracker::ESP32BLETracker *parent) { parent_ = parent; }
   void set_idle_disconnect_s(uint32_t seconds) { idle_disconnect_s_ = seconds; }
+  void set_max_connections(uint8_t max_conns) {
+    max_connections_ = max_conns < 1 ? 1 : (max_conns > 3 ? 3 : max_conns);
+  }
   void add_fan(TuyaBleFanDevice *fan) { fans_.push_back(fan); }
 
   void setup() override;
@@ -226,7 +229,6 @@ class TuyaBleFanHub : public Component,
  protected:
   enum class SessionState : uint8_t {
     IDLE = 0,
-    SCANNING,
     CONNECTING,
     DISCOVERING,
     ENABLING_NOTIFY,
@@ -263,74 +265,89 @@ class TuyaBleFanHub : public Component,
     uint32_t blink_off_ms{0};
   };
 
-  bool is_persistent_mode() const { return fans_.size() == 1 && idle_disconnect_s_ == 0; }
+  struct FanSession {
+    SessionState state{SessionState::IDLE};
+    TuyaBleFanDevice *device{nullptr};
+    bool is_unbound_pair{false};
+    bool is_probing{false};
+    ProbeCandidate active_probe{};
+    uint16_t conn_id{0};
+    bool has_conn_id{false};
+    esp_bd_addr_t remote_bda{0};
+    uint16_t write_char_handle{0};
+    uint16_t notify_char_handle{0};
+    uint16_t notify_cccd_handle{0};
+    uint8_t login_key[16]{0};
+    uint8_t session_key[16]{0};
+    bool has_session_key{false};
+    uint8_t protocol_version{3};
+    uint8_t transport_version{3};
+    uint32_t tx_seq_num{1};
+    uint16_t dp_seq_num{1};
+    GattPacketReassembler reassembler;
+    std::deque<std::vector<uint8_t>> write_queue;
+    uint32_t state_entered_ms{0};
+    uint32_t last_activity_ms{0};
+    uint32_t last_rssi_poll_ms{0};
+  };
+
+  bool is_persistent_mode() const { return fans_.size() <= max_connections_ && idle_disconnect_s_ == 0; }
+  bool has_in_flight_connect() const;
+  FanSession *find_session_by_device(TuyaBleFanDevice *device);
+  FanSession *find_session_by_conn_id(uint16_t conn_id);
+  FanSession *find_session_by_bda(const esp_bd_addr_t bda, SessionState required_state);
+  FanSession *find_idle_session();
+  FanSession *find_pair_session();
+  FanSession *find_evictable_session(uint32_t now);
+
   void start_bounded_scan();
   void stop_scan_if_running();
   void finish_discovery_scan();
-  void start_connect(TuyaBleFanDevice *device);
-  void start_probe(TuyaBleFanDevice *device, const ProbeCandidate &candidate);
-  void start_unbound_pair_connect();
+  void start_connect(FanSession &slot, TuyaBleFanDevice *device);
+  void start_probe(FanSession &slot, TuyaBleFanDevice *device, const ProbeCandidate &candidate);
+  void start_unbound_pair_connect(FanSession &slot);
   void finish_unbound_pair(bool ok, const std::string &error);
   bool find_next_probe_candidate(TuyaBleFanDevice *device, ProbeCandidate &out) const;
-  void record_probe_failure();
-  void disconnect_current();
-  void reset_session();
+  void record_probe_failure(FanSession &slot);
+  void disconnect_session(FanSession &slot);
+  void reset_session(FanSession &slot);
 
-  void send_device_info_request();
-  void send_pair_request();
-  void send_device_status_request();
-  void send_dps(const std::vector<TuyaDp> &dps);
-  void flush_device_dps(TuyaBleFanDevice *device);
-  void enqueue_gatt_packet(uint16_t code, const std::vector<uint8_t> &payload, uint8_t security_flag);
-  void flush_write_queue();
-  void handle_decrypted_frame(const TuyaDecryptedFrame &frame);
+  void send_device_info_request(FanSession &slot);
+  void send_pair_request(FanSession &slot);
+  void send_device_status_request(FanSession &slot);
+  void send_dps(FanSession &slot, const std::vector<TuyaDp> &dps);
+  void flush_device_dps(FanSession &slot, TuyaBleFanDevice *device);
+  void enqueue_gatt_packet(FanSession &slot, uint16_t code, const std::vector<uint8_t> &payload,
+                           uint8_t security_flag, uint32_t response_to = 0);
+  void flush_write_queue(FanSession &slot);
+  void handle_decrypted_frame(FanSession &slot, const TuyaDecryptedFrame &frame);
   void emit_ha_event(const std::string &event_name, const std::map<std::string, std::string> &data);
 
-  TuyaBleFanDevice *pick_next_device_with_work();
+  TuyaBleFanDevice *pick_next_device_needing_slot();
 
   std::vector<TuyaBleFanDevice *> fans_;
   uint32_t idle_disconnect_s_{30};
+  uint8_t max_connections_{1};
 
   esp_gatt_if_t gattc_if_{ESP_GATT_IF_NONE};
-  uint16_t conn_id_{0};
-  bool has_conn_id_{false};
-  esp_bd_addr_t remote_bda_{0};
-
-  SessionState session_state_{SessionState::IDLE};
-  TuyaBleFanDevice *active_device_{nullptr};
+  std::vector<FanSession> sessions_;
   TuyaBleFanDevice *pending_switch_device_{nullptr};
 
   std::vector<ProbeCandidate> probe_candidates_;
   std::vector<std::pair<TuyaBleFanDevice *, uint64_t>> failed_probes_;
-  bool is_probing_{false};
-  ProbeCandidate active_probe_{};
 
   // Transient on-demand discovery scan state (cleared when scan ends)
   bool discovery_scan_active_{false};
   uint32_t discovery_scan_end_ms_{0};
   std::vector<ScanSighting> discovery_sightings_;
 
+  // Bounded MAC-discovery scan state
+  bool hub_scanning_{false};
+  uint32_t hub_scan_started_ms_{0};
+
   // Transient unbound pairing job state
   UnboundPairJob pair_job_{};
 
-  uint16_t write_char_handle_{0};
-  uint16_t notify_char_handle_{0};
-  uint16_t notify_cccd_handle_{0};
-
-  uint8_t login_key_[16]{0};
-  uint8_t session_key_[16]{0};
-  bool has_session_key_{false};
-  uint8_t protocol_version_{3};
-  uint8_t transport_version_{3};
-  uint32_t tx_seq_num_{1};
-  uint16_t dp_seq_num_{1};
-
-  GattPacketReassembler reassembler_;
-  std::deque<std::vector<uint8_t>> write_queue_;
-
-  uint32_t state_entered_ms_{0};
-  uint32_t last_activity_ms_{0};
-  uint32_t last_rssi_poll_ms_{0};
   uint32_t next_reconnect_ms_{0};
   uint32_t reconnect_backoff_ms_{2000};
   bool scan_active_{false};
