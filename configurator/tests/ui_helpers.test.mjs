@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { iconCodeToChar } from '../src/utils/iconUtils.ts';
+import { getTileNavigationTarget } from '../src/utils/tileUtils.ts';
 import { validateTileBounds } from '../src/utils/tileYaml.ts';
 
 test('iconCodeToChar decodes bare, legacy-quoted, and plain icon strings', () => {
@@ -25,4 +26,19 @@ test('validateTileBounds checks span overflow and unplaced coordinate parity', (
   // Span overflow beyond grid edges must be rejected
   assert.throws(() => validateTileBounds({ x: 2, y: 0, x_span: 2 }, 4, 3), /within the page grid/);
   assert.throws(() => validateTileBounds({ x: 0, y: 3, y_span: 2 }, 4, 3), /within the page grid/);
+});
+
+test('getTileNavigationTarget returns destination for move_page and ha_action long_destination', () => {
+  assert.deepEqual(
+    getTileNavigationTarget({ type: 'move_page', destination: 'pref' }),
+    { destination: 'pref', isLongPress: false }
+  );
+  assert.deepEqual(
+    getTileNavigationTarget({ type: 'ha_action', long_destination: 'blinds_page' }),
+    { destination: 'blinds_page', isLongPress: true }
+  );
+  assert.equal(getTileNavigationTarget({ type: 'ha_action' }), null);
+  assert.equal(getTileNavigationTarget({ type: 'move_page', destination: '' }), null);
+  assert.equal(getTileNavigationTarget({ type: 'ha_action', long_destination: '' }), null);
+  assert.equal(getTileNavigationTarget({ type: 'toggle_entity', destination: 'pref' }), null);
 });

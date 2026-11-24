@@ -3,6 +3,7 @@ import { Trash2, ArrowRightCircle, Bluetooth } from 'lucide-react';
 import { Tile, ImageEntry, BleFanConfig, FixedEntityEntry } from '../types';
 import { iconCodeToChar } from '../utils/iconUtils';
 import { findConfiguredBleFan } from '../utils/bleFanUtils';
+import { getTileNavigationTarget } from '../utils/tileUtils';
 
 // Resolves a fill_color value (named id or Color(r,g,b)) to a CSS color string.
 function resolveFillColor(val: string, colorList: {id: string, value: string}[]): string | null {
@@ -272,22 +273,26 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
           </div>
         );
       })()}
-      {tile.type === 'move_page' && tile.destination && (
-        <div
-          className="absolute top-0.5 left-0.5 max-w-[calc(100%-8px)] flex items-center gap-0.5 border border-green-400 rounded px-1 py-0.5 bg-green-50/90 cursor-pointer hover:bg-green-100 transition-colors z-10"
-          title={`Go to page: ${tile.destination}`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onNavigateToPage?.(tile.destination);
-          }}
-        >
-          <ArrowRightCircle size={10} className="text-green-600 flex-shrink-0" />
-          <span className="text-[8px] leading-tight text-green-700 font-semibold truncate">
-            {tile.destination}
-          </span>
-        </div>
-      )}
+      {(() => {
+        const navTarget = getTileNavigationTarget(tile);
+        if (!navTarget) return null;
+        return (
+          <div
+            className="absolute top-0.5 left-0.5 max-w-[calc(100%-8px)] flex items-center gap-0.5 border border-green-400 rounded px-1 py-0.5 bg-green-50/90 cursor-pointer hover:bg-green-100 transition-colors z-10"
+            title={navTarget.isLongPress ? `Long press: Go to page ${navTarget.destination}` : `Go to page: ${navTarget.destination}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToPage?.(navTarget.destination);
+            }}
+          >
+            <ArrowRightCircle size={10} className="text-green-600 flex-shrink-0" />
+            <span className="text-[8px] leading-tight text-green-700 font-semibold truncate">
+              {navTarget.destination}
+            </span>
+          </div>
+        );
+      })()}
       {(entityItems.length > 0 || (globalSensor && entityItems.every(e => !e.sensor))) && (
         <div className="absolute bottom-0.5 left-0.5 pointer-events-none max-w-[calc(100%-8px)] flex flex-col items-start gap-0.5 border border-blue-300 rounded px-1 py-0.5 bg-white/70 z-10">
           {entityItems.map((ei, idx) => {
