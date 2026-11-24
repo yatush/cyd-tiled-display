@@ -19,6 +19,7 @@
 #include "esphome/components/light/light_output.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/number/number.h"
+#include "esphome/components/sensor/sensor.h"
 #ifdef USE_API_CUSTOM_SERVICES
 #include "esphome/components/api/custom_api_device.h"
 #endif
@@ -128,6 +129,10 @@ class TuyaBleFanDevice {
   void set_light_color_temp(int color_temp_0_to_1000);
   void set_light_state(bool on, int brightness_10_to_1000, int color_temp_0_to_1000);
 
+  void set_rssi_sensor(sensor::Sensor *sensor) { rssi_sensor_ = sensor; }
+  void publish_rssi(int rssi);
+  void clear_rssi();
+
   // Incoming DP updates from BLE device
   void apply_incoming_dps(const std::vector<TuyaDp> &dps);
 
@@ -181,6 +186,7 @@ class TuyaBleFanDevice {
   TuyaBleFanEntity *fan_entity_{nullptr};
   TuyaBleLightOutput *light_output_{nullptr};
   TuyaBleTimerNumber *timer_number_{nullptr};
+  sensor::Sensor *rssi_sensor_{nullptr};
 };
 
 // Single-slot BLE GATT hub managing 1 or more TuyaBleFanDevice instances
@@ -322,6 +328,7 @@ class TuyaBleFanHub : public Component,
 
   uint32_t state_entered_ms_{0};
   uint32_t last_activity_ms_{0};
+  uint32_t last_rssi_poll_ms_{0};
   uint32_t next_reconnect_ms_{0};
   uint32_t reconnect_backoff_ms_{2000};
   bool scan_active_{false};

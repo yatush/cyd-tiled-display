@@ -1,15 +1,19 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import esp32_ble_tracker, fan, light, number
+from esphome.components import esp32_ble_tracker, fan, light, number, sensor
 from esphome.const import (
     CONF_ID,
     CONF_MAC_ADDRESS,
     CONF_NAME,
     CONF_OUTPUT_ID,
+    DEVICE_CLASS_SIGNAL_STRENGTH,
+    ENTITY_CATEGORY_DIAGNOSTIC,
+    STATE_CLASS_MEASUREMENT,
+    UNIT_DECIBEL_MILLIWATT,
 )
 
 DEPENDENCIES = ["esp32_ble_tracker"]
-AUTO_LOAD = ["fan", "light", "number"]
+AUTO_LOAD = ["fan", "light", "number", "sensor"]
 
 CONF_FANS = "fans"
 CONF_DEVICE_ID = "device_id"
@@ -24,6 +28,7 @@ CONF_FAN_COMPONENT_ID = "fan_component_id"
 CONF_LIGHT_COMPONENT_ID = "light_component_id"
 CONF_LIGHT_OUTPUT_ID = "light_output_id"
 CONF_TIMER_COMPONENT_ID = "timer_component_id"
+CONF_RSSI_SENSOR_ID = "rssi_sensor_id"
 
 tuya_ble_fan_ns = cg.esphome_ns.namespace("tuya_ble_fan")
 TuyaBleFanHub = tuya_ble_fan_ns.class_(
@@ -57,6 +62,7 @@ FAN_ITEM_SCHEMA = cv.Schema(
         cv.GenerateID(CONF_LIGHT_COMPONENT_ID): cv.declare_id(light.LightState),
         cv.GenerateID(CONF_LIGHT_OUTPUT_ID): cv.declare_id(TuyaBleLightOutput),
         cv.GenerateID(CONF_TIMER_COMPONENT_ID): cv.declare_id(TuyaBleTimerNumber),
+        cv.GenerateID(CONF_RSSI_SENSOR_ID): cv.declare_id(sensor.Sensor),
     }
 )
 
@@ -106,6 +112,22 @@ def _validate_number_subconfig(num_id, name):
         return number.number_schema(TuyaBleTimerNumber)(raw)
     if hasattr(number, "NUMBER_SCHEMA"):
         return number.NUMBER_SCHEMA(raw)
+    return raw
+
+
+def _validate_rssi_sensor_subconfig(sensor_id, name):
+    raw = {
+        CONF_ID: sensor_id,
+        CONF_NAME: name,
+    }
+    if hasattr(sensor, "sensor_schema"):
+        return sensor.sensor_schema(
+            unit_of_measurement=UNIT_DECIBEL_MILLIWATT,
+            accuracy_decimals=0,
+            device_class=DEVICE_CLASS_SIGNAL_STRENGTH,
+            state_class=STATE_CLASS_MEASUREMENT,
+            entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+        )(raw)
     return raw
 
 
@@ -170,5 +192,11 @@ async def to_code(config):
                 step=1,
             )
             cg.add(dev.set_timer_number(timer_num))
+
+            rssi_sub = _validate_rssi_sensor_subconfig(
+                fan_cfg[CONF_RSSI_SENSOR_ID], f"{name} BLE Signal Strength"
+            )
+            rssi_sens = await sensor.new_sensor(rssi_sub)
+            cg.add(dev.set_rssi_sensor(rssi_sens))
 
         cg.add(hub.add_fan(dev))

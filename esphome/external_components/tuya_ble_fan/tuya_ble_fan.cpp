@@ -635,6 +635,18 @@ void TuyaBleFanDevice::notify_timer_changed() {
   }
 }
 
+void TuyaBleFanDevice::publish_rssi(int rssi) {
+  if (rssi_sensor_ != nullptr) {
+    rssi_sensor_->publish_state(static_cast<float>(rssi));
+  }
+}
+
+void TuyaBleFanDevice::clear_rssi() {
+  if (rssi_sensor_ != nullptr && !std::isnan(rssi_sensor_->state)) {
+    rssi_sensor_->publish_state(NAN);
+  }
+}
+
 // ============================================================================
 // TuyaBleFanHub
 // ============================================================================
@@ -982,6 +994,9 @@ void TuyaBleFanHub::disconnect_current() {
 }
 
 void TuyaBleFanHub::reset_session() {
+  if (active_device_ != nullptr) {
+    active_device_->clear_rssi();
+  }
   session_state_ = SessionState::IDLE;
   active_device_ = nullptr;
   is_probing_ = false;
@@ -1594,11 +1609,13 @@ void TuyaBleFanHub::handle_decrypted_frame(const TuyaDecryptedFrame &frame) {
     }
     session_state_ = SessionState::READY;
     last_activity_ms_ = millis();
+    last_rssi_poll_ms_ = last_activity_ms_;
     ESP_LOGI(TAG, "[%s] Tuya BLE session READY", active_device_->name().c_str());
 
-    // Flush any queued user commands immediately, then query full status
+    // Flush any queued user commands immediately, query full status, and read live RSSI
     flush_device_dps(active_device_);
     send_device_status_request();
+    esp_ble_gap_read_rssi(this->remote_bda_);
     return;
   }
 
@@ -1638,6 +1655,16 @@ void TuyaBleFanHub::handle_decrypted_frame(const TuyaDecryptedFrame &frame) {
                                       SECURITY_FLAG_SESSION, session_key_, iv);
     auto chunks = fragment_gatt_packet(ack, protocol_version_, 20);
     bool was_empty = write_queue_.empty();
+    for (auto &c : chunks) write_queue_.push_back(std::move(c));
+    if (was_empty) flush_write_queue();
+  }
+}
+
+}  // namespace tuya_ble_fan
+}  // namespace esphome
+
+#endif  // USE_ESP32
+empty = write_queue_.empty();
     for (auto &c : chunks) write_queue_.push_back(std::move(c));
     if (was_empty) flush_write_queue();
   }
