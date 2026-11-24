@@ -839,14 +839,18 @@ void TuyaBleFanHub::request_activity(TuyaBleFanDevice *device) {
   }
 
   if (active_device_ != nullptr && active_device_ != device) {
-    // Switch cleanly to the newly requested fan
+    // Switch cleanly to the newly requested fan once any in-flight writes finish
     pending_switch_device_ = device;
-    if (session_state_ == SessionState::READY ||
-        session_state_ == SessionState::HANDSHAKE_DEVICE_INFO ||
-        session_state_ == SessionState::HANDSHAKE_PAIR ||
-        session_state_ == SessionState::DISCOVERING ||
-        session_state_ == SessionState::ENABLING_NOTIFY) {
+    if (session_state_ == SessionState::READY &&
+        !active_device_->has_pending_dps() && write_queue_.empty()) {
       disconnect_current();
+    } else if (session_state_ == SessionState::HANDSHAKE_DEVICE_INFO ||
+               session_state_ == SessionState::HANDSHAKE_PAIR ||
+               session_state_ == SessionState::DISCOVERING ||
+               session_state_ == SessionState::ENABLING_NOTIFY) {
+      if (!active_device_->has_pending_dps()) {
+        disconnect_current();
+      }
     }
     return;
   }
@@ -1303,14 +1307,26 @@ void TuyaBleFanHub::loop() {
     }
   }
 
-  // Flush any pending DPs, honor pending fan switch, and periodically poll live RSSI while READY
+  // Flush any pending DPs, honor pending fan switch / other queued fans, and poll live RSSI while READY
   if (session_state_ == SessionState::READY && active_device_ != nullptr) {
-    if (pending_switch_device_ != nullptr && pending_switch_device_ != active_device_) {
-      disconnect_current();
-      return;
-    }
     if (active_device_->has_pending_dps()) {
       flush_device_dps(active_device_);
+    }
+    if (write_queue_.empty() && (now - last_activity_ms_ >= 150)) {
+      bool other_needs_work =
+          (pending_switch_device_ != nullptr && pending_switch_device_ != active_device_);
+      if (!other_needs_work) {
+        for (auto *fan : fans_) {
+          if (fan != active_device_ && fan->has_pending_dps()) {
+            other_needs_work = true;
+            break;
+          }
+        }
+      }
+      if (other_needs_work) {
+        disconnect_current();
+        return;
+      }
     }
     if (now - last_rssi_poll_ms_ >= 60000) {
       last_rssi_poll_ms_ = now;
