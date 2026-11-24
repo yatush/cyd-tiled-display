@@ -53,6 +53,8 @@ class TuyaBleLightOutput : public light::LightOutput {
   TuyaBleFanDevice *parent_;
   light::LightState *light_state_{nullptr};
   bool syncing_{false};
+  bool in_write_state_{false};
+  bool initial_write_skipped_{false};
 };
 
 // Native ESPHome Number entity for FlyFan timer (DP 64: 0..540 minutes)
@@ -97,6 +99,7 @@ class TuyaBleFanDevice {
   esp_ble_addr_type_t addr_type() const { return addr_type_; }
   bool has_mac() const { return mac_address_ != 0; }
   void update_discovered_mac(uint64_t mac, esp_ble_addr_type_t addr_type);
+  void update_discovered_identity(uint64_t mac, esp_ble_addr_type_t addr_type, const std::string &uuid);
 
   // Live state getters
   bool fan_on() const { return fan_on_; }
@@ -126,14 +129,16 @@ class TuyaBleFanDevice {
   void apply_incoming_dps(const std::vector<TuyaDp> &dps);
 
   // Pending DP queue managed by Hub
-  bool has_pending_dps() const { return !pending_dps_.empty(); }
+  bool has_pending_dps() const { return !pending_dps_.empty() || !followup_dps_.empty(); }
   std::vector<TuyaDp> take_pending_dps();
+  std::vector<TuyaDp> take_followup_dps();
   void queue_dps(const std::vector<TuyaDp> &dps);
 
  protected:
-  struct CachedMac {
+  struct CachedBleIdentity {
     uint64_t mac;
     uint8_t addr_type;
+    char uuid[17];
   };
 
   void notify_fan_changed();
@@ -151,7 +156,7 @@ class TuyaBleFanDevice {
 
   uint64_t mac_address_{0};
   esp_ble_addr_type_t addr_type_{BLE_ADDR_TYPE_PUBLIC};
-  ESPPreferenceObject mac_pref_;
+  ESPPreferenceObject identity_pref_;
 
   // Fan state
   bool fan_on_{false};
@@ -167,6 +172,7 @@ class TuyaBleFanDevice {
 
   // Pending DPs coalesced by DP ID
   std::vector<TuyaDp> pending_dps_;
+  std::vector<TuyaDp> followup_dps_;
 
   // Optional native HA entities
   TuyaBleFanEntity *fan_entity_{nullptr};
@@ -212,10 +218,19 @@ class TuyaBleFanHub : public Component,
     DISCONNECTING,
   };
 
+  struct ProbeCandidate {
+    uint64_t mac{0};
+    esp_ble_addr_type_t addr_type{BLE_ADDR_TYPE_PUBLIC};
+    std::string uuid;
+  };
+
   bool is_persistent_mode() const { return fans_.size() == 1 && idle_disconnect_s_ == 0; }
   void start_bounded_scan();
   void stop_scan_if_running();
   void start_connect(TuyaBleFanDevice *device);
+  void start_probe(TuyaBleFanDevice *device, const ProbeCandidate &candidate);
+  bool find_next_probe_candidate(TuyaBleFanDevice *device, ProbeCandidate &out) const;
+  void record_probe_failure();
   void disconnect_current();
   void reset_session();
 
@@ -223,6 +238,7 @@ class TuyaBleFanHub : public Component,
   void send_pair_request();
   void send_device_status_request();
   void send_dps(const std::vector<TuyaDp> &dps);
+  void flush_device_dps(TuyaBleFanDevice *device);
   void enqueue_gatt_packet(uint16_t code, const std::vector<uint8_t> &payload, uint8_t security_flag);
   void flush_write_queue();
   void handle_decrypted_frame(const TuyaDecryptedFrame &frame);
@@ -240,6 +256,11 @@ class TuyaBleFanHub : public Component,
   SessionState session_state_{SessionState::IDLE};
   TuyaBleFanDevice *active_device_{nullptr};
   TuyaBleFanDevice *pending_switch_device_{nullptr};
+
+  std::vector<ProbeCandidate> probe_candidates_;
+  std::vector<std::pair<TuyaBleFanDevice *, uint64_t>> failed_probes_;
+  bool is_probing_{false};
+  ProbeCandidate active_probe_{};
 
   uint16_t write_char_handle_{0};
   uint16_t notify_char_handle_{0};

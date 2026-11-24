@@ -129,11 +129,29 @@ static void test_advertisement_matching() {
   assert(!match_tuya_advertisement(svc.data(), svc.size(), mfg.data(), mfg.size(), pid, dev_living, key));
 }
 
+static void test_v3_a201_uuid_extraction() {
+  // Real captured advertisement bytes from Varin VA-E002 / FlyFan (B8:06:0D:54:04:F6)
+  const uint8_t sdata_a201[17] = {
+      0x00, 0x1B, 0xDB, 0x4F, 0x8E, 0x99, 0xA1, 0xED,
+      0x27, 0x00, 0x20, 0xA2, 0xAF, 0x58, 0x77, 0x93, 0x72,
+  };
+  const uint8_t mfg_07d0[22] = {
+      0x89, 0x03, 0x00, 0x00, 0x0C, 0x00,
+      0xEB, 0x6D, 0x0F, 0xFD, 0x34, 0xCD, 0x46, 0x7A,
+      0xE1, 0x6F, 0xDD, 0xE3, 0x4D, 0xCE, 0xDD, 0x77,
+  };
+
+  std::string uuid;
+  assert(extract_tuya_v3_uuid(sdata_a201, sizeof(sdata_a201), mfg_07d0, sizeof(mfg_07d0), uuid));
+  assert(uuid == "9fdb2c8416a6872a");
+}
+
 int main() {
   test_crc16();
   test_packet_encrypt_decrypt_and_chunking();
   test_v3_dps_and_pair_and_device_info();
   test_advertisement_matching();
+  test_v3_a201_uuid_extraction();
   std::cout << "All Tuya BLE protocol tests passed!" << std::endl;
   return 0;
 }

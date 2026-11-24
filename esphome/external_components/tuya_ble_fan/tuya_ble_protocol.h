@@ -13,6 +13,7 @@ constexpr uint16_t TUYA_BLE_SERVICE_UUID = 0x1910;
 constexpr uint16_t TUYA_BLE_WRITE_CHAR_UUID = 0x2B11;
 constexpr uint16_t TUYA_BLE_NOTIFY_CHAR_UUID = 0x2B10;
 constexpr uint16_t TUYA_BLE_ADV_SERVICE_UUID = 0xFD50;
+constexpr uint16_t TUYA_BLE_ADV_SERVICE_UUID_V3 = 0xA201;
 constexpr uint16_t TUYA_BLE_MANUFACTURER_ID = 0x07D0;
 
 // Tuya BLE function codes
@@ -147,6 +148,12 @@ bool match_tuya_advertisement(const uint8_t *service_data, size_t service_data_l
                               const std::string &product_id,
                               const std::string &device_id,
                               const std::string &local_key);
+
+// Extract the 16-byte ASCII UUID from a bound Tuya BLE v3 advertisement:
+// service_data[0xA201] (17 bytes: 0x00 + 16B hash) + mfg_data[0x07D0] (22 bytes: 6B hdr + 16B enc UUID).
+bool extract_tuya_v3_uuid(const uint8_t *service_data_a201, size_t service_data_len,
+                          const uint8_t *mfg_data_07d0, size_t mfg_data_len,
+                          std::string &out_uuid);
 
 }  // namespace tuya_ble_fan
 }  // namespace esphome

@@ -522,5 +522,31 @@ bool match_tuya_advertisement(const uint8_t *service_data, size_t service_data_l
   return product_matches && (mfg_data == nullptr || mfg_data_len < 18);
 }
 
+bool extract_tuya_v3_uuid(const uint8_t *service_data_a201, size_t service_data_len,
+                          const uint8_t *mfg_data_07d0, size_t mfg_data_len,
+                          std::string &out_uuid) {
+  out_uuid.clear();
+  if (service_data_a201 == nullptr || service_data_len < 17) return false;
+  if (mfg_data_07d0 == nullptr || mfg_data_len < 22) return false;
+
+  uint8_t key_iv[16];
+  md5_hash(service_data_a201 + 1, 16, key_iv);
+
+  std::vector<uint8_t> decrypted;
+  if (!aes128_cbc_decrypt(key_iv, key_iv, mfg_data_07d0 + 6, 16, decrypted) || decrypted.size() < 16) {
+    return false;
+  }
+
+  // Validate printable ASCII (Tuya UUIDs are 16-byte ASCII alphanumeric strings)
+  for (size_t i = 0; i < 16; i++) {
+    uint8_t c = decrypted[i];
+    if (c < 0x20 || c > 0x7E) {
+      return false;
+    }
+  }
+  out_uuid.assign(reinterpret_cast<const char *>(decrypted.data()), 16);
+  return true;
+}
+
 }  // namespace tuya_ble_fan
 }  // namespace esphome
