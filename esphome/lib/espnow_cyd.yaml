@@ -1,0 +1,5 @@
+# espnow_cyd.yaml — Lightweight ESP-NOW client package for CYD displays (no BLE required)
+# Automatically included when any fan/light entity is linked to a headless BLE hub via ESP-NOW.
+
+wifi:
+  reboot_timeout: 0s

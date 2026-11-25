@@ -458,3 +458,117 @@ def test_ble_fan_vault_persists_after_yaml_and_ha_removal(tmp_path):
     assert known[0]["mac_address"] == "B8:06:0D:54:04:F6"
     assert known[0]["uuid"] == "9fdb2c8416a6872a"
     assert (esphome_dir / ".cyd_ble_fans.json").is_file()
+
+
+def test_espnow_network_key_and_headless_hub_crud(tmp_path):
+    key1 = server.get_or_create_espnow_network_key(str(tmp_path))
+    assert len(key1) == 16
+    # Calling again returns the exact same persisted key
+    assert server.get_or_create_espnow_network_key(str(tmp_path)) == key1
+
+    # Saving fans to vault preserves espnow_network_key
+    fan_a = {
+        "name": "Bedroom Fan",
+        "device_id": "bf_hub_test_00000001",
+        "local_key": "0123456789abcdef",
+        "fan_entity_id": "fan.bedroom_fan",
+        "light_entity_id": "light.bedroom_light",
+        "mac_address": "AA:BB:CC:DD:EE:11",
+    }
+    server.save_ble_fans_to_vault([fan_a], str(tmp_path))
+    assert server.get_or_create_espnow_network_key(str(tmp_path)) == key1
+
+    # Create a headless hub hosting fan_a
+    res, err, status = server.save_ble_hub_yaml(
+        {
+            "name": "Bedroom BLE Hub",
+            "board": "seeed_xiao_esp32c3",
+            "fallback_channel": 6,
+            "fans": [fan_a],
+        },
+        esphome_dir=str(tmp_path),
+    )
+    assert status == 200 and err is None
+    assert res["filename"] == "bedroom_ble_hub.yaml"
+    assert res["board"] == "seeed_xiao_esp32c3"
+    assert res["fallback_channel"] == 6
+    assert res["network_key"] == key1
+
+    hubs = server.list_ble_hubs(str(tmp_path))
+    assert len(hubs) == 1
+    assert hubs[0]["filename"] == "bedroom_ble_hub.yaml"
+    assert hubs[0]["board"] == "seeed_xiao_esp32c3"
+    assert hubs[0]["fans"][0]["fan_entity_id"] == "fan.bedroom_fan"
+
+    # Trying to assign the same fan to a second hub MUST fail with 409 Conflict
+    res2, err2, status2 = server.save_ble_hub_yaml(
+        {
+            "name": "Hallway Hub",
+            "board": "esp32dev",
+            "fans": [fan_a],
+        },
+        esphome_dir=str(tmp_path),
+    )
+    assert status2 == 409 and res2 is None
+    assert len(err2["conflicts"]) == 1
+    assert err2["conflicts"][0]["host_file"] == "bedroom_ble_hub.yaml"
+
+    # Reassigning moves fan_a atomically from bedroom_ble_hub.yaml to hallway_hub.yaml
+    res3, err3, status3 = server.save_ble_hub_yaml(
+        {
+            "name": "Hallway Hub",
+            "board": "esp32dev",
+            "fans": [fan_a],
+            "reassign": True,
+        },
+        esphome_dir=str(tmp_path),
+    )
+    assert status3 == 200 and err3 is None
+    assert res3["migrated_from"] == ["bedroom_ble_hub.yaml"]
+
+    hubs_after = {h["filename"]: h for h in server.list_ble_hubs(str(tmp_path))}
+    assert len(hubs_after["bedroom_ble_hub.yaml"]["fans"]) == 0
+    assert len(hubs_after["hallway_hub.yaml"]["fans"]) == 1
+
+
+def test_reassign_fan_from_cyd_strips_local_ble_package(tmp_path):
+    cyd_yaml = tmp_path / "living_cyd.yaml"
+    cyd_yaml.write_text(
+        "packages:\n"
+        "  device_base: !include lib/2432s028.yaml\n"
+        "  tuya_ble_fan: !include lib/tuya_ble_fan.yaml\n"
+        "tuya_ble_fan:\n"
+        "  max_connections: 1\n"
+        "  idle_disconnect_s: 0\n"
+        "  fans:\n"
+        "    - name: Living Fan\n"
+        "      device_id: bf_cyd_migrate_0001\n"
+        "      local_key: fedcba9876543210\n"
+        "      fan_entity_id: fan.living_fan\n"
+        "tile_ui:\n"
+        "  screens: []\n",
+        encoding="utf-8",
+    )
+
+    fan = {
+        "name": "Living Fan",
+        "device_id": "bf_cyd_migrate_0001",
+        "local_key": "fedcba9876543210",
+        "fan_entity_id": "fan.living_fan",
+    }
+    res, err, status = server.save_ble_hub_yaml(
+        {
+            "name": "Living Hub",
+            "board": "esp32-c3-devkitm-1",
+            "fans": [fan],
+            "reassign": True,
+        },
+        esphome_dir=str(tmp_path),
+    )
+    assert status == 200 and err is None
+    assert res["migrated_from"] == ["living_cyd.yaml"]
+
+    cyd_text = cyd_yaml.read_text(encoding="utf-8")
+    assert "tuya_ble_fan:" not in cyd_text
+    assert "lib/tuya_ble_fan.yaml" not in cyd_text
+    assert "tile_ui:" in cyd_text

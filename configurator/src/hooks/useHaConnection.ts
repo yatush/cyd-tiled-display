@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch, isAddon } from '../utils/api';
-import { HaEntity, TuyaBleCandidate } from '../types';
+import { HaEntity, HeadlessHubConfig, TuyaBleCandidate } from '../types';
 
 export type HaStatus = 'connected' | 'error' | 'mock' | 'idle';
 export type ConnectionType = 'local' | 'remote' | 'mock';
@@ -25,6 +25,8 @@ export function useHaConnection() {
   const [haEntities, setHaEntities] = useState<HaEntity[]>([]);
   const [tuyaBleCandidates, setTuyaBleCandidates] = useState<TuyaBleCandidate[]>([]);
   const [bleFanHosts, setBleFanHosts] = useState<Record<string, string[]>>({});
+  const [bleHubs, setBleHubs] = useState<HeadlessHubConfig[]>([]);
+  const [espnowNetworkKey, setEspnowNetworkKey] = useState<string>('');
   const [haStatus, setHaStatus] = useState<HaStatus>('idle');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -62,6 +64,12 @@ export function useHaConnection() {
           }
           if (bleData?.hosted_by && typeof bleData.hosted_by === 'object') {
             setBleFanHosts(bleData.hosted_by);
+          }
+          if (Array.isArray(bleData?.hubs)) {
+            setBleHubs(bleData.hubs);
+          }
+          if (typeof bleData?.network_key === 'string') {
+            setEspnowNetworkKey(bleData.network_key);
           }
         } catch {
           // ignore malformed BLE fan response
@@ -104,6 +112,10 @@ export function useHaConnection() {
     tuyaBleCandidates,
     bleFanHosts,
     setBleFanHosts,
+    bleHubs,
+    setBleHubs,
+    espnowNetworkKey,
+    setEspnowNetworkKey,
     haStatus,
     fetchHaEntities: () => setRefreshTrigger(prev => prev + 1)
   };

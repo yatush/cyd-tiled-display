@@ -12,6 +12,10 @@ import {
   extractBleFansFromDeviceYaml,
   configHasBleProxy,
   getOtherBleFanHosts,
+  buildEspNowCydYamlSections,
+  extractEspNowFansFromDeviceYaml,
+  mergeHubFansIntoHaEntities,
+  resolveEffectiveEspNowFans,
 } from '../src/utils/bleFanUtils.ts';
 import { getConfigSnapshot } from '../src/utils/fileContext.ts';
 
@@ -192,4 +196,62 @@ test('deriveDefaultBleEntityIds and mergeBleFansIntoHaEntities expose [BLE] enti
     { entity_id: 'light.office_light', friendly_name: '[BLE] Office Light' },
     { entity_id: 'light.kitchen', friendly_name: 'Kitchen' },
   ]);
+});
+
+test('ESP-NOW hub fans auto-link for referenced CYD tiles and round-trip YAML cleanly without BLE', () => {
+  const hubs = [
+    {
+      filename: 'bedroom_hub.yaml',
+      name: 'bedroom_hub',
+      friendly_name: 'Bedroom Hub',
+      board: 'seeed_xiao_esp32c3',
+      fallback_channel: 6,
+      fans: [
+        {
+          name: 'Bedroom Fan',
+          device_id: 'bf_bed_1',
+          local_key: '0123456789abcdef',
+          fan_entity_id: 'fan.bedroom_fan',
+          light_entity_id: 'light.bedroom_light',
+        },
+      ],
+    },
+  ];
+
+  // Hub fans appear in entity picker even before HA sees them
+  const merged = mergeHubFansIntoHaEntities([{ entity_id: 'light.kitchen', friendly_name: 'Kitchen' }], hubs);
+  assert.deepEqual(merged, [
+    { entity_id: 'fan.bedroom_fan', friendly_name: '[Hub] Bedroom Fan' },
+    { entity_id: 'light.bedroom_light', friendly_name: '[Hub] Bedroom Fan Light' },
+    { entity_id: 'light.kitchen', friendly_name: 'Kitchen' },
+  ]);
+
+  // CYD referencing fan.bedroom_fan auto-links it via ESP-NOW
+  const cydConfig = {
+    pages: [
+      {
+        id: 'main',
+        rows: 2,
+        cols: 3,
+        tiles: [{ id: 't1', type: 'ha_action', x: 0, y: 0, entities: ['fan.bedroom_fan'] }],
+      },
+    ],
+  };
+  const effective = resolveEffectiveEspNowFans(cydConfig, hubs);
+  assert.equal(effective.length, 1);
+  assert.equal(effective[0].fan_entity_id, 'fan.bedroom_fan');
+  assert.equal(effective[0].light_entity_id, 'light.bedroom_light');
+
+  const sections = buildEspNowCydYamlSections(effective, 'deadbeef12345678', 6);
+  assert.match(sections.packageLine, /espnow_cyd: !include lib\/espnow_cyd\.yaml/);
+  const parsed = load(sections.componentSection);
+  assert.equal(parsed.espnow_fan_bridge.role, 'cyd');
+  assert.equal(parsed.espnow_fan_bridge.network_key, 'deadbeef12345678');
+  assert.equal(parsed.espnow_fan_bridge.fallback_channel, 6);
+  assert.equal(parsed.espnow_fan_bridge.fans.length, 1);
+
+  const extracted = extractEspNowFansFromDeviceYaml(parsed);
+  assert.equal(extracted.fans.length, 1);
+  assert.equal(extracted.networkKey, 'deadbeef12345678');
+  assert.equal(extracted.fallbackChannel, 6);
 });

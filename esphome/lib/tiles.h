@@ -817,12 +817,24 @@ protected:
     int y1 = y_start(y_end_idx) + y_rect();
     auto entities = Deref(this->decoded_entities_);
     ExecuteScripts(this->draw_funcs_, x0, x1, y0, y1, entities);
+    bool drew_transport = false;
 #ifdef USE_TUYA_BLE_FAN
     esphome::tuya_ble_fan::BleConnStatus ble_status;
     if (GetWorstBleStatus(entities, ble_status)) {
       DrawBleIndicator(x1, y1, ble_status);
+      drew_transport = true;
     }
 #endif
+#ifdef USE_ESPNOW_FAN_BRIDGE
+    if (!drew_transport) {
+      esphome::espnow_fan_bridge::EspNowDisplayMode en_mode;
+      esphome::espnow_fan_bridge::RemoteBleConnStatus en_ble;
+      if (GetWorstEspNowStatus(entities, en_mode, en_ble)) {
+        DrawEspNowIndicator(x1, y1, en_mode, en_ble);
+      }
+    }
+#endif
+    (void)drew_transport;
   }
 
 private:
@@ -1034,12 +1046,24 @@ protected:
     ExecuteScripts(
       this->draw_funcs_, x_start(this->x_), x1, y_start(this->y_), y1,
       this->presentation_name_, isOn);
+    bool drew_transport = false;
 #ifdef USE_TUYA_BLE_FAN
     esphome::tuya_ble_fan::BleConnStatus ble_status;
     if (GetWorstBleStatus(Deref(this->entities_), ble_status)) {
       DrawBleIndicator(x1, y1, ble_status);
+      drew_transport = true;
     }
 #endif
+#ifdef USE_ESPNOW_FAN_BRIDGE
+    if (!drew_transport) {
+      esphome::espnow_fan_bridge::EspNowDisplayMode en_mode;
+      esphome::espnow_fan_bridge::RemoteBleConnStatus en_ble;
+      if (GetWorstEspNowStatus(Deref(this->entities_), en_mode, en_ble)) {
+        DrawEspNowIndicator(x1, y1, en_mode, en_ble);
+      }
+    }
+#endif
+    (void)drew_transport;
   }
 
   // Vector of functions to draw the tile.
@@ -1117,12 +1141,24 @@ protected:
     int x1 = x_start(x_end_idx) + x_rect();
     int y1 = y_start(y_end_idx) + y_rect();
     ExecuteScripts(this->draw_funcs_, x_start(this->x_), x1, y_start(this->y_), y1, *current_option.second, args);
+    bool drew_transport = false;
 #ifdef USE_TUYA_BLE_FAN
     esphome::tuya_ble_fan::BleConnStatus ble_status;
     if (GetWorstBleStatus(args, ble_status)) {
       DrawBleIndicator(x1, y1, ble_status);
+      drew_transport = true;
     }
 #endif
+#ifdef USE_ESPNOW_FAN_BRIDGE
+    if (!drew_transport) {
+      esphome::espnow_fan_bridge::EspNowDisplayMode en_mode;
+      esphome::espnow_fan_bridge::RemoteBleConnStatus en_ble;
+      if (GetWorstEspNowStatus(args, en_mode, en_ble)) {
+        DrawEspNowIndicator(x1, y1, en_mode, en_ble);
+      }
+    }
+#endif
+    (void)drew_transport;
   }
 
   void onActivation() override {

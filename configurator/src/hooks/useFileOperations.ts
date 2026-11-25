@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import { dump } from 'js-yaml';
-import { Config } from '../types';
+import { Config, HeadlessHubConfig } from '../types';
 import { generateYaml } from '../utils/yamlGenerator';
 import { parseYamlToConfig, convertParsedYamlToConfig } from '../utils/yamlParser';
 import { apiFetch, isAddon } from '../utils/api';
@@ -15,9 +15,12 @@ import {
   saveStoredSnapshot,
 } from '../utils/fileContext';
 import {
+  buildEspNowCydYamlSections,
   buildTuyaBleFanYamlSections,
   configHasBleProxy,
   extractBleFansFromDeviceYaml,
+  extractEspNowFansFromDeviceYaml,
+  resolveEffectiveEspNowFans,
 } from '../utils/bleFanUtils';
 
 export type QuickSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -27,7 +30,9 @@ export function useFileOperations(
   setConfig: (config: Config) => void,
   setActivePageId: (id: string) => void,
   onSaveSuccess?: () => void,
-  onLoadSuccess?: () => void
+  onLoadSuccess?: () => void,
+  bleHubs: HeadlessHubConfig[] = [],
+  espnowNetworkKey: string = ''
 ) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileContext, setFileContextState] = useState<FileContext | null>(() => loadStoredFileContext());
@@ -144,10 +149,14 @@ export function useFileOperations(
         }
 
         const loadedBleFans = isFullDevice ? extractBleFansFromDeviceYaml(rawData) : [];
+        const loadedEspNow = isFullDevice ? extractEspNowFansFromDeviceYaml(rawData) : { fans: [] };
         const loadedConfig: Config = {
           ...data,
           project_path: targetPath,
           ...(loadedBleFans.length > 0 ? { ble_fans: loadedBleFans } : {}),
+          ...(loadedEspNow.fans.length > 0 ? { espnow_fans: loadedEspNow.fans } : {}),
+          ...(loadedEspNow.networkKey ? { espnow_network_key: loadedEspNow.networkKey } : {}),
+          ...(loadedEspNow.fallbackChannel ? { espnow_fallback_channel: loadedEspNow.fallbackChannel } : {}),
         };
         setConfig(loadedConfig);
         setFileContext(
@@ -356,8 +365,14 @@ export function useFileOperations(
       // Check if any tile in the config uses the BLE proxy display script or action
       const hasBleProxy = configHasBleProxy(config);
       const tuyaBle = buildTuyaBleFanYamlSections(config.ble_fans, hasBleProxy);
+      const effectiveEspNowFans = resolveEffectiveEspNowFans(config, bleHubs);
+      const espnowCyd = buildEspNowCydYamlSections(
+        effectiveEspNowFans,
+        config.espnow_network_key || espnowNetworkKey,
+        config.espnow_fallback_channel || 1
+      );
 
-      const blePackageSection = `${tuyaBle.packageLine}${hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : ''}`;
+      const blePackageSection = `${tuyaBle.packageLine}${espnowCyd.packageLine}${hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : ''}`;
       const substitutionsSection = dump({
         substitutions: {
           device_name: deviceName,
@@ -373,6 +388,7 @@ export function useFileOperations(
         }
       });
       const tuyaBleComponentSection = tuyaBle.componentSection ? `${tuyaBle.componentSection}\n` : '';
+      const espnowComponentSection = espnowCyd.componentSection ? `${espnowCyd.componentSection}\n` : '';
 
       const fullYaml = `${substitutionsSection}
 packages:
@@ -388,7 +404,7 @@ ${apiSection}
 ${otaSection}
 ${wifiSection}
 ${timeSection}
-${tuyaBleComponentSection}tile_ui:
+${tuyaBleComponentSection}${espnowComponentSection}tile_ui:
 ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
 `;
 

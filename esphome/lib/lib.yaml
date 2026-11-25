@@ -109,6 +109,23 @@ sensor:
     update_interval: 1s
     entity_category: "diagnostic"
 
+  - platform: template
+    name: "WiFi Channel"
+    id: wifi_channel_diag
+    icon: "mdi:wifi-settings"
+    accuracy_decimals: 0
+    entity_category: "diagnostic"
+    update_interval: 15s
+    lambda: |-
+      #ifdef USE_ESP32
+      uint8_t primary = 0;
+      wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+      if (esp_wifi_get_channel(&primary, &second) == ESP_OK && primary > 0) {
+        return static_cast<float>(primary);
+      }
+      #endif
+      return NAN;
+
   - platform: copy
     source_id: board_ldr
     id: board_ldr_p

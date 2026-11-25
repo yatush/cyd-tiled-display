@@ -12,8 +12,16 @@
 #include <type_traits>
 #include <mutex>
 
+#ifdef USE_ESP32
+#include <esp_wifi.h>
+#endif
+
 #ifdef USE_TUYA_BLE_FAN
 #include "esphome/components/tuya_ble_fan/tuya_ble_fan_registry.h"
+#endif
+
+#ifdef USE_ESPNOW_FAN_BRIDGE
+#include "esphome/components/espnow_fan_bridge/espnow_fan_registry.h"
 #endif
 
 // --- String repository ---
@@ -458,6 +466,17 @@ void InitSensor(const std::string& sensor) {
     return;
   }
 #endif
+#ifdef USE_ESPNOW_FAN_BRIDGE
+  static bool espnow_cb_registered = false;
+  if (!espnow_cb_registered) {
+    espnow_cb_registered = true;
+    esphome::espnow_fan_bridge::EspNowFanRegistry::instance().set_state_change_callback(
+        [](const std::string& key, const std::string& value) {
+          ReconcileFanAttribute(key, value);
+          id(disp).update();
+        });
+  }
+#endif
   InitSensor(sensor, entity, GetAtt(sensor));
   if (entity.find("climate.") == 0 || entity.find("fan.") == 0) {
     InitSensor(entity, entity);
@@ -469,12 +488,35 @@ void InitSensor(const std::string& sensor) {
 
 // --- Sensor Value Retrieval ---
 
+inline bool IsHaApiConnected() {
+#ifdef USE_API
+  static constexpr uint32_t HA_DISCONNECT_GRACE_MS = 30000;
+  static uint32_t last_connected_ms = 0;
+  const uint32_t now = esphome::millis();
+  if (esphome::api::global_api_server != nullptr &&
+      esphome::api::global_api_server->is_connected()) {
+    last_connected_ms = now;
+    return true;
+  }
+  return (now - last_connected_ms) < HA_DISCONNECT_GRACE_MS;
+#else
+  return false;
+#endif
+}
+
 // Retrieves the value of a text sensor.
 std::string GetTextSensorValue(const std::string& key) {
 #ifdef USE_TUYA_BLE_FAN
   std::string ble_val;
   if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().get_text_state(key, ble_val)) {
     return ble_val;
+  }
+#endif
+#ifdef USE_ESPNOW_FAN_BRIDGE
+  std::string espnow_val;
+  if (esphome::espnow_fan_bridge::EspNowFanRegistry::instance().get_text_state(
+          key, IsHaApiConnected(), espnow_val)) {
+    return espnow_val;
   }
 #endif
   if (!IsTextSensor(key) || id(text_sensors).count(key) == 0) {
@@ -504,6 +546,13 @@ bool GetBinSensorValue(const std::string& key) {
   bool ble_val = false;
   if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().get_binary_state(key, ble_val)) {
     return ble_val;
+  }
+#endif
+#ifdef USE_ESPNOW_FAN_BRIDGE
+  bool espnow_val = false;
+  if (esphome::espnow_fan_bridge::EspNowFanRegistry::instance().get_binary_state(
+          key, IsHaApiConnected(), espnow_val)) {
+    return espnow_val;
   }
 #endif
   if (!IsBinSensor(key) || id(binary_sensors).count(key) == 0) {
@@ -600,6 +649,87 @@ void DrawBleIndicator(int x_end, int y_end, esphome::tuya_ble_fan::BleConnStatus
 }
 #endif
 
+#ifdef USE_ESPNOW_FAN_BRIDGE
+bool GetWorstEspNowStatus(const std::vector<std::string>& entities,
+                          esphome::espnow_fan_bridge::EspNowDisplayMode& out_mode,
+                          esphome::espnow_fan_bridge::RemoteBleConnStatus& worst_ble) {
+  using namespace esphome::espnow_fan_bridge;
+  bool found = false;
+  bool any_offline = false;
+  auto worst = RemoteBleConnStatus::CONNECTED;
+  const bool ha_connected = IsHaApiConnected();
+  for (const auto& item : entities) {
+    RemoteBleConnStatus ble_st = RemoteBleConnStatus::DISCONNECTED;
+    auto mode = EspNowFanRegistry::instance().get_display_mode(GetSensor(item), ha_connected, ble_st);
+    if (mode == EspNowDisplayMode::NONE) continue;
+    if (mode == EspNowDisplayMode::OFFLINE_DISCONNECTED) {
+      any_offline = true;
+      found = true;
+      worst = RemoteBleConnStatus::DISCONNECTED;
+    } else if (mode == EspNowDisplayMode::ACTIVE) {
+      if (!found || static_cast<uint8_t>(ble_st) < static_cast<uint8_t>(worst)) {
+        worst = ble_st;
+      }
+      found = true;
+    }
+  }
+  if (!found) return false;
+  out_mode = any_offline ? EspNowDisplayMode::OFFLINE_DISCONNECTED : EspNowDisplayMode::ACTIVE;
+  worst_ble = worst;
+  return true;
+}
+
+void DrawEspNowIndicator(int x_end, int y_end,
+                         esphome::espnow_fan_bridge::EspNowDisplayMode mode,
+                         esphome::espnow_fan_bridge::RemoteBleConnStatus ble_status) {
+  using namespace esphome::espnow_fan_bridge;
+  if (mode == EspNowDisplayMode::NONE) return;
+
+  Color icon_color = id(light_blue);
+  const char* label = nullptr;
+
+  if (mode == EspNowDisplayMode::OFFLINE_DISCONNECTED) {
+    icon_color = id(gray);
+    label = "disc";
+  } else {
+    switch (ble_status) {
+      case RemoteBleConnStatus::CONNECTED:
+        icon_color = id(light_blue);
+        label = nullptr;
+        break;
+      case RemoteBleConnStatus::PAIRING:
+        icon_color = id(yellow);
+        label = "pair";
+        break;
+      case RemoteBleConnStatus::CONNECTING:
+        icon_color = id(yellow);
+        label = "conn";
+        break;
+      case RemoteBleConnStatus::SCANNING:
+        icon_color = id(yellow);
+        label = "scan";
+        break;
+      case RemoteBleConnStatus::DISCONNECTED:
+      default:
+        icon_color = id(gray);
+        label = "disc";
+        break;
+    }
+  }
+
+  // Tiny radio/sensors icon in the bottom-right corner of ESP-NOW-routed tiles
+  id(disp).print(x_end - 2, y_end - 2, &id(tiny), icon_color, TextAlign::BOTTOM_RIGHT, "\U0000e51e");
+
+  if (label != nullptr) {
+    int x_off = 0, y_off = 0, icon_w = 0, icon_h = 0;
+    id(disp).get_text_bounds(0, 0, "\U0000e51e", &id(tiny), TextAlign::BOTTOM_RIGHT,
+                             &x_off, &y_off, &icon_w, &icon_h);
+    id(disp).print(x_end - 4 - icon_w, y_end - 4, &id(text_small), icon_color,
+                   TextAlign::BOTTOM_RIGHT, label);
+  }
+}
+#endif
+
 // Performs a Home Assistant service call.
 void PerformHaAction(
     const std::string& entity, const std::string& action,
@@ -607,6 +737,14 @@ void PerformHaAction(
 #ifdef USE_TUYA_BLE_FAN
   if (esphome::tuya_ble_fan::TuyaBleFanRegistry::instance().handle_action(entity, action, data)) {
     ESP_LOGI("ble_action", "Action: %s, Entity: %s (routed over Tuya BLE)", action.c_str(),
+             entity.c_str());
+    return;
+  }
+#endif
+#ifdef USE_ESPNOW_FAN_BRIDGE
+  if (esphome::espnow_fan_bridge::EspNowFanRegistry::instance().handle_action(
+          entity, action, data, IsHaApiConnected())) {
+    ESP_LOGI("espnow_action", "Action: %s, Entity: %s (routed over ESP-NOW)", action.c_str(),
              entity.c_str());
     return;
   }

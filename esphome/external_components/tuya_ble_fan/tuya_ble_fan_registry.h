@@ -28,15 +28,27 @@ class TuyaBleFanRegistry {
     return inst;
   }
 
+  void register_device(TuyaBleFanDevice *dev) {
+    if (dev == nullptr) return;
+    for (auto *existing : devices_) {
+      if (existing == dev) return;
+    }
+    devices_.push_back(dev);
+  }
+
+  const std::vector<TuyaBleFanDevice *> &all_devices() const { return devices_; }
+
   void register_fan_entity(const std::string &entity_id, TuyaBleFanDevice *dev) {
     if (!entity_id.empty() && dev != nullptr) {
       fan_entities_[entity_id] = dev;
+      register_device(dev);
     }
   }
 
   void register_light_entity(const std::string &entity_id, TuyaBleFanDevice *dev) {
     if (!entity_id.empty() && dev != nullptr) {
       light_entities_[entity_id] = dev;
+      register_device(dev);
     }
   }
 
@@ -47,6 +59,19 @@ class TuyaBleFanRegistry {
   void notify_state_changed(const std::string &key, const std::string &value) {
     if (state_change_cb_) {
       state_change_cb_(key, value);
+    }
+  }
+
+  void add_device_change_listener(std::function<void(TuyaBleFanDevice *)> cb) {
+    if (cb) {
+      device_change_listeners_.push_back(std::move(cb));
+    }
+  }
+
+  void notify_device_changed(TuyaBleFanDevice *dev) {
+    if (dev == nullptr) return;
+    for (auto &cb : device_change_listeners_) {
+      if (cb) cb(dev);
     }
   }
 
@@ -72,9 +97,11 @@ class TuyaBleFanRegistry {
     return pos == std::string::npos ? "" : key.substr(pos + 1);
   }
 
+  std::vector<TuyaBleFanDevice *> devices_;
   std::map<std::string, TuyaBleFanDevice *> fan_entities_;
   std::map<std::string, TuyaBleFanDevice *> light_entities_;
   std::function<void(const std::string &, const std::string &)> state_change_cb_;
+  std::vector<std::function<void(TuyaBleFanDevice *)>> device_change_listeners_;
 };
 
 }  // namespace tuya_ble_fan

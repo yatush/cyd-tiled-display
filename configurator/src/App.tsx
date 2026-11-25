@@ -17,6 +17,7 @@ import { EmulatorDialog } from './components/EmulatorDialog';
 import { HwOverridesDialog } from './components/HwOverridesDialog';
 import { BatchUpdateDialog } from './components/BatchUpdateDialog';
 import { FindBleFansDialog } from './components/FindBleFansDialog';
+import { HeadlessHubsDialog } from './components/HeadlessHubsDialog';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -24,7 +25,7 @@ import { useTileConfig } from './hooks/useTileConfig';
 import { useValidation } from './hooks/useValidation';
 import { useFileOperations } from './hooks/useFileOperations';
 import { getTileLabel } from './utils/tileUtils';
-import { extractBleFansFromDeviceYaml, mergeBleFansIntoHaEntities } from './utils/bleFanUtils';
+import { extractBleFansFromDeviceYaml, mergeBleFansIntoHaEntities, mergeHubFansIntoHaEntities } from './utils/bleFanUtils';
 import { apiFetch } from './utils/api';
 import { ImageEntry, ScreenImageEntry } from './types';
 
@@ -163,10 +164,15 @@ function App() {
     tuyaBleCandidates,
     bleFanHosts,
     setBleFanHosts,
+    bleHubs,
+    setBleHubs,
+    espnowNetworkKey,
+    setEspnowNetworkKey,
     haStatus,
     fetchHaEntities
   } = useHaConnection();
   const [isFindBleFansOpen, setIsFindBleFansOpen] = useState(false);
+  const [isHeadlessHubsOpen, setIsHeadlessHubsOpen] = useState(false);
 
   const {
     config, setConfig,
@@ -180,8 +186,8 @@ function App() {
   } = useTileConfig();
 
   const mergedHaEntities = useMemo(
-    () => mergeBleFansIntoHaEntities(haEntities, config.ble_fans || []),
-    [haEntities, config.ble_fans]
+    () => mergeHubFansIntoHaEntities(mergeBleFansIntoHaEntities(haEntities, config.ble_fans || []), bleHubs),
+    [haEntities, config.ble_fans, bleHubs]
   );
 
   const {
@@ -216,6 +222,23 @@ function App() {
       .catch(err => console.error("Failed to check lib status", err));
   };
 
+  const refreshBleAndHubs = () => {
+    apiFetch('/tuya_ble_fans')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (d && d.hosted_by && typeof d.hosted_by === 'object') {
+          setBleFanHosts(d.hosted_by);
+        }
+        if (d && Array.isArray(d.hubs)) {
+          setBleHubs(d.hubs);
+        }
+        if (d && typeof d.network_key === 'string') {
+          setEspnowNetworkKey(d.network_key);
+        }
+      })
+      .catch(() => {});
+  };
+
   const {
     fileInputRef,
     fileContext,
@@ -237,16 +260,11 @@ function App() {
     setActivePageId,
     () => {
       checkLibStatus();
-      apiFetch('/tuya_ble_fans')
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => {
-          if (d && d.hosted_by && typeof d.hosted_by === 'object') {
-            setBleFanHosts(d.hosted_by);
-          }
-        })
-        .catch(() => {});
+      refreshBleAndHubs();
     },
-    () => setSidebarKey(prev => prev + 1)
+    () => setSidebarKey(prev => prev + 1),
+    bleHubs,
+    espnowNetworkKey
   );
 
   const handleSaveOrSaveAs = () => {
@@ -547,8 +565,10 @@ function App() {
           haEntities={mergedHaEntities}
           tuyaBleCandidates={tuyaBleCandidates}
           bleFanHosts={bleFanHosts}
+          bleHubs={bleHubs}
           currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
           onOpenFindBleFans={() => setIsFindBleFansOpen(true)}
+          onOpenHeadlessHubs={() => setIsHeadlessHubsOpen(true)}
         />
 
       {/* Left Resizer */}
@@ -641,6 +661,23 @@ function App() {
                 }
               }
             }
+          }}
+        />
+      )}
+
+      {isHeadlessHubsOpen && (
+        <HeadlessHubsDialog
+          isOpen={isHeadlessHubsOpen}
+          onClose={() => setIsHeadlessHubsOpen(false)}
+          hubs={bleHubs}
+          networkKey={espnowNetworkKey}
+          tuyaBleCandidates={tuyaBleCandidates}
+          bleFanHosts={bleFanHosts}
+          onHubsChanged={() => refreshBleAndHubs()}
+          onInstallHub={(filename) => {
+            setIsHeadlessHubsOpen(false);
+            setQuickUpdateDevice(filename);
+            setIsInstallDeviceOpen(true);
           }}
         />
       )}

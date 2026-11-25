@@ -2579,8 +2579,8 @@ def update_lib():
             elif os.path.exists(hw_source):
                 shutil.copy2(hw_source, hw_target)
             
-        # Update external components (tile_ui and tuya_ble_fan) without backup
-        for comp_name in ('tile_ui', 'tuya_ble_fan'):
+        # Update external components (tile_ui, tuya_ble_fan, and espnow_fan_bridge) without backup
+        for comp_name in ('tile_ui', 'tuya_ble_fan', 'espnow_fan_bridge'):
             source_comp = os.path.join(APP_DIR, 'esphome/external_components', comp_name)
             target_comp = os.path.join(BASE_DIR, 'external_components', comp_name)
             if os.path.exists(source_comp):
@@ -2683,14 +2683,15 @@ def check_lib_status():
         target_ui_hashes = get_directory_hashes(target_ui)
         ui_diff = get_diff(source_ui_hashes, target_ui_hashes)
 
-        source_ble_fan = os.path.join(APP_DIR, 'esphome/external_components/tuya_ble_fan')
-        target_ble_fan = os.path.join(BASE_DIR, 'external_components/tuya_ble_fan')
-        if os.path.exists(source_ble_fan):
-            ble_fan_diff = get_diff(
-                get_directory_hashes(source_ble_fan),
-                get_directory_hashes(target_ble_fan),
-            )
-            ui_diff.extend([f"tuya_ble_fan/{d}" for d in ble_fan_diff])
+        for comp_name in ('tuya_ble_fan', 'espnow_fan_bridge'):
+            source_comp = os.path.join(APP_DIR, 'esphome/external_components', comp_name)
+            target_comp = os.path.join(BASE_DIR, 'external_components', comp_name)
+            if os.path.exists(source_comp):
+                comp_diff = get_diff(
+                    get_directory_hashes(source_comp),
+                    get_directory_hashes(target_comp),
+                )
+                ui_diff.extend([f"{comp_name}/{d}" for d in comp_diff])
 
         # For device yamls: flag if missing or modified vs the shipped version,
         # but never complain about extra yamls the user added themselves.
@@ -2943,23 +2944,64 @@ def save_ble_fans_to_vault(fans, esphome_dir=None):
             changed = True
 
     if changed:
-        path = _ble_fan_vault_path(root_dir)
-        tmp_path = f'{path}.tmp'
-        try:
-            with open(tmp_path, 'w', encoding='utf-8') as f:
-                json.dump({'version': 1, 'fans': vault}, f, indent=2, sort_keys=True)
-            try:
-                os.chmod(tmp_path, 0o600)
-            except OSError:
-                pass
-            os.replace(tmp_path, path)
-        except Exception:
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            except OSError:
-                pass
+        raw = _load_ble_vault_raw(root_dir)
+        raw['version'] = 1
+        raw['fans'] = vault
+        _write_ble_vault_raw(raw, root_dir)
     return vault
+
+
+def _load_ble_vault_raw(esphome_dir=None):
+    path = _ble_fan_vault_path(esphome_dir)
+    if not os.path.isfile(path):
+        return {'version': 1, 'fans': {}}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            if not isinstance(data.get('fans'), dict):
+                data['fans'] = {}
+            return data
+    except Exception:
+        pass
+    return {'version': 1, 'fans': {}}
+
+
+def _write_ble_vault_raw(data, esphome_dir=None):
+    root_dir = esphome_dir or BASE_DIR
+    if not root_dir or not os.path.isdir(root_dir):
+        return
+    path = _ble_fan_vault_path(root_dir)
+    tmp_path = f'{path}.tmp'
+    try:
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+        try:
+            os.chmod(tmp_path, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def get_or_create_espnow_network_key(esphome_dir=None):
+    """Return persistent 16-char hex ESP-NOW network key from .cyd_ble_fans.json (creating one if absent)."""
+    import secrets as py_secrets
+    root_dir = esphome_dir or BASE_DIR
+    raw = _load_ble_vault_raw(root_dir)
+    key = str(raw.get('espnow_network_key') or '').strip()
+    if key:
+        return key
+    key = py_secrets.token_hex(8)
+    raw['espnow_network_key'] = key
+    if root_dir and os.path.isdir(root_dir):
+        _write_ble_vault_raw(raw, root_dir)
+    return key
 
 
 def collect_yaml_ble_fans(esphome_dir=None):
@@ -3027,11 +3069,425 @@ def get_tuya_ble_fans():
     try:
         fans = get_all_known_tuya_ble_fans()
         hosted_by = find_ble_fan_hosts()
+        hubs = list_ble_hubs()
+        network_key = get_or_create_espnow_network_key()
         for fan in fans:
             fan['hosted_by'] = hosted_by.get(fan['device_id'], [])
-        return jsonify({'fans': fans, 'hosted_by': hosted_by})
+        return jsonify({
+            'fans': fans,
+            'hosted_by': hosted_by,
+            'hubs': hubs,
+            'network_key': network_key,
+        })
     except Exception as e:
-        return jsonify({'fans': [], 'hosted_by': {}, 'error': str(e)}), 500
+        return jsonify({'fans': [], 'hosted_by': {}, 'hubs': [], 'error': str(e)}), 500
+
+
+def _slugify_hub_name(raw_name):
+    slug = re.sub(r'[^a-z0-9_-]+', '_', str(raw_name or '').strip().lower())
+    slug = re.sub(r'_+', '_', slug).strip('_-')
+    return slug
+
+
+def is_headless_hub_yaml(parsed, raw_text=''):
+    """Return True if a parsed ESPHome YAML represents a headless BLE hub."""
+    if not isinstance(parsed, dict):
+        return False
+    packages = parsed.get('packages')
+    if isinstance(packages, dict):
+        for val in packages.values():
+            if isinstance(val, str) and 'headless_hub_base.yaml' in val:
+                return True
+    bridge = parsed.get('espnow_fan_bridge')
+    if isinstance(bridge, dict) and str(bridge.get('role') or '').lower() == 'hub':
+        return True
+    if raw_text and 'headless_hub_base.yaml' in raw_text:
+        return True
+    return False
+
+
+def list_ble_hubs(esphome_dir=None):
+    """Discover all headless ESP32 BLE hub YAMLs in esphome_dir."""
+    root_dir = esphome_dir or BASE_DIR
+    hubs = []
+    if not root_dir or not os.path.isdir(root_dir):
+        return hubs
+    try:
+        entries = sorted(os.listdir(root_dir))
+    except OSError:
+        return hubs
+
+    for fname in entries:
+        if not fname.endswith(('.yaml', '.yml')) or fname == 'secrets.yaml':
+            continue
+        fpath = os.path.join(root_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                raw_text = f.read()
+        except OSError:
+            continue
+        if 'headless_hub_base.yaml' not in raw_text and 'espnow_fan_bridge:' not in raw_text:
+            continue
+        try:
+            parsed = yaml.load(raw_text, Loader=generate_tiles_api.create_safe_yaml_loader())
+        except Exception:
+            continue
+        if not is_headless_hub_yaml(parsed, raw_text):
+            continue
+
+        esphome_cfg = parsed.get('esphome') if isinstance(parsed.get('esphome'), dict) else {}
+        esp32_cfg = parsed.get('esp32') if isinstance(parsed.get('esp32'), dict) else {}
+        bridge_cfg = parsed.get('espnow_fan_bridge') if isinstance(parsed.get('espnow_fan_bridge'), dict) else {}
+        tuya_cfg = parsed.get('tuya_ble_fan') if isinstance(parsed.get('tuya_ble_fan'), dict) else {}
+        raw_fans = tuya_cfg.get('fans') if isinstance(tuya_cfg.get('fans'), list) else []
+
+        fans = []
+        for fan in raw_fans:
+            if not isinstance(fan, dict):
+                continue
+            fans.append({
+                'name': str(fan.get('name') or ''),
+                'device_id': str(fan.get('device_id') or ''),
+                'local_key': str(fan.get('local_key') or ''),
+                'product_id': str(fan.get('product_id') or ''),
+                'mac_address': str(fan.get('mac_address') or ''),
+                'uuid': str(fan.get('uuid') or ''),
+                'fan_entity_id': str(fan.get('fan_entity_id') or ''),
+                'light_entity_id': str(fan.get('light_entity_id') or ''),
+                'expose_to_ha': fan.get('expose_to_ha') is not False,
+            })
+
+        hubs.append({
+            'filename': fname,
+            'name': str(esphome_cfg.get('name') or os.path.splitext(fname)[0]),
+            'friendly_name': str(esphome_cfg.get('friendly_name') or esphome_cfg.get('name') or os.path.splitext(fname)[0]),
+            'board': str(esp32_cfg.get('board') or 'esp32dev'),
+            'fallback_channel': int(bridge_cfg.get('fallback_channel') or 1),
+            'network_key': str(bridge_cfg.get('network_key') or ''),
+            'fans': fans,
+        })
+    return hubs
+
+
+def _find_fan_ownership_conflicts(target_filename, fans, esphome_dir=None):
+    """Return list of {device_id, fan_name, fan_entity_id, host_file} for fans hosted in other YAMLs."""
+    root_dir = esphome_dir or BASE_DIR
+    target_norm = os.path.basename(str(target_filename or '')).lower()
+    conflicts = []
+    if not root_dir or not os.path.isdir(root_dir) or not fans:
+        return conflicts
+
+    wanted_ids = {str(f.get('device_id') or '').strip() for f in fans if f.get('device_id')}
+    wanted_macs = {str(f.get('mac_address') or '').strip().upper() for f in fans if f.get('mac_address')}
+    wanted_uuids = {str(f.get('uuid') or '').strip() for f in fans if f.get('uuid')}
+    wanted_entities = {str(f.get('fan_entity_id') or '').strip().lower() for f in fans if f.get('fan_entity_id')}
+
+    for fname in sorted(os.listdir(root_dir)):
+        if not fname.endswith(('.yaml', '.yml')) or fname == 'secrets.yaml':
+            continue
+        if fname.lower() == target_norm:
+            continue
+        fpath = os.path.join(root_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                raw_text = f.read()
+        except OSError:
+            continue
+        if not re.search(r'^tuya_ble_fan:', raw_text, flags=re.MULTILINE):
+            continue
+        try:
+            parsed = yaml.load(raw_text, Loader=generate_tiles_api.create_safe_yaml_loader())
+        except Exception:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        existing_fans = (parsed.get('tuya_ble_fan') or {}).get('fans')
+        if not isinstance(existing_fans, list):
+            continue
+        for ef in existing_fans:
+            if not isinstance(ef, dict):
+                continue
+            eid = str(ef.get('device_id') or '').strip()
+            emac = str(ef.get('mac_address') or '').strip().upper()
+            euuid = str(ef.get('uuid') or '').strip()
+            eent = str(ef.get('fan_entity_id') or '').strip().lower()
+            if (
+                (eid and eid in wanted_ids)
+                or (emac and emac in wanted_macs)
+                or (euuid and euuid in wanted_uuids)
+                or (eent and eent in wanted_entities)
+            ):
+                conflicts.append({
+                    'device_id': eid,
+                    'fan_name': str(ef.get('name') or eid or eent),
+                    'fan_entity_id': str(ef.get('fan_entity_id') or ''),
+                    'host_file': fname,
+                })
+    return conflicts
+
+
+def _remove_fans_from_host_yaml(filepath, fans_to_remove):
+    """Remove matching fans from an existing Hub or CYD YAML file atomically."""
+    if not os.path.isfile(filepath) or not fans_to_remove:
+        return False
+    with open(filepath, 'r', encoding='utf-8') as f:
+        raw_text = f.read()
+    try:
+        parsed = yaml.load(raw_text, Loader=generate_tiles_api.create_safe_yaml_loader())
+    except Exception:
+        return False
+    if not isinstance(parsed, dict) or not isinstance(parsed.get('tuya_ble_fan'), dict):
+        return False
+
+    rem_ids = {str(f.get('device_id') or '').strip() for f in fans_to_remove if f.get('device_id')}
+    rem_macs = {str(f.get('mac_address') or '').strip().upper() for f in fans_to_remove if f.get('mac_address')}
+    rem_uuids = {str(f.get('uuid') or '').strip() for f in fans_to_remove if f.get('uuid')}
+    rem_ents = {str(f.get('fan_entity_id') or '').strip().lower() for f in fans_to_remove if f.get('fan_entity_id')}
+
+    old_fans = parsed['tuya_ble_fan'].get('fans') or []
+    kept_fans = []
+    for ef in old_fans:
+        if not isinstance(ef, dict):
+            continue
+        eid = str(ef.get('device_id') or '').strip()
+        emac = str(ef.get('mac_address') or '').strip().upper()
+        euuid = str(ef.get('uuid') or '').strip()
+        eent = str(ef.get('fan_entity_id') or '').strip().lower()
+        matched = (
+            (eid and eid in rem_ids)
+            or (emac and emac in rem_macs)
+            or (euuid and euuid in rem_uuids)
+            or (eent and eent in rem_ents)
+        )
+        if not matched:
+            kept_fans.append(ef)
+
+    if len(kept_fans) == len(old_fans):
+        return False
+
+    updated_text = raw_text
+    if kept_fans:
+        new_ble = dict(parsed['tuya_ble_fan'])
+        new_ble['fans'] = kept_fans
+        rendered = yaml.safe_dump({'tuya_ble_fan': new_ble}, sort_keys=False, default_flow_style=False).rstrip()
+        updated_text = _replace_top_level_yaml_block(updated_text, 'tuya_ble_fan', rendered)
+    else:
+        # Remove top-level tuya_ble_fan: block completely
+        updated_text = _replace_top_level_yaml_block(updated_text, 'tuya_ble_fan', '').strip() + '\n'
+        # For CYD files, also drop lib/tuya_ble_fan.yaml package include if present
+        if not is_headless_hub_yaml(parsed, raw_text):
+            updated_text = re.sub(
+                r'^\s*tuya_ble_fan:\s*!include\s+lib/tuya_ble_fan\.yaml\s*\n?',
+                '',
+                updated_text,
+                flags=re.MULTILINE,
+            )
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(updated_text)
+    return True
+
+
+def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, network_key, fans):
+    fan_count = len(fans)
+    max_conns = min(3, max(1, fan_count))
+    idle_disconnect_s = 0 if (fan_count > 0 and fan_count <= max_conns) else 30
+
+    lines = [
+        f'# Headless ESP32 BLE Fan Hub — managed by CYD Configurator',
+        f'esphome:',
+        f'  name: {name}',
+        f'  friendly_name: "{friendly_name}"',
+        f'',
+        f'esp32:',
+        f'  board: {board}',
+        f'',
+        f'substitutions:',
+        f'  ble_max_connections: "{max_conns}"',
+        f'',
+        f'packages:',
+        f'  headless_hub_base: !include lib/headless_hub_base.yaml',
+        f'',
+    ]
+
+    bridge_block = {
+        'espnow_fan_bridge': {
+            'role': 'hub',
+            'network_key': network_key,
+            'fallback_channel': int(fallback_channel),
+            'channel_sensor': {
+                'name': 'WiFi / ESP-NOW Channel',
+            },
+        }
+    }
+    lines.append(yaml.safe_dump(bridge_block, sort_keys=False, default_flow_style=False).rstrip())
+    lines.append('')
+
+    if fans:
+        serialized_fans = []
+        for f in fans:
+            entry = {
+                'name': str(f.get('name') or f.get('fan_entity_id') or f.get('device_id')).strip(),
+                'device_id': str(f.get('device_id') or '').strip(),
+                'local_key': str(f.get('local_key') or '').strip(),
+            }
+            if str(f.get('product_id') or '').strip():
+                entry['product_id'] = str(f['product_id']).strip()
+            if str(f.get('mac_address') or '').strip():
+                entry['mac_address'] = str(f['mac_address']).strip()
+            if str(f.get('uuid') or '').strip():
+                entry['uuid'] = str(f['uuid']).strip()
+            if str(f.get('fan_entity_id') or '').strip():
+                entry['fan_entity_id'] = str(f['fan_entity_id']).strip()
+            if str(f.get('light_entity_id') or '').strip():
+                entry['light_entity_id'] = str(f['light_entity_id']).strip()
+            entry['expose_to_ha'] = f.get('expose_to_ha') is not False
+            serialized_fans.append(entry)
+
+        tuya_block = {
+            'tuya_ble_fan': {
+                'max_connections': max_conns,
+                'idle_disconnect_s': idle_disconnect_s,
+                'fans': serialized_fans,
+            }
+        }
+        lines.append(yaml.safe_dump(tuya_block, sort_keys=False, default_flow_style=False).rstrip())
+        lines.append('')
+
+    return '\n'.join(lines)
+
+
+def save_ble_hub_yaml(payload, esphome_dir=None):
+    """Create or update a headless BLE hub YAML with strict single-host fan enforcement."""
+    root_dir = esphome_dir or BASE_DIR
+    if not root_dir or not os.path.isdir(root_dir):
+        return None, {'error': 'ESPHome directory not found'}, 500
+
+    raw_name = str(payload.get('name') or '').strip()
+    slug = _slugify_hub_name(raw_name)
+    if not slug:
+        return None, {'error': 'Hub name is required (letters, numbers, underscores, or hyphens)'}, 400
+
+    filename = str(payload.get('filename') or f'{slug}.yaml').strip()
+    if not filename.endswith(('.yaml', '.yml')):
+        filename += '.yaml'
+    filename = os.path.basename(filename)
+    if filename in ('secrets.yaml', 'lib.yaml'):
+        return None, {'error': f'Invalid hub filename: {filename}'}, 400
+
+    friendly_name = str(payload.get('friendly_name') or raw_name or slug).strip()
+    board = str(payload.get('board') or 'esp32dev').strip() or 'esp32dev'
+    try:
+        fallback_channel = int(payload.get('fallback_channel') or 1)
+    except (TypeError, ValueError):
+        fallback_channel = 1
+    fallback_channel = max(1, min(13, fallback_channel))
+
+    fans = payload.get('fans') if isinstance(payload.get('fans'), list) else []
+    valid_fans = [
+        f for f in fans
+        if isinstance(f, dict) and str(f.get('device_id') or '').strip() and str(f.get('local_key') or '').strip()
+    ]
+
+    conflicts = _find_fan_ownership_conflicts(filename, valid_fans, root_dir)
+    if conflicts and not payload.get('reassign'):
+        return None, {
+            'error': 'One or more fans are already hosted on another device',
+            'conflicts': conflicts,
+        }, 409
+
+    migrated_from = []
+    if conflicts and payload.get('reassign'):
+        by_host = {}
+        for c in conflicts:
+            by_host.setdefault(c['host_file'], []).append(c)
+        for host_file, host_conflicts in by_host.items():
+            host_path = os.path.join(root_dir, host_file)
+            if _remove_fans_from_host_yaml(host_path, host_conflicts):
+                migrated_from.append(host_file)
+
+    network_key = str(payload.get('network_key') or '').strip() or get_or_create_espnow_network_key(root_dir)
+    yaml_content = _render_headless_hub_yaml(
+        name=slug,
+        friendly_name=friendly_name,
+        board=board,
+        fallback_channel=fallback_channel,
+        network_key=network_key,
+        fans=valid_fans,
+    )
+
+    target_path = os.path.join(root_dir, filename)
+    with open(target_path, 'w', encoding='utf-8') as f:
+        f.write(yaml_content)
+
+    if valid_fans:
+        save_ble_fans_to_vault(valid_fans, root_dir)
+
+    return {
+        'filename': filename,
+        'name': slug,
+        'friendly_name': friendly_name,
+        'board': board,
+        'fallback_channel': fallback_channel,
+        'network_key': network_key,
+        'fans': valid_fans,
+        'migrated_from': migrated_from,
+    }, None, 200
+
+
+@app.route('/api/ble_hubs', methods=['GET'])
+def api_list_ble_hubs():
+    try:
+        hubs = list_ble_hubs()
+        network_key = get_or_create_espnow_network_key()
+        hosted_by = find_ble_fan_hosts()
+        return jsonify({'hubs': hubs, 'network_key': network_key, 'hosted_by': hosted_by})
+    except Exception as e:
+        return jsonify({'hubs': [], 'error': str(e)}), 500
+
+
+@app.route('/api/ble_hubs', methods=['POST'])
+def api_save_ble_hub():
+    try:
+        payload = request.get_json(silent=True) or {}
+        result, err, status = save_ble_hub_yaml(payload)
+        if err:
+            return jsonify(err), status
+        return jsonify({
+            'success': True,
+            'hub': result,
+            'hubs': list_ble_hubs(),
+            'hosted_by': find_ble_fan_hosts(),
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ble_hubs/<path:filename>', methods=['DELETE'])
+def api_delete_ble_hub(filename):
+    try:
+        safe_name = os.path.basename(filename)
+        target_path = os.path.join(BASE_DIR, safe_name)
+        if not os.path.isfile(target_path):
+            return jsonify({'error': 'Hub file not found'}), 404
+        with open(target_path, 'r', encoding='utf-8') as f:
+            raw_text = f.read()
+        parsed = yaml.load(raw_text, Loader=generate_tiles_api.create_safe_yaml_loader())
+        if not is_headless_hub_yaml(parsed, raw_text):
+            return jsonify({'error': f'{safe_name} is not a headless BLE hub file'}), 400
+        os.remove(target_path)
+        return jsonify({
+            'success': True,
+            'deleted': safe_name,
+            'hubs': list_ble_hubs(),
+            'hosted_by': find_ble_fan_hosts(),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 def generate_tuya_ble_credentials():

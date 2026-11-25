@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth, AlertTriangle } from 'lucide-react';
-import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity, BleFanConfig, TuyaBleCandidate } from '../types';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth, AlertTriangle, Radio } from 'lucide-react';
+import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity, BleFanConfig, EspNowFanLink, HeadlessHubConfig, TuyaBleCandidate } from '../types';
 import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel, BleFansManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange, updateDynamicEntityFixedValues } from '../utils/tileUtils';
-import { configHasBleProxy } from '../utils/bleFanUtils';
+import { configHasBleProxy, deriveDefaultBleEntityIds } from '../utils/bleFanUtils';
 
 interface LeftSidebarProps {
   width: number;
@@ -42,8 +42,10 @@ interface LeftSidebarProps {
   haEntities?: HaEntity[];
   tuyaBleCandidates?: TuyaBleCandidate[];
   bleFanHosts?: Record<string, string[]>;
+  bleHubs?: HeadlessHubConfig[];
   currentDevicePath?: string;
   onOpenFindBleFans?: () => void;
+  onOpenHeadlessHubs?: () => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -83,8 +85,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   haEntities,
   tuyaBleCandidates,
   bleFanHosts,
+  bleHubs = [],
   currentDevicePath,
   onOpenFindBleFans,
+  onOpenHeadlessHubs,
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
   const [isBleFansOpen, setIsBleFansOpen] = useState(false);
@@ -93,6 +97,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     const updated: Config = { ...prev };
     if (next.length > 0) updated.ble_fans = next;
     else delete updated.ble_fans;
+    return updated;
+  });
+
+  const handleToggleEspNowFan = (link: EspNowFanLink) => setConfig(prev => {
+    const existing = prev.espnow_fans || [];
+    const key = link.fan_entity_id || link.light_entity_id || link.name;
+    const found = existing.some(f => (f.fan_entity_id || f.light_entity_id || f.name) === key);
+    const next = found
+      ? existing.filter(f => (f.fan_entity_id || f.light_entity_id || f.name) !== key)
+      : [...existing, link];
+    const updated: Config = { ...prev };
+    if (next.length > 0) updated.espnow_fans = next;
+    else delete updated.espnow_fans;
     return updated;
   });
 
@@ -237,8 +254,75 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </div>
           
           {isBleFansOpen && (
-              <div className="p-3 pt-0 border-t border-slate-100 mt-2">
-                  <div className="pt-2">
+              <div className="p-3 pt-0 border-t border-slate-100 mt-2 space-y-3">
+                  {onOpenHeadlessHubs && (
+                    <div className="pt-2">
+                      <button
+                        onClick={onOpenHeadlessHubs}
+                        className="w-full flex items-center justify-between px-2.5 py-2 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-100 transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Radio size={13} /> Headless BLE Hubs (ESP-NOW)
+                        </span>
+                        <span className="text-[10px] font-bold bg-indigo-200/80 text-indigo-800 px-1.5 py-0.5 rounded-full">
+                          {bleHubs.length}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  {(bleHubs.some(h => (h.fans || []).length > 0) || (tuyaBleCandidates || []).length > 0) && (
+                    <div className="bg-white border border-slate-200 rounded-md p-2 space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase text-indigo-600 flex items-center gap-1">
+                        <Radio size={11} /> ESP-NOW Remote Fans (No BLE on CYD)
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        Hub-hosted fans used by tiles auto-link on save. You can also pre-link any fan below:
+                      </p>
+                      <div className="space-y-1 max-h-36 overflow-y-auto">
+                        {(tuyaBleCandidates || []).map(c => {
+                          const defaults = deriveDefaultBleEntityIds(c.name || c.device_id);
+                          const fanId = c.fan_entity_id || defaults.fan_entity_id;
+                          const lightId = c.light_entity_id || defaults.light_entity_id;
+                          const linked = (config.espnow_fans || []).some(
+                            f => f.fan_entity_id === fanId
+                          );
+                          const hubOwner = bleHubs.find(h =>
+                            (h.fans || []).some(hf => hf.device_id === c.device_id)
+                          );
+                          return (
+                            <label
+                              key={`espnow-${c.device_id}`}
+                              className="flex items-center justify-between text-[11px] px-1.5 py-1 rounded hover:bg-slate-50 cursor-pointer"
+                            >
+                              <span className="flex items-center gap-1.5 truncate">
+                                <input
+                                  type="checkbox"
+                                  checked={linked}
+                                  onChange={() =>
+                                    handleToggleEspNowFan({
+                                      name: c.name,
+                                      fan_entity_id: fanId,
+                                      light_entity_id: lightId || undefined,
+                                    })
+                                  }
+                                  className="rounded text-indigo-600"
+                                />
+                                <span className="truncate font-medium text-slate-700">{c.name}</span>
+                              </span>
+                              {hubOwner && (
+                                <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full shrink-0 ml-1">
+                                  {hubOwner.name}
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-1">
                       <BleFansManagerPanel
                           bleFans={config.ble_fans || []}
                           tuyaBleCandidates={tuyaBleCandidates}
