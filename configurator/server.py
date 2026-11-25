@@ -1012,6 +1012,11 @@ def _parse_device_yaml(filepath):
             if isinstance(pkg_val, str) and ('lib/lib.yaml' in pkg_val or 'lib/lib_common.yaml' in pkg_val):
                 is_cyd = True
 
+    # Check for headless BLE hub (includes lib/headless_hub_base.yaml which configures OTA)
+    is_headless_hub = is_headless_hub_yaml(data, content)
+    if is_headless_hub:
+        is_device_config = True
+
     # Check for tile_ui section (CYD-specific marker) — detected during line scan above
     if has_tile_ui:
         is_device_config = True
@@ -1019,7 +1024,7 @@ def _parse_device_yaml(filepath):
 
     # Check for OTA section (required for wireless OTA updates)
     ota_section = data.get('ota')
-    has_ota = has_ota_line or (ota_section is not None and ota_section is not False)
+    has_ota = has_ota_line or is_headless_hub or (ota_section is not None and ota_section is not False)
 
     # Get IP address from wifi section
     wifi = data.get('wifi', {})
@@ -1036,14 +1041,15 @@ def _parse_device_yaml(filepath):
         'ip_address': ip_address,
         'address': ip_address or f"{device_name}.local",
         'is_cyd': is_cyd,
+        'is_headless_hub': is_headless_hub,
         'has_ota': has_ota,
     }
 
 
 def _classify_batch_device(meta, online):
     """Classify a discovered ESPHome device for batch OTA update."""
-    if not meta.get('is_cyd'):
-        return ('skipped', 'Not a CYD configuration — no update needed')
+    if not (meta.get('is_cyd') or meta.get('is_headless_hub')):
+        return ('skipped', 'Not a CYD or BLE Hub configuration — no update needed')
     if not meta.get('has_ota'):
         return ('skipped', 'OTA update not configured')
     if not online:
@@ -1513,10 +1519,10 @@ def _run_batch_update_worker(state):
             state['phase'] = 'pinging'
             state['message'] = f'Checking online status for {len(discovered)} device(s)...'
 
-        # 2. Classify non-CYD / non-OTA immediately, ping CYD+OTA devices in parallel
+        # 2. Classify non-CYD/Hub / non-OTA immediately, ping managed+OTA devices in parallel
         to_ping = []
         for idx, d in enumerate(state['devices']):
-            if not d['is_cyd'] or not d['has_ota']:
+            if not (d.get('is_cyd') or d.get('is_headless_hub')) or not d.get('has_ota'):
                 st, reason = _classify_batch_device(d, online=False)
                 with batch_update_lock:
                     d['status'] = st
@@ -3084,8 +3090,8 @@ def get_tuya_ble_fans():
 
 
 def _slugify_hub_name(raw_name):
-    slug = re.sub(r'[^a-z0-9_-]+', '_', str(raw_name or '').strip().lower())
-    slug = re.sub(r'_+', '_', slug).strip('_-')
+    slug = re.sub(r'[^a-z0-9-]+', '-', str(raw_name or '').strip().lower())
+    slug = re.sub(r'-+', '-', slug).strip('-')
     return slug
 
 
@@ -3606,7 +3612,7 @@ def _list_cyd_devices_with_api(esphome_dir=None):
         if not os.path.isfile(fpath):
             continue
         meta = _parse_device_yaml(fpath)
-        if not meta or not meta.get('is_cyd'):
+        if not meta or not (meta.get('is_cyd') or meta.get('is_headless_hub')):
             continue
         api_info = _extract_device_api_info(fpath, secrets_map)
         meta['filename'] = fname
@@ -4309,8 +4315,8 @@ def add_tuya_ble_fan_to_device():
             return jsonify({'ok': False, 'error': f'Device file {safe_name} not found'}), 404
 
         meta = _parse_device_yaml(filepath)
-        if not meta or not meta.get('is_cyd'):
-            return jsonify({'ok': False, 'error': f'{safe_name} is not a CYD device config'}), 400
+        if not meta or not (meta.get('is_cyd') or meta.get('is_headless_hub')):
+            return jsonify({'ok': False, 'error': f'{safe_name} is not a CYD or BLE Hub device config'}), 400
 
         fans = add_ble_fan_to_device_yaml(filepath, fan)
         hosted_by = find_ble_fan_hosts()

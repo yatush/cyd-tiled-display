@@ -489,14 +489,23 @@ def test_espnow_network_key_and_headless_hub_crud(tmp_path):
         esphome_dir=str(tmp_path),
     )
     assert status == 200 and err is None
-    assert res["filename"] == "bedroom_ble_hub.yaml"
+    assert res["filename"] == "bedroom-ble-hub.yaml"
+    assert res["name"] == "bedroom-ble-hub"
     assert res["board"] == "seeed_xiao_esp32c3"
     assert res["fallback_channel"] == 6
     assert res["network_key"] == key1
 
+    # Verify _parse_device_yaml recognizes headless hubs as OTA-capable managed devices
+    meta = server._parse_device_yaml(str(tmp_path / "bedroom-ble-hub.yaml"))
+    assert meta is not None
+    assert meta["is_headless_hub"] is True
+    assert meta["has_ota"] is True
+    assert meta["address"] == "bedroom-ble-hub.local"
+    assert server._classify_batch_device(meta, online=True)[0] == "pending"
+
     hubs = server.list_ble_hubs(str(tmp_path))
     assert len(hubs) == 1
-    assert hubs[0]["filename"] == "bedroom_ble_hub.yaml"
+    assert hubs[0]["filename"] == "bedroom-ble-hub.yaml"
     assert hubs[0]["board"] == "seeed_xiao_esp32c3"
     assert hubs[0]["fans"][0]["fan_entity_id"] == "fan.bedroom_fan"
 
@@ -511,9 +520,9 @@ def test_espnow_network_key_and_headless_hub_crud(tmp_path):
     )
     assert status2 == 409 and res2 is None
     assert len(err2["conflicts"]) == 1
-    assert err2["conflicts"][0]["host_file"] == "bedroom_ble_hub.yaml"
+    assert err2["conflicts"][0]["host_file"] == "bedroom-ble-hub.yaml"
 
-    # Reassigning moves fan_a atomically from bedroom_ble_hub.yaml to hallway_hub.yaml
+    # Reassigning moves fan_a atomically from bedroom-ble-hub.yaml to hallway-hub.yaml
     res3, err3, status3 = server.save_ble_hub_yaml(
         {
             "name": "Hallway Hub",
@@ -524,11 +533,11 @@ def test_espnow_network_key_and_headless_hub_crud(tmp_path):
         esphome_dir=str(tmp_path),
     )
     assert status3 == 200 and err3 is None
-    assert res3["migrated_from"] == ["bedroom_ble_hub.yaml"]
+    assert res3["migrated_from"] == ["bedroom-ble-hub.yaml"]
 
     hubs_after = {h["filename"]: h for h in server.list_ble_hubs(str(tmp_path))}
-    assert len(hubs_after["bedroom_ble_hub.yaml"]["fans"]) == 0
-    assert len(hubs_after["hallway_hub.yaml"]["fans"]) == 1
+    assert len(hubs_after["bedroom-ble-hub.yaml"]["fans"]) == 0
+    assert len(hubs_after["hallway-hub.yaml"]["fans"]) == 1
 
 
 def test_reassign_fan_from_cyd_strips_local_ble_package(tmp_path):

@@ -14,9 +14,8 @@ esp32:
   framework:
     type: esp-idf
     sdkconfig_options:
-      # Tuya BLE is GATT-client only; limit connection slots to minimize SRAM
+      # Tuya BLE is GATT-client only; disable GATT server to minimize SRAM
       CONFIG_BT_GATTS_ENABLE: n
-      CONFIG_BTDM_CTRL_BLE_MAX_CONN: "${ble_max_connections}"
       CONFIG_BT_ACL_CONNECTIONS: "${ble_max_connections}"
 
 logger:

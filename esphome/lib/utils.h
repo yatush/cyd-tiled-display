@@ -493,13 +493,18 @@ inline bool IsHaApiConnected() {
 #ifdef USE_API
   static constexpr uint32_t HA_DISCONNECT_GRACE_MS = 30000;
   static uint32_t last_connected_ms = 0;
+  static bool ha_timed_out = false;
   const uint32_t now = esphome::millis();
   if (esphome::api::global_api_server != nullptr &&
       esphome::api::global_api_server->is_connected()) {
     last_connected_ms = now;
+    ha_timed_out = false;
     return true;
   }
-  return (now - last_connected_ms) < HA_DISCONNECT_GRACE_MS;
+  if (!ha_timed_out && (now - last_connected_ms) >= HA_DISCONNECT_GRACE_MS) {
+    ha_timed_out = true;
+  }
+  return !ha_timed_out;
 #else
   return false;
 #endif

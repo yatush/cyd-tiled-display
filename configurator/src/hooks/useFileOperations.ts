@@ -444,7 +444,7 @@ ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
       if (!silent) alert('Failed to save device configuration. Check console for details.');
       return false;
     }
-  }, [config, onSaveSuccess, setFileContext, setSavedSnapshot, markSavedStatus]);
+  }, [config, onSaveSuccess, setFileContext, setSavedSnapshot, markSavedStatus, bleHubs, espnowNetworkKey]);
 
   const handleLoadDeviceConfig = useCallback(async (path: string) => {
     try {
@@ -453,6 +453,7 @@ ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
         const rawData = await res.json();
         const deviceMeta = extractDeviceMetaFromYamlData(rawData);
         const extractedBleFans = extractBleFansFromDeviceYaml(rawData);
+        const extractedEspNow = extractEspNowFansFromDeviceYaml(rawData);
         let data = rawData;
 
         // Use the tile_ui section if this is a full device configuration
@@ -479,6 +480,15 @@ ${screensYaml.trimEnd().split('\n').map(line => '  ' + line).join('\n')}
 
         if (extractedBleFans.length > 0) {
           data = { ...data, ble_fans: extractedBleFans };
+        }
+        if (extractedEspNow.fans.length > 0) {
+          data = { ...data, espnow_fans: extractedEspNow.fans };
+        }
+        if (extractedEspNow.networkKey) {
+          data = { ...data, espnow_network_key: extractedEspNow.networkKey };
+        }
+        if (extractedEspNow.fallbackChannel) {
+          data = { ...data, espnow_fallback_channel: extractedEspNow.fallbackChannel };
         }
 
         setConfig(data);

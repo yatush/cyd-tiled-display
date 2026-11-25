@@ -578,7 +578,6 @@ void EspNowFanBridge::hub_handle_cmd(const CmdPayload &cmd, uint16_t seq) {
 
   ack.status = AckStatus::OK;
   broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
-  hub_broadcast_device_state(dev);
 }
 
 void EspNowFanBridge::hub_broadcast_device_state(tuya_ble_fan::TuyaBleFanDevice *dev) {
