@@ -86,6 +86,14 @@ class EspNowFanRegistry {
     }
   }
 
+  void set_redraw_callback(std::function<void()> cb) { redraw_cb_ = std::move(cb); }
+
+  void notify_redraw() {
+    if (redraw_cb_) {
+      redraw_cb_();
+    }
+  }
+
   bool handles_entity(const std::string &entity_or_key) const {
     const std::string base = base_entity(entity_or_key);
     return fan_entities_.count(base) > 0 || light_entities_.count(base) > 0;
@@ -205,6 +213,7 @@ class EspNowFanRegistry {
   std::map<std::string, RemoteFanState *> fan_entities_;
   std::map<std::string, RemoteFanState *> light_entities_;
   std::function<void(const std::string &, const std::string &)> state_change_cb_;
+  std::function<void()> redraw_cb_;
 };
 
 }  // namespace espnow_fan_bridge

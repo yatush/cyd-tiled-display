@@ -473,8 +473,9 @@ void InitSensor(const std::string& sensor) {
     esphome::espnow_fan_bridge::EspNowFanRegistry::instance().set_state_change_callback(
         [](const std::string& key, const std::string& value) {
           ReconcileFanAttribute(key, value);
-          id(disp).update();
         });
+    esphome::espnow_fan_bridge::EspNowFanRegistry::instance().set_redraw_callback(
+        []() { id(disp).update(); });
   }
 #endif
   InitSensor(sensor, entity, GetAtt(sensor));

@@ -3320,7 +3320,7 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
             'network_key': network_key,
             'fallback_channel': int(fallback_channel),
             'channel_sensor': {
-                'name': 'WiFi / ESP-NOW Channel',
+                'name': 'WiFi ESP-NOW Channel',
             },
         }
     }

@@ -127,7 +127,8 @@ void EspNowFanBridge::dump_config() {
     ESP_LOGCONFIG(TAG, "  Remote Fans: %u", static_cast<unsigned>(remote_fans_.size()));
     for (const auto &rf : remote_fans_) {
       ESP_LOGCONFIG(TAG, "    - %s (fan=%s, light=%s, hash=0x%08X)", rf.name.c_str(),
-                    rf.fan_entity_id.c_str(), rf.light_entity_id.c_str(), rf.fan_key_hash);
+                    rf.fan_entity_id.c_str(), rf.light_entity_id.c_str(),
+                    static_cast<unsigned>(rf.fan_key_hash));
     }
   }
 }
@@ -288,6 +289,9 @@ void EspNowFanBridge::upsert_peer(const std::array<uint8_t, 6> &mac, BridgeRole 
   info.channel = (ch >= 1 && ch <= 13) ? ch : current_wifi_channel();
   info.last_seen_ms = now_ms;
   peers_.push_back(info);
+  ESP_LOGI(TAG, "Discovered ESP-NOW peer %02X:%02X:%02X:%02X:%02X:%02X (role=%s, ch=%u)",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+           role == BridgeRole::HUB ? "HUB" : "CYD", info.channel);
 }
 
 void EspNowFanBridge::loop() {
@@ -390,15 +394,16 @@ void EspNowFanBridge::loop() {
   // 5. CYD pending command retries & peer reachability timeout
   if (role_ == BridgeRole::CYD) {
     cyd_tick_pending_cmds(now);
-    bool any_changed = false;
     for (auto &rf : remote_fans_) {
       if (rf.espnow_reachable && (now - rf.last_seen_ms > PEER_TIMEOUT_MS)) {
+        ESP_LOGW(TAG, "[%s] ESP-NOW peer timed out (unreachable)", rf.name.c_str());
         rf.espnow_reachable = false;
-        any_changed = true;
+        ui_dirty_ = true;
       }
     }
-    if (any_changed) {
-      EspNowFanRegistry::instance().notify_state_changed("", "");
+    if (ui_dirty_) {
+      ui_dirty_ = false;
+      EspNowFanRegistry::instance().notify_redraw();
     }
   }
 }
@@ -520,10 +525,15 @@ void EspNowFanBridge::hub_handle_cmd(const CmdPayload &cmd, uint16_t seq) {
   ack.ack_seq = seq;
 
   if (dev == nullptr) {
+    ESP_LOGW(TAG, "RX CMD seq=%u for unknown fan hash=0x%08X", seq,
+             static_cast<unsigned>(cmd.fan_key_hash));
     ack.status = AckStatus::UNKNOWN_FAN;
     broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
     return;
   }
+
+  ESP_LOGI(TAG, "[%s] RX ESP-NOW CMD seq=%u opcode=%u args=(%d,%d,%d)", dev->name().c_str(), seq,
+           static_cast<unsigned>(cmd.opcode), cmd.arg0, cmd.arg1, cmd.arg2);
 
   switch (cmd.opcode) {
     case CmdOpcode::FAN_POWER:
@@ -609,6 +619,17 @@ void EspNowFanBridge::cyd_handle_state(const StatePayload &st, uint32_t now_ms) 
   auto *rf = cyd_find_remote_fan(st.fan_key_hash);
   if (rf == nullptr) return;
 
+  const bool prev_has_state = rf->has_state;
+  const bool prev_reachable = rf->espnow_reachable;
+  const RemoteBleConnStatus prev_ble_status = rf->ble_status;
+  const bool prev_fan_on = rf->fan_on;
+  const uint8_t prev_fan_speed = rf->fan_speed;
+  const bool prev_fan_reverse = rf->fan_reverse;
+  const uint8_t prev_fan_preset = rf->fan_preset;
+  const bool prev_light_on = rf->light_on;
+  const uint16_t prev_light_brightness = rf->light_brightness;
+  const uint16_t prev_light_color_temp = rf->light_color_temp;
+
   rf->has_state = true;
   rf->espnow_reachable = true;
   rf->last_seen_ms = now_ms;
@@ -623,7 +644,24 @@ void EspNowFanBridge::cyd_handle_state(const StatePayload &st, uint32_t now_ms) 
   rf->light_brightness = st.light_brightness;
   rf->light_color_temp = st.light_color_temp;
 
-  if (!rf->fan_entity_id.empty()) {
+  if (!prev_reachable) {
+    ESP_LOGI(TAG, "[%s] ESP-NOW hub reachable (ble_status=%u, rssi=%d)", rf->name.c_str(),
+             static_cast<unsigned>(rf->ble_status), static_cast<int>(rf->ble_rssi));
+  }
+
+  const bool fan_changed = !prev_has_state || prev_fan_on != rf->fan_on ||
+                           prev_fan_speed != rf->fan_speed || prev_fan_reverse != rf->fan_reverse ||
+                           prev_fan_preset != rf->fan_preset;
+  const bool light_changed = !prev_has_state || prev_light_on != rf->light_on ||
+                             prev_light_brightness != rf->light_brightness ||
+                             prev_light_color_temp != rf->light_color_temp;
+  const bool link_changed = !prev_reachable || prev_ble_status != rf->ble_status;
+
+  if (!fan_changed && !light_changed && !link_changed) {
+    return;  // Identical heartbeat snapshot — skip reconcile and display redraw
+  }
+
+  if (fan_changed && !rf->fan_entity_id.empty()) {
     EspNowFanRegistry::instance().notify_state_changed(rf->fan_entity_id,
                                                        rf->fan_on ? "on" : "off");
     EspNowFanRegistry::instance().notify_state_changed(rf->fan_entity_id + "|percentage",
@@ -631,17 +669,23 @@ void EspNowFanBridge::cyd_handle_state(const StatePayload &st, uint32_t now_ms) 
     EspNowFanRegistry::instance().notify_state_changed(rf->fan_entity_id + "|direction",
                                                        rf->fan_reverse ? "reverse" : "forward");
   }
-  if (!rf->light_entity_id.empty()) {
+  if (light_changed && !rf->light_entity_id.empty()) {
     EspNowFanRegistry::instance().notify_state_changed(rf->light_entity_id,
                                                        rf->light_on ? "on" : "off");
   }
+  ui_dirty_ = true;
 }
 
 void EspNowFanBridge::cyd_handle_ack(const AckPayload &ack, uint32_t now_ms) {
   for (auto it = pending_cmds_.begin(); it != pending_cmds_.end(); ++it) {
     if (it->seq == ack.ack_seq) {
+      ESP_LOGD(TAG, "RX ESP-NOW ACK seq=%u status=%u", ack.ack_seq,
+               static_cast<unsigned>(ack.status));
       if (auto *rf = cyd_find_remote_fan(it->fan_key_hash)) {
-        rf->espnow_reachable = true;
+        if (!rf->espnow_reachable) {
+          rf->espnow_reachable = true;
+          ui_dirty_ = true;
+        }
         rf->last_seen_ms = now_ms;
       }
       pending_cmds_.erase(it);
@@ -659,6 +703,8 @@ void EspNowFanBridge::cyd_queue_cmd(const CmdPayload &cmd, uint32_t now_ms) {
   pending.last_tx_ms = now_ms;
   pending.attempts = 1;
 
+  ESP_LOGD(TAG, "TX ESP-NOW CMD seq=%u opcode=%u args=(%d,%d,%d)", pending.seq,
+           static_cast<unsigned>(cmd.opcode), cmd.arg0, cmd.arg1, cmd.arg2);
   broadcast_frame(MsgType::CMD, pending.seq, encode_cmd(pending.cmd));
 
   // Coalesce any older pending command for the same fan + opcode
@@ -681,8 +727,10 @@ void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
     if (it->attempts >= CMD_MAX_ATTEMPTS) {
       ESP_LOGW(TAG, "ESP-NOW cmd seq=%u timed out after %u attempts", it->seq, it->attempts);
       if (auto *rf = cyd_find_remote_fan(it->fan_key_hash)) {
-        rf->espnow_reachable = false;
-        EspNowFanRegistry::instance().notify_state_changed("", "");
+        if (rf->espnow_reachable) {
+          rf->espnow_reachable = false;
+          ui_dirty_ = true;
+        }
       }
       it = pending_cmds_.erase(it);
       continue;
@@ -778,6 +826,7 @@ bool EspNowFanBridge::send_fan_action(RemoteFanState *fan, bool is_light,
       EspNowFanRegistry::instance().notify_state_changed(fan->fan_entity_id + "|direction",
                                                          fan->fan_reverse ? "reverse" : "forward");
     }
+    ui_dirty_ = true;
     return true;
   }
 
@@ -840,6 +889,7 @@ bool EspNowFanBridge::send_fan_action(RemoteFanState *fan, bool is_light,
     EspNowFanRegistry::instance().notify_state_changed(fan->light_entity_id,
                                                        fan->light_on ? "on" : "off");
   }
+  ui_dirty_ = true;
   return true;
 }
 

@@ -144,6 +144,7 @@ class EspNowFanBridge : public Component {
   std::vector<PeerInfo> peers_;
   std::vector<RemoteFanState> remote_fans_;
   std::vector<PendingCmd> pending_cmds_;
+  bool ui_dirty_{false};
 };
 
 }  // namespace espnow_fan_bridge
