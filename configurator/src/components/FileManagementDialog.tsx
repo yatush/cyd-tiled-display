@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap, Settings, Save, Check, UploadCloud } from 'lucide-react';
+import { X, Upload, Download, FileText, Monitor, FolderOpen, Zap, Settings, Save, Check, UploadCloud, Radio } from 'lucide-react';
 import { isAddon } from '../utils/api';
 import { FileContext, getDisplayFileName } from '../utils/fileContext';
 
@@ -18,6 +18,8 @@ interface FileManagementDialogProps {
   isDirty?: boolean;
   onQuickSave?: () => void;
   onBatchUpdate?: () => void;
+  onHeadlessHubs?: () => void;
+  bleHubCount?: number;
 }
 
 export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
@@ -35,6 +37,8 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
   isDirty,
   onQuickSave,
   onBatchUpdate,
+  onHeadlessHubs,
+  bleHubCount = 0,
 }) => {
   if (!isOpen) return null;
 
@@ -164,6 +168,26 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                   <span className="font-bold text-xs">Install</span>
                 </button>
               </div>
+
+              {onHeadlessHubs && (
+                <button
+                  onClick={() => { onHeadlessHubs(); onClose(); }}
+                  className="w-full flex items-center justify-between gap-2.5 p-3 rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 text-slate-700 transition-all group text-left"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-indigo-50 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
+                      <Radio size={16} className="text-indigo-600" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs">Headless BLE Hubs (ESP-NOW)</div>
+                      <div className="text-[10px] text-slate-500">Create, edit &amp; flash dedicated ESP32 BLE fan hubs</div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                    {bleHubCount}
+                  </span>
+                </button>
+              )}
 
               {isAddon && onBatchUpdate && (
                 <button

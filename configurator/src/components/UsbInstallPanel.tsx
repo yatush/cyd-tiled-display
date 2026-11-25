@@ -77,6 +77,15 @@ async function loadDeviceInfo(filename: string) {
       }
     }
 
+    const isHeadlessHub =
+      Boolean(
+        data?.packages &&
+          typeof data.packages === 'object' &&
+          Object.values(data.packages).some(
+            (v: any) => typeof v === 'string' && v.includes('headless_hub_base.yaml')
+          )
+      ) || data?.espnow_fan_bridge?.role === 'hub';
+
     return {
       deviceName: data?.substitutions?.device_name || data?.esphome?.name || '',
       friendlyName: data?.substitutions?.friendly_name || data?.esphome?.friendly_name || '',
@@ -84,6 +93,7 @@ async function loadDeviceInfo(filename: string) {
       encryptionKey: data?.api?.encryption?.key || '',
       otaPassword,
       ipAddress: data?.wifi?.use_address || undefined,
+      isHeadlessHub,
     };
   } catch (e) {
     console.error('Failed to load device info:', e);
@@ -613,6 +623,7 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
     let flashOtaPassword: string | undefined;
     let flashIpAddress: string | undefined;
 
+    let isHeadlessHub = false;
     if (configMode === 'existing') {
       if (!selectedFile) return;
       setStatus('saving');
@@ -624,7 +635,8 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
         setStatusMessage(`Failed to read device settings from ${selectedFile}`);
         return;
       }
-      if (!info.encryptionKey) {
+      isHeadlessHub = Boolean(info.isHeadlessHub);
+      if (!isHeadlessHub && !info.encryptionKey) {
         setStatus('error');
         setStatusMessage(`No API encryption key found in ${selectedFile}. Please save the device config first via "Save Device".`);
         return;
@@ -661,20 +673,24 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
       setStatus('saving');
     }
 
-    setLogs(prev => [...prev, `Saving tile configuration to ${flashFileName}...`]);
+    if (isHeadlessHub) {
+      setLogs(prev => [...prev, `Headless BLE Hub detected — compiling saved hub YAML (${flashFileName})...`]);
+    } else {
+      setLogs(prev => [...prev, `Saving tile configuration to ${flashFileName}...`]);
 
-    try {
-      await onSaveAndInstall(
-        flashDeviceName, flashFriendlyName, flashScreenType,
-        flashFileName, flashEncryptionKey, flashOtaPassword, flashIpAddress,
-      );
-    } catch (e) {
-      setStatus('error');
-      setStatusMessage(`Failed to save config: ${(e as Error).message}`);
-      return;
+      try {
+        await onSaveAndInstall(
+          flashDeviceName, flashFriendlyName, flashScreenType,
+          flashFileName, flashEncryptionKey, flashOtaPassword, flashIpAddress,
+        );
+      } catch (e) {
+        setStatus('error');
+        setStatusMessage(`Failed to save config: ${(e as Error).message}`);
+        return;
+      }
+
+      setLogs(prev => [...prev, 'Configuration saved. Starting compilation...']);
     }
-
-    setLogs(prev => [...prev, 'Configuration saved. Starting compilation...']);
 
     // Start compile on server
     setStatus('compiling');
