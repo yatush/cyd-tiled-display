@@ -224,6 +224,15 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         }
       }
 
+      const isHeadlessHub =
+        Boolean(
+          data?.packages &&
+            typeof data.packages === 'object' &&
+            Object.values(data.packages).some(
+              (v: any) => typeof v === 'string' && v.includes('headless_hub_base.yaml')
+            )
+        ) || data?.espnow_fan_bridge?.role === 'hub';
+
       return {
         deviceName: data?.substitutions?.device_name || data?.esphome?.name || '',
         friendlyName: data?.substitutions?.friendly_name || data?.esphome?.friendly_name || '',
@@ -231,6 +240,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
         encryptionKey: data?.api?.encryption?.key || '',
         otaPassword,
         ipAddress: data?.wifi?.use_address || undefined,
+        isHeadlessHub,
       };
     } catch (e) {
       console.error('Failed to load device info:', e);
@@ -246,7 +256,7 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
     setStatusMessage('');
     setLogsExpanded(true);
 
-    // Step 1: Save the current editor config into the device file
+    // Step 1: Save the current editor config into the device file (CYD only)
     setStatus('saving');
     setLogs(prev => [...prev, `Loading device settings from ${target}...`]);
 
@@ -257,31 +267,35 @@ export const InstallDialog: React.FC<InstallDialogProps> = ({
       return;
     }
 
-    if (!info.encryptionKey) {
-      setStatus('error');
-      setStatusMessage(`No API encryption key found in ${target}. Please save the device config first via "Save Device As...".`);
-      return;
+    if (info.isHeadlessHub) {
+      setLogs(prev => [...prev, `Headless BLE Hub detected — using saved hub YAML. Starting OTA install...`]);
+    } else {
+      if (!info.encryptionKey) {
+        setStatus('error');
+        setStatusMessage(`No API encryption key found in ${target}. Please save the device config first via "Save Device As...".`);
+        return;
+      }
+
+      setLogs(prev => [...prev, `Saving current tile configuration to ${target}...`]);
+
+      try {
+        await onSaveAndInstall(
+          info.deviceName,
+          info.friendlyName,
+          info.screenType,
+          target,
+          info.encryptionKey,
+          info.otaPassword,
+          info.ipAddress
+        );
+      } catch (e) {
+        setStatus('error');
+        setStatusMessage(`Failed to save config: ${(e as Error).message}`);
+        return;
+      }
+
+      setLogs(prev => [...prev, `Configuration saved. Starting OTA install...`]);
     }
-
-    setLogs(prev => [...prev, `Saving current tile configuration to ${target}...`]);
-
-    try {
-      await onSaveAndInstall(
-        info.deviceName,
-        info.friendlyName,
-        info.screenType,
-        target,
-        info.encryptionKey,
-        info.otaPassword,
-        info.ipAddress
-      );
-    } catch (e) {
-      setStatus('error');
-      setStatusMessage(`Failed to save config: ${(e as Error).message}`);
-      return;
-    }
-
-    setLogs(prev => [...prev, `Configuration saved. Starting OTA install...`]);
 
     // Step 2: Start install (returns immediately, process runs in background)
     setStatus('installing');
