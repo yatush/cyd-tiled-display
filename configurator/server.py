@@ -2995,19 +2995,15 @@ def _write_ble_vault_raw(data, esphome_dir=None):
             pass
 
 
+DEFAULT_ESPNOW_NETWORK_KEY = 'cyd_espnow_default'
+
+
 def get_or_create_espnow_network_key(esphome_dir=None):
-    """Return persistent 16-char hex ESP-NOW network key from .cyd_ble_fans.json (creating one if absent)."""
-    import secrets as py_secrets
+    """Return ESP-NOW network key from .cyd_ble_fans.json or deterministic default for multi-host portability."""
     root_dir = esphome_dir or BASE_DIR
     raw = _load_ble_vault_raw(root_dir)
     key = str(raw.get('espnow_network_key') or '').strip()
-    if key:
-        return key
-    key = py_secrets.token_hex(8)
-    raw['espnow_network_key'] = key
-    if root_dir and os.path.isdir(root_dir):
-        _write_ble_vault_raw(raw, root_dir)
-    return key
+    return key or DEFAULT_ESPNOW_NETWORK_KEY
 
 
 def collect_yaml_ble_fans(esphome_dir=None):

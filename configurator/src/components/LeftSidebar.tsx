@@ -228,10 +228,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           onFixedChange={(varName, vals) => setConfig(prev => updateDynamicEntityFixedValues(prev, varName, vals))}
                           haEntities={haEntities}
                           bleFans={config.ble_fans || []}
+                          espnowFans={config.espnow_fans || []}
                           tuyaBleCandidates={tuyaBleCandidates}
                           bleFanHosts={bleFanHosts}
                           currentDevicePath={currentDevicePath}
                           onUpdateBleFans={handleUpdateBleFans}
+                          onUpdateEspNowFans={(next: EspNowFanLink[]) => setConfig(prev => {
+                            const updated: Config = { ...prev };
+                            if (next.length > 0) updated.espnow_fans = next;
+                            else delete updated.espnow_fans;
+                            return updated;
+                          })}
                       />
                   </div>
               </div>
@@ -246,10 +253,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           >
               <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
                   {isBleFansOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <Bluetooth size={14} className="text-blue-600" /> BLE Fans
+                  <Bluetooth size={14} className="text-blue-600" /> BLE &amp; Hub Fans
               </h3>
-              <span className={`text-[10px] font-bold px-1.5 rounded-full ${(config.ble_fans || []).length > 0 ? 'bg-blue-100 text-blue-700' : 'text-slate-400 bg-slate-200'}`}>
-                  {(config.ble_fans || []).length}
+              <span className={`text-[10px] font-bold px-1.5 rounded-full ${((config.ble_fans || []).length + (config.espnow_fans || []).length) > 0 ? 'bg-blue-100 text-blue-700' : 'text-slate-400 bg-slate-200'}`}>
+                  {(config.ble_fans || []).length + (config.espnow_fans || []).length}
               </span>
           </div>
           
@@ -271,15 +278,33 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     </div>
                   )}
 
-                  {(bleHubs.some(h => (h.fans || []).length > 0) || (tuyaBleCandidates || []).length > 0) && (
-                    <div className="bg-white border border-slate-200 rounded-md p-2 space-y-1.5">
-                      <div className="text-[10px] font-bold uppercase text-indigo-600 flex items-center gap-1">
-                        <Radio size={11} /> ESP-NOW Remote Fans (No BLE on CYD)
-                      </div>
-                      <p className="text-[10px] text-slate-500">
-                        Hub-hosted fans used by tiles auto-link on save. You can also pre-link any fan below:
-                      </p>
-                      <div className="space-y-1 max-h-36 overflow-y-auto">
+                  <div className="bg-white border border-slate-200 rounded-md p-2 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase text-indigo-600 flex items-center gap-1">
+                      <Radio size={11} /> ESP-NOW Hub Fans ({(config.espnow_fans || []).length})
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      Select <strong>Hub</strong> on any fan tile (or toggle below) to route via a headless hub without compiling BLE onto this CYD.
+                    </p>
+                    <div className="pt-0.5">
+                      <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                        ESP-NOW Network Key (must match Hub)
+                      </label>
+                      <input
+                        type="text"
+                        value={config.espnow_network_key || ''}
+                        onChange={e => setConfig(prev => {
+                          const updated: Config = { ...prev };
+                          const val = e.target.value;
+                          if (val.trim()) updated.espnow_network_key = val;
+                          else delete updated.espnow_network_key;
+                          return updated;
+                        })}
+                        placeholder="cyd_espnow_default"
+                        className="w-full px-2 py-1 text-[11px] font-mono border border-slate-200 rounded bg-slate-50 focus:bg-white"
+                      />
+                    </div>
+                    {(tuyaBleCandidates || []).length > 0 && (
+                      <div className="space-y-1 max-h-36 overflow-y-auto pt-1">
                         {(tuyaBleCandidates || []).map(c => {
                           const defaults = deriveDefaultBleEntityIds(c.name || c.device_id);
                           const fanId = c.fan_entity_id || defaults.fan_entity_id;
@@ -319,8 +344,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           );
                         })}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   <div className="pt-1">
                       <BleFansManagerPanel

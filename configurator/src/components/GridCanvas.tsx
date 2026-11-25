@@ -3,10 +3,10 @@ import { Wifi } from 'lucide-react';
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { DroppableCell } from './DroppableCell';
 import { DraggableTile } from './DraggableTile';
-import { Page, Tile, ImageEntry, BleFanConfig, FixedEntityEntry } from '../types';
+import { Page, Tile, ImageEntry, BleFanConfig, EspNowFanLink, FixedEntityEntry } from '../types';
 import { apiFetch } from '../utils/api';
 
-export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage, images = {}, bleFans = [], dynamicEntityValues = {} }: { 
+export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDeleteTile, rows, cols, dynamicEntities, onNavigateToPage, images = {}, bleFans = [], espnowFans = [], dynamicEntityValues = {} }: { 
   page: Page, 
   onSelectTile: (t: Tile) => void, 
   selectedTileId: string | null,
@@ -18,6 +18,7 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
   onNavigateToPage?: (pageId: string) => void,
   images?: Record<string, ImageEntry>,
   bleFans?: BleFanConfig[],
+  espnowFans?: EspNowFanLink[],
   dynamicEntityValues?: Record<string, FixedEntityEntry[]>
 }) => {
   const sensors = useSensors(
@@ -145,6 +146,7 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                       images={images}
                       colorList={colorList}
                       bleFans={bleFans}
+                    espnowFans={espnowFans}
                       dynamicEntityValues={dynamicEntityValues}
                     />
                   ))}
@@ -208,6 +210,7 @@ export const GridCanvas = ({ page, onSelectTile, selectedTileId, onDragEnd, onDe
                     images={images}
                     colorList={colorList}
                     bleFans={bleFans}
+                    espnowFans={espnowFans}
                     dynamicEntityValues={dynamicEntityValues}
                   />
                 </div>

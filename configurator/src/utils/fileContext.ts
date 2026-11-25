@@ -29,6 +29,8 @@ export function getConfigSnapshot(config: Config): string {
     dynamic_entity_values: config.dynamic_entity_values || {},
     ble_fans: config.ble_fans || [],
     espnow_fans: config.espnow_fans || [],
+    espnow_network_key: config.espnow_network_key || '',
+    espnow_fallback_channel: config.espnow_fallback_channel || 1,
     images: config.images || {},
     screen_images: config.screen_images || {},
   });
