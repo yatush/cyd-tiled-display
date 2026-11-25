@@ -99,17 +99,14 @@ class EspNowFanRegistry {
     return fan_entities_.count(base) > 0 || light_entities_.count(base) > 0;
   }
 
-  // Returns whether this entity should display an ESP-NOW badge or fall back silently to HA
-  EspNowDisplayMode get_display_mode(const std::string &entity_or_key, bool ha_connected,
+  // Returns whether this entity's ESP-NOW hub is reachable or should show 'no hub'
+  EspNowDisplayMode get_display_mode(const std::string &entity_or_key, bool /*ha_connected*/,
                                      RemoteBleConnStatus &out_ble_status) const {
     const RemoteFanState *fan = find_fan(entity_or_key);
     if (fan == nullptr) return EspNowDisplayMode::NONE;
     if (fan->espnow_reachable) {
       out_ble_status = fan->ble_status;
       return EspNowDisplayMode::ACTIVE;
-    }
-    if (ha_connected) {
-      return EspNowDisplayMode::NONE;
     }
     out_ble_status = RemoteBleConnStatus::DISCONNECTED;
     return EspNowDisplayMode::OFFLINE_DISCONNECTED;

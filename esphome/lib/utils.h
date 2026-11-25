@@ -656,23 +656,6 @@ void DrawBleIndicator(int x_end, int y_end, esphome::tuya_ble_fan::BleConnStatus
 #endif
 
 #ifdef USE_ESPNOW_FAN_BRIDGE
-inline bool IsHaEntityAvailable(const std::string& entity_or_key) {
-  if (!IsHaApiConnected()) return false;
-  size_t pos = entity_or_key.find('|');
-  const std::string base = (pos == std::string::npos) ? entity_or_key : entity_or_key.substr(0, pos);
-  if (id(binary_sensors).count(base) > 0) {
-    auto* bs = id(binary_sensors)[base];
-    return bs != nullptr && bs->has_state();
-  }
-  if (id(text_sensors).count(base) > 0) {
-    auto* ts = id(text_sensors)[base];
-    if (ts == nullptr) return false;
-    const std::string& st = ts->state;
-    return !st.empty() && st != "unavailable" && st != "unknown";
-  }
-  return false;
-}
-
 bool GetWorstEspNowStatus(const std::vector<std::string>& entities,
                           esphome::espnow_fan_bridge::EspNowDisplayMode& out_mode,
                           esphome::espnow_fan_bridge::RemoteBleConnStatus& worst_ble) {
@@ -681,10 +664,8 @@ bool GetWorstEspNowStatus(const std::vector<std::string>& entities,
   bool any_offline = false;
   auto worst = RemoteBleConnStatus::CONNECTED;
   for (const auto& item : entities) {
-    const std::string sensor_key = GetSensor(item);
     RemoteBleConnStatus ble_st = RemoteBleConnStatus::DISCONNECTED;
-    auto mode = EspNowFanRegistry::instance().get_display_mode(
-        sensor_key, IsHaEntityAvailable(sensor_key), ble_st);
+    auto mode = EspNowFanRegistry::instance().get_display_mode(GetSensor(item), false, ble_st);
     if (mode == EspNowDisplayMode::NONE) continue;
     if (mode == EspNowDisplayMode::OFFLINE_DISCONNECTED) {
       any_offline = true;
@@ -742,13 +723,13 @@ void DrawEspNowIndicator(int x_end, int y_end,
   }
 
   // Tiny radio/sensors icon in the bottom-right corner of ESP-NOW-routed tiles
-  id(disp).print(x_end - 2, y_end - 2, &id(tiny), icon_color, TextAlign::BOTTOM_RIGHT, "\U0000e51e");
+  id(disp).print(x_end - 4, y_end - 2, &id(tiny), icon_color, TextAlign::BOTTOM_RIGHT, "\U0000e51e");
 
   if (label != nullptr) {
     int x_off = 0, y_off = 0, icon_w = 0, icon_h = 0;
     id(disp).get_text_bounds(0, 0, "\U0000e51e", &id(tiny), TextAlign::BOTTOM_RIGHT,
                              &x_off, &y_off, &icon_w, &icon_h);
-    id(disp).print(x_end - 4 - icon_w, y_end - 4, &id(text_small), icon_color,
+    id(disp).print(x_end - 6 - icon_w, y_end - 4, &id(text_small), icon_color,
                    TextAlign::BOTTOM_RIGHT, label);
   }
 }
