@@ -722,6 +722,11 @@ function App() {
           setIsFileManagementOpen(false);
           setIsInstallDeviceOpen(true);
         }}
+        onHeadlessHubs={() => {
+          setIsFileManagementOpen(false);
+          setIsHeadlessHubsOpen(true);
+        }}
+        bleHubCount={bleHubs.length}
         onHwOverrides={() => {
           setIsFileManagementOpen(false);
           setIsHwOverridesOpen(true);
