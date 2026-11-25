@@ -118,6 +118,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                       onNavigateToPage={onNavigateToPage}
                       images={config.images || {}}
                       bleFans={config.ble_fans || []}
+                      espnowFans={config.espnow_fans || []}
                       dynamicEntityValues={config.dynamic_entity_values || {}}
                       />
                   </div>

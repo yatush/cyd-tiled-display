@@ -61,6 +61,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
   const [board, setBoard] = useState('esp32dev');
   const [customBoard, setCustomBoard] = useState('');
   const [fallbackChannel, setFallbackChannel] = useState(1);
+  const [hubNetworkKey, setHubNetworkKey] = useState(networkKey || 'cyd_espnow_default');
   const [selectedFanIds, setSelectedFanIds] = useState<Set<string>>(new Set());
 
   const [saving, setSaving] = useState(false);
@@ -88,6 +89,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
     setBoard('esp32dev');
     setCustomBoard('');
     setFallbackChannel(1);
+    setHubNetworkKey(networkKey || 'cyd_espnow_default');
     setSelectedFanIds(new Set());
     setError(null);
     setConflicts([]);
@@ -102,6 +104,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
     setBoard(matchesPreset ? hub.board : '__custom__');
     setCustomBoard(matchesPreset ? '' : hub.board);
     setFallbackChannel(hub.fallback_channel || 1);
+    setHubNetworkKey(hub.network_key || networkKey || 'cyd_espnow_default');
     setSelectedFanIds(new Set((hub.fans || []).map(f => f.device_id)));
     setError(null);
     setConflicts([]);
@@ -178,6 +181,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
           friendly_name: friendlyName.trim() || name.trim(),
           board: effectiveBoard,
           fallback_channel: fallbackChannel,
+          network_key: hubNetworkKey.trim() || 'cyd_espnow_default',
           fans: buildSelectedFans(),
           reassign,
         }),
@@ -406,6 +410,19 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                     className="w-full px-2.5 py-1.5 text-sm border rounded-md"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  ESP-NOW Network Key <span className="font-normal text-slate-400">(must match CYD; default works across machines)</span>
+                </label>
+                <input
+                  type="text"
+                  value={hubNetworkKey}
+                  onChange={e => setHubNetworkKey(e.target.value)}
+                  placeholder="cyd_espnow_default"
+                  className="w-full px-2.5 py-1.5 text-sm font-mono border rounded-md"
+                />
               </div>
 
               {/* Fan assignment checklist */}

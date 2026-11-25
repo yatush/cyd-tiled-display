@@ -36,10 +36,12 @@ export const TextInput = ({
   onChange,
   haEntities,
   bleFans,
+  espnowFans,
   tuyaBleCandidates,
   bleFanHosts,
   currentDevicePath,
   onUpdateBleFans,
+  onUpdateEspNowFans,
 }: { label: string, value: string, onChange: (v: string) => void, haEntities?: HaEntity[] } & BleFanProps) => {
   const listId = `ha-entities-text-${Math.random().toString(36).substr(2, 9)}`;
   return (
@@ -65,10 +67,12 @@ export const TextInput = ({
       <BleFanToggle
         entityId={value || ''}
         bleFans={bleFans}
+        espnowFans={espnowFans}
         tuyaBleCandidates={tuyaBleCandidates}
         bleFanHosts={bleFanHosts}
         currentDevicePath={currentDevicePath}
         onUpdateBleFans={onUpdateBleFans}
+        onUpdateEspNowFans={onUpdateEspNowFans}
       />
     )}
   </div>
@@ -291,10 +295,12 @@ export const ObjectInput = ({
   dynamicEntities,
   haEntities,
   bleFans,
+  espnowFans,
   tuyaBleCandidates,
   bleFanHosts,
   currentDevicePath,
   onUpdateBleFans,
+  onUpdateEspNowFans,
 }: { 
   label: string, 
   value: any, 
@@ -346,10 +352,12 @@ export const ObjectInput = ({
                     <BleFanToggle
                       entityId={value?.[field.key] || ''}
                       bleFans={bleFans}
+        espnowFans={espnowFans}
                       tuyaBleCandidates={tuyaBleCandidates}
                       bleFanHosts={bleFanHosts}
                       currentDevicePath={currentDevicePath}
                       onUpdateBleFans={onUpdateBleFans}
+        onUpdateEspNowFans={onUpdateEspNowFans}
                     />
                 </div>
             ) : field.type === 'ha_entity_list' ? (
@@ -362,10 +370,12 @@ export const ObjectInput = ({
                     }}
                     haEntities={haEntities}
                     bleFans={bleFans}
+        espnowFans={espnowFans}
                     tuyaBleCandidates={tuyaBleCandidates}
                     bleFanHosts={bleFanHosts}
                     currentDevicePath={currentDevicePath}
                     onUpdateBleFans={onUpdateBleFans}
+        onUpdateEspNowFans={onUpdateEspNowFans}
                 />
             ) : field.type === 'string_list' ? (
                 <ArrayInput 
@@ -411,10 +421,12 @@ export const ObjectArrayInput = ({
   dynamicEntities,
   haEntities,
   bleFans,
+  espnowFans,
   tuyaBleCandidates,
   bleFanHosts,
   currentDevicePath,
   onUpdateBleFans,
+  onUpdateEspNowFans,
 }: { 
   label: string, 
   values: any[], 
@@ -579,10 +591,12 @@ export const ObjectArrayInput = ({
                     }}
                     haEntities={haEntities}
                     bleFans={bleFans}
+        espnowFans={espnowFans}
                     tuyaBleCandidates={tuyaBleCandidates}
                     bleFanHosts={bleFanHosts}
                     currentDevicePath={currentDevicePath}
                     onUpdateBleFans={onUpdateBleFans}
+        onUpdateEspNowFans={onUpdateEspNowFans}
                   />
                 ) : (
                   <div>
@@ -601,10 +615,12 @@ export const ObjectArrayInput = ({
                       <BleFanToggle
                         entityId={item[field.key] || ''}
                         bleFans={bleFans}
+        espnowFans={espnowFans}
                         tuyaBleCandidates={tuyaBleCandidates}
                         bleFanHosts={bleFanHosts}
                         currentDevicePath={currentDevicePath}
                         onUpdateBleFans={onUpdateBleFans}
+        onUpdateEspNowFans={onUpdateEspNowFans}
                       />
                     )}
                   </div>

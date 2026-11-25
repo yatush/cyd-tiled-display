@@ -462,8 +462,8 @@ def test_ble_fan_vault_persists_after_yaml_and_ha_removal(tmp_path):
 
 def test_espnow_network_key_and_headless_hub_crud(tmp_path):
     key1 = server.get_or_create_espnow_network_key(str(tmp_path))
-    assert len(key1) == 16
-    # Calling again returns the exact same persisted key
+    assert key1 == "cyd_espnow_default"
+    # Calling again returns the exact same deterministic default key
     assert server.get_or_create_espnow_network_key(str(tmp_path)) == key1
 
     # Saving fans to vault preserves espnow_network_key

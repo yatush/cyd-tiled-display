@@ -401,13 +401,82 @@ export function collectReferencedEntityIds(config: Config): Set<string> {
   return refs;
 }
 
+export const DEFAULT_ESPNOW_NETWORK_KEY = 'cyd_espnow_default';
+
+export function findConfiguredEspNowFan(
+  entityId: string | undefined | null,
+  espnowFans: EspNowFanLink[] = []
+): EspNowFanLink | undefined {
+  const norm = normalizeEntityId(entityId);
+  if (!norm) return undefined;
+  return (espnowFans || []).find(
+    f =>
+      normalizeEntityId(f.fan_entity_id) === norm ||
+      (f.light_entity_id && normalizeEntityId(f.light_entity_id) === norm)
+  );
+}
+
+export function toggleEspNowFanForEntity(
+  espnowFans: EspNowFanLink[] = [],
+  entityId: string,
+  enabled: boolean,
+  candidate?: TuyaBleCandidate
+): EspNowFanLink[] {
+  const norm = normalizeEntityId(entityId);
+  if (!norm) return espnowFans || [];
+
+  const filtered = (espnowFans || []).filter(
+    f =>
+      normalizeEntityId(f.fan_entity_id) !== norm &&
+      normalizeEntityId(f.light_entity_id) !== norm
+  );
+  if (!enabled) {
+    return filtered;
+  }
+
+  if (candidate) {
+    const defaults = deriveDefaultBleEntityIds(candidate.name || candidate.device_id);
+    return [
+      ...filtered,
+      {
+        name: candidate.name || candidate.fan_entity_id || norm,
+        fan_entity_id: candidate.fan_entity_id || defaults.fan_entity_id || (norm.startsWith('fan.') ? norm : ''),
+        light_entity_id: candidate.light_entity_id || defaults.light_entity_id || (norm.startsWith('light.') ? norm : ''),
+      },
+    ];
+  }
+
+  const baseName = norm.includes('.') ? norm.split('.')[1].replace(/_/g, ' ') : norm;
+  // Derive companion light entity if this is fan.<slug>_fan -> light.<slug>_light
+  let companionLight = '';
+  if (norm.startsWith('fan.')) {
+    const slug = norm.slice(4);
+    if (slug.endsWith('_fan')) {
+      companionLight = `light.${slug.slice(0, -4)}_light`;
+    }
+  }
+  return [
+    ...filtered,
+    {
+      name: baseName,
+      fan_entity_id: norm.startsWith('fan.') ? norm : '',
+      ...(norm.startsWith('light.')
+        ? { light_entity_id: norm }
+        : companionLight
+        ? { light_entity_id: companionLight }
+        : {}),
+    },
+  ];
+}
+
 /**
- * Combine explicitly linked ESP-NOW fans with any Hub-hosted fans referenced by CYD tiles
- * (excluding fans already configured for local BLE on this CYD).
+ * Return explicitly configured ESP-NOW fans for this CYD, excluding any fan
+ * that is also configured for local BLE on this same CYD.
+ * Intentionally stateless: never silently injects fans from local hub files.
  */
 export function resolveEffectiveEspNowFans(
   config: Config,
-  hubs: HeadlessHubConfig[] = []
+  _hubs: HeadlessHubConfig[] = []
 ): EspNowFanLink[] {
   const localBleIds = new Set<string>();
   for (const bf of config.ble_fans || []) {
@@ -416,11 +485,11 @@ export function resolveEffectiveEspNowFans(
   }
 
   const byKey = new Map<string, EspNowFanLink>();
-  const addLink = (link: EspNowFanLink) => {
+  for (const link of config.espnow_fans || []) {
     const fanId = normalizeEntityId(link.fan_entity_id);
     const lightId = normalizeEntityId(link.light_entity_id);
-    if (!fanId && !lightId) return;
-    if ((fanId && localBleIds.has(fanId)) || (lightId && localBleIds.has(lightId))) return;
+    if (!fanId && !lightId) continue;
+    if ((fanId && localBleIds.has(fanId)) || (lightId && localBleIds.has(lightId))) continue;
     const key = fanId || lightId;
     if (!byKey.has(key)) {
       byKey.set(key, {
@@ -428,25 +497,6 @@ export function resolveEffectiveEspNowFans(
         fan_entity_id: fanId,
         ...(lightId ? { light_entity_id: lightId } : {}),
       });
-    }
-  };
-
-  for (const explicit of config.espnow_fans || []) {
-    addLink(explicit);
-  }
-
-  const referenced = collectReferencedEntityIds(config);
-  for (const hub of hubs || []) {
-    for (const fan of hub.fans || []) {
-      const fanId = normalizeEntityId(fan.fan_entity_id);
-      const lightId = normalizeEntityId(fan.light_entity_id);
-      if ((fanId && referenced.has(fanId)) || (lightId && referenced.has(lightId))) {
-        addLink({
-          name: fan.name || fanId || lightId,
-          fan_entity_id: fanId,
-          light_entity_id: lightId || undefined,
-        });
-      }
     }
   }
 
@@ -479,10 +529,11 @@ export function buildEspNowCydYamlSections(
     return entry;
   });
 
+  const effectiveKey = networkKey?.trim() || DEFAULT_ESPNOW_NETWORK_KEY;
   const bridgeBlock: Record<string, any> = {
     espnow_fan_bridge: {
       role: 'cyd',
-      ...(networkKey?.trim() ? { network_key: networkKey.trim() } : {}),
+      network_key: effectiveKey,
       fallback_channel: Math.max(1, Math.min(13, Math.floor(fallbackChannel || 1))),
       fans: serializedFans,
     },

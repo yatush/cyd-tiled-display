@@ -198,11 +198,11 @@ test('deriveDefaultBleEntityIds and mergeBleFansIntoHaEntities expose [BLE] enti
   ]);
 });
 
-test('ESP-NOW hub fans auto-link for referenced CYD tiles and round-trip YAML cleanly without BLE', () => {
+test('ESP-NOW hub fans are explicitly configured (stateless across computers) and round-trip YAML cleanly without BLE', () => {
   const hubs = [
     {
-      filename: 'bedroom_hub.yaml',
-      name: 'bedroom_hub',
+      filename: 'bedroom-hub.yaml',
+      name: 'bedroom-hub',
       friendly_name: 'Bedroom Hub',
       board: 'seeed_xiao_esp32c3',
       fallback_channel: 6,
@@ -218,7 +218,7 @@ test('ESP-NOW hub fans auto-link for referenced CYD tiles and round-trip YAML cl
     },
   ];
 
-  // Hub fans appear in entity picker even before HA sees them
+  // Hub fans appear in entity picker when available locally
   const merged = mergeHubFansIntoHaEntities([{ entity_id: 'light.kitchen', friendly_name: 'Kitchen' }], hubs);
   assert.deepEqual(merged, [
     { entity_id: 'fan.bedroom_fan', friendly_name: '[Hub] Bedroom Fan' },
@@ -226,8 +226,8 @@ test('ESP-NOW hub fans auto-link for referenced CYD tiles and round-trip YAML cl
     { entity_id: 'light.kitchen', friendly_name: 'Kitchen' },
   ]);
 
-  // CYD referencing fan.bedroom_fan auto-links it via ESP-NOW
-  const cydConfig = {
+  // Without explicit espnow_fans on CYD, local hub files must NOT silently mutate CYD YAML
+  const haOnlyCyd = {
     pages: [
       {
         id: 'main',
@@ -237,10 +237,28 @@ test('ESP-NOW hub fans auto-link for referenced CYD tiles and round-trip YAML cl
       },
     ],
   };
-  const effective = resolveEffectiveEspNowFans(cydConfig, hubs);
+  assert.equal(resolveEffectiveEspNowFans(haOnlyCyd, hubs).length, 0);
+
+  // Explicit espnow_fans works identically even when hubs=[] (e.g., on a different computer)
+  const explicitCyd = {
+    ...haOnlyCyd,
+    espnow_fans: [
+      {
+        name: 'Bedroom Fan',
+        fan_entity_id: 'fan.bedroom_fan',
+        light_entity_id: 'light.bedroom_light',
+      },
+    ],
+  };
+  const effective = resolveEffectiveEspNowFans(explicitCyd, []);
   assert.equal(effective.length, 1);
   assert.equal(effective[0].fan_entity_id, 'fan.bedroom_fan');
   assert.equal(effective[0].light_entity_id, 'light.bedroom_light');
+
+  // Default network_key is deterministic ('cyd_espnow_default') for cross-machine compatibility
+  const defaultSections = buildEspNowCydYamlSections(effective, undefined, 6);
+  const parsedDefault = load(defaultSections.componentSection);
+  assert.equal(parsedDefault.espnow_fan_bridge.network_key, 'cyd_espnow_default');
 
   const sections = buildEspNowCydYamlSections(effective, 'deadbeef12345678', 6);
   assert.match(sections.packageLine, /espnow_cyd: !include lib\/espnow_cyd\.yaml/);

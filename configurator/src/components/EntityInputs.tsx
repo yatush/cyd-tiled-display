@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle, Radar } from 'lucide-react';
-import { BleFanConfig, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
+import { Trash2, Plus, Bluetooth, Settings2, AlertTriangle, Radar, Radio } from 'lucide-react';
+import { BleFanConfig, EspNowFanLink, FixedEntityEntry, HaEntity, TuyaBleCandidate } from '../types';
 import {
   computeBleResourcePlan,
   deriveDefaultBleEntityIds,
@@ -8,29 +8,34 @@ import {
   getOtherBleFanHosts,
   normalizeEntityId,
   toggleBleFanForEntity,
+  toggleEspNowFanForEntity,
   upsertBleFan,
 } from '../utils/bleFanUtils';
 
 export interface BleFanProps {
   bleFans?: BleFanConfig[];
+  espnowFans?: EspNowFanLink[];
   tuyaBleCandidates?: TuyaBleCandidate[];
   bleFanHosts?: Record<string, string[]>;
   currentDevicePath?: string;
   onUpdateBleFans?: (next: BleFanConfig[]) => void;
+  onUpdateEspNowFans?: (next: EspNowFanLink[]) => void;
 }
 
 export const BleFanToggle = ({
   entityId,
   bleFans = [],
+  espnowFans = [],
   tuyaBleCandidates = [],
   bleFanHosts = {},
   currentDevicePath,
   onUpdateBleFans,
+  onUpdateEspNowFans,
 }: {
   entityId: string;
 } & BleFanProps) => {
   const [showDetails, setShowDetails] = useState(false);
-  if (!onUpdateBleFans) return null;
+  if (!onUpdateBleFans && !onUpdateEspNowFans) return null;
 
   const norm = normalizeEntityId(entityId);
   if (!norm) return null;
@@ -42,61 +47,156 @@ export const BleFanToggle = ({
       (f.light_entity_id && normalizeEntityId(f.light_entity_id) === norm)
   );
   const configured = configuredIdx >= 0 ? bleFans[configuredIdx] : undefined;
-  const isFanEntity = norm.startsWith('fan.');
-  const hasAnyBleContext = bleFans.length > 0 || tuyaBleCandidates.length > 0;
 
-  if (!candidate && !configured && !(isFanEntity && hasAnyBleContext)) {
+  const espnowIdx = espnowFans.findIndex(
+    f =>
+      normalizeEntityId(f.fan_entity_id) === norm ||
+      (f.light_entity_id && normalizeEntityId(f.light_entity_id) === norm)
+  );
+  const configuredEspNow = espnowIdx >= 0 ? espnowFans[espnowIdx] : undefined;
+
+  const isFanEntity = norm.startsWith('fan.');
+  // Always show transport selector for any fan.* entity (stateless across machines),
+  // and for companion light.* entities that match a configured fan or known candidate.
+  if (!isFanEntity && !candidate && !configured && !configuredEspNow) {
     return null;
   }
 
+  const activeMode: 'ha' | 'ble' | 'espnow' = configured
+    ? 'ble'
+    : configuredEspNow
+    ? 'espnow'
+    : 'ha';
+
+  const setMode = (mode: 'ha' | 'ble' | 'espnow') => {
+    if (mode === 'ha') {
+      if (configured && onUpdateBleFans) {
+        onUpdateBleFans(toggleBleFanForEntity(bleFans, norm, false, candidate));
+      }
+      if (configuredEspNow && onUpdateEspNowFans) {
+        onUpdateEspNowFans(toggleEspNowFanForEntity(espnowFans, norm, false, candidate));
+      }
+      setShowDetails(false);
+      return;
+    }
+    if (mode === 'ble') {
+      if (configuredEspNow && onUpdateEspNowFans) {
+        onUpdateEspNowFans(toggleEspNowFanForEntity(espnowFans, norm, false, candidate));
+      }
+      if (onUpdateBleFans) {
+        const next = toggleBleFanForEntity(bleFans, norm, true, candidate);
+        onUpdateBleFans(next);
+        if (!candidate) setShowDetails(true);
+      }
+      return;
+    }
+    if (mode === 'espnow') {
+      if (configured && onUpdateBleFans) {
+        onUpdateBleFans(toggleBleFanForEntity(bleFans, norm, false, candidate));
+      }
+      if (onUpdateEspNowFans) {
+        onUpdateEspNowFans(toggleEspNowFanForEntity(espnowFans, norm, true, candidate));
+      }
+    }
+  };
+
   const updateConfigured = (patch: Partial<BleFanConfig>) => {
-    if (configuredIdx < 0) return;
+    if (configuredIdx < 0 || !onUpdateBleFans) return;
     const copy = [...bleFans];
     copy[configuredIdx] = { ...copy[configuredIdx], ...patch };
     onUpdateBleFans(copy);
   };
 
-  const isChecked = Boolean(configured);
+  const updateConfiguredEspNow = (patch: Partial<EspNowFanLink>) => {
+    if (espnowIdx < 0 || !onUpdateEspNowFans) return;
+    const copy = [...espnowFans];
+    copy[espnowIdx] = { ...copy[espnowIdx], ...patch };
+    onUpdateEspNowFans(copy);
+  };
+
+  const isChecked = activeMode === 'ble';
   const missingCreds = isChecked && (!configured?.device_id?.trim() || !configured?.local_key?.trim());
-  const companionLight = configured?.light_entity_id || candidate?.light_entity_id || '';
-  const companionFan = configured?.fan_entity_id || candidate?.fan_entity_id || '';
+  const companionLight = configured?.light_entity_id || configuredEspNow?.light_entity_id || candidate?.light_entity_id || '';
+  const companionFan = configured?.fan_entity_id || configuredEspNow?.fan_entity_id || candidate?.fan_entity_id || '';
   const effectiveDeviceId = configured?.device_id || candidate?.device_id || '';
-  const otherHosts = getOtherBleFanHosts(effectiveDeviceId, bleFanHosts, currentDevicePath);
+  const otherHosts = isChecked ? getOtherBleFanHosts(effectiveDeviceId, bleFanHosts, currentDevicePath) : [];
+
+  const boxStyle =
+    activeMode === 'espnow'
+      ? 'bg-indigo-50/80 border-indigo-200'
+      : activeMode === 'ble'
+      ? 'bg-blue-50/70 border-blue-200'
+      : 'bg-slate-50 border-slate-200';
 
   return (
-    <div className="mt-1 px-1.5 py-1 rounded bg-blue-50/70 border border-blue-100 text-[11px]">
-      <div className="flex items-center justify-between gap-1.5">
-        <label className="flex items-center gap-1.5 cursor-pointer select-none text-blue-800 font-medium">
-          <input
-            type="checkbox"
-            checked={isChecked}
-            onChange={e => {
-              const next = toggleBleFanForEntity(bleFans, norm, e.target.checked, candidate);
-              onUpdateBleFans(next);
-              if (e.target.checked && !candidate) {
-                setShowDetails(true);
-              }
-            }}
-            className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
-          />
-          <Bluetooth size={11} className="text-blue-600 flex-shrink-0" />
-          <span>Control via BLE</span>
-        </label>
+    <div className={`mt-1 px-1.5 py-1 rounded border text-[11px] ${boxStyle}`}>
+      <div className="flex items-center justify-between gap-1.5 flex-wrap">
+        <div className="inline-flex rounded-md border border-slate-200 bg-white overflow-hidden text-[10px] font-semibold">
+          <button
+            type="button"
+            onClick={() => setMode('ha')}
+            className={`px-2 py-0.5 transition-colors ${
+              activeMode === 'ha'
+                ? 'bg-slate-700 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+            title="Control through Home Assistant (default)"
+          >
+            HA
+          </button>
+          {onUpdateBleFans && (
+            <button
+              type="button"
+              onClick={() => setMode('ble')}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 border-l border-slate-200 transition-colors ${
+                activeMode === 'ble'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-600 hover:bg-blue-50'
+              }`}
+              title="Control directly via BLE from this CYD"
+            >
+              <Bluetooth size={10} /> BLE
+            </button>
+          )}
+          {onUpdateEspNowFans && (
+            <button
+              type="button"
+              onClick={() => setMode('espnow')}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 border-l border-slate-200 transition-colors ${
+                activeMode === 'espnow'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-600 hover:bg-indigo-50'
+              }`}
+              title="Control via a Headless ESP32 Hub over ESP-NOW (no BLE on CYD)"
+            >
+              <Radio size={10} /> Hub
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-1">
-          {companionLight && companionFan && (
+          {activeMode !== 'ha' && companionLight && companionFan && (
             <span
-              className="text-[10px] px-1 py-0.2 rounded bg-blue-100 text-blue-700"
-              title={`Routes both ${companionFan} and ${companionLight} over BLE`}
+              className={`text-[10px] px-1 py-0.2 rounded ${
+                activeMode === 'espnow'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'bg-blue-100 text-blue-700'
+              }`}
+              title={`Routes both ${companionFan} and ${companionLight}`}
             >
               fan + light
             </span>
           )}
-          {isChecked && (
+          {activeMode !== 'ha' && (
             <button
               type="button"
               onClick={() => setShowDetails(s => !s)}
-              className={`p-0.5 rounded hover:bg-blue-100 ${missingCreds ? 'text-amber-600' : 'text-blue-600'}`}
-              title="Edit BLE credentials"
+              className={`p-0.5 rounded ${
+                activeMode === 'espnow'
+                  ? 'hover:bg-indigo-100 text-indigo-600'
+                  : `hover:bg-blue-100 ${missingCreds ? 'text-amber-600' : 'text-blue-600'}`
+              }`}
+              title={activeMode === 'espnow' ? 'Edit ESP-NOW hub entity mapping' : 'Edit BLE credentials'}
             >
               <Settings2 size={12} />
             </button>
@@ -104,11 +204,34 @@ export const BleFanToggle = ({
         </div>
       </div>
 
+      {activeMode === 'espnow' && showDetails && configuredEspNow && (
+        <div className="mt-1.5 pt-1.5 border-t border-indigo-100 space-y-1">
+          <div className="grid grid-cols-2 gap-1">
+            <input
+              type="text"
+              value={configuredEspNow.fan_entity_id || ''}
+              onChange={e => updateConfiguredEspNow({ fan_entity_id: e.target.value })}
+              placeholder="fan.room_fan"
+              className="px-1.5 py-0.5 text-[10px] font-mono bg-white border border-indigo-200 rounded"
+              title="Fan entity ID (must match Hub)"
+            />
+            <input
+              type="text"
+              value={configuredEspNow.light_entity_id || ''}
+              onChange={e => updateConfiguredEspNow({ light_entity_id: e.target.value })}
+              placeholder="light.room_light (optional)"
+              className="px-1.5 py-0.5 text-[10px] font-mono bg-white border border-indigo-200 rounded"
+              title="Companion light entity ID (optional)"
+            />
+          </div>
+        </div>
+      )}
+
       {otherHosts.length > 0 && (
         <div className="mt-1 px-1.5 py-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-800 flex items-start gap-1">
           <AlertTriangle size={11} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <span>
-            Already hosted via BLE by <strong>{otherHosts.join(', ')}</strong>. Tuya fans only accept 1 BLE connection at a time — consider controlling via Home Assistant instead.
+            Already hosted via BLE by <strong>{otherHosts.join(', ')}</strong>. Tuya fans only accept 1 BLE connection at a time — switch to <strong>Hub</strong> or <strong>HA</strong> instead.
           </span>
         </div>
       )}
@@ -169,10 +292,12 @@ export const EntityListInput = ({
   onChange,
   haEntities,
   bleFans,
+  espnowFans,
   tuyaBleCandidates,
   bleFanHosts,
   currentDevicePath,
   onUpdateBleFans,
+  onUpdateEspNowFans,
 }: {
   label: string,
   values: string[],
@@ -210,10 +335,12 @@ export const EntityListInput = ({
             <BleFanToggle
               entityId={v}
               bleFans={bleFans}
+              espnowFans={espnowFans}
               tuyaBleCandidates={tuyaBleCandidates}
               bleFanHosts={bleFanHosts}
               currentDevicePath={currentDevicePath}
               onUpdateBleFans={onUpdateBleFans}
+              onUpdateEspNowFans={onUpdateEspNowFans}
             />
           </div>
         ))}
@@ -242,10 +369,12 @@ export const DynamicEntitiesEditor = ({
   onFixedChange,
   haEntities,
   bleFans,
+  espnowFans,
   tuyaBleCandidates,
   bleFanHosts,
   currentDevicePath,
   onUpdateBleFans,
+  onUpdateEspNowFans,
 }: {
   entities: string[];
   fixedValues?: Record<string, FixedEntityEntry[]>;
@@ -366,10 +495,12 @@ export const DynamicEntitiesEditor = ({
                         <BleFanToggle
                           entityId={entVal}
                           bleFans={bleFans}
+              espnowFans={espnowFans}
                           tuyaBleCandidates={tuyaBleCandidates}
                           bleFanHosts={bleFanHosts}
                           currentDevicePath={currentDevicePath}
                           onUpdateBleFans={onUpdateBleFans}
+              onUpdateEspNowFans={onUpdateEspNowFans}
                         />
                       </div>
                     );
@@ -413,10 +544,12 @@ export const EntityArrayInput = ({
   dynamicEntities,
   haEntities,
   bleFans,
+  espnowFans,
   tuyaBleCandidates,
   bleFanHosts,
   currentDevicePath,
   onUpdateBleFans,
+  onUpdateEspNowFans,
 }: {
   label: string,
   values: any[],
@@ -502,10 +635,12 @@ export const EntityArrayInput = ({
                     <BleFanToggle
                       entityId={item.entity || ''}
                       bleFans={bleFans}
+              espnowFans={espnowFans}
                       tuyaBleCandidates={tuyaBleCandidates}
                       bleFanHosts={bleFanHosts}
                       currentDevicePath={currentDevicePath}
                       onUpdateBleFans={onUpdateBleFans}
+              onUpdateEspNowFans={onUpdateEspNowFans}
                     />
                   </div>
                 )}

@@ -1,8 +1,8 @@
 import { useDraggable } from '@dnd-kit/core';
-import { Trash2, ArrowRightCircle, Bluetooth } from 'lucide-react';
-import { Tile, ImageEntry, BleFanConfig, FixedEntityEntry } from '../types';
+import { Trash2, ArrowRightCircle, Bluetooth, Radio } from 'lucide-react';
+import { Tile, ImageEntry, BleFanConfig, EspNowFanLink, FixedEntityEntry } from '../types';
 import { iconCodeToChar } from '../utils/iconUtils';
-import { findConfiguredBleFan } from '../utils/bleFanUtils';
+import { findConfiguredBleFan, findConfiguredEspNowFan } from '../utils/bleFanUtils';
 import { getTileNavigationTarget } from '../utils/tileUtils';
 
 // Resolves a fill_color value (named id or Color(r,g,b)) to a CSS color string.
@@ -39,7 +39,7 @@ function isColorDark(css: string): boolean {
   return L < 0.35;
 }
 
-export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage, images = {}, colorList = [], bleFans = [], dynamicEntityValues = {} }: { 
+export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dynamicEntities = [], onNavigateToPage, images = {}, colorList = [], bleFans = [], espnowFans = [], dynamicEntityValues = {} }: { 
   tile: Tile, 
   isSelected: boolean, 
   onClick: () => void, 
@@ -50,6 +50,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
   images?: Record<string, ImageEntry>,
   colorList?: {id: string, value: string}[],
   bleFans?: BleFanConfig[],
+  espnowFans?: EspNowFanLink[],
   dynamicEntityValues?: Record<string, FixedEntityEntry[]>
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
@@ -318,7 +319,7 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
         </div>
       )}
       {(() => {
-        if (!bleFans || bleFans.length === 0) return null;
+        if ((!bleFans || bleFans.length === 0) && (!espnowFans || espnowFans.length === 0)) return null;
         const candidateEntities: string[] = [];
         for (const ei of entityItems) {
           candidateEntities.push(ei.name);
@@ -348,15 +349,28 @@ export const DraggableTile = ({ tile, isSelected, onClick, onDelete, zIndex, dyn
           }
         }
         const isBleControlled = candidateEntities.some(e => Boolean(findConfiguredBleFan(e, bleFans)));
-        if (!isBleControlled) return null;
-        return (
-          <div
-            className="absolute bottom-0.5 right-0.5 pointer-events-none p-0.5 rounded bg-blue-600/90 text-white shadow-sm z-20"
-            title="Controlled via local Tuya BLE"
-          >
-            <Bluetooth size={9} />
-          </div>
-        );
+        if (isBleControlled) {
+          return (
+            <div
+              className="absolute bottom-0.5 right-0.5 pointer-events-none p-0.5 rounded bg-blue-600/90 text-white shadow-sm z-20"
+              title="Controlled via local Tuya BLE"
+            >
+              <Bluetooth size={9} />
+            </div>
+          );
+        }
+        const isEspNowControlled = candidateEntities.some(e => Boolean(findConfiguredEspNowFan(e, espnowFans)));
+        if (isEspNowControlled) {
+          return (
+            <div
+              className="absolute bottom-0.5 right-0.5 pointer-events-none p-0.5 rounded bg-indigo-600/90 text-white shadow-sm z-20"
+              title="Controlled via Headless BLE Hub (ESP-NOW)"
+            >
+              <Radio size={9} />
+            </div>
+          );
+        }
+        return null;
       })()}
     </div>
   );
