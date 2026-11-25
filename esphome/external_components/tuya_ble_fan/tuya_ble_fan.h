@@ -133,6 +133,7 @@ class TuyaBleFanDevice {
   void set_rssi_sensor(sensor::Sensor *sensor) { rssi_sensor_ = sensor; }
   void publish_rssi(int rssi);
   void clear_rssi();
+  int last_rssi() const { return last_rssi_; }
   BleConnStatus conn_status() const { return conn_status_; }
   void set_conn_status(BleConnStatus status);
 
@@ -183,6 +184,7 @@ class TuyaBleFanDevice {
   ESPPreferenceObject state_pref_;
   CachedDeviceState last_saved_state_{};
   BleConnStatus conn_status_{BleConnStatus::DISCONNECTED};
+  int last_rssi_{-127};
 
   // Fan state
   bool fan_on_{false};

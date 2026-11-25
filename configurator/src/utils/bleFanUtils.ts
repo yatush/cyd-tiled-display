@@ -1,5 +1,5 @@
 import { dump } from 'js-yaml';
-import type { BleFanConfig, Config, HaEntity, TuyaBleCandidate } from '../types';
+import type { BleFanConfig, Config, EspNowFanLink, HaEntity, HeadlessHubConfig, TuyaBleCandidate } from '../types';
 
 export function normalizeEntityId(raw: string | undefined | null): string {
   if (!raw || typeof raw !== 'string') return '';
@@ -309,4 +309,187 @@ export function getOtherBleFanHosts(
     const hBase = h.replace(/\\/g, '/').split('/').pop()?.trim().toLowerCase() || '';
     return !currentBase || hBase !== currentBase;
   });
+}
+
+export interface ExtractedEspNowConfig {
+  fans: EspNowFanLink[];
+  networkKey?: string;
+  fallbackChannel?: number;
+}
+
+export function extractEspNowFansFromDeviceYaml(rawData: any): ExtractedEspNowConfig {
+  const bridge = rawData?.espnow_fan_bridge;
+  if (!bridge || typeof bridge !== 'object') {
+    return { fans: [] };
+  }
+  const rawFans = Array.isArray(bridge.fans) ? bridge.fans : [];
+  const fans: EspNowFanLink[] = rawFans
+    .filter((f: any) => f && typeof f === 'object' && (f.fan_entity_id || f.light_entity_id || f.name))
+    .map((f: any) => ({
+      name: String(f.name || f.fan_entity_id || f.light_entity_id || ''),
+      fan_entity_id: f.fan_entity_id ? String(f.fan_entity_id) : '',
+      light_entity_id: f.light_entity_id ? String(f.light_entity_id) : '',
+    }));
+  const networkKey = bridge.network_key ? String(bridge.network_key) : undefined;
+  const fallbackChannel =
+    typeof bridge.fallback_channel === 'number' && bridge.fallback_channel >= 1 && bridge.fallback_channel <= 13
+      ? bridge.fallback_channel
+      : undefined;
+  return { fans, networkKey, fallbackChannel };
+}
+
+export function mergeHubFansIntoHaEntities(
+  haEntities: HaEntity[] = [],
+  hubs: HeadlessHubConfig[] = []
+): HaEntity[] {
+  if (!hubs || hubs.length === 0) return haEntities;
+
+  const hubLabelById = new Map<string, string>();
+  for (const hub of hubs) {
+    for (const fan of hub.fans || []) {
+      const labelBase = (fan.name || '').trim() || 'Hub Fan';
+      const fanId = normalizeEntityId(fan.fan_entity_id);
+      const lightId = normalizeEntityId(fan.light_entity_id);
+      if (fanId) hubLabelById.set(fanId, `[Hub] ${labelBase}`);
+      if (lightId) hubLabelById.set(lightId, `[Hub] ${labelBase} Light`);
+    }
+  }
+  if (hubLabelById.size === 0) return haEntities;
+
+  const hubEntries: HaEntity[] = [];
+  const seen = new Set<string>();
+  for (const [entity_id, friendly_name] of hubLabelById.entries()) {
+    seen.add(entity_id);
+    hubEntries.push({ entity_id, friendly_name });
+  }
+  const restEntries = haEntities.filter(e => !seen.has(normalizeEntityId(e.entity_id)));
+  return [...hubEntries, ...restEntries];
+}
+
+export function collectReferencedEntityIds(config: Config): Set<string> {
+  const refs = new Set<string>();
+  for (const page of config.pages || []) {
+    for (const tile of page.tiles || []) {
+      if (Array.isArray((tile as any).entities)) {
+        for (const item of (tile as any).entities) {
+          const val = typeof item === 'string' ? item : item?.entity;
+          const norm = normalizeEntityId(val);
+          if (norm) refs.add(norm);
+        }
+      }
+      if (typeof (tile as any).entity === 'string') {
+        const norm = normalizeEntityId((tile as any).entity);
+        if (norm) refs.add(norm);
+      }
+      if (Array.isArray((tile as any).options)) {
+        for (const opt of (tile as any).options) {
+          const norm = normalizeEntityId(opt?.entity);
+          if (norm) refs.add(norm);
+        }
+      }
+    }
+  }
+  if (config.dynamic_entity_values) {
+    for (const entries of Object.values(config.dynamic_entity_values)) {
+      for (const entry of entries || []) {
+        const val = typeof entry === 'string' ? entry : (entry as any)?.entity;
+        const norm = normalizeEntityId(val);
+        if (norm) refs.add(norm);
+      }
+    }
+  }
+  return refs;
+}
+
+/**
+ * Combine explicitly linked ESP-NOW fans with any Hub-hosted fans referenced by CYD tiles
+ * (excluding fans already configured for local BLE on this CYD).
+ */
+export function resolveEffectiveEspNowFans(
+  config: Config,
+  hubs: HeadlessHubConfig[] = []
+): EspNowFanLink[] {
+  const localBleIds = new Set<string>();
+  for (const bf of config.ble_fans || []) {
+    if (bf.fan_entity_id) localBleIds.add(normalizeEntityId(bf.fan_entity_id));
+    if (bf.light_entity_id) localBleIds.add(normalizeEntityId(bf.light_entity_id));
+  }
+
+  const byKey = new Map<string, EspNowFanLink>();
+  const addLink = (link: EspNowFanLink) => {
+    const fanId = normalizeEntityId(link.fan_entity_id);
+    const lightId = normalizeEntityId(link.light_entity_id);
+    if (!fanId && !lightId) return;
+    if ((fanId && localBleIds.has(fanId)) || (lightId && localBleIds.has(lightId))) return;
+    const key = fanId || lightId;
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        name: (link.name || fanId || lightId).trim(),
+        fan_entity_id: fanId,
+        ...(lightId ? { light_entity_id: lightId } : {}),
+      });
+    }
+  };
+
+  for (const explicit of config.espnow_fans || []) {
+    addLink(explicit);
+  }
+
+  const referenced = collectReferencedEntityIds(config);
+  for (const hub of hubs || []) {
+    for (const fan of hub.fans || []) {
+      const fanId = normalizeEntityId(fan.fan_entity_id);
+      const lightId = normalizeEntityId(fan.light_entity_id);
+      if ((fanId && referenced.has(fanId)) || (lightId && referenced.has(lightId))) {
+        addLink({
+          name: fan.name || fanId || lightId,
+          fan_entity_id: fanId,
+          light_entity_id: lightId || undefined,
+        });
+      }
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
+export interface EspNowCydYamlSections {
+  packageLine: string;
+  componentSection: string;
+}
+
+export function buildEspNowCydYamlSections(
+  espnowFans: EspNowFanLink[] = [],
+  networkKey?: string,
+  fallbackChannel: number = 1
+): EspNowCydYamlSections {
+  const validFans = (espnowFans || []).filter(
+    f => f && (f.fan_entity_id?.trim() || f.light_entity_id?.trim())
+  );
+  if (validFans.length === 0) {
+    return { packageLine: '', componentSection: '' };
+  }
+
+  const serializedFans = validFans.map(f => {
+    const entry: Record<string, any> = {
+      name: (f.name || f.fan_entity_id || f.light_entity_id || '').trim(),
+    };
+    if (f.fan_entity_id?.trim()) entry.fan_entity_id = f.fan_entity_id.trim();
+    if (f.light_entity_id?.trim()) entry.light_entity_id = f.light_entity_id.trim();
+    return entry;
+  });
+
+  const bridgeBlock: Record<string, any> = {
+    espnow_fan_bridge: {
+      role: 'cyd',
+      ...(networkKey?.trim() ? { network_key: networkKey.trim() } : {}),
+      fallback_channel: Math.max(1, Math.min(13, Math.floor(fallbackChannel || 1))),
+      fans: serializedFans,
+    },
+  };
+
+  return {
+    packageLine: '\n  espnow_cyd: !include lib/espnow_cyd.yaml',
+    componentSection: dump(bridgeBlock, { lineWidth: -1, noCompatMode: true, sortKeys: false }),
+  };
 }

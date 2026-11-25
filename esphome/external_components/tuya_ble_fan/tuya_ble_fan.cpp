@@ -692,6 +692,7 @@ void TuyaBleFanDevice::notify_fan_changed() {
     TuyaBleFanRegistry::instance().notify_state_changed(fan_entity_id_ + "|direction",
                                                         fan_reverse_ ? "reverse" : "forward");
   }
+  TuyaBleFanRegistry::instance().notify_device_changed(this);
 }
 
 void TuyaBleFanDevice::notify_light_changed() {
@@ -702,21 +703,25 @@ void TuyaBleFanDevice::notify_light_changed() {
   if (!light_entity_id_.empty()) {
     TuyaBleFanRegistry::instance().notify_state_changed(light_entity_id_, light_on_ ? "on" : "off");
   }
+  TuyaBleFanRegistry::instance().notify_device_changed(this);
 }
 
 void TuyaBleFanDevice::notify_timer_changed() {
   if (timer_number_ != nullptr) {
     timer_number_->sync_from_device();
   }
+  TuyaBleFanRegistry::instance().notify_device_changed(this);
 }
 
 void TuyaBleFanDevice::publish_rssi(int rssi) {
+  last_rssi_ = rssi;
   if (rssi_sensor_ != nullptr) {
     rssi_sensor_->publish_state(static_cast<float>(rssi));
   }
 }
 
 void TuyaBleFanDevice::clear_rssi() {
+  last_rssi_ = -127;
   if (rssi_sensor_ != nullptr && !std::isnan(rssi_sensor_->state)) {
     rssi_sensor_->publish_state(NAN);
   }
@@ -726,6 +731,7 @@ void TuyaBleFanDevice::set_conn_status(BleConnStatus status) {
   if (conn_status_ == status) return;
   conn_status_ = status;
   TuyaBleFanRegistry::instance().notify_state_changed("", "");
+  TuyaBleFanRegistry::instance().notify_device_changed(this);
 }
 
 // ============================================================================

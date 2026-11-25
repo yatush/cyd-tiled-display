@@ -63,11 +63,30 @@ export interface TuyaBleCandidate {
   supported: boolean;
 }
 
+export interface EspNowFanLink {
+  name: string;
+  fan_entity_id: string;
+  light_entity_id?: string;
+}
+
+export interface HeadlessHubConfig {
+  filename: string;
+  name: string;
+  friendly_name: string;
+  board: string;
+  fallback_channel: number;
+  network_key?: string;
+  fans: BleFanConfig[];
+}
+
 export interface Config {
   pages: Page[];
   dynamic_entities?: string[];
   dynamic_entity_values?: Record<string, FixedEntityEntry[]>;
   ble_fans?: BleFanConfig[];
+  espnow_fans?: EspNowFanLink[];
+  espnow_network_key?: string;
+  espnow_fallback_channel?: number;
   project_name?: string;
   project_path?: string;
   images?: Record<string, ImageEntry>;

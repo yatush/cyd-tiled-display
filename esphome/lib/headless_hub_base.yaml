@@ -1,0 +1,58 @@
+# headless_hub_base.yaml — Board-agnostic headless ESP32 BLE Fan Hub + ESP-NOW responder
+# Supports any ESP32 / ESP32-C3 / ESP32-S3 / XIAO ESP32-C3 board (no display/GPIO dependencies).
+
+external_components:
+  - source:
+      type: local
+      path: external_components
+
+substitutions:
+  ble_max_connections: "2"
+
+esp32:
+  partitions: lib/partitions_4mb_ota.csv
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      # Tuya BLE is GATT-client only; disable GATT server to minimize SRAM
+      CONFIG_BT_GATTS_ENABLE: n
+      CONFIG_BT_ACL_CONNECTIONS: "${ble_max_connections}"
+
+logger:
+
+api:
+  id: api_server
+  custom_services: true
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: LIGHT
+  fast_connect: true
+  reboot_timeout: 0s
+
+esp32_ble:
+  max_connections: ${ble_max_connections}
+
+esp32_ble_tracker:
+  id: ble_tracker
+  scan_parameters:
+    interval: 320ms
+    window: 160ms
+    active: true
+    continuous: false
+
+button:
+  - platform: restart
+    name: "Restart Hub"
+    id: restart_button
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: "diagnostic"
