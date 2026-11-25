@@ -393,9 +393,12 @@ void EspNowFanBridge::loop() {
 
   // 5. CYD pending command retries & peer reachability timeout
   if (role_ == BridgeRole::CYD) {
-    cyd_tick_pending_cmds(now);
+    const uint32_t check_now = millis();
+    cyd_tick_pending_cmds(check_now);
     for (auto &rf : remote_fans_) {
-      if (rf.espnow_reachable && (now - rf.last_seen_ms > PEER_TIMEOUT_MS)) {
+      if (rf.espnow_reachable &&
+          static_cast<int32_t>(check_now - rf.last_seen_ms) >
+              static_cast<int32_t>(PEER_TIMEOUT_MS)) {
         ESP_LOGW(TAG, "[%s] ESP-NOW peer timed out (unreachable)", rf.name.c_str());
         rf.espnow_reachable = false;
         ui_dirty_ = true;
@@ -720,7 +723,8 @@ void EspNowFanBridge::cyd_queue_cmd(const CmdPayload &cmd, uint32_t now_ms) {
 
 void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
   for (auto it = pending_cmds_.begin(); it != pending_cmds_.end();) {
-    if (now_ms - it->last_tx_ms < CMD_RETRY_INTERVAL_MS) {
+    if (static_cast<int32_t>(now_ms - it->last_tx_ms) <
+        static_cast<int32_t>(CMD_RETRY_INTERVAL_MS)) {
       ++it;
       continue;
     }
