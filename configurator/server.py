@@ -3248,9 +3248,9 @@ def _extract_gree_ac_from_yaml(parsed):
         rx_pin = str(rx_pin_raw.get('number') if isinstance(rx_pin_raw, dict) else (rx_pin_raw or '')).strip()
         dump_val = rx_cfg.get('dump')
         if isinstance(dump_val, list):
-            dump_ir = any(str(x).lower() in ('gree', 'all') for x in dump_val)
+            dump_ir = any(str(x).lower() in ('gree', 'raw', 'all') for x in dump_val)
         elif isinstance(dump_val, str):
-            dump_ir = dump_val.lower() in ('gree', 'all')
+            dump_ir = dump_val.lower() in ('gree', 'raw', 'all')
 
     model = str(gree_entry.get('model') or 'generic').strip().lower()
     if model not in GREE_AC_MODELS:
@@ -3478,6 +3478,7 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
         lines.append('')
 
         has_rx = bool(gree_ac.get('rx_pin'))
+        debug_ir = has_rx and bool(gree_ac.get('dump_ir'))
         if has_rx:
             rx_cfg = {
                 'id': 'ir_receiver',
@@ -3494,10 +3495,54 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
                 'tolerance': '50%',
                 'buffer_size': '2kb',
             }
-            if gree_ac.get('dump_ir'):
-                rx_cfg['dump'] = ['gree']
+            if debug_ir:
+                rx_cfg['dump'] = ['raw']
             rx_block = {'remote_receiver': rx_cfg}
-            lines.append(yaml.safe_dump(rx_block, sort_keys=False, default_flow_style=False).rstrip())
+            rx_yaml = yaml.safe_dump(rx_block, sort_keys=False, default_flow_style=False).rstrip()
+            if debug_ir:
+                rx_yaml += (
+                    "\n"
+                    "  on_raw:\n"
+                    "    then:\n"
+                    "      - lambda: |-\n"
+                    "          esphome::remote_base::RemoteReceiveData rx_std(x, 50, esphome::remote_base::TOLERANCE_MODE_PERCENTAGE);\n"
+                    "          auto s_std = esphome::gree::GreeProtocol(esphome::gree::GREE_GENERIC).decode(rx_std);\n"
+                    "          esphome::remote_base::RemoteReceiveData rx_ext(x, 50, esphome::remote_base::TOLERANCE_MODE_PERCENTAGE);\n"
+                    "          auto s_ext = esphome::gree::GreeProtocol(esphome::gree::GREE_YAC1FB9).decode(rx_ext);\n"
+                    "          char buf[96];\n"
+                    "          int32_t hdr_space = x.size() >= 2 ? -x[1] : 0;\n"
+                    "          if (s_ext.has_value() && hdr_space >= 4250) {\n"
+                    "            const auto &s = *s_ext;\n"
+                    "            const char *proto = (s[5] == 0x80 || (s[3] == 0xA0 && s[7] == 0xA0)) ? \"yaw1f\" : \"yac1fb9\";\n"
+                    "            snprintf(buf, sizeof(buf), \"%s [%02X %02X %02X %02X %02X %02X %02X %02X]\",\n"
+                    "                     proto, (unsigned)s[0], (unsigned)s[1], (unsigned)s[2], (unsigned)s[3],\n"
+                    "                     (unsigned)s[4], (unsigned)s[5], (unsigned)s[6], (unsigned)s[7]);\n"
+                    "            id(gree_ir_debug_protocol).publish_state(buf);\n"
+                    "          } else if (s_std.has_value()) {\n"
+                    "            const auto &s = *s_std;\n"
+                    "            const char *proto = \"generic\";\n"
+                    "            if (esphome::gree::GreeClimateCodec::decode(esphome::gree::GREE_YB1FA, s).has_value()) {\n"
+                    "              proto = \"yb1fa/yx1ff\";\n"
+                    "            } else if (s[5] == 0x40 && (s[2] & 0x60) == 0x60) {\n"
+                    "              proto = \"yag\";\n"
+                    "            } else if (s[6] == 0x20) {\n"
+                    "              proto = \"yaa/yac\";\n"
+                    "            } else if ((s[3] & 0xF0) == 0x70) {\n"
+                    "              proto = \"yac (aux)\";\n"
+                    "            } else if ((s[3] & 0xF0) == 0x50) {\n"
+                    "              proto = \"yan\";\n"
+                    "            }\n"
+                    "            snprintf(buf, sizeof(buf), \"%s [%02X %02X %02X %02X %02X %02X %02X %02X]\",\n"
+                    "                     proto, (unsigned)s[0], (unsigned)s[1], (unsigned)s[2], (unsigned)s[3],\n"
+                    "                     (unsigned)s[4], (unsigned)s[5], (unsigned)s[6], (unsigned)s[7]);\n"
+                    "            id(gree_ir_debug_protocol).publish_state(buf);\n"
+                    "          } else if (x.size() >= 2) {\n"
+                    "            snprintf(buf, sizeof(buf), \"non-gree (%u pulses, hdr %ld/%ld)\",\n"
+                    "                     (unsigned)x.size(), (long)x[0], (long)x[1]);\n"
+                    "            id(gree_ir_debug_protocol).publish_state(buf);\n"
+                    "          }"
+                )
+            lines.append(rx_yaml)
             lines.append('')
 
         climate_entry = {
@@ -3520,6 +3565,22 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
 
         lines.append(yaml.safe_dump({'climate': [climate_entry]}, sort_keys=False, default_flow_style=False).rstrip())
         lines.append('')
+
+        if debug_ir:
+            debug_sensor_block = {
+                'text_sensor': [
+                    {
+                        'platform': 'template',
+                        'id': 'gree_ir_debug_protocol',
+                        'device_id': 'gree_ac_device',
+                        'name': 'IR Debug Protocol',
+                        'entity_category': 'diagnostic',
+                        'icon': 'mdi:remote',
+                    }
+                ]
+            }
+            lines.append(yaml.safe_dump(debug_sensor_block, sort_keys=False, default_flow_style=False).rstrip())
+            lines.append('')
 
     return '\n'.join(lines)
 

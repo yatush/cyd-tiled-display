@@ -574,7 +574,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                       </label>
                       <label
                         className="inline-flex items-center gap-1.5 cursor-pointer text-slate-600"
-                        title="Logs decoded Gree IR frames to esphome logs when you press buttons on your physical remote"
+                        title="Exposes a diagnostic 'IR Debug Protocol' text sensor showing the detected Gree model & hex frame (plus raw IR logs) when you press buttons on your physical remote"
                       >
                         <input
                           type="checkbox"
@@ -582,7 +582,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                           onChange={e => setGreeAc(prev => ({ ...prev, dump_ir: e.target.checked }))}
                           className="rounded text-cyan-600"
                         />
-                        Log received IR codes (debug)
+                        IR debug mode (protocol sensor + logs)
                       </label>
                     </div>
                   </div>
