@@ -618,7 +618,10 @@ def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
     assert "remote_transmitter:" in text
     assert "remote_receiver:" in text
     assert "receiver_id: ir_receiver" in text
-    assert "- gree" in text
+    assert "- raw" in text
+    assert "on_raw:" in text
+    assert "gree_ir_debug_protocol" in text
+    assert "IR Debug Protocol" in text
 
     # Round-trip via list_ble_hubs
     hubs = server.list_ble_hubs(str(tmp_path))
@@ -634,7 +637,7 @@ def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
         "dump_ir": True,
     }
 
-    # 2. TX-only mode (blank rx_pin omits remote_receiver and receiver_id)
+    # 2. TX-only mode (blank rx_pin omits remote_receiver, receiver_id, and debug sensor)
     res2, err2, status2 = server.save_ble_hub_yaml(
         {
             "filename": "office-hub.yaml",
@@ -659,6 +662,7 @@ def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
     assert "remote_transmitter:" in text2
     assert "remote_receiver:" not in text2
     assert "receiver_id:" not in text2
+    assert "gree_ir_debug_protocol" not in text2
     hubs2 = server.list_ble_hubs(str(tmp_path))
     assert hubs2[0]["gree_ac"]["rx_pin"] == ""
     assert hubs2[0]["gree_ac"]["supports_heat"] is False
