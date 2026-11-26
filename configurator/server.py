@@ -3401,6 +3401,7 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
             {
                 'id': 'gree_ac_device',
                 'name': gree_ac['name'],
+                'relation': 'via',
             }
         ]
 
@@ -3476,24 +3477,24 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
 
         has_rx = bool(gree_ac.get('rx_pin'))
         if has_rx:
-            rx_block = {
-                'remote_receiver': {
-                    'id': 'ir_receiver',
-                    'pin': {
-                        'number': gree_ac['rx_pin'],
-                        'inverted': True,
-                        'mode': {
-                            'input': True,
-                            'pullup': True,
-                        },
+            rx_cfg = {
+                'id': 'ir_receiver',
+                'pin': {
+                    'number': gree_ac['rx_pin'],
+                    'inverted': True,
+                    'mode': {
+                        'input': True,
+                        'pullup': True,
                     },
-                    'idle': '25ms',
-                    'filter': '50us',
-                    'tolerance': '50%',
-                    'buffer_size': '2kb',
-                    'dump': ['gree'] if gree_ac.get('dump_ir') else [],
-                }
+                },
+                'idle': '25ms',
+                'filter': '50us',
+                'tolerance': '50%',
+                'buffer_size': '2kb',
             }
+            if gree_ac.get('dump_ir'):
+                rx_cfg['dump'] = ['gree']
+            rx_block = {'remote_receiver': rx_cfg}
             lines.append(yaml.safe_dump(rx_block, sort_keys=False, default_flow_style=False).rstrip())
             lines.append('')
 

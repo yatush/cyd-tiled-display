@@ -610,6 +610,7 @@ def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
     assert res["gree_ac"]["dump_ir"] is True
 
     text = (tmp_path / "office-hub.yaml").read_text(encoding="utf-8")
+    assert "relation: via" in text
     assert "platform: gree" in text
     assert "device_id: gree_ac_device" in text
     assert "remote_transmitter:" in text
