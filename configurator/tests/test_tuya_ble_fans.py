@@ -581,3 +581,81 @@ def test_reassign_fan_from_cyd_strips_local_ble_package(tmp_path):
     assert "tuya_ble_fan:" not in cyd_text
     assert "lib/tuya_ble_fan.yaml" not in cyd_text
     assert "tile_ui:" in cyd_text
+
+
+def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
+    # 1. Gree IR AC hub (TX + RX + dump_ir debug)
+    res, err, status = server.save_ble_hub_yaml(
+        {
+            "name": "Office Hub",
+            "board": "seeed_xiao_esp32c3",
+            "fans": [],
+            "gree_ac": {
+                "enabled": True,
+                "name": "Office AC",
+                "model": "yaa",
+                "tx_pin": "GPIO4",
+                "rx_pin": "GPIO5",
+                "supports_cool": True,
+                "supports_heat": True,
+                "dump_ir": True,
+            },
+        },
+        esphome_dir=str(tmp_path),
+    )
+    assert status == 200 and err is None
+    assert res["filename"] == "office-hub.yaml"
+    assert res["gree_ac"]["name"] == "Office AC"
+    assert res["gree_ac"]["model"] == "yaa"
+    assert res["gree_ac"]["dump_ir"] is True
+
+    text = (tmp_path / "office-hub.yaml").read_text(encoding="utf-8")
+    assert "platform: gree" in text
+    assert "device_id: gree_ac_device" in text
+    assert "remote_transmitter:" in text
+    assert "remote_receiver:" in text
+    assert "receiver_id: ir_receiver" in text
+    assert "- gree" in text
+
+    # Round-trip via list_ble_hubs
+    hubs = server.list_ble_hubs(str(tmp_path))
+    assert len(hubs) == 1
+    assert hubs[0]["gree_ac"] == {
+        "enabled": True,
+        "name": "Office AC",
+        "model": "yaa",
+        "tx_pin": "GPIO4",
+        "rx_pin": "GPIO5",
+        "supports_cool": True,
+        "supports_heat": True,
+        "dump_ir": True,
+    }
+
+    # 2. TX-only mode (blank rx_pin omits remote_receiver and receiver_id)
+    res2, err2, status2 = server.save_ble_hub_yaml(
+        {
+            "filename": "office-hub.yaml",
+            "name": "Office Hub",
+            "board": "seeed_xiao_esp32c3",
+            "fans": [],
+            "gree_ac": {
+                "enabled": True,
+                "name": "Office AC",
+                "model": "generic",
+                "tx_pin": "GPIO4",
+                "rx_pin": "",
+                "supports_cool": True,
+                "supports_heat": False,
+                "dump_ir": False,
+            },
+        },
+        esphome_dir=str(tmp_path),
+    )
+    assert status2 == 200 and err2 is None
+    text2 = (tmp_path / "office-hub.yaml").read_text(encoding="utf-8")
+    assert "remote_transmitter:" in text2
+    assert "remote_receiver:" not in text2
+    assert "receiver_id:" not in text2
+    hubs2 = server.list_ble_hubs(str(tmp_path))
+    assert hubs2[0]["gree_ac"]["rx_pin"] == ""
+    assert hubs2[0]["gree_ac"]["supports_heat"] is False
