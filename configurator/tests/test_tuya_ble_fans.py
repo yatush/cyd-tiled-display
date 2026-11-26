@@ -613,6 +613,8 @@ def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
     assert "relation: via" in text
     assert "platform: gree" in text
     assert "device_id: gree_ac_device" in text
+    assert "name: None" in text
+    assert "name: null" not in text
     assert "remote_transmitter:" in text
     assert "remote_receiver:" in text
     assert "receiver_id: ir_receiver" in text
