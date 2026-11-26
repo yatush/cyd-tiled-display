@@ -3219,6 +3219,8 @@ def _extract_gree_ac_from_yaml(parsed):
 
     # Resolve AC name from sub-device or climate.name
     ac_name = str(gree_entry.get('name') or '').strip()
+    if ac_name.lower() == 'none':
+        ac_name = ''
     dev_id = str(gree_entry.get('device_id') or '').strip()
     if not ac_name and dev_id:
         esphome_cfg = parsed.get('esphome') if isinstance(parsed.get('esphome'), dict) else {}
@@ -3502,7 +3504,7 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
             'platform': 'gree',
             'id': 'gree_ac',
             'device_id': 'gree_ac_device',
-            'name': None,
+            'name': 'None',
             'model': gree_ac['model'],
             'transmitter_id': 'ir_transmitter',
             'supports_cool': bool(gree_ac.get('supports_cool', True)),
