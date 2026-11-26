@@ -3161,6 +3161,8 @@ def list_ble_hubs(esphome_dir=None):
                 'expose_to_ha': fan.get('expose_to_ha') is not False,
             })
 
+        gree_ac = _extract_gree_ac_from_yaml(parsed)
+
         hubs.append({
             'filename': fname,
             'name': str(esphome_cfg.get('name') or os.path.splitext(fname)[0]),
@@ -3169,8 +3171,99 @@ def list_ble_hubs(esphome_dir=None):
             'fallback_channel': int(bridge_cfg.get('fallback_channel') or 1),
             'network_key': str(bridge_cfg.get('network_key') or ''),
             'fans': fans,
+            'gree_ac': gree_ac,
         })
     return hubs
+
+
+GREE_AC_MODELS = ('generic', 'yan', 'yaa', 'yac', 'yac1fb9', 'yx1ff', 'yag', 'ybofb')
+
+
+def _normalize_gree_ac_config(raw):
+    """Validate and normalize an optional Gree IR AC config dict."""
+    if not isinstance(raw, dict) or not raw.get('enabled'):
+        return None
+    ac_name = str(raw.get('name') or '').strip()
+    if not ac_name:
+        return None
+    model = str(raw.get('model') or 'generic').strip().lower()
+    if model not in GREE_AC_MODELS:
+        model = 'generic'
+    tx_pin = str(raw.get('tx_pin') or 'GPIO4').strip() or 'GPIO4'
+    rx_pin = str(raw.get('rx_pin') if raw.get('rx_pin') is not None else 'GPIO5').strip()
+    return {
+        'enabled': True,
+        'name': ac_name,
+        'model': model,
+        'tx_pin': tx_pin,
+        'rx_pin': rx_pin,
+        'supports_cool': raw.get('supports_cool') is not False,
+        'supports_heat': raw.get('supports_heat') is not False,
+        'dump_ir': bool(raw.get('dump_ir')),
+    }
+
+
+def _extract_gree_ac_from_yaml(parsed):
+    """Extract Gree IR AC config back out of a parsed headless hub YAML."""
+    if not isinstance(parsed, dict):
+        return None
+    climates = parsed.get('climate')
+    if not isinstance(climates, list):
+        return None
+    gree_entry = next(
+        (c for c in climates if isinstance(c, dict) and str(c.get('platform') or '').lower() == 'gree'),
+        None,
+    )
+    if not gree_entry:
+        return None
+
+    # Resolve AC name from sub-device or climate.name
+    ac_name = str(gree_entry.get('name') or '').strip()
+    dev_id = str(gree_entry.get('device_id') or '').strip()
+    if not ac_name and dev_id:
+        esphome_cfg = parsed.get('esphome') if isinstance(parsed.get('esphome'), dict) else {}
+        devices = esphome_cfg.get('devices') if isinstance(esphome_cfg.get('devices'), list) else []
+        for dev in devices:
+            if isinstance(dev, dict) and str(dev.get('id') or '').strip() == dev_id:
+                ac_name = str(dev.get('name') or '').strip()
+                break
+    if not ac_name:
+        ac_name = 'Gree AC'
+
+    tx_cfg = parsed.get('remote_transmitter')
+    if isinstance(tx_cfg, list):
+        tx_cfg = tx_cfg[0] if tx_cfg else {}
+    tx_pin_raw = tx_cfg.get('pin') if isinstance(tx_cfg, dict) else ''
+    tx_pin = str(tx_pin_raw.get('number') if isinstance(tx_pin_raw, dict) else (tx_pin_raw or 'GPIO4')).strip()
+
+    rx_cfg = parsed.get('remote_receiver')
+    if isinstance(rx_cfg, list):
+        rx_cfg = rx_cfg[0] if rx_cfg else {}
+    rx_pin = ''
+    dump_ir = False
+    if isinstance(rx_cfg, dict):
+        rx_pin_raw = rx_cfg.get('pin')
+        rx_pin = str(rx_pin_raw.get('number') if isinstance(rx_pin_raw, dict) else (rx_pin_raw or '')).strip()
+        dump_val = rx_cfg.get('dump')
+        if isinstance(dump_val, list):
+            dump_ir = any(str(x).lower() in ('gree', 'all') for x in dump_val)
+        elif isinstance(dump_val, str):
+            dump_ir = dump_val.lower() in ('gree', 'all')
+
+    model = str(gree_entry.get('model') or 'generic').strip().lower()
+    if model not in GREE_AC_MODELS:
+        model = 'generic'
+
+    return {
+        'enabled': True,
+        'name': ac_name,
+        'model': model,
+        'tx_pin': tx_pin or 'GPIO4',
+        'rx_pin': rx_pin,
+        'supports_cool': gree_entry.get('supports_cool') is not False,
+        'supports_heat': gree_entry.get('supports_heat') is not False,
+        'dump_ir': dump_ir,
+    }
 
 
 def _find_fan_ownership_conflicts(target_filename, fans, esphome_dir=None):
@@ -3294,16 +3387,26 @@ def _remove_fans_from_host_yaml(filepath, fans_to_remove):
     return True
 
 
-def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, network_key, fans):
+def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, network_key, fans, gree_ac=None):
     fan_count = len(fans)
     max_conns = min(3, max(1, fan_count))
     idle_disconnect_s = 0 if (fan_count > 0 and fan_count <= max_conns) else 30
 
+    esphome_block = {
+        'name': name,
+        'friendly_name': friendly_name,
+    }
+    if gree_ac and gree_ac.get('enabled') and gree_ac.get('name'):
+        esphome_block['devices'] = [
+            {
+                'id': 'gree_ac_device',
+                'name': gree_ac['name'],
+            }
+        ]
+
     lines = [
-        f'# Headless ESP32 BLE Fan Hub — managed by CYD Configurator',
-        f'esphome:',
-        f'  name: {name}',
-        f'  friendly_name: "{friendly_name}"',
+        f'# Headless ESP32 BLE Fan & IR Hub — managed by CYD Configurator',
+        yaml.safe_dump({'esphome': esphome_block}, sort_keys=False, default_flow_style=False).rstrip(),
         f'',
         f'esp32:',
         f'  board: {board}',
@@ -3360,6 +3463,61 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
         lines.append(yaml.safe_dump(tuya_block, sort_keys=False, default_flow_style=False).rstrip())
         lines.append('')
 
+    if gree_ac and gree_ac.get('enabled') and gree_ac.get('name'):
+        tx_block = {
+            'remote_transmitter': {
+                'id': 'ir_transmitter',
+                'pin': gree_ac['tx_pin'],
+                'carrier_duty_percent': '50%',
+            }
+        }
+        lines.append(yaml.safe_dump(tx_block, sort_keys=False, default_flow_style=False).rstrip())
+        lines.append('')
+
+        has_rx = bool(gree_ac.get('rx_pin'))
+        if has_rx:
+            rx_block = {
+                'remote_receiver': {
+                    'id': 'ir_receiver',
+                    'pin': {
+                        'number': gree_ac['rx_pin'],
+                        'inverted': True,
+                        'mode': {
+                            'input': True,
+                            'pullup': True,
+                        },
+                    },
+                    'idle': '25ms',
+                    'filter': '50us',
+                    'tolerance': '50%',
+                    'buffer_size': '2kb',
+                    'dump': ['gree'] if gree_ac.get('dump_ir') else [],
+                }
+            }
+            lines.append(yaml.safe_dump(rx_block, sort_keys=False, default_flow_style=False).rstrip())
+            lines.append('')
+
+        climate_entry = {
+            'platform': 'gree',
+            'id': 'gree_ac',
+            'device_id': 'gree_ac_device',
+            'name': None,
+            'model': gree_ac['model'],
+            'transmitter_id': 'ir_transmitter',
+            'supports_cool': bool(gree_ac.get('supports_cool', True)),
+            'supports_heat': bool(gree_ac.get('supports_heat', True)),
+            'visual': {
+                'min_temperature': 16,
+                'max_temperature': 30,
+                'temperature_step': 1,
+            },
+        }
+        if has_rx:
+            climate_entry['receiver_id'] = 'ir_receiver'
+
+        lines.append(yaml.safe_dump({'climate': [climate_entry]}, sort_keys=False, default_flow_style=False).rstrip())
+        lines.append('')
+
     return '\n'.join(lines)
 
 
@@ -3394,6 +3552,7 @@ def save_ble_hub_yaml(payload, esphome_dir=None):
         f for f in fans
         if isinstance(f, dict) and str(f.get('device_id') or '').strip() and str(f.get('local_key') or '').strip()
     ]
+    gree_ac = _normalize_gree_ac_config(payload.get('gree_ac'))
 
     conflicts = _find_fan_ownership_conflicts(filename, valid_fans, root_dir)
     if conflicts and not payload.get('reassign'):
@@ -3420,6 +3579,7 @@ def save_ble_hub_yaml(payload, esphome_dir=None):
         fallback_channel=fallback_channel,
         network_key=network_key,
         fans=valid_fans,
+        gree_ac=gree_ac,
     )
 
     target_path = os.path.join(root_dir, filename)
@@ -3437,6 +3597,7 @@ def save_ble_hub_yaml(payload, esphome_dir=None):
         'fallback_channel': fallback_channel,
         'network_key': network_key,
         'fans': valid_fans,
+        'gree_ac': gree_ac,
         'migrated_from': migrated_from,
     }, None, 200
 

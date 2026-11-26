@@ -11,19 +11,42 @@ import {
   Edit3,
   Loader2,
   ArrowRightLeft,
+  Wind,
 } from 'lucide-react';
-import { BleFanConfig, HeadlessHubConfig, TuyaBleCandidate } from '../types';
+import { BleFanConfig, GreeAcConfig, HeadlessHubConfig, TuyaBleCandidate } from '../types';
 import { apiFetch } from '../utils/api';
-import { deriveDefaultBleEntityIds } from '../utils/bleFanUtils';
+import { deriveDefaultBleEntityIds, slugifyEspHomeId } from '../utils/bleFanUtils';
 
 const BOARD_PRESETS = [
-  { value: 'esp32dev', label: 'ESP32 DevKit / WROOM (esp32dev)' },
   { value: 'seeed_xiao_esp32c3', label: 'Seeed XIAO ESP32-C3 (seeed_xiao_esp32c3)' },
+  { value: 'esp32dev', label: 'ESP32 DevKit / WROOM (esp32dev)' },
   { value: 'esp32-c3-devkitm-1', label: 'ESP32-C3 DevKitM-1 (esp32-c3-devkitm-1)' },
   { value: 'esp32-s3-devkitc-1', label: 'ESP32-S3 DevKitC-1 (esp32-s3-devkitc-1)' },
   { value: 'seeed_xiao_esp32s3', label: 'Seeed XIAO ESP32-S3 (seeed_xiao_esp32s3)' },
   { value: 'esp32-c6-devkitc-1', label: 'ESP32-C6 DevKitC-1 (esp32-c6-devkitc-1)' },
 ];
+
+const GREE_AC_MODELS = [
+  { value: 'generic', label: 'Generic Gree (default)' },
+  { value: 'yaa', label: 'YAA (YAA1FB / YAA1FBF)' },
+  { value: 'yac', label: 'YAC (YAC1FB / YAC1FBF)' },
+  { value: 'yac1fb9', label: 'YAC1FB9' },
+  { value: 'yan', label: 'YAN (YAN1F1)' },
+  { value: 'yag', label: 'YAG (YAG1FB)' },
+  { value: 'yx1ff', label: 'YX1FF' },
+  { value: 'ybofb', label: 'YBOFB' },
+];
+
+const DEFAULT_GREE_AC: GreeAcConfig = {
+  enabled: false,
+  name: '',
+  model: 'generic',
+  tx_pin: 'GPIO4',
+  rx_pin: 'GPIO5',
+  supports_cool: true,
+  supports_heat: true,
+  dump_ir: false,
+};
 
 interface ConflictItem {
   device_id: string;
@@ -58,11 +81,12 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
 
   const [name, setName] = useState('');
   const [friendlyName, setFriendlyName] = useState('');
-  const [board, setBoard] = useState('esp32dev');
+  const [board, setBoard] = useState('seeed_xiao_esp32c3');
   const [customBoard, setCustomBoard] = useState('');
   const [fallbackChannel, setFallbackChannel] = useState(1);
   const [hubNetworkKey, setHubNetworkKey] = useState(networkKey || 'cyd_espnow_default');
   const [selectedFanIds, setSelectedFanIds] = useState<Set<string>>(new Set());
+  const [greeAc, setGreeAc] = useState<GreeAcConfig>({ ...DEFAULT_GREE_AC });
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,11 +110,12 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
     setEditingFilename(null);
     setName('');
     setFriendlyName('');
-    setBoard('esp32dev');
+    setBoard('seeed_xiao_esp32c3');
     setCustomBoard('');
     setFallbackChannel(1);
     setHubNetworkKey(networkKey || 'cyd_espnow_default');
     setSelectedFanIds(new Set());
+    setGreeAc({ ...DEFAULT_GREE_AC });
     setError(null);
     setConflicts([]);
   };
@@ -106,6 +131,11 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
     setFallbackChannel(hub.fallback_channel || 1);
     setHubNetworkKey(hub.network_key || networkKey || 'cyd_espnow_default');
     setSelectedFanIds(new Set((hub.fans || []).map(f => f.device_id)));
+    setGreeAc(
+      hub.gree_ac && hub.gree_ac.enabled
+        ? { ...DEFAULT_GREE_AC, ...hub.gree_ac, enabled: true }
+        : { ...DEFAULT_GREE_AC }
+    );
     setError(null);
     setConflicts([]);
   };
@@ -168,6 +198,10 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
       setError('Board identifier is required.');
       return;
     }
+    if (greeAc.enabled && !greeAc.name.trim()) {
+      setError('Gree AC name is required when Gree IR AC control is enabled.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -183,6 +217,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
           fallback_channel: fallbackChannel,
           network_key: hubNetworkKey.trim() || 'cyd_espnow_default',
           fans: buildSelectedFans(),
+          gree_ac: greeAc.enabled ? { ...greeAc, name: greeAc.name.trim() } : null,
           reassign,
         }),
       });
@@ -328,8 +363,15 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {hub.fans.length === 0 ? (
-                          <span className="text-[11px] text-slate-400 italic">No fans assigned yet</span>
+                        {hub.gree_ac && hub.gree_ac.enabled && (
+                          <span className="inline-flex items-center gap-1 text-[11px] bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-full text-cyan-800 font-medium">
+                            <Wind size={11} />
+                            AC: {hub.gree_ac.name} ({hub.gree_ac.model}, TX {hub.gree_ac.tx_pin}
+                            {hub.gree_ac.rx_pin ? ` / RX ${hub.gree_ac.rx_pin}` : ''})
+                          </span>
+                        )}
+                        {hub.fans.length === 0 && !(hub.gree_ac && hub.gree_ac.enabled) ? (
+                          <span className="text-[11px] text-slate-400 italic">No fans or AC assigned yet</span>
                         ) : (
                           hub.fans.map(f => (
                             <span
@@ -356,7 +398,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                     value={name}
                     onChange={e => setName(e.target.value)}
                     disabled={editingFilename !== null}
-                    placeholder="e.g. bedroom_ble_hub"
+                    placeholder="e.g. office-ble-hub"
                     className="w-full px-2.5 py-1.5 text-sm border rounded-md disabled:bg-slate-100"
                   />
                 </div>
@@ -366,7 +408,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                     type="text"
                     value={friendlyName}
                     onChange={e => setFriendlyName(e.target.value)}
-                    placeholder="e.g. Bedroom BLE Hub"
+                    placeholder="e.g. Office BLE Hub"
                     className="w-full px-2.5 py-1.5 text-sm border rounded-md"
                   />
                 </div>
@@ -423,6 +465,128 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                   placeholder="cyd_espnow_default"
                   className="w-full px-2.5 py-1.5 text-sm font-mono border rounded-md"
                 />
+              </div>
+
+              {/* Gree IR AC Control */}
+              <div className="border border-cyan-200 bg-cyan-50/40 rounded-lg p-3 space-y-3">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="flex items-center gap-2 text-xs font-bold text-cyan-900">
+                    <Wind size={14} className="text-cyan-600" />
+                    Gree IR AC Control (TX + RX state sync)
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={greeAc.enabled}
+                    onChange={e =>
+                      setGreeAc(prev => ({
+                        ...prev,
+                        enabled: e.target.checked,
+                        name: prev.name || (friendlyName ? `${friendlyName.replace(/\s*hub\s*/i, ' ').trim()} AC` : ''),
+                      }))
+                    }
+                    className="rounded text-cyan-600"
+                  />
+                </label>
+
+                {greeAc.enabled && (
+                  <div className="space-y-2.5 pt-2 border-t border-cyan-200/70">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          AC Name
+                        </label>
+                        <input
+                          type="text"
+                          value={greeAc.name}
+                          onChange={e => setGreeAc(prev => ({ ...prev, name: e.target.value }))}
+                          placeholder="e.g. Office AC"
+                          className="w-full px-2 py-1.5 text-xs border rounded-md bg-white"
+                        />
+                        {greeAc.name.trim() && (
+                          <div className="text-[10px] text-cyan-700 font-mono mt-0.5">
+                            HA entity: climate.{slugifyEspHomeId(greeAc.name)}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Gree Protocol Model
+                        </label>
+                        <select
+                          value={greeAc.model}
+                          onChange={e => setGreeAc(prev => ({ ...prev, model: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-xs border rounded-md bg-white"
+                        >
+                          {GREE_AC_MODELS.map(m => (
+                            <option key={m.value} value={m.value}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          IR TX Pin <span className="font-normal text-slate-400">(XIAO D2 = GPIO4)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={greeAc.tx_pin}
+                          onChange={e => setGreeAc(prev => ({ ...prev, tx_pin: e.target.value }))}
+                          placeholder="GPIO4"
+                          className="w-full px-2 py-1.5 text-xs font-mono border rounded-md bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          IR RX Pin <span className="font-normal text-slate-400">(XIAO D3 = GPIO5; blank = TX-only)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={greeAc.rx_pin}
+                          onChange={e => setGreeAc(prev => ({ ...prev, rx_pin: e.target.value }))}
+                          placeholder="GPIO5"
+                          className="w-full px-2 py-1.5 text-xs font-mono border rounded-md bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-slate-700 pt-0.5">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={greeAc.supports_cool}
+                          onChange={e => setGreeAc(prev => ({ ...prev, supports_cool: e.target.checked }))}
+                          className="rounded text-cyan-600"
+                        />
+                        Cool
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={greeAc.supports_heat}
+                          onChange={e => setGreeAc(prev => ({ ...prev, supports_heat: e.target.checked }))}
+                          className="rounded text-cyan-600"
+                        />
+                        Heat
+                      </label>
+                      <label
+                        className="inline-flex items-center gap-1.5 cursor-pointer text-slate-600"
+                        title="Logs decoded Gree IR frames to esphome logs when you press buttons on your physical remote"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={greeAc.dump_ir}
+                          onChange={e => setGreeAc(prev => ({ ...prev, dump_ir: e.target.checked }))}
+                          className="rounded text-cyan-600"
+                        />
+                        Log received IR codes (debug)
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Fan assignment checklist */}

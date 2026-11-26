@@ -69,6 +69,17 @@ export interface EspNowFanLink {
   light_entity_id?: string;
 }
 
+export interface GreeAcConfig {
+  enabled: boolean;
+  name: string;
+  model: string;
+  tx_pin: string;
+  rx_pin: string;
+  supports_cool: boolean;
+  supports_heat: boolean;
+  dump_ir: boolean;
+}
+
 export interface HeadlessHubConfig {
   filename: string;
   name: string;
@@ -77,6 +88,7 @@ export interface HeadlessHubConfig {
   fallback_channel: number;
   network_key?: string;
   fans: BleFanConfig[];
+  gree_ac?: GreeAcConfig | null;
 }
 
 export interface Config {
