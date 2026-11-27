@@ -276,12 +276,23 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
       if (!res.ok || !data.ok) {
         setError(data.error || 'Failed to sync detached switches to hubs');
       } else {
-        const count = (data.updated_hubs || []).length;
-        setSyncMessage(
-          count > 0
-            ? `Synced to ${count} headless hub${count === 1 ? '' : 's'} (${(data.updated_hubs || []).join(', ')}). Re-flash hubs to apply.`
-            : 'Saved. Create a Headless Hub to sync these rules.'
-        );
+        const updatedHubs: string[] = Array.isArray(data.updated_hubs) ? data.updated_hubs : [];
+        const liveHubs: string[] = Array.isArray(data.live_pushed_hubs) ? data.live_pushed_hubs : [];
+        if (liveHubs.length > 0 && liveHubs.length >= updatedHubs.length) {
+          setSyncMessage(
+            `Applied live to ${liveHubs.length} online hub${liveHubs.length === 1 ? '' : 's'} (${liveHubs.join(', ')}) and saved to YAML — no re-flash needed!`
+          );
+        } else if (liveHubs.length > 0) {
+          setSyncMessage(
+            `Applied live to ${liveHubs.join(', ')}. Saved YAML for ${updatedHubs.length} hub${updatedHubs.length === 1 ? '' : 's'} (offline/older hubs will pick up changes on next flash).`
+          );
+        } else if (updatedHubs.length > 0) {
+          setSyncMessage(
+            `Saved to ${updatedHubs.length} hub YAML${updatedHubs.length === 1 ? '' : 's'} (${updatedHubs.join(', ')}). Re-flash hubs once to enable live sync.`
+          );
+        } else {
+          setSyncMessage('Saved. Create a Headless Hub to sync these rules.');
+        }
         onSynced?.(devices);
       }
     } catch (e: any) {
@@ -453,6 +464,11 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                             )}
                             {dev.model && (
                               <span className="text-[10px] text-slate-400">{dev.model}</span>
+                            )}
+                            {dev.detached_channels && dev.detached_channels.length > 0 && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                                Detached (in:{dev.detached_channels.join(',')})
+                              </span>
                             )}
                             {cydNames.map(cyd => (
                               <span
