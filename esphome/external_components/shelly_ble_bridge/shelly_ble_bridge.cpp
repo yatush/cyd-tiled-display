@@ -64,6 +64,8 @@ void ShellyBleBridge::setup() {
       [this](uint32_t device_id, uint8_t channel, uint8_t opcode, uint8_t arg, uint8_t flags) {
         return this->enqueue_command(device_id, channel, opcode, arg, flags);
       });
+  ShellyBleBridgeRegistry::instance().set_device_predicate(
+      [this](uint32_t device_id) { return this->handles_device(device_id); });
   ShellyBleBridgeRegistry::instance().set_snapshot_provider(
       [this]() { return this->get_cached_states(); });
   last_scan_check_ms_ = millis();
@@ -223,6 +225,7 @@ void ShellyBleBridge::handle_input_beacon(const ShellyBleBeacon &beacon, int rss
     ESP_LOGI(TAG, "[%s] Detached input seq=%u offline fallback (ha=%d, wifi_down=%d, rssi=%d)",
              binding.name.c_str(), beacon.seq, ha_up ? 1 : 0, wifi_down ? 1 : 0, rssi);
 
+    bool handled_locally = false;
 #ifdef USE_TUYA_BLE_FAN
     tuya_ble_fan::TuyaBleFanDevice *target = nullptr;
     for (auto *dev : tuya_ble_fan::TuyaBleFanRegistry::instance().all_devices()) {
@@ -243,12 +246,22 @@ void ShellyBleBridge::handle_input_beacon(const ShellyBleBeacon &beacon, int rss
       ESP_LOGI(TAG, "[%s] Toggling Tuya BLE fan light '%s' -> %s", binding.name.c_str(),
                target->name().c_str(), next_on ? "ON" : "OFF");
       target->set_light_power(next_on);
-    } else {
-      ESP_LOGW(TAG, "[%s] Linked Tuya BLE fan not found on this hub (dev=%s light=%s)",
-               binding.name.c_str(), binding.target_fan_device_id.c_str(),
-               binding.target_light_entity_id.c_str());
+      handled_locally = true;
     }
 #endif
+    if (!handled_locally) {
+      if (ShellyBleBridgeRegistry::instance().toggle_remote_light(
+              binding.target_fan_device_id, binding.target_light_entity_id)) {
+        ESP_LOGI(TAG, "[%s] Forwarded detached light toggle over ESP-NOW (dev=%s light=%s)",
+                 binding.name.c_str(), binding.target_fan_device_id.c_str(),
+                 binding.target_light_entity_id.c_str());
+      } else {
+        ESP_LOGW(TAG, "[%s] Linked Tuya BLE fan not found locally and ESP-NOW forward unavailable "
+                      "(dev=%s light=%s)",
+                 binding.name.c_str(), binding.target_fan_device_id.c_str(),
+                 binding.target_light_entity_id.c_str());
+      }
+    }
   }
 }
 

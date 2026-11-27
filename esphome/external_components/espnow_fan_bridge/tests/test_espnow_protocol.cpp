@@ -157,10 +157,64 @@ static void test_channel_hunt_single_multi_and_pruning() {
   assert(hunt.active_channel(t + 100, 250) == 1);
 }
 
+static void test_v2_multihop_and_dedup() {
+  const std::string key = "cyd_espnow_default";
+  const uint32_t origin = 0x1234ABCDu;
+
+  CmdPayload toggle_cmd;
+  toggle_cmd.fan_key_hash = fnv1a_32("light.bedroom_fan_light");
+  toggle_cmd.opcode = CmdOpcode::LIGHT_TOGGLE;
+  auto payload = encode_cmd(toggle_cmd);
+
+  // Encode v2 frame with DEFAULT_RELAY_TTL (5) and hop_nonce=0
+  auto f = encode_frame_v2(key, MsgType::CMD, 77, origin, DEFAULT_RELAY_TTL, 0, payload.data(),
+                           payload.size());
+  assert(f.size() == FRAME_HEADER_V2_SIZE + payload.size());
+
+  FrameHeader hdr;
+  std::vector<uint8_t> out;
+  assert(decode_frame(key, f.data(), f.size(), hdr, out));
+  assert(hdr.version == PROTOCOL_VERSION_V2);
+  assert(hdr.type == MsgType::CMD);
+  assert(hdr.seq == 77);
+  assert(hdr.origin_id == origin);
+  assert(hdr.ttl == DEFAULT_RELAY_TTL);
+  assert(hdr.hop_nonce == 0);
+
+  CmdPayload dec_cmd;
+  assert(decode_cmd(out.data(), out.size(), dec_cmd));
+  assert(dec_cmd.opcode == CmdOpcode::LIGHT_TOGGLE);
+  assert(dec_cmd.fan_key_hash == toggle_cmd.fan_key_hash);
+
+  // Tampering TTL or origin_id without re-signing must fail auth
+  auto bad_ttl = f;
+  bad_ttl[16] = 4;
+  assert(!decode_frame(key, bad_ttl.data(), bad_ttl.size(), hdr, out));
+  auto bad_origin = f;
+  bad_origin[12] ^= 0x01;
+  assert(!decode_frame(key, bad_origin.data(), bad_origin.size(), hdr, out));
+  assert(!decode_frame("wrong_key", f.data(), f.size(), hdr, out));
+
+  // Relaying with decremented TTL re-signs cleanly down to ttl=0
+  auto hop1 = encode_frame_v2(key, hdr.type, hdr.seq, hdr.origin_id, hdr.ttl - 1, hdr.hop_nonce,
+                              out.data(), out.size());
+  assert(decode_frame(key, hop1.data(), hop1.size(), hdr, out));
+  assert(hdr.ttl == DEFAULT_RELAY_TTL - 1);
+
+  // FrameDedupRing: duplicate rejected within TTL, retry with new hop_nonce accepted, expires at TTL
+  FrameDedupRing dedup;
+  assert(dedup.accept(origin, MsgType::CMD, 77, 0, 1000, 5000));
+  assert(!dedup.accept(origin, MsgType::CMD, 77, 0, 2000, 5000));  // duplicate relay dropped
+  assert(dedup.accept(origin, MsgType::CMD, 77, 1, 2300, 5000));   // retry attempt 1 relayed!
+  assert(!dedup.accept(origin, MsgType::CMD, 77, 1, 3000, 5000));  // duplicate retry dropped
+  assert(dedup.accept(origin, MsgType::CMD, 77, 0, 6000, 5000));   // expired at 5s TTL
+}
+
 int main() {
   test_frame_roundtrip_and_auth();
   test_state_and_ack_codecs();
   test_channel_hunt_single_multi_and_pruning();
+  test_v2_multihop_and_dedup();
   std::cout << "All espnow_protocol tests passed!\n";
   return 0;
 }

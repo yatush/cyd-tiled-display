@@ -95,13 +95,20 @@ class EspNowFanBridge : public Component {
     uint8_t attempts{0};
   };
 
+  struct PendingRelay {
+    std::vector<uint8_t> frame;
+    uint32_t send_at_ms{0};
+  };
+
   static constexpr uint32_t SWEEP_DWELL_MS = 30;
   static constexpr uint32_t SWEEP_INTERVAL_MS = 30000;
   static constexpr uint32_t ROUND_ROBIN_DWELL_MS = 250;
   static constexpr uint32_t HEARTBEAT_INTERVAL_MS = 15000;
   static constexpr uint32_t PEER_TIMEOUT_MS = 65000;
-  static constexpr uint32_t CMD_RETRY_INTERVAL_MS = 150;
-  static constexpr uint8_t CMD_MAX_ATTEMPTS = 14;  // ~2.1s total retry window
+  static constexpr uint32_t CMD_RETRY_INTERVAL_MS = 300;
+  static constexpr uint8_t CMD_MAX_ATTEMPTS = 10;  // ~3.0s total retry window (supports 5-hop RTT)
+  static constexpr uint32_t RELAY_DEDUP_TTL_MS = 5000;
+  static constexpr size_t MAX_PENDING_RELAYS = 24;
 
   static EspNowFanBridge *active_instance_;
   static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
@@ -114,7 +121,8 @@ class EspNowFanBridge : public Component {
   void set_radio_channel(uint8_t ch);
   void publish_channel_if_changed(bool force = false);
 
-  bool broadcast_frame(MsgType type, uint16_t seq, const std::vector<uint8_t> &payload);
+  bool broadcast_frame(MsgType type, uint16_t seq, const std::vector<uint8_t> &payload,
+                       uint8_t ttl = DEFAULT_RELAY_TTL, uint8_t hop_nonce = 0);
   void send_ping();
   void send_pong(uint16_t req_seq);
   void send_sync_req();
@@ -122,21 +130,29 @@ class EspNowFanBridge : public Component {
   void process_rx_packet(const RxPacket &pkt);
   void upsert_peer(const std::array<uint8_t, 6> &mac, BridgeRole role, uint8_t ch, uint32_t now_ms);
 
-  // Hub-side helpers
+  // Hub-side relay & cross-hub helpers
+  void hub_schedule_relay(const FrameHeader &hdr, const std::vector<uint8_t> &payload,
+                          uint32_t now_ms);
+  void hub_tick_relays(uint32_t now_ms);
+  bool hub_send_remote_light_toggle(const std::string &target_fan_device_id,
+                                    const std::string &target_light_entity_id);
+
+  // Hub-side device helpers
 #ifdef USE_TUYA_BLE_FAN
-  void hub_handle_cmd(const CmdPayload &cmd, uint16_t seq);
+  bool hub_handle_cmd(const CmdPayload &cmd, uint32_t origin_id, uint16_t seq, uint32_t now_ms);
   void hub_broadcast_device_state(tuya_ble_fan::TuyaBleFanDevice *dev);
   void hub_broadcast_all_states();
   tuya_ble_fan::TuyaBleFanDevice *hub_find_device(uint32_t fan_key_hash);
 #endif
 
 #ifdef USE_SHELLY_BLE_BRIDGE
-  void hub_handle_shelly_cmd(const ShellyCmdPayload &cmd, uint16_t seq);
+  bool hub_handle_shelly_cmd(const ShellyCmdPayload &cmd, uint32_t origin_id, uint16_t seq,
+                             uint32_t now_ms);
   void hub_broadcast_shelly_state(const shelly_ble_bridge::ShellyCachedState &st);
   void hub_broadcast_all_shelly_states();
 #endif
 
-  // CYD-side helpers
+  // CYD-side helpers (and shared ACK/retry handling)
   void cyd_handle_state(const StatePayload &st, uint32_t now_ms);
   void cyd_handle_shelly_state(const ShellyStatePayload &st, uint32_t now_ms);
   void cyd_handle_ack(const AckPayload &ack, uint32_t now_ms);
@@ -152,6 +168,7 @@ class EspNowFanBridge : public Component {
   sensor::Sensor *channel_sensor_{nullptr};
 
   bool espnow_ready_{false};
+  uint32_t local_origin_id_{0};
   uint8_t last_published_channel_{0};
   uint16_t next_seq_{1};
 
@@ -167,6 +184,10 @@ class EspNowFanBridge : public Component {
 
   portMUX_TYPE rx_mux_ = portMUX_INITIALIZER_UNLOCKED;
   std::deque<RxPacket> rx_queue_;
+
+  FrameDedupRing relay_dedup_;
+  FrameDedupRing cmd_exec_dedup_;
+  std::deque<PendingRelay> pending_relays_;
 
   std::vector<PeerInfo> peers_;
   std::vector<RemoteFanState> remote_fans_;
