@@ -987,4 +987,100 @@ def test_collect_entity_to_cyds_map(tmp_path):
     assert mapping["switch.l_mmd"] == ["office-cyd"]
 
 
+def test_parse_shelly_subdevices_and_switch_as_x_dedup():
+    raw_devs = [
+        # Multi-channel Shelly 2PM Gen4 split into 3 HA devices (L-FenceShvil)
+        {
+            "ha_device_id": "parent_fence",
+            "via_device_id": "",
+            "shelly_id": "48F6EED74484",
+            "name": "L-FenceShvil",
+            "model": "Shelly 2PM Gen4",
+            "mac": "48:f6:ee:d7:44:84",
+            "config_url": "http://192.168.0.221:80",
+            "area_id": "outside",
+            "area_name": "Outside",
+            "entities": [
+                {"entity_id": "switch.outside_l_fenceshvil_cyd_ble_backup", "name": "CYD BLE Backup", "domain": "switch"},
+            ],
+            "input_entities": ["binary_sensor.l_fenceshvil_input_0", "binary_sensor.l_fenceshvil_input_1"],
+        },
+        {
+            "ha_device_id": "sub_fence_0",
+            "via_device_id": "parent_fence",
+            "shelly_id": "48F6EED74484-switch:0",
+            "name": "L-FenceShvil Output 0",
+            "model": "",
+            "mac": "",
+            "config_url": "",
+            "area_id": "outside",
+            "area_name": "Outside",
+            "entities": [
+                {"entity_id": "switch.l_fenceshvil_output_0", "name": "L-FenceShvil Output 0", "domain": "switch"},
+                {"entity_id": "light.outside_l_fenceshvil_output_0", "name": "L-FenceShvil Output 0", "domain": "light"},
+            ],
+            "input_entities": [],
+        },
+        {
+            "ha_device_id": "sub_fence_1",
+            "via_device_id": "parent_fence",
+            "shelly_id": "48F6EED74484-switch:1",
+            "name": "L-FenceShvil Output 1",
+            "model": "",
+            "mac": "",
+            "config_url": "",
+            "area_id": "outside",
+            "area_name": "Outside",
+            "entities": [
+                {"entity_id": "switch.l_fenceshvil_output_1", "name": "L-FenceShvil Output 1", "domain": "switch"},
+                {"entity_id": "light.outside_l_fenceshvil_output_1", "name": "L-FenceShvil Output 1", "domain": "light"},
+            ],
+            "input_entities": [],
+        },
+        # Single-channel Shelly 1 Mini with switch_as_x helper + cyd_ble_backup script switch
+        {
+            "ha_device_id": "dev_balcony",
+            "via_device_id": "",
+            "shelly_id": "AABBCCDDEE01",
+            "name": "L-ParentsBalcony",
+            "model": "Shelly 1 Mini Gen4",
+            "mac": "AA:BB:CC:DD:EE:01",
+            "config_url": "http://192.168.0.222:80",
+            "area_id": "parents",
+            "area_name": "Parents Bedroom",
+            "entities": [
+                {"entity_id": "switch.l_parentsbalcony", "name": "L-ParentsBalcony", "domain": "switch"},
+                {"entity_id": "light.l_parentsbalcony", "name": "L-ParentsBalcony", "domain": "light"},
+                {"entity_id": "switch.l_parentsbalcony_cyd_ble_backup", "name": "CYD BLE Backup", "domain": "switch"},
+            ],
+            "input_entities": ["binary_sensor.l_parentsbalcony_input_0"],
+        },
+    ]
+
+    devices = server._parse_discovered_shelly_devices(
+        raw_devs,
+        entity_to_cyds={"switch.l_parentsbalcony": ["parents-cyd"]},
+    )
+    by_mac = {d["mac_address"]: d for d in devices}
+    assert set(by_mac.keys()) == {"48f6eed74484", "aabbccddee01"}
+
+    fence = by_mac["48f6eed74484"]
+    assert fence["name"] == "L-FenceShvil"
+    assert fence["ip"] == "192.168.0.221"
+    assert len(fence["entities"]) == 2
+    assert fence["entities"][0]["entity_id"] == "light.outside_l_fenceshvil_output_0"
+    assert fence["entities"][0]["channel"] == 0
+    assert fence["entities"][1]["entity_id"] == "light.outside_l_fenceshvil_output_1"
+    assert fence["entities"][1]["channel"] == 1
+
+    balcony = by_mac["aabbccddee01"]
+    assert len(balcony["entities"]) == 1
+    assert balcony["entities"][0]["entity_id"] == "light.l_parentsbalcony"
+    assert balcony["entities"][0]["channel"] == 0
+    # CYD usage from the hidden switch entity is preserved on the light helper
+    assert balcony["entities"][0]["cyd_devices"] == ["parents-cyd"]
+    assert balcony["used_by_cyds"] == ["parents-cyd"]
+
+
+
 

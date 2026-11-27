@@ -807,19 +807,22 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                       )}
                       {devices.some(d => d.entities.some(ent => ent.kind !== 'cover')) && (
                         <optgroup label="Shelly Outputs (BLE)">
-                          {devices.flatMap(d =>
-                            d.entities
-                              .filter(ent => ent.kind !== 'cover')
-                              .map(ent => (
-                                <option
-                                  key={`shelly-${d.mac_address}-${ent.channel}-${ent.entity_id}`}
-                                  value={`shelly:${d.mac_address}:${ent.channel}`}
-                                >
-                                  {ent.name || d.name}
-                                  {d.area_name ? ` [${d.area_name}]` : ''} (ch:{ent.channel})
-                                </option>
-                              ))
-                          )}
+                          {devices
+                            .flatMap(d =>
+                              d.entities
+                                .filter(ent => ent.kind !== 'cover')
+                                .map(ent => ({
+                                  key: `shelly-${d.mac_address}-${ent.channel}-${ent.entity_id}`,
+                                  value: `shelly:${d.mac_address}:${ent.channel}`,
+                                  label: `${ent.name || d.name}${d.area_name ? ` [${d.area_name}]` : ''} (ch:${ent.channel})`,
+                                }))
+                            )
+                            .sort((a, b) => a.label.localeCompare(b.label))
+                            .map(opt => (
+                              <option key={opt.key} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
                         </optgroup>
                       )}
                     </select>
