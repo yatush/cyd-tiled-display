@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { RefreshCw } from 'lucide-react';
 
 import { Sidebar } from './components/PropertiesSidebar';
 import { NewPageDialog } from './components/NewPageDialog';
@@ -16,6 +15,7 @@ import { ScreensFileDialog } from './components/ScreensFileDialog';
 import { EmulatorDialog } from './components/EmulatorDialog';
 import { HwOverridesDialog } from './components/HwOverridesDialog';
 import { BatchUpdateDialog } from './components/BatchUpdateDialog';
+import { AppOverlayModals } from './components/AppOverlayModals';
 import { FindBleFansDialog } from './components/FindBleFansDialog';
 import { HeadlessHubsDialog } from './components/HeadlessHubsDialog';
 import { ShellyBackupDialog } from './components/ShellyBackupDialog';
@@ -836,49 +836,6 @@ function App() {
         onAutoStartHandled={() => setAutoStartOta(false)}
       />
 
-      {/* Save-before-update confirmation popup when active device file has unsaved changes */}
-      {isSaveAndUpdateConfirmOpen && fileContext && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[260] p-4 backdrop-blur-sm"
-          onClick={() => !isSavingBeforeUpdate && setIsSaveAndUpdateConfirmOpen(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-4 border-b bg-amber-50">
-              <h3 className="font-bold text-slate-800 text-base">Save Changes Before Updating?</h3>
-            </div>
-            <div className="p-5 space-y-2 text-sm text-slate-600">
-              <p>
-                You have unsaved changes to{' '}
-                <span className="font-mono font-bold text-slate-800">{fileContext.path}</span>.
-              </p>
-              <p className="text-xs text-slate-500">
-                The file will be saved first, then the OTA update will start for this device.
-              </p>
-            </div>
-            <div className="px-5 py-3 border-t bg-slate-50 flex justify-end gap-2">
-              <button
-                onClick={() => setIsSaveAndUpdateConfirmOpen(false)}
-                disabled={isSavingBeforeUpdate}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmSaveAndUpdate}
-                disabled={isSavingBeforeUpdate}
-                className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {isSavingBeforeUpdate && <RefreshCw size={13} className="animate-spin" />}
-                {isSavingBeforeUpdate ? 'Saving...' : 'Save & Update Device'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
       <ScreensFileDialog 
         isOpen={isScreensFileOpen}
         onClose={() => setIsScreensFileOpen(false)}
@@ -904,36 +861,6 @@ function App() {
         onClose={() => setIsHwOverridesOpen(false)}
       />
 
-      {/* Device picker dialog shown before starting the emulator */}
-      {isEmulatorDevicePickerOpen && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6 shadow-xl w-80">
-            <h2 className="text-lg font-semibold text-white mb-2">Select Device</h2>
-            <p className="text-sm text-gray-400 mb-5">Choose which device to emulate:</p>
-            <div className="flex flex-col gap-3">
-              <button
-                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition-colors"
-                onClick={() => { setIsEmulatorDevicePickerOpen(false); handleStartEmulator('2432s028'); }}
-              >
-                CYD 2.8" — 320×240
-              </button>
-              <button
-                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition-colors"
-                onClick={() => { setIsEmulatorDevicePickerOpen(false); handleStartEmulator('3248s035'); }}
-              >
-                CYD 3.5" — 480×320
-              </button>
-              <button
-                className="w-full px-4 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-md text-sm font-medium transition-colors"
-                onClick={() => setIsEmulatorDevicePickerOpen(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <LibMismatchDialog
         isOpen={isMismatchDialogOpen}
         onClose={() => setIsMismatchDialogOpen(false)}
@@ -941,38 +868,27 @@ function App() {
         details={libMismatchDetails}
       />
 
-      {/* Floating USB Compile indicator — shown when dialog is closed but compile is running */}
-      {usbCompileActive && !isInstallDeviceOpen && (
-        <button
-          onClick={() => setIsInstallDeviceOpen(true)}
-          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-full shadow-lg hover:bg-purple-700 transition-all animate-pulse"
-        >
-          <RefreshCw size={14} className="animate-spin" />
-          <span className="text-sm font-bold">USB Compiling...</span>
-        </button>
-      )}
-
-      {/* Floating OTA Install indicator — shown when dialog is closed but install is running */}
-      {otaInstallActive && !isInstallDeviceOpen && (
-        <button
-          onClick={() => setIsInstallDeviceOpen(true)}
-          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition-all animate-pulse"
-        >
-          <RefreshCw size={14} className="animate-spin" />
-          <span className="text-sm font-bold">OTA Installing...</span>
-        </button>
-      )}
-
-      {/* Floating Batch OTA Update indicator — shown when dialog is closed while updating */}
-      {batchUpdateActive && !isBatchUpdateOpen && (
-        <button
-          onClick={() => setIsBatchUpdateOpen(true)}
-          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-all animate-pulse"
-        >
-          <RefreshCw size={14} className="animate-spin" />
-          <span className="text-sm font-bold">{batchUpdateLabel || 'Updating Devices...'}</span>
-        </button>
-      )}
+      <AppOverlayModals
+        isSaveAndUpdateConfirmOpen={isSaveAndUpdateConfirmOpen}
+        fileContextPath={fileContext?.path}
+        isSavingBeforeUpdate={isSavingBeforeUpdate}
+        onCancelSaveAndUpdate={() => setIsSaveAndUpdateConfirmOpen(false)}
+        onConfirmSaveAndUpdate={handleConfirmSaveAndUpdate}
+        isEmulatorDevicePickerOpen={isEmulatorDevicePickerOpen}
+        onCancelEmulatorPicker={() => setIsEmulatorDevicePickerOpen(false)}
+        onSelectEmulatorDevice={dev => {
+          setIsEmulatorDevicePickerOpen(false);
+          handleStartEmulator(dev);
+        }}
+        usbCompileActive={usbCompileActive}
+        otaInstallActive={otaInstallActive}
+        isInstallDeviceOpen={isInstallDeviceOpen}
+        onOpenInstallDialog={() => setIsInstallDeviceOpen(true)}
+        batchUpdateActive={batchUpdateActive}
+        batchUpdateLabel={batchUpdateLabel}
+        isBatchUpdateOpen={isBatchUpdateOpen}
+        onOpenBatchUpdateDialog={() => setIsBatchUpdateOpen(true)}
+      />
     </div>
   );
 }

@@ -1,104 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Usb, RefreshCw, ChevronDown, ChevronUp, Square, AlertTriangle, Key, Monitor, Plus, FolderOpen, Wifi, Eye, EyeOff } from 'lucide-react';
+import { Usb, RefreshCw, Square, AlertTriangle, Key, Monitor, Plus, FolderOpen, Wifi } from 'lucide-react';
 import { apiFetch, isAddon } from '../utils/api';
 import type { Before } from 'esptool-js';
-
-// Types for Web Serial API (not in standard TS lib)
-declare global {
-  interface Navigator {
-    serial?: {
-      getPorts(): Promise<SerialPort[]>;
-      requestPort(options?: { filters?: Array<{ usbVendorId?: number; usbProductId?: number }> }): Promise<SerialPort>;
-      addEventListener(type: string, listener: EventListenerOrEventListenerObject): void;
-      removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void;
-    };
-  }
-  interface SerialPort {
-    getInfo(): { usbVendorId?: number; usbProductId?: number };
-    open(options: { baudRate: number }): Promise<void>;
-    close(): Promise<void>;
-    readable: ReadableStream | null;
-    writable: WritableStream | null;
-  }
-}
-
-const ESP_VENDOR_IDS = [
-  0x10C4, // Silicon Labs CP210x
-  0x1A86, // QinHeng CH340
-  0x0403, // FTDI
-  0x303A, // Espressif USB JTAG/Serial
-];
-
-interface DeviceListEntry {
-  filename: string;
-  device_name: string;
-  friendly_name: string;
-  screen_type: string | null;
-}
+import {
+  ConfigMode,
+  DeviceListEntry,
+  ESP_VENDOR_IDS,
+  UsbStatus,
+  generateEncryptionKey,
+  loadDeviceInfo,
+} from './usb/usbInstallHelpers';
+import { UsbLogsAndProgress } from './usb/UsbLogsAndProgress';
+import { UsbWifiDialog } from './usb/UsbWifiDialog';
 
 interface UsbInstallPanelProps {
   onSaveAndInstall: (deviceName: string, friendlyName: string, screenType: string, fileName: string, encryptionKey: string, otaPassword?: string, ipAddress?: string) => Promise<void>;
   onCompileActiveChange?: (active: boolean) => void;
   hidden?: boolean;
-}
-
-type UsbStatus = 'idle' | 'saving' | 'compiling' | 'compiled' | 'downloading' | 'flashing' | 'success' | 'error';
-type ConfigMode = 'existing' | 'new';
-
-function generateEncryptionKey(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
-/** Load device settings from an existing YAML file on the server. */
-async function loadDeviceInfo(filename: string) {
-  try {
-    const res = await apiFetch(`/load?path=${encodeURIComponent(filename)}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    let screenType: string | null = null;
-    const deviceBase = data?.packages?.device_base;
-    if (typeof deviceBase === 'string') {
-      if (deviceBase.includes('2432s028')) screenType = '2432s028';
-      else if (deviceBase.includes('3248s035')) screenType = '3248s035';
-    }
-
-    let otaPassword: string | undefined;
-    if (data?.ota) {
-      if (Array.isArray(data.ota)) {
-        const esphomeOta = data.ota.find((o: any) => o.platform === 'esphome');
-        if (esphomeOta?.password) otaPassword = esphomeOta.password;
-      } else if (data.ota?.password) {
-        otaPassword = data.ota.password;
-      }
-    }
-
-    const isHeadlessHub =
-      Boolean(
-        data?.packages &&
-          typeof data.packages === 'object' &&
-          Object.values(data.packages).some(
-            (v: any) => typeof v === 'string' && v.includes('headless_hub_base.yaml')
-          )
-      ) || data?.espnow_fan_bridge?.role === 'hub';
-
-    return {
-      deviceName: data?.substitutions?.device_name || data?.esphome?.name || '',
-      friendlyName: data?.substitutions?.friendly_name || data?.esphome?.friendly_name || '',
-      screenType: screenType || '2432s028',
-      encryptionKey: data?.api?.encryption?.key || '',
-      otaPassword,
-      ipAddress: data?.wifi?.use_address || undefined,
-      isHeadlessHub,
-    };
-  } catch (e) {
-    console.error('Failed to load device info:', e);
-    return null;
-  }
 }
 
 export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
@@ -1027,85 +945,15 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
 
       {/* ── Progress / Done ────────────────────────────────── */}
       {(isWorking || isDone) && (
-        <div className="p-4 flex-1 overflow-hidden flex flex-col min-h-0">
-          {/* Status Banner */}
-          <div className={`p-3 rounded-lg mb-3 flex items-center gap-2 flex-shrink-0 ${
-            status === 'saving' ? 'bg-amber-50 text-amber-700' :
-            status === 'compiling' || status === 'compiled' || status === 'downloading' ? 'bg-blue-50 text-blue-700' :
-            status === 'flashing' ? 'bg-purple-50 text-purple-700' :
-            status === 'success' ? 'bg-green-50 text-green-700' :
-            'bg-red-50 text-red-700'
-          }`}>
-            {(status === 'saving' || status === 'compiling' || status === 'compiled' || status === 'downloading') && (
-              <>
-                <RefreshCw size={16} className="animate-spin flex-shrink-0" />
-                <div>
-                  <div className="font-bold text-sm">
-                    {status === 'saving' ? 'Saving configuration...' :
-                     status === 'downloading' ? 'Downloading firmware...' :
-                     'Compiling firmware...'}
-                  </div>
-                  <div className="text-[10px] opacity-70">
-                    {status === 'compiling' ? 'This may take a few minutes. You can close this dialog — compilation continues in the background.' :
-                     status === 'saving' ? 'Preparing device config.' :
-                     status === 'downloading' ? 'Fetching compiled firmware from server.' :
-                     'Preparing flash...'}
-                  </div>
-                </div>
-              </>
-            )}
-            {status === 'flashing' && (
-              <>
-                <Usb size={16} className="animate-pulse flex-shrink-0" />
-                <div className="flex-1">
-                  <div className="font-bold text-sm">Flashing via USB... {flashProgress}%</div>
-                  <div className="w-full bg-purple-200 rounded-full h-1.5 mt-1">
-                    <div className="bg-purple-600 h-1.5 rounded-full transition-all" style={{ width: `${flashProgress}%` }} />
-                  </div>
-                </div>
-              </>
-            )}
-            {status === 'success' && (
-              <div>
-                <div className="font-bold text-sm">Flash Complete!</div>
-                <div className="text-[10px] opacity-70">{statusMessage}</div>
-              </div>
-            )}
-            {status === 'error' && (
-              <div>
-                <div className="font-bold text-sm">Failed</div>
-                <div className="text-[10px] opacity-70">{statusMessage}</div>
-              </div>
-            )}
-          </div>
-
-          {/* Logs */}
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-            <button
-              onClick={() => setLogsExpanded(!logsExpanded)}
-              className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 hover:text-slate-700 flex-shrink-0"
-            >
-              <span>Logs ({logs.length} lines)</span>
-              {logsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            </button>
-            {logsExpanded && (
-              <div className="flex-1 h-0 bg-slate-900 rounded-lg p-3 overflow-y-auto font-mono text-[11px] text-slate-300 leading-relaxed">
-                {logs.map((line, i) => (
-                  <div key={i} className={`whitespace-pre-wrap break-all ${
-                    line.includes('ERROR') || line.includes('error') || line.includes('Failed') ? 'text-red-400' :
-                    line.includes('WARNING') || line.includes('warning') ? 'text-yellow-400' :
-                    line.includes('Successfully') || line.includes('successfully') || line.includes('Complete') ? 'text-green-400' :
-                    line.includes('Writing part') || line.includes('Connecting') ? 'text-purple-400' :
-                    line.includes('Downloaded') ? 'text-blue-400' : ''
-                  }`}>
-                    {line}
-                  </div>
-                ))}
-                <div ref={logsEndRef} />
-              </div>
-            )}
-          </div>
-        </div>
+        <UsbLogsAndProgress
+          status={status}
+          statusMessage={statusMessage}
+          flashProgress={flashProgress}
+          logs={logs}
+          logsExpanded={logsExpanded}
+          logsEndRef={logsEndRef}
+          onToggleLogs={() => setLogsExpanded(!logsExpanded)}
+        />
       )}
 
       {/* ── Footer ─────────────────────────────────────────── */}
@@ -1138,72 +986,21 @@ export const UsbInstallPanel: React.FC<UsbInstallPanelProps> = ({
       </div>
 
       {/* ── WiFi Credentials Dialog ──────────────────────────── */}
-      {showWifiDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[300] p-4 backdrop-blur-sm" onClick={() => setShowWifiDialog(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b bg-blue-50">
-              <div className="flex items-center gap-2">
-                <Wifi className="text-blue-600" size={20} />
-                <h3 className="font-bold text-slate-800">WiFi Configuration</h3>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Enter your WiFi credentials. The device needs WiFi to connect to Home Assistant.
-              </p>
-            </div>
-            <div className="p-4 space-y-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">WiFi Network (SSID)</label>
-                <input
-                  type="text"
-                  value={wifiSsid}
-                  onChange={e => setWifiSsid(e.target.value)}
-                  placeholder="Your WiFi network name"
-                  className="w-full px-3 py-2 text-sm border-2 border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none transition-colors"
-                  autoFocus
-                  onKeyDown={e => { if (e.key === 'Enter') document.getElementById('wifi-password-input')?.focus(); }}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Password</label>
-                <div className="relative">
-                  <input
-                    id="wifi-password-input"
-                    type={wifiShowPassword ? 'text' : 'password'}
-                    value={wifiPassword}
-                    onChange={e => setWifiPassword(e.target.value)}
-                    placeholder="WiFi password"
-                    className="w-full px-3 py-2 pr-10 text-sm border-2 border-slate-200 rounded-lg focus:border-blue-400 focus:outline-none transition-colors"
-                    onKeyDown={e => { if (e.key === 'Enter' && wifiSsid.trim() && wifiPassword.trim()) saveWifiCredentials(); }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setWifiShowPassword(!wifiShowPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                  >
-                    {wifiShowPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
-              <button
-                onClick={() => { setShowWifiDialog(false); pendingFlashRef.current = false; }}
-                className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveWifiCredentials}
-                disabled={!wifiSsid.trim() || !wifiPassword.trim() || wifiSaving}
-                className="px-4 py-1.5 text-sm font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {wifiSaving ? <RefreshCw size={14} className="animate-spin" /> : <Wifi size={14} />}
-                {wifiSaving ? 'Saving...' : 'Save & Continue'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <UsbWifiDialog
+        isOpen={showWifiDialog}
+        wifiSsid={wifiSsid}
+        wifiPassword={wifiPassword}
+        wifiShowPassword={wifiShowPassword}
+        wifiSaving={wifiSaving}
+        onSsidChange={setWifiSsid}
+        onPasswordChange={setWifiPassword}
+        onToggleShowPassword={() => setWifiShowPassword(!wifiShowPassword)}
+        onCancel={() => {
+          setShowWifiDialog(false);
+          pendingFlashRef.current = false;
+        }}
+        onSave={saveWifiCredentials}
+      />
     </div>
   );
 };
