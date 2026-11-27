@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
 #include "esphome/components/fan/fan.h"
 #include "esphome/components/light/light_output.h"
@@ -131,6 +132,7 @@ class TuyaBleFanDevice {
   void set_light_state(bool on, int brightness_10_to_1000, int color_temp_0_to_1000);
 
   void set_rssi_sensor(sensor::Sensor *sensor) { rssi_sensor_ = sensor; }
+  void set_ble_connected_sensor(binary_sensor::BinarySensor *sensor) { ble_connected_sensor_ = sensor; }
   void publish_rssi(int rssi);
   void clear_rssi();
   int last_rssi() const { return last_rssi_; }
@@ -207,6 +209,7 @@ class TuyaBleFanDevice {
   TuyaBleLightOutput *light_output_{nullptr};
   TuyaBleTimerNumber *timer_number_{nullptr};
   sensor::Sensor *rssi_sensor_{nullptr};
+  binary_sensor::BinarySensor *ble_connected_sensor_{nullptr};
 };
 
 // Multi-slot BLE GATT hub managing 1 to 3 simultaneous TuyaBleFanDevice connections

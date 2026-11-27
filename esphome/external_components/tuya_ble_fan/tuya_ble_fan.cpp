@@ -446,6 +446,9 @@ void TuyaBleFanDevice::setup() {
   if (light_output_ != nullptr) {
     light_output_->sync_from_device();
   }
+  if (ble_connected_sensor_ != nullptr) {
+    ble_connected_sensor_->publish_state(false);
+  }
 }
 
 void TuyaBleFanDevice::update_discovered_mac(uint64_t mac, esp_ble_addr_type_t addr_type) {
@@ -730,6 +733,12 @@ void TuyaBleFanDevice::clear_rssi() {
 void TuyaBleFanDevice::set_conn_status(BleConnStatus status) {
   if (conn_status_ == status) return;
   conn_status_ = status;
+  if (ble_connected_sensor_ != nullptr) {
+    bool is_conn = (status == BleConnStatus::CONNECTED);
+    if (!ble_connected_sensor_->has_state() || ble_connected_sensor_->state != is_conn) {
+      ble_connected_sensor_->publish_state(is_conn);
+    }
+  }
   TuyaBleFanRegistry::instance().notify_state_changed("", "");
   TuyaBleFanRegistry::instance().notify_device_changed(this);
 }

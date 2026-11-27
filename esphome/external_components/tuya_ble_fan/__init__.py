@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 import esphome.final_validate as fv
-from esphome.components import esp32, esp32_ble_tracker, fan, light, number, sensor
+from esphome.components import binary_sensor, esp32, esp32_ble_tracker, fan, light, number, sensor
 from esphome.core import CORE
 from esphome.const import (
     CONF_ESPHOME,
@@ -9,6 +9,7 @@ from esphome.const import (
     CONF_MAC_ADDRESS,
     CONF_NAME,
     CONF_OUTPUT_ID,
+    DEVICE_CLASS_CONNECTIVITY,
     DEVICE_CLASS_SIGNAL_STRENGTH,
     ENTITY_CATEGORY_DIAGNOSTIC,
     STATE_CLASS_MEASUREMENT,
@@ -29,7 +30,7 @@ except ImportError:
     HAS_SUB_DEVICES = False
 
 DEPENDENCIES = ["esp32_ble_tracker"]
-AUTO_LOAD = ["fan", "light", "number", "sensor"]
+AUTO_LOAD = ["binary_sensor", "fan", "light", "number", "sensor"]
 
 CONF_FANS = "fans"
 CONF_DEVICE_ID = "device_id"
@@ -47,6 +48,7 @@ CONF_LIGHT_COMPONENT_ID = "light_component_id"
 CONF_LIGHT_OUTPUT_ID = "light_output_id"
 CONF_TIMER_COMPONENT_ID = "timer_component_id"
 CONF_RSSI_SENSOR_ID = "rssi_sensor_id"
+CONF_BLE_CONNECTED_SENSOR_ID = "ble_connected_sensor_id"
 
 tuya_ble_fan_ns = cg.esphome_ns.namespace("tuya_ble_fan")
 TuyaBleFanHub = tuya_ble_fan_ns.class_(
@@ -80,6 +82,9 @@ _FAN_ITEM_DICT = {
     cv.GenerateID(CONF_LIGHT_OUTPUT_ID): cv.declare_id(TuyaBleLightOutput),
     cv.GenerateID(CONF_TIMER_COMPONENT_ID): cv.declare_id(TuyaBleTimerNumber),
     cv.GenerateID(CONF_RSSI_SENSOR_ID): cv.declare_id(sensor.Sensor),
+    cv.GenerateID(CONF_BLE_CONNECTED_SENSOR_ID): cv.declare_id(
+        binary_sensor.BinarySensor
+    ),
 }
 if HAS_SUB_DEVICES:
     _FAN_ITEM_DICT[cv.GenerateID(CONF_SUB_DEVICE_ID)] = cv.declare_id(Device)
@@ -180,6 +185,19 @@ def _validate_rssi_sensor_subconfig(sensor_id, name):
     return raw
 
 
+def _validate_ble_connected_sensor_subconfig(sensor_id, name):
+    raw = {
+        CONF_ID: sensor_id,
+        CONF_NAME: name,
+    }
+    if hasattr(binary_sensor, "binary_sensor_schema"):
+        return binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_CONNECTIVITY,
+            entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+        )(raw)
+    return raw
+
+
 async def to_code(config):
     cg.add_define("USE_TUYA_BLE_FAN")
 
@@ -274,5 +292,16 @@ async def to_code(config):
                 rssi_sub[ESPHOME_CONF_DEVICE_ID] = sub_dev_id
             rssi_sens = await sensor.new_sensor(rssi_sub)
             cg.add(dev.set_rssi_sensor(rssi_sens))
+
+            conn_sub = _validate_ble_connected_sensor_subconfig(
+                fan_cfg[CONF_BLE_CONNECTED_SENSOR_ID],
+                "BLE Connected"
+                if sub_dev_id is not None
+                else f"{name} BLE Connected",
+            )
+            if sub_dev_id is not None:
+                conn_sub[ESPHOME_CONF_DEVICE_ID] = sub_dev_id
+            conn_sens = await binary_sensor.new_binary_sensor(conn_sub)
+            cg.add(dev.set_ble_connected_sensor(conn_sens))
 
         cg.add(hub.add_fan(dev))
