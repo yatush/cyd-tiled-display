@@ -3947,8 +3947,9 @@ _SHELLY_HA_DISCOVERY_TEMPLATE = (
     "{% if did and did not in ns.seen %}"
     "{% set ns.seen = ns.seen + [did] %}"
     "{% set conns = device_attr(did, 'connections') or [] %}"
-    "{% set m = namespace(v='') %}"
+    "{% set m = namespace(v='', sid='') %}"
     "{% for c in conns %}{% if c[0] == 'mac' %}{% set m.v = c[1] %}{% endif %}{% endfor %}"
+    "{% for ident in (device_attr(did, 'identifiers') or []) %}{% if ident[0] == 'shelly' %}{% set m.sid = ident[1] %}{% endif %}{% endfor %}"
     "{% set ents = namespace(items=[], inputs=[]) %}"
     "{% for deid in device_entities(did) %}"
     "{% set dom = deid.split('.')[0] %}"
@@ -3960,6 +3961,8 @@ _SHELLY_HA_DISCOVERY_TEMPLATE = (
     "{% endfor %}"
     "{% set ns.devs = ns.devs + [{"
     "'ha_device_id': did,"
+    "'via_device_id': device_attr(did, 'via_device_id') or '',"
+    "'shelly_id': m.sid,"
     "'name': device_attr(did, 'name_by_user') or device_attr(did, 'name') or did,"
     "'model': device_attr(did, 'model') or '',"
     "'mac': m.v,"
@@ -4352,6 +4355,146 @@ def _collect_entity_to_cyds_map(esphome_dir=None):
     return {eid: sorted(names) for eid, names in entity_to_cyds.items()}
 
 
+def _is_shelly_script_switch(entity_id):
+    low = str(entity_id or '').lower()
+    if not low.startswith('switch.'):
+        return False
+    return 'cyd_ble_backup' in low or '_script_' in low or low.endswith('_script')
+
+
+def _parse_discovered_shelly_devices(raw_devs, entity_to_cyds=None):
+    """Merge HA Shelly parent + multi-channel sub-devices by MAC and deduplicate switch_as_x helpers."""
+    entity_to_cyds = entity_to_cyds or {}
+    raw_list = [d for d in (raw_devs if isinstance(raw_devs, list) else []) if isinstance(d, dict)]
+
+    # Index parent MACs by ha_device_id so child sub-devices with empty connections resolve via via_device_id
+    mac_by_did = {}
+    for d in raw_list:
+        did = str(d.get('ha_device_id') or '')
+        mac = _normalize_shelly_mac(d.get('mac') or '')
+        if len(mac) != 12:
+            sid = str(d.get('shelly_id') or '').strip()
+            if sid:
+                mac = _normalize_shelly_mac(sid.split('-', 1)[0])
+        if did and len(mac) == 12:
+            mac_by_did[did] = mac
+
+    grouped = {}
+    for d in raw_list:
+        sid = str(d.get('shelly_id') or '').strip()
+        m_sub = re.search(r'-(?:switch|light|cover):(\d+)$', sid, re.I)
+        sub_ch = max(0, min(3, int(m_sub.group(1)))) if m_sub else None
+
+        mac = _normalize_shelly_mac(d.get('mac') or '')
+        if len(mac) != 12 and sid:
+            mac = _normalize_shelly_mac(sid.split('-', 1)[0])
+        if len(mac) != 12:
+            via = str(d.get('via_device_id') or '')
+            if via and via in mac_by_did:
+                mac = mac_by_did[via]
+        if len(mac) != 12:
+            continue
+
+        is_sub = (sub_ch is not None) or bool(d.get('via_device_id'))
+        cfg_url = str(d.get('config_url') or '')
+        m_ip = re.search(r'https?://([^/:]+)', cfg_url)
+        ip = m_ip.group(1) if m_ip else ''
+
+        rec = grouped.get(mac)
+        if rec is None:
+            rec = {
+                'ha_device_id': str(d.get('ha_device_id') or ''),
+                'name': str(d.get('name') or mac),
+                'model': str(d.get('model') or ''),
+                'mac_address': mac,
+                'ip': ip,
+                'area_id': str(d.get('area_id') or ''),
+                'area_name': str(d.get('area_name') or ''),
+                'entities_by_slot': {},
+                'input_entities': set(),
+                'used_by_cyds': set(),
+                '_has_parent': not is_sub,
+            }
+            grouped[mac] = rec
+        else:
+            if not is_sub and not rec['_has_parent']:
+                rec['ha_device_id'] = str(d.get('ha_device_id') or rec['ha_device_id'])
+                rec['name'] = str(d.get('name') or rec['name'])
+                rec['model'] = str(d.get('model') or rec['model'])
+                rec['_has_parent'] = True
+            if ip and not rec['ip']:
+                rec['ip'] = ip
+            if not rec['model'] and d.get('model'):
+                rec['model'] = str(d.get('model'))
+            if not rec['area_id'] and d.get('area_id'):
+                rec['area_id'] = str(d.get('area_id'))
+            if not rec['area_name'] and d.get('area_name'):
+                rec['area_name'] = str(d.get('area_name'))
+
+        for inp in (d.get('input_entities') or []):
+            rec['input_entities'].add(str(inp))
+
+        ents = d.get('entities') if isinstance(d.get('entities'), list) else []
+        for ent in ents:
+            if not isinstance(ent, dict):
+                continue
+            eid = str(ent.get('entity_id') or '').strip()
+            if not eid or _is_shelly_script_switch(eid):
+                continue
+            dom = str(ent.get('domain') or 'switch').strip().lower()
+            kind = dom if dom in ('switch', 'light', 'cover') else 'switch'
+            if sub_ch is not None:
+                ch = sub_ch
+            elif kind == 'cover':
+                ch = 0
+            else:
+                m_ch = re.search(r'(?:switch|light|output|channel)_(\d+)$', eid)
+                ch = max(0, min(3, int(m_ch.group(1)))) if m_ch else 0
+
+            cyd_list = list(entity_to_cyds.get(eid, []))
+            rec['used_by_cyds'].update(cyd_list)
+
+            slot = ('cover' if kind == 'cover' else 'output', ch)
+            existing = rec['entities_by_slot'].get(slot)
+            candidate = {
+                'entity_id': eid,
+                'name': str(ent.get('name') or eid),
+                'kind': kind,
+                'channel': ch,
+                'cyd_devices': cyd_list,
+            }
+            if existing is None:
+                rec['entities_by_slot'][slot] = candidate
+            else:
+                merged_cyds = sorted(set(existing['cyd_devices']) | set(cyd_list))
+                # Prefer HA switch_as_x 'light' helper over the hidden underlying 'switch'
+                if existing['kind'] != 'light' and candidate['kind'] == 'light':
+                    candidate['cyd_devices'] = merged_cyds
+                    rec['entities_by_slot'][slot] = candidate
+                else:
+                    existing['cyd_devices'] = merged_cyds
+
+    devices = []
+    for rec in grouped.values():
+        parsed_entities = sorted(
+            rec['entities_by_slot'].values(),
+            key=lambda e: (0 if e['kind'] != 'cover' else 1, e['channel'], e['entity_id']),
+        )
+        devices.append({
+            'ha_device_id': rec['ha_device_id'],
+            'name': rec['name'],
+            'model': rec['model'],
+            'mac_address': rec['mac_address'],
+            'ip': rec['ip'],
+            'area_id': rec['area_id'],
+            'area_name': rec['area_name'],
+            'entities': parsed_entities,
+            'input_entities': sorted(rec['input_entities']),
+            'used_by_cyds': sorted(rec['used_by_cyds']),
+        })
+    return devices
+
+
 @app.route('/api/shelly/devices', methods=['GET'])
 def api_discover_shelly_devices():
     """Auto-discover Shelly devices, entities, areas, CYD usage, and detached-switch suggestions from HA."""
@@ -4380,46 +4523,7 @@ def api_discover_shelly_devices():
             detail = (resp.text or '').strip()[:300]
             return jsonify({'devices': [], 'error': f"HA template error ({resp.status_code}): {detail or resp.reason}"}), 502
         raw_devs = json.loads(resp.text or '[]')
-        devices = []
-        for d in (raw_devs if isinstance(raw_devs, list) else []):
-            mac = _normalize_shelly_mac(d.get('mac') or '')
-            if len(mac) != 12:
-                continue
-            cfg_url = str(d.get('config_url') or '')
-            m_ip = re.search(r'https?://([^/:]+)', cfg_url)
-            ip = m_ip.group(1) if m_ip else ''
-            ents = d.get('entities') if isinstance(d.get('entities'), list) else []
-            ents_sorted = sorted(ents, key=lambda e: str(e.get('entity_id') or ''))
-            parsed_entities = []
-            dev_cyds = set()
-            for idx, ent in enumerate(ents_sorted):
-                eid = str(ent.get('entity_id') or '').strip()
-                dom = str(ent.get('domain') or 'switch').strip().lower()
-                ch = idx if dom != 'cover' else 0
-                m_ch = re.search(r'(?:switch|light|cover)_(\d+)$', eid)
-                if m_ch:
-                    ch = max(0, min(3, int(m_ch.group(1))))
-                cyd_list = entity_to_cyds.get(eid, [])
-                dev_cyds.update(cyd_list)
-                parsed_entities.append({
-                    'entity_id': eid,
-                    'name': str(ent.get('name') or eid),
-                    'kind': dom if dom in ('switch', 'light', 'cover') else 'switch',
-                    'channel': ch,
-                    'cyd_devices': cyd_list,
-                })
-            devices.append({
-                'ha_device_id': str(d.get('ha_device_id') or ''),
-                'name': str(d.get('name') or mac),
-                'model': str(d.get('model') or ''),
-                'mac_address': mac,
-                'ip': ip,
-                'area_id': str(d.get('area_id') or ''),
-                'area_name': str(d.get('area_name') or ''),
-                'entities': parsed_entities,
-                'input_entities': [str(x) for x in (d.get('input_entities') or [])],
-                'used_by_cyds': sorted(dev_cyds),
-            })
+        devices = _parse_discovered_shelly_devices(raw_devs, entity_to_cyds)
         # Cache HA friendly names so hub YAMLs automatically label Visible Shellys by name
         for dev in devices:
             if dev.get('mac_address') and dev.get('name'):
