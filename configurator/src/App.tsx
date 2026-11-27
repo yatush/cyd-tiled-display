@@ -766,6 +766,10 @@ function App() {
           setIsHeadlessHubsOpen(true);
         }}
         bleHubCount={bleHubs.length}
+        onShellyBackup={() => {
+          setIsFileManagementOpen(false);
+          setIsShellyBackupOpen(true);
+        }}
         onHwOverrides={() => {
           setIsFileManagementOpen(false);
           setIsHwOverridesOpen(true);
