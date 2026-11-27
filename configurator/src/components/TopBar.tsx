@@ -183,15 +183,23 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const getStatusText = () => {
     if (haStatus === 'idle') return 'Connecting...';
-    if (haStatus === 'error') return 'Connection Error';
+    if (haStatus === 'error') return 'Error';
+    if (connectionType === 'mock') return 'Mock';
+    if (connectionType === 'local') return 'Local';
+    return 'Remote';
+  };
+
+  const getStatusTitle = () => {
+    if (haStatus === 'idle') return 'Connecting to Home Assistant...';
+    if (haStatus === 'error') return 'Home Assistant Connection Error';
     if (connectionType === 'mock') return 'Mock Data Mode';
-    if (connectionType === 'local') return 'Local HA Connected';
-    return 'Remote HA Connected';
+    if (connectionType === 'local') return 'Local Home Assistant Connected';
+    return 'Remote Home Assistant Connected';
   };
 
   return (
     <div className="h-14 border-b bg-white flex items-center justify-between px-4 flex-shrink-0 z-10 shadow-sm">
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-yellow-500 rounded flex items-center justify-center text-slate-900 font-bold">
             CYD
@@ -201,29 +209,35 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         <div className="h-8 w-px bg-slate-200 hidden sm:block" />
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
+        <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 rounded-full border border-slate-100"
+            title={getStatusTitle()}
+          >
             {getStatusIcon()}
-            <span className="text-sm font-medium text-slate-600">{getStatusText()}</span>
-            <button 
+            <span className="text-xs font-medium text-slate-600">{getStatusText()}</span>
+            <button
               onClick={onRefreshHa}
-              className="ml-1 p-1 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-600"
+              className="p-0.5 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-600"
               title="Refresh Entities"
             >
-              <RefreshCw size={14} className={haStatus === 'idle' ? 'animate-spin' : ''} />
+              <RefreshCw size={12} className={haStatus === 'idle' ? 'animate-spin' : ''} />
             </button>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full border border-blue-100 text-blue-700">
-            <Activity size={16} />
-            <span className="text-sm font-bold">{entityCount} Entities</span>
+          <div
+            className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 rounded-full border border-blue-100 text-blue-700"
+            title={`${entityCount} Home Assistant Entities`}
+          >
+            <Activity size={12} />
+            <span className="text-[11px] font-semibold">{entityCount}</span>
           </div>
 
           {/* Toolchain badge — clickable to show log */}
           {showToolchainIcon && (
             <button
               onClick={() => setShowLog(true)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
                 isToolchainUpgrading
                   ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
                   : toolchainWarning
@@ -241,24 +255,26 @@ export const TopBar: React.FC<TopBarProps> = ({
                   ? `ESPHome upgrade notice: ${toolchainWarning}`
                   : toolchainUpdateAvailable && !isToolchainUpgrading
                   ? 'Toolchain update downloading...'
+                  : toolchainPhase === 'ready'
+                  ? `Toolchain ready${buildTag ? ` (${buildTag})` : ''} — click to view log`
                   : 'Click to view toolchain log'
               }
             >
               {toolchainWarning ? (
-                <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
+                <AlertTriangle size={12} className="text-amber-600 flex-shrink-0" />
               ) : (
-                <Wrench size={13} className={isToolchainUpgrading || toolchainPhase === 'building' ? 'animate-pulse' : ''} />
+                <Wrench size={12} className={isToolchainUpgrading || toolchainPhase === 'building' ? 'animate-pulse' : ''} />
               )}
               <span className="hidden sm:inline">
                 {isToolchainUpgrading
-                  ? (toolchainPhase === 'warming' ? 'Warming cache' : 'Updating toolchain')
+                  ? (toolchainPhase === 'warming' ? 'Warming' : 'Updating')
                   : toolchainWarning
                   ? 'Upgrade notice'
                   : toolchainUpdateAvailable
                   ? 'Update available'
                   : toolchainPhase === 'ready'
-                  ? `Toolchain ready${buildTag ? ` · ${buildTag}` : ''}`
-                  : toolchainPhase === 'building' ? 'Building toolchain' : 'Toolchain needed'}
+                  ? (buildTag || 'Ready')
+                  : toolchainPhase === 'building' ? 'Building' : 'Needed'}
               </span>
               {isToolchainUpgrading && <span className="font-mono">{toolchainProgress}%</span>}
               {(isToolchainUpgrading || toolchainUpdateAvailable) && toolchainPhase !== 'warming' && <Download size={11} className="opacity-70 animate-pulse" />}
