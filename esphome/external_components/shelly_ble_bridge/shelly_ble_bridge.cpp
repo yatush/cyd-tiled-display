@@ -2,6 +2,7 @@
 
 #ifdef USE_ESP32
 
+#include <algorithm>
 #include <cstdio>
 
 #include "esphome/core/application.h"
@@ -33,6 +34,12 @@ inline bool is_ha_api_connected() {
 }
 
 }  // namespace
+
+void ShellyBleBridge::add_known_name(const std::string &mac_address, const std::string &name) {
+  std::string norm = normalize_mac_hex(mac_address);
+  if (norm.size() != 12 || name.empty()) return;
+  known_names_[shelly_device_id_from_mac(norm)] = name;
+}
 
 void ShellyBleBridge::add_shelly(const std::string &name, const std::string &mac_address,
                                  uint8_t channel, ShellyBleKind kind,
@@ -148,7 +155,7 @@ bool ShellyBleBridge::parse_device(const esp32_ble_tracker::ESPBTDevice &device)
     }
 
     if (is_state) {
-      handle_state_beacon(beacon, device.get_rssi());
+      handle_state_beacon(beacon, device.get_rssi(), device.get_name());
     } else {
       handle_input_beacon(beacon, device.get_rssi());
     }
@@ -165,6 +172,25 @@ void ShellyBleBridge::gap_event_handler(esp_gap_ble_cb_event_t event,
   }
 }
 
+std::string ShellyBleBridge::resolve_display_name(uint32_t device_id,
+                                                  const std::string &ble_name) const {
+  auto it = known_names_.find(device_id);
+  if (it != known_names_.end() && !it->second.empty()) {
+    return it->second;
+  }
+  for (const auto &d : detached_switches_) {
+    if (d.source_id == device_id && !d.name.empty()) {
+      return d.name;
+    }
+  }
+  if (!ble_name.empty()) {
+    return ble_name;
+  }
+  char buf[24];
+  std::snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(device_id));
+  return std::string(buf);
+}
+
 ManagedShelly *ShellyBleBridge::find_shelly(uint32_t device_id, uint8_t channel) {
   for (auto &s : shellys_) {
     if (s.device_id == device_id && s.channel == channel) {
@@ -175,8 +201,12 @@ ManagedShelly *ShellyBleBridge::find_shelly(uint32_t device_id, uint8_t channel)
 }
 
 ManagedShelly *ShellyBleBridge::find_or_create_shelly(uint32_t device_id, uint8_t channel,
-                                                      ShellyBleKind kind, uint32_t now_ms) {
+                                                      ShellyBleKind kind, uint32_t now_ms,
+                                                      const std::string &ble_name) {
   if (auto *existing = find_shelly(device_id, channel)) {
+    if (!existing->static_configured && existing->name.rfind("0x", 0) == 0) {
+      existing->name = resolve_display_name(device_id, ble_name);
+    }
     return existing;
   }
 
@@ -193,9 +223,7 @@ ManagedShelly *ShellyBleBridge::find_or_create_shelly(uint32_t device_id, uint8_
       }
     }
     if (evict != nullptr) {
-      char buf[24];
-      std::snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(device_id));
-      evict->name = buf;
+      evict->name = resolve_display_name(device_id, ble_name);
       evict->mac_address.clear();
       evict->device_id = device_id;
       evict->channel = channel;
@@ -208,17 +236,15 @@ ManagedShelly *ShellyBleBridge::find_or_create_shelly(uint32_t device_id, uint8_
   }
 
   ManagedShelly item;
-  char buf[24];
-  std::snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(device_id));
-  item.name = buf;
+  item.name = resolve_display_name(device_id, ble_name);
   item.device_id = device_id;
   item.channel = channel;
   item.kind = kind;
   item.static_configured = false;
   shellys_.push_back(std::move(item));
-  ESP_LOGI(TAG, "Dynamically discovered Shelly 0x%08X ch=%u kind=%u",
-           static_cast<unsigned>(device_id), static_cast<unsigned>(channel),
-           static_cast<unsigned>(kind));
+  ESP_LOGI(TAG, "Dynamically discovered Shelly '%s' (0x%08X ch=%u kind=%u)",
+           shellys_.back().name.c_str(), static_cast<unsigned>(device_id),
+           static_cast<unsigned>(channel), static_cast<unsigned>(kind));
   return &shellys_.back();
 }
 
@@ -238,30 +264,54 @@ void ShellyBleBridge::publish_visible_shellys(uint32_t now_ms, bool force) {
   last_visible_publish_ms_ = now_ms;
   if (visible_shellys_sensor_ == nullptr) return;
 
-  std::vector<uint32_t> seen_ids;
-  std::string summary;
+  struct VisibleItem {
+    uint32_t device_id;
+    std::string label;
+    int8_t rssi;
+  };
+  std::vector<VisibleItem> items;
   for (const auto &s : shellys_) {
     if (!s.has_state) continue;
     if (static_cast<uint32_t>(now_ms - s.last_seen_ms) > SHELLY_BLE_STALE_MS) continue;
     bool dup = false;
-    for (uint32_t id : seen_ids) {
-      if (id == s.device_id) {
+    for (auto &it : items) {
+      if (it.device_id == s.device_id) {
+        if (s.ble_rssi > it.rssi) it.rssi = s.ble_rssi;
         dup = true;
         break;
       }
     }
-    if (dup) continue;
-    seen_ids.push_back(s.device_id);
-
-    if (!summary.empty()) summary += ", ";
-    char buf[48];
-    if (!s.name.empty()) {
-      std::snprintf(buf, sizeof(buf), "%s (%ddBm)", s.name.c_str(), static_cast<int>(s.ble_rssi));
-    } else {
-      std::snprintf(buf, sizeof(buf), "0x%08X (%ddBm)", static_cast<unsigned>(s.device_id),
-                    static_cast<int>(s.ble_rssi));
+    if (!dup) {
+      items.push_back(VisibleItem{s.device_id, s.name, s.ble_rssi});
     }
-    summary += buf;
+  }
+
+  // Sort strongest signal first
+  std::sort(items.begin(), items.end(),
+            [](const VisibleItem &a, const VisibleItem &b) { return a.rssi > b.rssi; });
+
+  static constexpr size_t MAX_HA_STATE_LEN = 240;
+  std::string summary;
+  for (size_t i = 0; i < items.size(); ++i) {
+    char buf[64];
+    if (!items[i].label.empty()) {
+      std::snprintf(buf, sizeof(buf), "%s (%ddBm)", items[i].label.c_str(),
+                    static_cast<int>(items[i].rssi));
+    } else {
+      std::snprintf(buf, sizeof(buf), "0x%08X (%ddBm)", static_cast<unsigned>(items[i].device_id),
+                    static_cast<int>(items[i].rssi));
+    }
+    std::string entry(buf);
+    const size_t sep_len = summary.empty() ? 0 : 2;
+    const size_t remaining = items.size() - i;
+    if (summary.size() + sep_len + entry.size() > MAX_HA_STATE_LEN) {
+      char tail[24];
+      std::snprintf(tail, sizeof(tail), ", +%u more", static_cast<unsigned>(remaining));
+      summary += tail;
+      break;
+    }
+    if (!summary.empty()) summary += ", ";
+    summary += entry;
   }
   if (summary.empty()) summary = "none";
 
@@ -271,13 +321,14 @@ void ShellyBleBridge::publish_visible_shellys(uint32_t now_ms, bool force) {
   }
 }
 
-void ShellyBleBridge::handle_state_beacon(const ShellyBleBeacon &beacon, int rssi) {
+void ShellyBleBridge::handle_state_beacon(const ShellyBleBeacon &beacon, int rssi,
+                                          const std::string &ble_name) {
   const uint32_t now = millis();
   if (!state_dedup_.accept(beacon.source_id, beacon.seq, now, DEDUP_TTL_MS)) {
     return;
   }
   const bool was_known = (find_shelly(beacon.source_id, beacon.channel) != nullptr);
-  auto *s = find_or_create_shelly(beacon.source_id, beacon.channel, beacon.kind, now);
+  auto *s = find_or_create_shelly(beacon.source_id, beacon.channel, beacon.kind, now, ble_name);
   if (s == nullptr) {
     return;
   }
