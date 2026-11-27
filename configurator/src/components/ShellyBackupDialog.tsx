@@ -606,10 +606,10 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                  2. Detached Wall Switches → Fan Light (Offline Fallback)
+                  2. Detached Wall Switches → Light / Shelly Output (Offline Fallback)
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  When HA or Shelly Wi-Fi is down, any hub hearing the wall switch&apos;s BLE beacon toggles the linked ceiling fan light (locally or via ESP-NOW).
+                  When HA or Shelly Wi-Fi is down, any hub hearing the wall switch&apos;s BLE beacon toggles the linked ceiling fan light or Shelly output (locally or via ESP-NOW).
                 </p>
               </div>
               <button
@@ -748,9 +748,33 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                     })()}
 
                     <select
-                      value={ds.target_light_entity_id || ds.target_fan_device_id}
+                      value={
+                        ds.target_fan_device_id.startsWith('shelly:')
+                          ? ds.target_fan_device_id
+                          : ds.target_light_entity_id || ds.target_fan_device_id
+                      }
                       onChange={e => {
                         const val = e.target.value;
+                        if (val.startsWith('shelly:')) {
+                          const [, sMac, sChStr] = val.split(':');
+                          const sCh = Number(sChStr || 0);
+                          const sDev = devices.find(d => d.mac_address === sMac);
+                          const sEnt = sDev?.entities.find(
+                            ent => ent.kind !== 'cover' && ent.channel === sCh
+                          );
+                          setDetachedSwitches(prev =>
+                            prev.map((x, i) =>
+                              i === idx
+                                ? {
+                                    ...x,
+                                    target_fan_device_id: val,
+                                    target_light_entity_id: sEnt?.entity_id || '',
+                                  }
+                                : x
+                            )
+                          );
+                          return;
+                        }
                         const fan = allHubFans.find(
                           f => f.light_entity_id === val || f.device_id === val
                         );
@@ -768,15 +792,36 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                       }}
                       className="col-span-4 text-xs px-2 py-1.5 border border-slate-300 rounded-md bg-white"
                     >
-                      <option value="">Select target fan light...</option>
-                      {allHubFans.map(f => (
-                        <option
-                          key={`${f.hub_name}-${f.device_id}`}
-                          value={f.light_entity_id || f.device_id}
-                        >
-                          {f.name} ({f.hub_name})
-                        </option>
-                      ))}
+                      <option value="">Select target light / output...</option>
+                      {allHubFans.length > 0 && (
+                        <optgroup label="Ceiling Fan Lights (Tuya BLE)">
+                          {allHubFans.map(f => (
+                            <option
+                              key={`fan-${f.hub_name}-${f.device_id}`}
+                              value={f.light_entity_id || f.device_id}
+                            >
+                              {f.name} ({f.hub_name})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {devices.some(d => d.entities.some(ent => ent.kind !== 'cover')) && (
+                        <optgroup label="Shelly Outputs (BLE)">
+                          {devices.flatMap(d =>
+                            d.entities
+                              .filter(ent => ent.kind !== 'cover')
+                              .map(ent => (
+                                <option
+                                  key={`shelly-${d.mac_address}-${ent.channel}-${ent.entity_id}`}
+                                  value={`shelly:${d.mac_address}:${ent.channel}`}
+                                >
+                                  {ent.name || d.name}
+                                  {d.area_name ? ` [${d.area_name}]` : ''} (ch:{ent.channel})
+                                </option>
+                              ))
+                          )}
+                        </optgroup>
+                      )}
                     </select>
 
                     <button
