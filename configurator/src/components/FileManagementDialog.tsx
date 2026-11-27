@@ -20,6 +20,7 @@ interface FileManagementDialogProps {
   onBatchUpdate?: () => void;
   onHeadlessHubs?: () => void;
   bleHubCount?: number;
+  onShellyBackup?: () => void;
 }
 
 export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
@@ -39,6 +40,7 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
   onBatchUpdate,
   onHeadlessHubs,
   bleHubCount = 0,
+  onShellyBackup,
 }) => {
   if (!isOpen) return null;
 
@@ -186,6 +188,23 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                   <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
                     {bleHubCount}
                   </span>
+                </button>
+              )}
+
+              {onShellyBackup && (
+                <button
+                  onClick={() => { onShellyBackup(); onClose(); }}
+                  className="w-full flex items-center justify-between gap-2.5 p-3 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 text-slate-700 transition-all group text-left"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-emerald-50 rounded group-hover:bg-white group-hover:shadow-sm transition-all">
+                      <Zap size={16} className="text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs">Shelly Offline Backup (BLE)</div>
+                      <div className="text-[10px] text-slate-500">Deploy script &amp; manage detached wall switch rules</div>
+                    </div>
+                  </div>
                 </button>
               )}
 

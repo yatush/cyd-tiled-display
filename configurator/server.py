@@ -1253,6 +1253,7 @@ def install_esphome_device():
             _install_env['CCACHE_NOHASHDIR']      = 'true'
         if os.path.isdir(_ccache_bin):
             _install_env['PATH'] = f"{_ccache_bin}:{_install_env.get('PATH', '')}"
+        _inject_esphome_idf_tools_path(_install_env)
         process = subprocess.Popen(
             _esphome_cmd,
             stdout=subprocess.PIPE,
@@ -1404,8 +1405,57 @@ batch_update_lock = threading.Lock()
 batch_update_state = None  # Dict holding current/last batch OTA job
 
 
+def _inject_esphome_idf_tools_path(env):
+    """Ensure ESPHome 2026.11+ native ESP-IDF compiler bin dirs (xtensa/riscv32) are on PATH.
+
+    In HA add-on mode /root/.cache/esphome/idf is symlinked to /data/.platformio/esphome_idf.
+    Explicitly setting IDF_TOOLS_PATH and adding any installed tool bin dirs to PATH prevents
+    CMake 'xtensa-esp32-elf-gcc is not a full path and was not found in the PATH' errors.
+    """
+    import glob as _glob
+
+    idf_roots = ['/root/.cache/esphome/idf', '/data/.platformio/esphome_idf']
+    if os.path.isdir('/root/.cache/esphome/idf'):
+        env.setdefault('IDF_TOOLS_PATH', '/root/.cache/esphome/idf')
+
+    extra_bins = []
+    seen = set()
+    for root in idf_roots:
+        tools_dir = os.path.join(root, 'tools')
+        if not os.path.isdir(tools_dir):
+            continue
+        for pattern in (
+            os.path.join(tools_dir, '*', '*', '*', 'bin'),
+            os.path.join(tools_dir, '*', '*', 'bin'),
+            os.path.join(tools_dir, '*', '*'),
+        ):
+            for candidate in sorted(_glob.glob(pattern)):
+                if not os.path.isdir(candidate):
+                    continue
+                real = os.path.realpath(candidate)
+                if real in seen:
+                    continue
+                if os.path.basename(candidate) == 'bin' or any(
+                    os.path.isfile(os.path.join(candidate, tool))
+                    for tool in ('xtensa-esp32-elf-gcc', 'riscv32-esp-elf-gcc', 'ninja', 'cmake')
+                ):
+                    seen.add(real)
+                    extra_bins.append(candidate)
+        if extra_bins:
+            break
+
+    if extra_bins:
+        cur_path = env.get('PATH', '')
+        parts = cur_path.split(':') if cur_path else []
+        if parts and parts[0] == '/usr/local/lib/ccache':
+            env['PATH'] = ':'.join([parts[0]] + extra_bins + parts[1:])
+        else:
+            env['PATH'] = ':'.join(extra_bins + parts)
+    return env
+
+
 def _build_esphome_env():
-    """Return an environment dict configured with ccache for fast ESPHome compiles."""
+    """Return an environment dict configured with ccache + ESP-IDF tools for fast ESPHome compiles."""
     env = os.environ.copy()
     env['PYTHONUNBUFFERED'] = '1'
     pio_dir = '/root/.platformio'
@@ -1419,7 +1469,7 @@ def _build_esphome_env():
         env['CCACHE_NOHASHDIR'] = 'true'
     if os.path.isdir(ccache_bin):
         env['PATH'] = f"{ccache_bin}:{env.get('PATH', '')}"
-    return env
+    return _inject_esphome_idf_tools_path(env)
 
 
 def _discover_esphome_devices():
@@ -1886,6 +1936,7 @@ def compile_esphome_device():
             env['CCACHE_NOHASHDIR']     = 'true'
         if os.path.isdir(_ccache_bin):
             env['PATH'] = f"{_ccache_bin}:{env.get('PATH', '')}"
+        _inject_esphome_idf_tools_path(env)
 
         process = subprocess.Popen(
             ['esphome', 'compile', filename],
