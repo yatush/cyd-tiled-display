@@ -89,12 +89,25 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
         setError(data.error);
       }
       const found: DiscoveredShellyDevice[] = Array.isArray(data.devices) ? data.devices : [];
+      const dsList: DetachedSwitchBinding[] = Array.isArray(data.detached_switches)
+        ? data.detached_switches
+        : [];
       setDevices(found);
       setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
-      if (Array.isArray(data.detached_switches)) {
-        setDetachedSwitches(data.detached_switches);
-      }
-      setSelectedMacs(new Set(found.filter(d => !!d.ip).map(d => d.mac_address)));
+      setDetachedSwitches(dsList);
+      const dsMacs = new Set(dsList.map(d => d.mac_address));
+      const usedWithIp = found.filter(
+        d =>
+          !!d.ip &&
+          ((d.used_by_cyds && d.used_by_cyds.length > 0) ||
+            dsMacs.has(d.mac_address) ||
+            (d.entities || []).some(e => cydReferencedEntities.has(e.entity_id)))
+      );
+      setSelectedMacs(
+        new Set(
+          (usedWithIp.length > 0 ? usedWithIp : found.filter(d => !!d.ip)).map(d => d.mac_address)
+        )
+      );
       onSynced?.(found);
     } catch (e: any) {
       setError(e?.message || 'Failed to discover Shelly devices from Home Assistant');
@@ -299,67 +312,129 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                 No Shelly devices found in Home Assistant.
               </div>
             ) : (
-              <div className="max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
-                {devices.map(dev => {
-                  const matchedOnCyd = (dev.entities || []).filter(e =>
-                    cydReferencedEntities.has(e.entity_id)
-                  );
-                  const checked = selectedMacs.has(dev.mac_address);
-                  return (
-                    <label
-                      key={dev.mac_address}
-                      className="flex items-start gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer"
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
+                  <span>
+                    Showing Shellys used on CYDs first ({selectedMacs.size} selected)
+                  </span>
+                  <div className="flex items-center gap-2 font-medium">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const dsMacs = new Set(detachedSwitches.map(d => d.mac_address));
+                        setSelectedMacs(
+                          new Set(
+                            devices
+                              .filter(
+                                d =>
+                                  !!d.ip &&
+                                  ((d.used_by_cyds && d.used_by_cyds.length > 0) ||
+                                    dsMacs.has(d.mac_address) ||
+                                    (d.entities || []).some(e =>
+                                      cydReferencedEntities.has(e.entity_id)
+                                    ))
+                              )
+                              .map(d => d.mac_address)
+                          )
+                        );
+                      }}
+                      className="text-emerald-700 hover:underline"
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={!dev.ip}
-                        onChange={() => toggleSelectMac(dev.mac_address)}
-                        className="mt-1 rounded text-emerald-600"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center flex-wrap gap-1.5">
-                          <span className="text-xs font-semibold text-slate-800">{dev.name}</span>
-                          {dev.area_name && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                              {dev.area_name}
-                            </span>
-                          )}
-                          {dev.model && (
-                            <span className="text-[10px] text-slate-400">{dev.model}</span>
-                          )}
-                          {matchedOnCyd.length > 0 && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
-                              {matchedOnCyd.length} on CYD
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-slate-500 font-mono">
-                          {dev.mac_address} {dev.ip ? `• ${dev.ip}` : '• (no IP)'}
-                        </div>
-                        {dev.entities.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {dev.entities.map(ent => {
-                              const onCyd = cydReferencedEntities.has(ent.entity_id);
-                              return (
-                                <span
-                                  key={ent.entity_id}
-                                  className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                                    onCyd
-                                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium'
-                                      : 'bg-slate-50 border-slate-200 text-slate-500'
-                                  }`}
-                                >
-                                  {ent.entity_id} (ch:{ent.channel})
-                                </span>
-                              );
-                            })}
+                      Select Used
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedMacs(new Set(devices.filter(d => !!d.ip).map(d => d.mac_address)))
+                      }
+                      className="text-slate-600 hover:underline"
+                    >
+                      All
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMacs(new Set())}
+                      className="text-slate-600 hover:underline"
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+                <div className="max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+                  {devices.map(dev => {
+                    const cydNames = Array.from(
+                      new Set([
+                        ...(dev.used_by_cyds || []),
+                        ...((dev.entities || []).some(e => cydReferencedEntities.has(e.entity_id)) &&
+                        (!dev.used_by_cyds || dev.used_by_cyds.length === 0)
+                          ? ['current CYD']
+                          : []),
+                      ])
+                    );
+                    const checked = selectedMacs.has(dev.mac_address);
+                    return (
+                      <label
+                        key={dev.mac_address}
+                        className="flex items-start gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!dev.ip}
+                          onChange={() => toggleSelectMac(dev.mac_address)}
+                          className="mt-1 rounded text-emerald-600"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            <span className="text-xs font-semibold text-slate-800">{dev.name}</span>
+                            {dev.area_name && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                {dev.area_name}
+                              </span>
+                            )}
+                            {dev.model && (
+                              <span className="text-[10px] text-slate-400">{dev.model}</span>
+                            )}
+                            {cydNames.map(cyd => (
+                              <span
+                                key={cyd}
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700"
+                              >
+                                {cyd}
+                              </span>
+                            ))}
                           </div>
-                        )}
-                      </div>
-                    </label>
-                  );
-                })}
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            {dev.mac_address} {dev.ip ? `• ${dev.ip}` : '• (no IP)'}
+                          </div>
+                          {dev.entities.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {dev.entities.map(ent => {
+                                const onAnyCyd =
+                                  (ent.cyd_devices && ent.cyd_devices.length > 0) ||
+                                  cydReferencedEntities.has(ent.entity_id);
+                                return (
+                                  <span
+                                    key={ent.entity_id}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                      onAnyCyd
+                                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium'
+                                        : 'bg-slate-50 border-slate-200 text-slate-500'
+                                    }`}
+                                  >
+                                    {ent.entity_id} (ch:{ent.channel})
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

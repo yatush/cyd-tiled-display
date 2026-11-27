@@ -102,6 +102,7 @@ export interface DiscoveredShellyEntity {
   name: string;
   kind: 'switch' | 'light' | 'cover';
   channel: number;
+  cyd_devices?: string[];
 }
 
 export interface DiscoveredShellyDevice {
@@ -114,6 +115,7 @@ export interface DiscoveredShellyDevice {
   area_name?: string;
   entities: DiscoveredShellyEntity[];
   input_entities?: string[];
+  used_by_cyds?: string[];
 }
 
 export interface DetachedSwitchSuggestion extends DetachedSwitchBinding {

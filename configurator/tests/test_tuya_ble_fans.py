@@ -889,3 +889,32 @@ def test_detect_detached_switch_suggestions_and_sync_hubs(tmp_path):
         assert "aabbccddee01" in txt
 
 
+def test_collect_entity_to_cyds_map(tmp_path):
+    (tmp_path / "office-cyd.yaml").write_text(
+        "substitutions:\n"
+        "  device_name: office-cyd\n"
+        "tile_ui:\n"
+        "  screens:\n"
+        "    - id: main\n"
+        "      tiles:\n"
+        "        - ha_action:\n"
+        "            entities: ['cover.o2|position', 'switch.l_mmd']\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "living-cyd.yaml").write_text(
+        "substitutions:\n"
+        "  device_name: living-cyd\n"
+        "tile_ui:\n"
+        "  screens:\n"
+        "    - id: main\n"
+        "      tiles:\n"
+        "        - ha_action:\n"
+        "            entities: ['cover.o2']\n",
+        encoding="utf-8",
+    )
+    mapping = server._collect_entity_to_cyds_map(str(tmp_path))
+    assert mapping["cover.o2"] == ["living-cyd", "office-cyd"]
+    assert mapping["switch.l_mmd"] == ["office-cyd"]
+
+
+

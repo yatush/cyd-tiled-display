@@ -4181,13 +4181,81 @@ def sync_detached_switches_to_all_hubs(detached_switches, esphome_dir=None):
     return updated
 
 
+def _collect_entity_to_cyds_map(esphome_dir=None):
+    """Scan all CYD YAML files and map referenced entity_id -> sorted list of CYD device names."""
+    root_dir = esphome_dir or BASE_DIR
+    entity_to_cyds = {}
+    if not root_dir or not os.path.isdir(root_dir):
+        return entity_to_cyds
+
+    hub_files = {h['filename'].lower() for h in list_ble_hubs(root_dir)}
+    skip_files = {'secrets.yaml', 'lib.yaml'}
+
+    def _walk_strings(obj, out_set):
+        if isinstance(obj, str):
+            base = obj.split('|')[0].strip()
+            if '.' in base and ' ' not in base:
+                dom = base.split('.', 1)[0]
+                if dom in ('switch', 'light', 'cover', 'fan', 'climate', 'sensor', 'binary_sensor'):
+                    out_set.add(base)
+        elif isinstance(obj, list):
+            for item in obj:
+                _walk_strings(item, out_set)
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                _walk_strings(v, out_set)
+
+    class _CydTagLoader(yaml.SafeLoader):
+        pass
+
+    _CydTagLoader.add_multi_constructor('!', lambda loader, suffix, node: (
+        loader.construct_mapping(node) if isinstance(node, yaml.MappingNode)
+        else loader.construct_sequence(node) if isinstance(node, yaml.SequenceNode)
+        else loader.construct_scalar(node)
+    ))
+
+    for fname in sorted(os.listdir(root_dir)):
+        if not fname.endswith(('.yaml', '.yml')):
+            continue
+        low = fname.lower()
+        if low in skip_files or low in hub_files:
+            continue
+        fpath = os.path.join(root_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                text = f.read()
+        except Exception:
+            continue
+        if 'tile_ui:' not in text:
+            continue
+        try:
+            parsed = yaml.load(text, Loader=_CydTagLoader) or {}
+        except Exception:
+            continue
+        if not isinstance(parsed, dict) or 'tile_ui' not in parsed:
+            continue
+        cyd_name = os.path.splitext(fname)[0]
+        subs = parsed.get('substitutions') if isinstance(parsed.get('substitutions'), dict) else {}
+        if subs.get('device_name'):
+            cyd_name = str(subs['device_name']).strip()
+        refs = set()
+        _walk_strings(parsed.get('tile_ui'), refs)
+        for eid in refs:
+            entity_to_cyds.setdefault(eid, set()).add(cyd_name)
+
+    return {eid: sorted(names) for eid, names in entity_to_cyds.items()}
+
+
 @app.route('/api/shelly/devices', methods=['GET'])
 def api_discover_shelly_devices():
-    """Auto-discover Shelly devices, entities, areas, and detached-switch suggestions from HA."""
+    """Auto-discover Shelly devices, entities, areas, CYD usage, and detached-switch suggestions from HA."""
     hubs = list_ble_hubs()
     all_fans = [f for h in hubs for f in (h.get('fans') or [])]
     detached_switches = _collect_all_detached_switches()
     network_key = get_or_create_espnow_network_key()
+    entity_to_cyds = _collect_entity_to_cyds_map()
 
     if not SUPERVISOR_TOKEN:
         return jsonify({
@@ -4219,6 +4287,7 @@ def api_discover_shelly_devices():
             ents = d.get('entities') if isinstance(d.get('entities'), list) else []
             ents_sorted = sorted(ents, key=lambda e: str(e.get('entity_id') or ''))
             parsed_entities = []
+            dev_cyds = set()
             for idx, ent in enumerate(ents_sorted):
                 eid = str(ent.get('entity_id') or '').strip()
                 dom = str(ent.get('domain') or 'switch').strip().lower()
@@ -4226,11 +4295,14 @@ def api_discover_shelly_devices():
                 m_ch = re.search(r'(?:switch|light|cover)_(\d+)$', eid)
                 if m_ch:
                     ch = max(0, min(3, int(m_ch.group(1))))
+                cyd_list = entity_to_cyds.get(eid, [])
+                dev_cyds.update(cyd_list)
                 parsed_entities.append({
                     'entity_id': eid,
                     'name': str(ent.get('name') or eid),
                     'kind': dom if dom in ('switch', 'light', 'cover') else 'switch',
                     'channel': ch,
+                    'cyd_devices': cyd_list,
                 })
             devices.append({
                 'ha_device_id': str(d.get('ha_device_id') or ''),
@@ -4242,7 +4314,10 @@ def api_discover_shelly_devices():
                 'area_name': str(d.get('area_name') or ''),
                 'entities': parsed_entities,
                 'input_entities': [str(x) for x in (d.get('input_entities') or [])],
+                'used_by_cyds': sorted(dev_cyds),
             })
+        # Put Shellys referenced by any CYD first, then alphabetically
+        devices.sort(key=lambda x: (0 if x['used_by_cyds'] else 1, x['name'].lower()))
         suggestions = detect_detached_switch_suggestions(devices, all_fans)
         return jsonify({
             'devices': devices,
