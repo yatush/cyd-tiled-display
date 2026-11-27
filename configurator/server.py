@@ -3877,44 +3877,50 @@ def deploy_shelly_script_to_device(ip, script_code, password=None, script_name='
     }
 
 
+_SHELLY_HA_DISCOVERY_TEMPLATE = (
+    "{% set ns = namespace(devs=[], seen=[]) %}"
+    "{% for eid in integration_entities('shelly') %}"
+    "{% set did = device_id(eid) %}"
+    "{% if did and did not in ns.seen %}"
+    "{% set ns.seen = ns.seen + [did] %}"
+    "{% set conns = device_attr(did, 'connections') or [] %}"
+    "{% set m = namespace(v='') %}"
+    "{% for c in conns %}{% if c[0] == 'mac' %}{% set m.v = c[1] %}{% endif %}{% endfor %}"
+    "{% set ents = namespace(items=[]) %}"
+    "{% for deid in device_entities(did) %}"
+    "{% set dom = deid.split('.')[0] %}"
+    "{% if dom in ['switch', 'light', 'cover'] %}"
+    "{% set ents.items = ents.items + [{'entity_id': deid, 'name': state_attr(deid, 'friendly_name') or deid, 'domain': dom}] %}"
+    "{% endif %}"
+    "{% endfor %}"
+    "{% set ns.devs = ns.devs + [{"
+    "'name': device_attr(did, 'name_by_user') or device_attr(did, 'name') or did,"
+    "'model': device_attr(did, 'model') or '',"
+    "'mac': m.v,"
+    "'config_url': device_attr(did, 'configuration_url') or '',"
+    "'entities': ents.items"
+    "}] %}"
+    "{% endif %}"
+    "{% endfor %}"
+    "{{ ns.devs | tojson }}"
+)
+
+
 @app.route('/api/shelly/devices', methods=['GET'])
 def api_discover_shelly_devices():
     """Auto-discover Shelly devices and their switch/light/cover entities from Home Assistant."""
     if not SUPERVISOR_TOKEN:
         return jsonify({'devices': [], 'error': 'Home Assistant Supervisor API not available in local dev mode'}), 200
-    template = (
-        "{% set ns = namespace(devs={}) %}"
-        "{% for eid in integration_entities('shelly') %}"
-        "{% set dom = eid.split('.')[0] %}"
-        "{% if dom in ['switch', 'light', 'cover'] %}"
-        "{% set did = device_id(eid) %}"
-        "{% if did %}"
-        "{% if did not in ns.devs %}"
-        "{% set conns = device_attr(did, 'connections') or [] %}"
-        "{% set mac_ns = namespace(v='') %}"
-        "{% for c in conns %}{% if c[0] == 'mac' %}{% set mac_ns.v = c[1] %}{% endif %}{% endfor %}"
-        "{% set ns.devs = dict(ns.devs, **{did: {"
-        "'name': device_attr(did, 'name_by_user') or device_attr(did, 'name') or did,"
-        "'model': device_attr(did, 'model') or '',"
-        "'mac': mac_ns.v,"
-        "'config_url': device_attr(did, 'configuration_url') or '',"
-        "'entities': []"
-        "}}) %}"
-        "{% endif %}"
-        "{% set _ = ns.devs[did]['entities'].append({'entity_id': eid, 'name': state_attr(eid, 'friendly_name') or eid, 'domain': dom}) %}"
-        "{% endif %}"
-        "{% endif %}"
-        "{% endfor %}"
-        "{{ ns.devs.values() | list | tojson }}"
-    )
     try:
         resp = requests.post(
             f"{HA_URL}/api/template",
             headers={'Authorization': f'Bearer {SUPERVISOR_TOKEN}', 'Content-Type': 'application/json'},
-            json={'template': template},
+            json={'template': _SHELLY_HA_DISCOVERY_TEMPLATE},
             timeout=10,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            detail = (resp.text or '').strip()[:300]
+            return jsonify({'devices': [], 'error': f"HA template error ({resp.status_code}): {detail or resp.reason}"}), 502
         raw_devs = json.loads(resp.text or '[]')
         devices = []
         for d in (raw_devs if isinstance(raw_devs, list) else []):

@@ -751,3 +751,47 @@ def test_deploy_shelly_script_chunking_and_zigbee_warning(monkeypatch):
     tpl = server._load_shelly_script_template()
     assert tpl is not None and tpl.isascii()
     assert "BLE.AdvBuilder.reset()" in tpl
+
+
+def test_shelly_ha_discovery_template_renders_in_sandbox():
+    from jinja2.sandbox import SandboxedEnvironment
+
+    env = SandboxedEnvironment()
+    devices_meta = {
+        "dev_cover": {
+            "name_by_user": "Office Blind",
+            "name": "Shelly 2PM Gen4",
+            "model": "S4SW-002P16EU",
+            "connections": {("mac", "AA:BB:CC:DD:EE:01")},
+            "configuration_url": "http://192.168.1.40",
+            "entities": ["cover.office_blind", "sensor.office_blind_power"],
+        },
+        "dev_detached": {
+            "name_by_user": None,
+            "name": "Office Wall Switch",
+            "model": "S4SW-001X16EU",
+            "connections": {("mac", "AA:BB:CC:DD:EE:02")},
+            "configuration_url": "http://192.168.1.41",
+            "entities": ["event.office_wall_switch_input_0"],
+        },
+    }
+    entity_to_dev = {
+        eid: did for did, meta in devices_meta.items() for eid in meta["entities"]
+    }
+
+    rendered = env.from_string(server._SHELLY_HA_DISCOVERY_TEMPLATE).render(
+        integration_entities=lambda domain: list(entity_to_dev.keys()) if domain == "shelly" else [],
+        device_id=lambda eid: entity_to_dev.get(eid),
+        device_attr=lambda did, attr: devices_meta[did].get(attr),
+        device_entities=lambda did: devices_meta[did]["entities"],
+        state_attr=lambda eid, attr: f"Friendly {eid}" if attr == "friendly_name" else None,
+    )
+    parsed = json.loads(rendered)
+    assert len(parsed) == 2
+    by_mac = {d["mac"]: d for d in parsed}
+    assert by_mac["AA:BB:CC:DD:EE:01"]["name"] == "Office Blind"
+    assert len(by_mac["AA:BB:CC:DD:EE:01"]["entities"]) == 1
+    assert by_mac["AA:BB:CC:DD:EE:01"]["entities"][0]["entity_id"] == "cover.office_blind"
+    assert by_mac["AA:BB:CC:DD:EE:02"]["name"] == "Office Wall Switch"
+    assert by_mac["AA:BB:CC:DD:EE:02"]["entities"] == []
+
