@@ -294,8 +294,8 @@ bool EspNowFanBridge::broadcast_frame(MsgType type, uint16_t seq,
                                       const std::vector<uint8_t> &payload, uint8_t ttl,
                                       uint8_t hop_nonce) {
   if (!espnow_ready_) return false;
-  auto frame = encode_frame_v2(network_key_, type, seq, local_origin_id_, ttl, hop_nonce,
-                               payload.empty() ? nullptr : payload.data(), payload.size());
+  auto frame = encode_frame(network_key_, type, seq, payload.empty() ? nullptr : payload.data(),
+                            payload.size(), local_origin_id_, ttl, hop_nonce);
   if (frame.empty()) return false;
   esp_err_t err = esp_now_send(BROADCAST_MAC, frame.data(), frame.size());
   return err == ESP_OK;
@@ -496,15 +496,13 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       (pkt.rx_channel >= 1 && pkt.rx_channel <= 13) ? pkt.rx_channel : current_wifi_channel();
 
   // Drop our own relayed echoes and duplicate multi-hop frames
-  if (hdr.version == PROTOCOL_VERSION_V2) {
-    if (hdr.origin_id != 0 && hdr.origin_id == local_origin_id_) {
+  if (hdr.origin_id != 0 && hdr.origin_id == local_origin_id_) {
+    return;
+  }
+  if (hdr.type != MsgType::PING && hdr.type != MsgType::PONG) {
+    if (!relay_dedup_.accept(hdr.origin_id, hdr.type, hdr.seq, hdr.hop_nonce, now,
+                             RELAY_DEDUP_TTL_MS)) {
       return;
-    }
-    if (hdr.type != MsgType::PING && hdr.type != MsgType::PONG) {
-      if (!relay_dedup_.accept(hdr.origin_id, hdr.type, hdr.seq, hdr.hop_nonce, now,
-                               RELAY_DEDUP_TTL_MS)) {
-        return;
-      }
     }
   }
 
@@ -662,12 +660,12 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
 void EspNowFanBridge::hub_schedule_relay(const FrameHeader &hdr,
                                          const std::vector<uint8_t> &payload, uint32_t now_ms) {
   if (!espnow_ready_ || role_ != BridgeRole::HUB) return;
-  if (hdr.version != PROTOCOL_VERSION_V2 || hdr.ttl == 0) return;
+  if (hdr.ttl == 0) return;
   if (hdr.origin_id != 0 && hdr.origin_id == local_origin_id_) return;
 
-  auto relayed = encode_frame_v2(network_key_, hdr.type, hdr.seq, hdr.origin_id,
-                                 static_cast<uint8_t>(hdr.ttl - 1), hdr.hop_nonce,
-                                 payload.empty() ? nullptr : payload.data(), payload.size());
+  auto relayed = encode_frame(network_key_, hdr.type, hdr.seq,
+                              payload.empty() ? nullptr : payload.data(), payload.size(),
+                              hdr.origin_id, static_cast<uint8_t>(hdr.ttl - 1), hdr.hop_nonce);
   if (relayed.empty()) return;
 
   if (pending_relays_.size() >= MAX_PENDING_RELAYS) {

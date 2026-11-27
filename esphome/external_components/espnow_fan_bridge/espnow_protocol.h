@@ -11,10 +11,8 @@ namespace espnow_fan_bridge {
 
 static constexpr uint8_t PROTOCOL_MAGIC_0 = 0x43;  // 'C'
 static constexpr uint8_t PROTOCOL_MAGIC_1 = 0x46;  // 'F'
-static constexpr uint8_t PROTOCOL_VERSION = 1;
-static constexpr uint8_t PROTOCOL_VERSION_V2 = 2;
-static constexpr size_t FRAME_HEADER_SIZE = 12;
-static constexpr size_t FRAME_HEADER_V2_SIZE = 18;
+static constexpr uint8_t PROTOCOL_VERSION = 2;
+static constexpr size_t FRAME_HEADER_SIZE = 18;
 static constexpr size_t MAX_FRAME_SIZE = 128;
 static constexpr uint8_t DEFAULT_RELAY_TTL = 5;
 
@@ -77,7 +75,6 @@ enum class AckStatus : uint8_t {
 };
 
 struct FrameHeader {
-  uint8_t version{PROTOCOL_VERSION};
   MsgType type{MsgType::PING};
   uint16_t seq{0};
   uint32_t net_tag{0};
@@ -150,19 +147,16 @@ uint32_t fnv1a_32(const std::string &s, uint32_t seed = 2166136261u);
 std::string normalize_mac_hex(const std::string &mac);
 uint32_t shelly_device_id_from_mac(const std::string &mac);
 
-// Compute keyed authentication tag over (network_key, type, seq, payload)
+// Compute keyed authentication tag over (network_key, type, seq, origin_id, ttl, hop_nonce, payload)
 uint32_t compute_net_tag(const std::string &network_key, MsgType type, uint16_t seq,
+                         uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
                          const uint8_t *payload, size_t payload_len);
-uint32_t compute_net_tag_v2(const std::string &network_key, MsgType type, uint16_t seq,
-                            uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
-                            const uint8_t *payload, size_t payload_len);
 
-// Encode/decode full ESP-NOW frames (decode_frame accepts both v1 and v2)
+// Encode/decode full ESP-NOW frames
 std::vector<uint8_t> encode_frame(const std::string &network_key, MsgType type, uint16_t seq,
-                                  const uint8_t *payload, size_t payload_len);
-std::vector<uint8_t> encode_frame_v2(const std::string &network_key, MsgType type, uint16_t seq,
-                                     uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
-                                     const uint8_t *payload, size_t payload_len);
+                                  const uint8_t *payload, size_t payload_len,
+                                  uint32_t origin_id = 0, uint8_t ttl = DEFAULT_RELAY_TTL,
+                                  uint8_t hop_nonce = 0);
 bool decode_frame(const std::string &network_key, const uint8_t *data, size_t len,
                   FrameHeader &out_header, std::vector<uint8_t> &out_payload);
 

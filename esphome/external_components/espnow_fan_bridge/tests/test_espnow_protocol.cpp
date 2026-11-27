@@ -166,15 +166,14 @@ static void test_v2_multihop_and_dedup() {
   toggle_cmd.opcode = CmdOpcode::LIGHT_TOGGLE;
   auto payload = encode_cmd(toggle_cmd);
 
-  // Encode v2 frame with DEFAULT_RELAY_TTL (5) and hop_nonce=0
-  auto f = encode_frame_v2(key, MsgType::CMD, 77, origin, DEFAULT_RELAY_TTL, 0, payload.data(),
-                           payload.size());
-  assert(f.size() == FRAME_HEADER_V2_SIZE + payload.size());
+  // Encode frame with DEFAULT_RELAY_TTL (5) and hop_nonce=0
+  auto f = encode_frame(key, MsgType::CMD, 77, payload.data(), payload.size(), origin,
+                        DEFAULT_RELAY_TTL, 0);
+  assert(f.size() == FRAME_HEADER_SIZE + payload.size());
 
   FrameHeader hdr;
   std::vector<uint8_t> out;
   assert(decode_frame(key, f.data(), f.size(), hdr, out));
-  assert(hdr.version == PROTOCOL_VERSION_V2);
   assert(hdr.type == MsgType::CMD);
   assert(hdr.seq == 77);
   assert(hdr.origin_id == origin);
@@ -196,8 +195,8 @@ static void test_v2_multihop_and_dedup() {
   assert(!decode_frame("wrong_key", f.data(), f.size(), hdr, out));
 
   // Relaying with decremented TTL re-signs cleanly down to ttl=0
-  auto hop1 = encode_frame_v2(key, hdr.type, hdr.seq, hdr.origin_id, hdr.ttl - 1, hdr.hop_nonce,
-                              out.data(), out.size());
+  auto hop1 = encode_frame(key, hdr.type, hdr.seq, out.data(), out.size(), hdr.origin_id,
+                           hdr.ttl - 1, hdr.hop_nonce);
   assert(decode_frame(key, hop1.data(), hop1.size(), hdr, out));
   assert(hdr.ttl == DEFAULT_RELAY_TTL - 1);
 

@@ -50,29 +50,11 @@ uint32_t fnv1a_32(const std::string &s, uint32_t seed) {
 }
 
 uint32_t compute_net_tag(const std::string &network_key, MsgType type, uint16_t seq,
+                         uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
                          const uint8_t *payload, size_t payload_len) {
   uint32_t h = fnv1a_32(network_key);
-  uint8_t meta[4] = {
-      PROTOCOL_VERSION,
-      static_cast<uint8_t>(type),
-      static_cast<uint8_t>(seq & 0xFF),
-      static_cast<uint8_t>((seq >> 8) & 0xFF),
-  };
-  h = fnv1a_32(meta, sizeof(meta), h);
-  if (payload != nullptr && payload_len > 0) {
-    h = fnv1a_32(payload, payload_len, h);
-  }
-  // Mix key again at end to reduce length-extension collisions
-  h = fnv1a_32(network_key, h);
-  return h;
-}
-
-uint32_t compute_net_tag_v2(const std::string &network_key, MsgType type, uint16_t seq,
-                            uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
-                            const uint8_t *payload, size_t payload_len) {
-  uint32_t h = fnv1a_32(network_key);
   uint8_t meta[10] = {
-      PROTOCOL_VERSION_V2,
+      PROTOCOL_VERSION,
       static_cast<uint8_t>(type),
       static_cast<uint8_t>(seq & 0xFF),
       static_cast<uint8_t>((seq >> 8) & 0xFF),
@@ -87,12 +69,14 @@ uint32_t compute_net_tag_v2(const std::string &network_key, MsgType type, uint16
   if (payload != nullptr && payload_len > 0) {
     h = fnv1a_32(payload, payload_len, h);
   }
+  // Mix key again at end to reduce length-extension collisions
   h = fnv1a_32(network_key, h);
   return h;
 }
 
 std::vector<uint8_t> encode_frame(const std::string &network_key, MsgType type, uint16_t seq,
-                                  const uint8_t *payload, size_t payload_len) {
+                                  const uint8_t *payload, size_t payload_len, uint32_t origin_id,
+                                  uint8_t ttl, uint8_t hop_nonce) {
   std::vector<uint8_t> out;
   if (payload_len > MAX_FRAME_SIZE - FRAME_HEADER_SIZE) {
     return out;
@@ -103,30 +87,8 @@ std::vector<uint8_t> encode_frame(const std::string &network_key, MsgType type, 
   out.push_back(PROTOCOL_VERSION);
   out.push_back(static_cast<uint8_t>(type));
   push_u16(out, seq);
-  uint32_t tag = compute_net_tag(network_key, type, seq, payload, payload_len);
-  push_u32(out, tag);
-  push_u16(out, static_cast<uint16_t>(payload_len));
-  if (payload != nullptr && payload_len > 0) {
-    out.insert(out.end(), payload, payload + payload_len);
-  }
-  return out;
-}
-
-std::vector<uint8_t> encode_frame_v2(const std::string &network_key, MsgType type, uint16_t seq,
-                                     uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
-                                     const uint8_t *payload, size_t payload_len) {
-  std::vector<uint8_t> out;
-  if (payload_len > MAX_FRAME_SIZE - FRAME_HEADER_V2_SIZE) {
-    return out;
-  }
-  out.reserve(FRAME_HEADER_V2_SIZE + payload_len);
-  out.push_back(PROTOCOL_MAGIC_0);
-  out.push_back(PROTOCOL_MAGIC_1);
-  out.push_back(PROTOCOL_VERSION_V2);
-  out.push_back(static_cast<uint8_t>(type));
-  push_u16(out, seq);
   uint32_t tag =
-      compute_net_tag_v2(network_key, type, seq, origin_id, ttl, hop_nonce, payload, payload_len);
+      compute_net_tag(network_key, type, seq, origin_id, ttl, hop_nonce, payload, payload_len);
   push_u32(out, tag);
   push_u16(out, static_cast<uint16_t>(payload_len));
   push_u32(out, origin_id);
@@ -142,55 +104,31 @@ bool decode_frame(const std::string &network_key, const uint8_t *data, size_t le
                   FrameHeader &out_header, std::vector<uint8_t> &out_payload) {
   if (data == nullptr || len < FRAME_HEADER_SIZE) return false;
   if (data[0] != PROTOCOL_MAGIC_0 || data[1] != PROTOCOL_MAGIC_1) return false;
+  if (data[2] != PROTOCOL_VERSION) return false;
 
-  const uint8_t ver = data[2];
   MsgType type = static_cast<MsgType>(data[3]);
   uint16_t seq = read_u16(data + 4);
   uint32_t tag = read_u32(data + 6);
   uint16_t payload_len = read_u16(data + 10);
+  if (len != FRAME_HEADER_SIZE + payload_len) return false;
 
-  if (ver == PROTOCOL_VERSION) {
-    if (len != FRAME_HEADER_SIZE + payload_len) return false;
-    const uint8_t *payload_ptr = payload_len > 0 ? (data + FRAME_HEADER_SIZE) : nullptr;
-    uint32_t expected_tag = compute_net_tag(network_key, type, seq, payload_ptr, payload_len);
-    if (tag != expected_tag) return false;
+  uint32_t origin_id = read_u32(data + 12);
+  uint8_t ttl = data[16];
+  uint8_t hop_nonce = data[17];
+  const uint8_t *payload_ptr = payload_len > 0 ? (data + FRAME_HEADER_SIZE) : nullptr;
+  uint32_t expected_tag =
+      compute_net_tag(network_key, type, seq, origin_id, ttl, hop_nonce, payload_ptr, payload_len);
+  if (tag != expected_tag) return false;
 
-    out_header.version = ver;
-    out_header.type = type;
-    out_header.seq = seq;
-    out_header.net_tag = tag;
-    out_header.payload_len = payload_len;
-    out_header.origin_id = 0;
-    out_header.ttl = 0;
-    out_header.hop_nonce = 0;
-    out_payload.assign(data + FRAME_HEADER_SIZE, data + len);
-    return true;
-  }
-
-  if (ver == PROTOCOL_VERSION_V2) {
-    if (len < FRAME_HEADER_V2_SIZE || len != FRAME_HEADER_V2_SIZE + payload_len) return false;
-    uint32_t origin_id = read_u32(data + 12);
-    uint8_t ttl = data[16];
-    uint8_t hop_nonce = data[17];
-    const uint8_t *payload_ptr = payload_len > 0 ? (data + FRAME_HEADER_V2_SIZE) : nullptr;
-    uint32_t expected_tag =
-        compute_net_tag_v2(network_key, type, seq, origin_id, ttl, hop_nonce, payload_ptr,
-                           payload_len);
-    if (tag != expected_tag) return false;
-
-    out_header.version = ver;
-    out_header.type = type;
-    out_header.seq = seq;
-    out_header.net_tag = tag;
-    out_header.payload_len = payload_len;
-    out_header.origin_id = origin_id;
-    out_header.ttl = ttl;
-    out_header.hop_nonce = hop_nonce;
-    out_payload.assign(data + FRAME_HEADER_V2_SIZE, data + len);
-    return true;
-  }
-
-  return false;
+  out_header.type = type;
+  out_header.seq = seq;
+  out_header.net_tag = tag;
+  out_header.payload_len = payload_len;
+  out_header.origin_id = origin_id;
+  out_header.ttl = ttl;
+  out_header.hop_nonce = hop_nonce;
+  out_payload.assign(data + FRAME_HEADER_SIZE, data + len);
+  return true;
 }
 
 std::vector<uint8_t> encode_ping(const PingPayload &p) {
