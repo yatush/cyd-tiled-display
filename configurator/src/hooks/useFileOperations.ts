@@ -21,6 +21,7 @@ import {
   extractBleFansFromDeviceYaml,
   extractEspNowFansFromDeviceYaml,
   resolveEffectiveEspNowFans,
+  resolveEffectiveEspNowShellys,
 } from '../utils/bleFanUtils';
 
 export type QuickSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -366,10 +367,12 @@ export function useFileOperations(
       const hasBleProxy = configHasBleProxy(config);
       const tuyaBle = buildTuyaBleFanYamlSections(config.ble_fans, hasBleProxy);
       const effectiveEspNowFans = resolveEffectiveEspNowFans(config, bleHubs);
+      const effectiveEspNowShellys = resolveEffectiveEspNowShellys(config, bleHubs);
       const espnowCyd = buildEspNowCydYamlSections(
         effectiveEspNowFans,
         config.espnow_network_key || espnowNetworkKey,
-        config.espnow_fallback_channel || 1
+        config.espnow_fallback_channel || 1,
+        effectiveEspNowShellys
       );
 
       const blePackageSection = `${tuyaBle.packageLine}${espnowCyd.packageLine}${hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : ''}`;

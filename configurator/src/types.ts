@@ -80,6 +80,38 @@ export interface GreeAcConfig {
   dump_ir: boolean;
 }
 
+export interface ShellyBackupItem {
+  name: string;
+  mac_address: string;
+  channel: number;
+  kind: 'switch' | 'light' | 'cover';
+  entity_id: string;
+  ip?: string;
+}
+
+export interface DetachedSwitchBinding {
+  name: string;
+  mac_address: string;
+  input_channel: number;
+  target_fan_device_id: string;
+  target_light_entity_id: string;
+}
+
+export interface DiscoveredShellyEntity {
+  entity_id: string;
+  name: string;
+  kind: 'switch' | 'light' | 'cover';
+  channel: number;
+}
+
+export interface DiscoveredShellyDevice {
+  name: string;
+  model: string;
+  mac_address: string;
+  ip: string;
+  entities: DiscoveredShellyEntity[];
+}
+
 export interface HeadlessHubConfig {
   filename: string;
   name: string;
@@ -89,6 +121,8 @@ export interface HeadlessHubConfig {
   network_key?: string;
   fans: BleFanConfig[];
   gree_ac?: GreeAcConfig | null;
+  shellys?: ShellyBackupItem[];
+  detached_switches?: DetachedSwitchBinding[];
 }
 
 export interface Config {

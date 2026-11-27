@@ -204,6 +204,69 @@ bool decode_sync_req(const uint8_t *data, size_t len, SyncReqPayload &out) {
   return true;
 }
 
+std::string normalize_mac_hex(const std::string &mac) {
+  std::string out;
+  out.reserve(12);
+  for (char c : mac) {
+    if (c >= '0' && c <= '9') {
+      out.push_back(c);
+    } else if (c >= 'a' && c <= 'f') {
+      out.push_back(c);
+    } else if (c >= 'A' && c <= 'F') {
+      out.push_back(static_cast<char>(c - 'A' + 'a'));
+    }
+  }
+  return out;
+}
+
+uint32_t shelly_device_id_from_mac(const std::string &mac) {
+  return fnv1a_32(normalize_mac_hex(mac));
+}
+
+std::vector<uint8_t> encode_shelly_cmd(const ShellyCmdPayload &p) {
+  std::vector<uint8_t> buf;
+  buf.reserve(8);
+  push_u32(buf, p.device_id);
+  buf.push_back(p.channel);
+  buf.push_back(static_cast<uint8_t>(p.opcode));
+  buf.push_back(p.arg);
+  buf.push_back(p.flags);
+  return buf;
+}
+
+bool decode_shelly_cmd(const uint8_t *data, size_t len, ShellyCmdPayload &out) {
+  if (data == nullptr || len < 8) return false;
+  out.device_id = read_u32(data);
+  out.channel = data[4];
+  out.opcode = static_cast<ShellyOpcode>(data[5]);
+  out.arg = data[6];
+  out.flags = data[7];
+  return true;
+}
+
+std::vector<uint8_t> encode_shelly_state(const ShellyStatePayload &p) {
+  std::vector<uint8_t> buf;
+  buf.reserve(9);
+  push_u32(buf, p.device_id);
+  buf.push_back(p.channel);
+  buf.push_back(static_cast<uint8_t>(p.kind));
+  buf.push_back(p.state_flags);
+  buf.push_back(p.position);
+  buf.push_back(static_cast<uint8_t>(p.ble_rssi));
+  return buf;
+}
+
+bool decode_shelly_state(const uint8_t *data, size_t len, ShellyStatePayload &out) {
+  if (data == nullptr || len < 9) return false;
+  out.device_id = read_u32(data);
+  out.channel = data[4];
+  out.kind = static_cast<ShellyKind>(data[5]);
+  out.state_flags = data[6];
+  out.position = data[7];
+  out.ble_rssi = static_cast<int8_t>(data[8]);
+  return true;
+}
+
 // ============================================================================
 // ChannelHuntState
 // ============================================================================
