@@ -153,15 +153,27 @@ function probeComponents() {
   }
 }
 
+var advBurstTimer = null;
 function advertiseBurst(uuidHex, payload14) {
   if (typeof BLE === "undefined" || typeof BLE.AdvBuilder === "undefined") return;
   BLE.AdvBuilder.reset();
   if (!BLE.AdvBuilder.addServiceData(uuidHex, payload14)) return;
   var pkt = BLE.AdvBuilder.build();
   if (!pkt) return;
+  if (advBurstTimer !== null) {
+    Timer.clear(advBurstTimer);
+    advBurstTimer = null;
+  }
   BLE.advertiseOnce(pkt, "");
-  Timer.set(60, false, function () { BLE.advertiseOnce(pkt, ""); });
-  Timer.set(120, false, function () { BLE.advertiseOnce(pkt, ""); });
+  var rem = 2;
+  advBurstTimer = Timer.set(60, true, function () {
+    BLE.advertiseOnce(pkt, "");
+    rem--;
+    if (rem <= 0 && advBurstTimer !== null) {
+      Timer.clear(advBurstTimer);
+      advBurstTimer = null;
+    }
+  });
 }
 
 function sendBeacon(uuidHex, ch, kind, stateFlags, position) {
@@ -298,7 +310,7 @@ Shelly.addStatusHandler(function (ev) {
     }
     return;
   }
-  if (ev.component === "cover:0" && ev.delta) {
+  if (ev.component === "cover:0" && ev.delta && typeof ev.delta.state === "string") {
     var moving = broadcastCoverState(0);
     ensureCoverMovePolling(moving);
     return;
