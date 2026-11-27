@@ -732,7 +732,7 @@ def test_deploy_shelly_script_chunking_and_zigbee_warning(monkeypatch):
             return {"id": 3}
         return {}
 
-    monkeypatch.setattr(server, "_shelly_rpc_call", fake_rpc)
+    monkeypatch.setattr(server._shelly_mod, "_shelly_rpc_call", fake_rpc)
     script = "x" * 2500
     res = server.deploy_shelly_script_to_device("192.168.1.50", script)
     assert res["ok"] is True
@@ -938,7 +938,7 @@ def test_probe_shelly_detached_channels_and_encode_blob(monkeypatch):
             "switch:0": {"in_mode": "detached"},
         },
     }
-    monkeypatch.setattr(server, "_shelly_rpc_call", lambda ip, method, timeout=1.2: responses[ip])
+    monkeypatch.setattr(server._shelly_mod, "_shelly_rpc_call", lambda ip, method, timeout=1.2: responses[ip])
     assert server._probe_shelly_input_info("192.168.1.10") == ([0], [], [0, 1])
     assert server._probe_shelly_detached_channels("192.168.1.11") == []
     # input:0 is button mode (excluded), input:2 is switch mode (included)
