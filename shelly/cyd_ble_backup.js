@@ -1,5 +1,5 @@
 // CYD Offline BLE Backup Script for Shelly Gen3/Gen4 (Firmware 2.2.1+)
-// Managed by CYD Tiled Display Configurator — zero persistent BLE connections.
+// Managed by CYD Tiled Display Configurator - zero persistent BLE connections.
 // Uses 16-bit BLE Service Data (AD Type 0x16):
 //   0xC753: Hub -> Shelly Command (14 B)
 //   0xC754: Shelly -> Hub State Beacon (14 B)
@@ -155,7 +155,10 @@ function probeComponents() {
 
 function advertiseBurst(uuidHex, payload14) {
   if (typeof BLE === "undefined" || typeof BLE.AdvBuilder === "undefined") return;
-  var pkt = BLE.AdvBuilder.init().addFlags().addServiceData(uuidHex, payload14).build();
+  BLE.AdvBuilder.reset();
+  if (!BLE.AdvBuilder.addServiceData(uuidHex, payload14)) return;
+  var pkt = BLE.AdvBuilder.build();
+  if (!pkt) return;
   BLE.advertiseOnce(pkt, "");
   Timer.set(60, false, function () { BLE.advertiseOnce(pkt, ""); });
   Timer.set(120, false, function () { BLE.advertiseOnce(pkt, ""); });
@@ -335,5 +338,5 @@ if (typeof BLE !== "undefined" && typeof BLE.Scanner !== "undefined") {
     onScanResult
   );
 } else {
-  print("CYD BLE backup: BLE.Scanner unavailable (Zigbee firmware?) — outbound beacons only");
+  print("CYD BLE backup: BLE.Scanner unavailable (Zigbee firmware?) - outbound beacons only");
 }

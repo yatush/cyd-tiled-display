@@ -97,11 +97,20 @@ void ShellyBleBridge::loop() {
   tick_tx(now);
 
   // Keep passive BLE scanning running for Shelly state/input beacons even when
-  // headless_hub_base.yaml configures esp32_ble_tracker with continuous: false.
-  if (scan_kick_pending_ && parent_ != nullptr && tx_state_ == TxState::IDLE &&
-      static_cast<int32_t>(now - last_scan_end_ms_) >= static_cast<int32_t>(SCAN_RESTART_DELAY_MS)) {
-    scan_kick_pending_ = false;
-    parent_->start_scan();
+  // headless_hub_base.yaml configures esp32_ble_tracker with continuous: false,
+  // but never interrupt an in-flight Tuya BLE GATT connect/handshake.
+  if (scan_kick_pending_ && parent_ != nullptr && tx_state_ == TxState::IDLE) {
+#ifdef USE_TUYA_BLE_FAN
+    if (tuya_ble_fan::TuyaBleFanRegistry::instance().has_in_flight_connect()) {
+      last_scan_end_ms_ = now;
+      return;
+    }
+#endif
+    if (static_cast<int32_t>(now - last_scan_end_ms_) >=
+        static_cast<int32_t>(SCAN_RESTART_DELAY_MS)) {
+      scan_kick_pending_ = false;
+      parent_->start_scan();
+    }
   }
 }
 

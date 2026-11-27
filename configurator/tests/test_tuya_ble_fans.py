@@ -746,3 +746,8 @@ def test_deploy_shelly_script_chunking_and_zigbee_warning(monkeypatch):
     assert put_calls[2]["append"] is True
     assert "".join(p["code"] for p in put_calls) == script
     assert any(m == "Script.Start" and p == {"id": 3} for (_, m, p) in calls)
+
+    # Verify shipped shelly/cyd_ble_backup.js is pure ASCII (Shelly 2.2.1 rejects \uXXXX)
+    tpl = server._load_shelly_script_template()
+    assert tpl is not None and tpl.isascii()
+    assert "BLE.AdvBuilder.reset()" in tpl
