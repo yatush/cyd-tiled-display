@@ -62,7 +62,7 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   // ESPBTClient interface (passive BLE scanner + GAP adv callback, zero GATT connections)
   bool parse_device(const esp32_ble_tracker::ESPBTDevice &device) override;
   void on_scan_end() override;
-  bool gattc_event_handler(esp_gattc_cb_event_t event, esp_gattc_if_t gattc_if,
+  bool gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if,
                            esp_ble_gattc_cb_param_t *param) override {
     return false;
   }
