@@ -90,6 +90,7 @@ class EspNowFanBridge : public Component {
 
   struct PendingShellyCmd {
     uint16_t seq{0};
+    uint32_t origin_override{0};
     ShellyCmdPayload cmd{};
     uint32_t created_ms{0};
     uint32_t last_tx_ms{0};

@@ -450,6 +450,39 @@ void ShellyBleBridge::handle_input_beacon(const ShellyBleBeacon &beacon, int rss
              binding.name.c_str(), beacon.seq, ha_up ? 1 : 0, wifi_down ? 1 : 0, rssi);
 
     bool handled_locally = false;
+    // Target is another Shelly BLE output encoded as "shelly:<mac12>:<ch>"
+    if (binding.target_fan_device_id.rfind("shelly:", 0) == 0) {
+      std::string rest = binding.target_fan_device_id.substr(7);
+      size_t colon = rest.find(':');
+      std::string target_mac = (colon == std::string::npos) ? rest : rest.substr(0, colon);
+      uint8_t target_ch = 0;
+      if (colon != std::string::npos && colon + 1 < rest.size()) {
+        int parsed = std::atoi(rest.substr(colon + 1).c_str());
+        if (parsed >= 0 && parsed <= 3) target_ch = static_cast<uint8_t>(parsed);
+      }
+      uint32_t target_dev_id = shelly_device_id_from_mac(target_mac);
+      if (target_dev_id != 0 && this->handles_device(target_dev_id)) {
+        ESP_LOGI(TAG, "[%s] Toggling local Shelly output 0x%08X ch=%u (%s) seq=%u",
+                 binding.name.c_str(), target_dev_id, target_ch,
+                 binding.target_light_entity_id.c_str(), beacon.seq);
+        this->enqueue_command(target_dev_id, target_ch,
+                              static_cast<uint8_t>(ShellyBleOpcode::SW_TOGGLE), 0, 0, beacon.seq);
+        handled_locally = true;
+      }
+      if (!handled_locally) {
+        if (ShellyBleBridgeRegistry::instance().toggle_remote_light(
+                binding.target_fan_device_id, binding.target_light_entity_id, beacon.source_id,
+                beacon.seq)) {
+          ESP_LOGI(TAG, "[%s] Forwarded detached Shelly toggle over ESP-NOW (target=%s seq=%u)",
+                   binding.name.c_str(), binding.target_fan_device_id.c_str(), beacon.seq);
+        } else {
+          ESP_LOGW(TAG, "[%s] Target Shelly %s not in local BLE range and ESP-NOW unavailable",
+                   binding.name.c_str(), binding.target_fan_device_id.c_str());
+        }
+      }
+      continue;
+    }
+
 #ifdef USE_TUYA_BLE_FAN
     tuya_ble_fan::TuyaBleFanDevice *target = nullptr;
     for (auto *dev : tuya_ble_fan::TuyaBleFanRegistry::instance().all_devices()) {

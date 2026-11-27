@@ -700,6 +700,42 @@ bool EspNowFanBridge::hub_send_remote_light_toggle(const std::string &target_fan
                                                    const std::string &target_light_entity_id,
                                                    uint32_t source_id, uint16_t source_seq) {
   if (!espnow_ready_ || role_ != BridgeRole::HUB) return false;
+  const uint32_t now_ms = millis();
+
+  // Remote Shelly output encoded as "shelly:<mac12>:<ch>"
+  if (target_fan_device_id.rfind("shelly:", 0) == 0) {
+    std::string rest = target_fan_device_id.substr(7);
+    size_t colon = rest.find(':');
+    std::string target_mac = (colon == std::string::npos) ? rest : rest.substr(0, colon);
+    uint8_t target_ch = 0;
+    if (colon != std::string::npos && colon + 1 < rest.size()) {
+      int parsed = std::atoi(rest.substr(colon + 1).c_str());
+      if (parsed >= 0 && parsed <= 3) target_ch = static_cast<uint8_t>(parsed);
+    }
+    uint32_t target_dev_id = shelly_device_id_from_mac(target_mac);
+    if (target_dev_id == 0) return false;
+
+    ShellyCmdPayload scmd;
+    scmd.device_id = target_dev_id;
+    scmd.channel = target_ch;
+    scmd.opcode = ShellyOpcode::SW_TOGGLE;
+    scmd.arg = 0;
+    scmd.flags = 0;
+
+    PendingShellyCmd pending;
+    pending.seq = source_seq != 0 ? source_seq : next_seq_++;
+    pending.origin_override = source_id;
+    pending.cmd = scmd;
+    pending.created_ms = now_ms;
+    pending.last_tx_ms = now_ms;
+    pending.attempts = 1;
+
+    broadcast_frame(MsgType::SHELLY_CMD, pending.seq, encode_shelly_cmd(pending.cmd),
+                    DEFAULT_RELAY_TTL, 0, pending.origin_override);
+    pending_shelly_cmds_.push_back(pending);
+    return true;
+  }
+
   uint32_t target_hash = 0;
   if (!target_light_entity_id.empty()) {
     target_hash = fnv1a_32(target_light_entity_id);
@@ -709,7 +745,6 @@ bool EspNowFanBridge::hub_send_remote_light_toggle(const std::string &target_fan
     return false;
   }
 
-  const uint32_t now_ms = millis();
   CmdPayload cmd;
   cmd.fan_key_hash = target_hash;
   cmd.opcode = CmdOpcode::LIGHT_TOGGLE;
@@ -1122,7 +1157,7 @@ void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
     it->attempts++;
     it->last_tx_ms = now_ms;
     broadcast_frame(MsgType::SHELLY_CMD, it->seq, encode_shelly_cmd(it->cmd), DEFAULT_RELAY_TTL,
-                    it->attempts);
+                    it->attempts, it->origin_override);
     ++it;
   }
 }
