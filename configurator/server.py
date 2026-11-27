@@ -3533,7 +3533,10 @@ def _remove_fans_from_host_yaml(filepath, fans_to_remove):
     return True
 
 
-def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, network_key, fans, gree_ac=None, shellys=None, detached_switches=None):
+_CACHED_SHELLY_KNOWN_NAMES = {}
+
+
+def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, network_key, fans, gree_ac=None, shellys=None, detached_switches=None, known_names=None):
     fan_count = len(fans)
     max_conns = min(3, max(1, fan_count))
     idle_disconnect_s = 0 if (fan_count > 0 and fan_count <= max_conns) else 30
@@ -3728,12 +3731,17 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
 
     shelly_list = shellys or []
     detached_list = detached_switches or []
+    names_map = dict(_CACHED_SHELLY_KNOWN_NAMES)
+    if isinstance(known_names, dict):
+        names_map.update({k: v for k, v in known_names.items() if k and v})
     sb_cfg = {
         'network_key': network_key,
         'visible_shellys_sensor': {
             'name': 'Visible Shellys',
         },
     }
+    if names_map:
+        sb_cfg['known_names'] = dict(sorted(names_map.items()))
     if shelly_list:
         sb_cfg['shellys'] = [
             {
@@ -4316,6 +4324,10 @@ def api_discover_shelly_devices():
                 'input_entities': [str(x) for x in (d.get('input_entities') or [])],
                 'used_by_cyds': sorted(dev_cyds),
             })
+        # Cache HA friendly names so hub YAMLs automatically label Visible Shellys by name
+        for dev in devices:
+            if dev.get('mac_address') and dev.get('name'):
+                _CACHED_SHELLY_KNOWN_NAMES[dev['mac_address']] = str(dev['name'])[:32]
         # Put Shellys referenced by any CYD first, then alphabetically
         devices.sort(key=lambda x: (0 if x['used_by_cyds'] else 1, x['name'].lower()))
         suggestions = detect_detached_switch_suggestions(devices, all_fans)

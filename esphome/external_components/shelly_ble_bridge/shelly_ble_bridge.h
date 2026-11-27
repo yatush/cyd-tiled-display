@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
@@ -53,6 +54,7 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
     visible_shellys_sensor_ = sensor;
   }
 
+  void add_known_name(const std::string &mac_address, const std::string &name);
   void add_shelly(const std::string &name, const std::string &mac_address, uint8_t channel,
                   ShellyBleKind kind, const std::string &entity_id);
   void add_detached_switch(const std::string &name, const std::string &mac_address,
@@ -96,11 +98,12 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   static constexpr uint32_t VISIBLE_PUBLISH_INTERVAL_MS = 30000;
   static constexpr size_t MAX_DYNAMIC_SHELLYS = 32;
 
+  std::string resolve_display_name(uint32_t device_id, const std::string &ble_name) const;
   ManagedShelly *find_shelly(uint32_t device_id, uint8_t channel);
   ManagedShelly *find_or_create_shelly(uint32_t device_id, uint8_t channel, ShellyBleKind kind,
-                                       uint32_t now_ms);
+                                       uint32_t now_ms, const std::string &ble_name);
   bool handles_device(uint32_t device_id) const;
-  void handle_state_beacon(const ShellyBleBeacon &beacon, int rssi);
+  void handle_state_beacon(const ShellyBleBeacon &beacon, int rssi, const std::string &ble_name);
   void handle_input_beacon(const ShellyBleBeacon &beacon, int rssi);
   void publish_visible_shellys(uint32_t now_ms, bool force = false);
   void tick_tx(uint32_t now_ms);
@@ -110,6 +113,7 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   text_sensor::TextSensor *visible_shellys_sensor_{nullptr};
   std::string network_key_{"cyd_espnow_default"};
 
+  std::unordered_map<uint32_t, std::string> known_names_;
   std::vector<ManagedShelly> shellys_;
   std::vector<DetachedSwitchBinding> detached_switches_;
 

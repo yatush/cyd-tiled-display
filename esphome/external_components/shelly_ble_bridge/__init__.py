@@ -21,6 +21,7 @@ CONF_INPUT_CHANNEL = "input_channel"
 CONF_TARGET_FAN_DEVICE_ID = "target_fan_device_id"
 CONF_TARGET_LIGHT_ENTITY_ID = "target_light_entity_id"
 CONF_VISIBLE_SHELLYS_SENSOR = "visible_shellys_sensor"
+CONF_KNOWN_NAMES = "known_names"
 
 shelly_ns = cg.esphome_ns.namespace("shelly_ble_bridge")
 ShellyBleBridge = shelly_ns.class_(
@@ -65,6 +66,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DETACHED_SWITCHES, default=[]): cv.ensure_list(
             DETACHED_SWITCH_SCHEMA
         ),
+        cv.Optional(CONF_KNOWN_NAMES, default={}): cv.Schema({cv.string: cv.string}),
         cv.Optional(CONF_VISIBLE_SHELLYS_SENSOR): text_sensor.text_sensor_schema(
             entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             icon="mdi:bluetooth-connect",
@@ -87,6 +89,9 @@ async def to_code(config):
     if CONF_VISIBLE_SHELLYS_SENSOR in config:
         sens = await text_sensor.new_text_sensor(config[CONF_VISIBLE_SHELLYS_SENSOR])
         cg.add(var.set_visible_shellys_sensor(sens))
+
+    for mac, label in config.get(CONF_KNOWN_NAMES, {}).items():
+        cg.add(var.add_known_name(mac, label))
 
     for item in config.get(CONF_SHELLYS, []):
         cg.add(
