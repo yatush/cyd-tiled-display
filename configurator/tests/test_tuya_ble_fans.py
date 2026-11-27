@@ -939,12 +939,12 @@ def test_probe_shelly_detached_channels_and_encode_blob(monkeypatch):
         },
     }
     monkeypatch.setattr(server, "_shelly_rpc_call", lambda ip, method, timeout=1.2: responses[ip])
-    assert server._probe_shelly_detached_channels("192.168.1.10") == [0]
+    assert server._probe_shelly_input_info("192.168.1.10") == ([0], [], [0, 1])
     assert server._probe_shelly_detached_channels("192.168.1.11") == []
     # input:0 is button mode (excluded), input:2 is switch mode (included)
-    assert server._probe_shelly_input_info("192.168.1.12") == ([2], [0])
+    assert server._probe_shelly_input_info("192.168.1.12") == ([2], [0], [0, 2])
     # detached switch in button mode is excluded
-    assert server._probe_shelly_input_info("192.168.1.13") == ([], [0])
+    assert server._probe_shelly_input_info("192.168.1.13") == ([], [0], [0])
 
     blob = server._encode_detached_switches_blob([
         {
