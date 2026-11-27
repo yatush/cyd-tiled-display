@@ -2,6 +2,8 @@
 
 #ifdef USE_ESP32
 
+#include <cstdio>
+
 #include "esphome/core/application.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
@@ -42,6 +44,7 @@ void ShellyBleBridge::add_shelly(const std::string &name, const std::string &mac
   item.channel = channel;
   item.kind = kind;
   item.entity_id = entity_id;
+  item.static_configured = true;
   shellys_.push_back(std::move(item));
 }
 
@@ -61,22 +64,29 @@ void ShellyBleBridge::add_detached_switch(const std::string &name, const std::st
 
 void ShellyBleBridge::setup() {
   ShellyBleBridgeRegistry::instance().set_cmd_handler(
-      [this](uint32_t device_id, uint8_t channel, uint8_t opcode, uint8_t arg, uint8_t flags) {
-        return this->enqueue_command(device_id, channel, opcode, arg, flags);
+      [this](uint32_t device_id, uint8_t channel, uint8_t opcode, uint8_t arg, uint8_t flags,
+             uint16_t cmd_seq) {
+        return this->enqueue_command(device_id, channel, opcode, arg, flags, cmd_seq);
       });
   ShellyBleBridgeRegistry::instance().set_device_predicate(
       [this](uint32_t device_id) { return this->handles_device(device_id); });
   ShellyBleBridgeRegistry::instance().set_snapshot_provider(
       [this]() { return this->get_cached_states(); });
-  last_scan_check_ms_ = millis();
-  ESP_LOGI(TAG, "Shelly BLE Bridge initialized: %u shellys, %u detached switches",
+  const uint32_t now = millis();
+  last_scan_check_ms_ = now;
+  last_visible_publish_ms_ = now;
+  publish_visible_shellys(now, true);
+  ESP_LOGI(TAG, "Shelly BLE Bridge initialized (dynamic discovery active): %u static shellys, %u detached switches",
            static_cast<unsigned>(shellys_.size()),
            static_cast<unsigned>(detached_switches_.size()));
 }
 
 void ShellyBleBridge::dump_config() {
   ESP_LOGCONFIG(TAG, "Shelly BLE Bridge:");
-  ESP_LOGCONFIG(TAG, "  Managed Shellys: %u", static_cast<unsigned>(shellys_.size()));
+  ESP_LOGCONFIG(TAG, "  Dynamic Discovery: ENABLED (max=%u, stale=%us)",
+                static_cast<unsigned>(MAX_DYNAMIC_SHELLYS),
+                static_cast<unsigned>(SHELLY_BLE_STALE_MS / 1000));
+  ESP_LOGCONFIG(TAG, "  Static Shellys: %u", static_cast<unsigned>(shellys_.size()));
   for (const auto &s : shellys_) {
     ESP_LOGCONFIG(TAG, "    - %s (mac=%s id=0x%08X ch=%u kind=%u entity=%s)", s.name.c_str(),
                   s.mac_address.c_str(), static_cast<unsigned>(s.device_id),
@@ -97,14 +107,10 @@ void ShellyBleBridge::loop() {
   const uint32_t now = millis();
   tick_tx(now);
 
-  // Keep passive BLE scanning running for Shelly state/input beacons even when
-  // headless_hub_base.yaml configures esp32_ble_tracker with continuous: false.
-  // ESP32BLETracker::notify_scan_end_() only notifies listeners_ (not ESPBTClient
-  // clients_), so we periodically check and call start_scan_if_idle() (which is
-  // a no-op when scanning is already active), while deferring whenever a Tuya
-  // BLE GATT connect/handshake is in flight.
-  if ((!shellys_.empty() || !detached_switches_.empty()) && parent_ != nullptr &&
-      tx_state_ == TxState::IDLE &&
+  // Keep passive BLE scanning running for dynamic Shelly state/input beacons even when
+  // headless_hub_base.yaml configures esp32_ble_tracker with continuous: false, while
+  // deferring whenever a Tuya BLE GATT connect/handshake is in flight.
+  if (parent_ != nullptr && tx_state_ == TxState::IDLE &&
       static_cast<int32_t>(now - last_scan_check_ms_) >=
           static_cast<int32_t>(SCAN_RESTART_DELAY_MS)) {
     last_scan_check_ms_ = now;
@@ -114,6 +120,12 @@ void ShellyBleBridge::loop() {
     }
 #endif
     parent_->start_scan_if_idle();
+  }
+
+  if (visible_shellys_sensor_ != nullptr &&
+      static_cast<int32_t>(now - last_visible_publish_ms_) >=
+          static_cast<int32_t>(VISIBLE_PUBLISH_INTERVAL_MS)) {
+    publish_visible_shellys(now, false);
   }
 }
 
@@ -162,34 +174,130 @@ ManagedShelly *ShellyBleBridge::find_shelly(uint32_t device_id, uint8_t channel)
   return nullptr;
 }
 
+ManagedShelly *ShellyBleBridge::find_or_create_shelly(uint32_t device_id, uint8_t channel,
+                                                      ShellyBleKind kind, uint32_t now_ms) {
+  if (auto *existing = find_shelly(device_id, channel)) {
+    return existing;
+  }
+
+  // Dynamic discovery: add up to MAX_DYNAMIC_SHELLYS, evicting oldest stale non-static entry if full
+  if (shellys_.size() >= MAX_DYNAMIC_SHELLYS) {
+    ManagedShelly *evict = nullptr;
+    uint32_t oldest_age = 0;
+    for (auto &s : shellys_) {
+      if (s.static_configured) continue;
+      uint32_t age = static_cast<uint32_t>(now_ms - s.last_seen_ms);
+      if (age >= SHELLY_BLE_STALE_MS && (evict == nullptr || age > oldest_age)) {
+        evict = &s;
+        oldest_age = age;
+      }
+    }
+    if (evict != nullptr) {
+      char buf[24];
+      std::snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(device_id));
+      evict->name = buf;
+      evict->mac_address.clear();
+      evict->device_id = device_id;
+      evict->channel = channel;
+      evict->kind = kind;
+      evict->entity_id.clear();
+      evict->has_state = false;
+      return evict;
+    }
+    return nullptr;
+  }
+
+  ManagedShelly item;
+  char buf[24];
+  std::snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(device_id));
+  item.name = buf;
+  item.device_id = device_id;
+  item.channel = channel;
+  item.kind = kind;
+  item.static_configured = false;
+  shellys_.push_back(std::move(item));
+  ESP_LOGI(TAG, "Dynamically discovered Shelly 0x%08X ch=%u kind=%u",
+           static_cast<unsigned>(device_id), static_cast<unsigned>(channel),
+           static_cast<unsigned>(kind));
+  return &shellys_.back();
+}
+
 bool ShellyBleBridge::handles_device(uint32_t device_id) const {
+  const uint32_t now = millis();
   for (const auto &s : shellys_) {
-    if (s.device_id == device_id) return true;
+    if (s.device_id != device_id) continue;
+    if (s.static_configured) return true;
+    if (s.has_state && static_cast<uint32_t>(now - s.last_seen_ms) <= SHELLY_BLE_STALE_MS) {
+      return true;
+    }
   }
   return false;
 }
 
+void ShellyBleBridge::publish_visible_shellys(uint32_t now_ms, bool force) {
+  last_visible_publish_ms_ = now_ms;
+  if (visible_shellys_sensor_ == nullptr) return;
+
+  std::vector<uint32_t> seen_ids;
+  std::string summary;
+  for (const auto &s : shellys_) {
+    if (!s.has_state) continue;
+    if (static_cast<uint32_t>(now_ms - s.last_seen_ms) > SHELLY_BLE_STALE_MS) continue;
+    bool dup = false;
+    for (uint32_t id : seen_ids) {
+      if (id == s.device_id) {
+        dup = true;
+        break;
+      }
+    }
+    if (dup) continue;
+    seen_ids.push_back(s.device_id);
+
+    if (!summary.empty()) summary += ", ";
+    char buf[48];
+    if (!s.name.empty()) {
+      std::snprintf(buf, sizeof(buf), "%s (%ddBm)", s.name.c_str(), static_cast<int>(s.ble_rssi));
+    } else {
+      std::snprintf(buf, sizeof(buf), "0x%08X (%ddBm)", static_cast<unsigned>(s.device_id),
+                    static_cast<int>(s.ble_rssi));
+    }
+    summary += buf;
+  }
+  if (summary.empty()) summary = "none";
+
+  if (force || summary != last_visible_summary_) {
+    last_visible_summary_ = summary;
+    visible_shellys_sensor_->publish_state(summary);
+  }
+}
+
 void ShellyBleBridge::handle_state_beacon(const ShellyBleBeacon &beacon, int rssi) {
-  if (!state_dedup_.accept(beacon.source_id, beacon.seq, millis(), DEDUP_TTL_MS)) {
+  const uint32_t now = millis();
+  if (!state_dedup_.accept(beacon.source_id, beacon.seq, now, DEDUP_TTL_MS)) {
     return;
   }
-  auto *s = find_shelly(beacon.source_id, beacon.channel);
+  const bool was_known = (find_shelly(beacon.source_id, beacon.channel) != nullptr);
+  auto *s = find_or_create_shelly(beacon.source_id, beacon.channel, beacon.kind, now);
   if (s == nullptr) {
-    ESP_LOGV(TAG, "Ignoring state beacon from unassigned Shelly 0x%08X ch=%u",
-             static_cast<unsigned>(beacon.source_id), static_cast<unsigned>(beacon.channel));
     return;
   }
 
+  const bool was_fresh =
+      s->has_state && static_cast<uint32_t>(now - s->last_seen_ms) <= SHELLY_BLE_STALE_MS;
   s->has_state = true;
   s->kind = beacon.kind;
   s->state_flags = beacon.state_flags;
   s->position = beacon.position;
   s->ble_rssi = static_cast<int8_t>(rssi < -127 ? -127 : (rssi > 0 ? 0 : rssi));
-  s->last_seen_ms = millis();
+  s->last_seen_ms = now;
 
   ESP_LOGD(TAG, "[%s] RX Shelly BLE state seq=%u flags=0x%02X pos=%u rssi=%d", s->name.c_str(),
            beacon.seq, static_cast<unsigned>(s->state_flags), static_cast<unsigned>(s->position),
            static_cast<int>(s->ble_rssi));
+
+  if (!was_known || !was_fresh) {
+    publish_visible_shellys(now, false);
+  }
 
   ShellyCachedState st;
   st.device_id = s->device_id;
@@ -251,10 +359,11 @@ void ShellyBleBridge::handle_input_beacon(const ShellyBleBeacon &beacon, int rss
 #endif
     if (!handled_locally) {
       if (ShellyBleBridgeRegistry::instance().toggle_remote_light(
-              binding.target_fan_device_id, binding.target_light_entity_id)) {
-        ESP_LOGI(TAG, "[%s] Forwarded detached light toggle over ESP-NOW (dev=%s light=%s)",
+              binding.target_fan_device_id, binding.target_light_entity_id, beacon.source_id,
+              beacon.seq)) {
+        ESP_LOGI(TAG, "[%s] Forwarded detached light toggle over ESP-NOW (dev=%s light=%s seq=%u)",
                  binding.name.c_str(), binding.target_fan_device_id.c_str(),
-                 binding.target_light_entity_id.c_str());
+                 binding.target_light_entity_id.c_str(), beacon.seq);
       } else {
         ESP_LOGW(TAG, "[%s] Linked Tuya BLE fan not found locally and ESP-NOW forward unavailable "
                       "(dev=%s light=%s)",
@@ -266,7 +375,7 @@ void ShellyBleBridge::handle_input_beacon(const ShellyBleBeacon &beacon, int rss
 }
 
 bool ShellyBleBridge::enqueue_command(uint32_t device_id, uint8_t channel, uint8_t opcode,
-                                      uint8_t arg, uint8_t flags) {
+                                      uint8_t arg, uint8_t flags, uint16_t cmd_seq) {
   if (!handles_device(device_id)) {
     return false;
   }
@@ -276,8 +385,14 @@ bool ShellyBleBridge::enqueue_command(uint32_t device_id, uint8_t channel, uint8
   cmd.opcode = static_cast<ShellyBleOpcode>(opcode);
   cmd.arg = arg;
   cmd.flags = flags;
-  cmd.seq = next_seq_++;
-  if (next_seq_ == 0) next_seq_ = 1;
+  if (cmd_seq != 0) {
+    // Reuse CYD's ESP-NOW seq so multiple hubs in BLE range transmit the exact same
+    // (target_id, seq) and the Shelly deduplicates any duplicate burst automatically.
+    cmd.seq = cmd_seq;
+  } else {
+    cmd.seq = next_seq_++;
+    if (next_seq_ == 0) next_seq_ = 1;
+  }
 
   tx_queue_.enqueue(cmd);
   ESP_LOGI(TAG, "Queued Shelly BLE cmd target=0x%08X ch=%u op=%u arg=%u seq=%u (q=%u)",
@@ -288,10 +403,15 @@ bool ShellyBleBridge::enqueue_command(uint32_t device_id, uint8_t channel, uint8
 }
 
 std::vector<ShellyCachedState> ShellyBleBridge::get_cached_states() const {
+  const uint32_t now = millis();
   std::vector<ShellyCachedState> out;
   out.reserve(shellys_.size());
   for (const auto &s : shellys_) {
     if (!s.has_state) continue;
+    if (!s.static_configured &&
+        static_cast<uint32_t>(now - s.last_seen_ms) > SHELLY_BLE_STALE_MS) {
+      continue;
+    }
     ShellyCachedState st;
     st.device_id = s.device_id;
     st.channel = s.channel;

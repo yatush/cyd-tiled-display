@@ -1,9 +1,15 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import esp32_ble_tracker
-from esphome.const import CONF_ID, CONF_MAC_ADDRESS, CONF_NAME
+from esphome.components import esp32_ble_tracker, text_sensor
+from esphome.const import (
+    CONF_ID,
+    CONF_MAC_ADDRESS,
+    CONF_NAME,
+    ENTITY_CATEGORY_DIAGNOSTIC,
+)
 
 DEPENDENCIES = ["esp32_ble_tracker"]
+AUTO_LOAD = ["text_sensor"]
 
 CONF_NETWORK_KEY = "network_key"
 CONF_SHELLYS = "shellys"
@@ -14,6 +20,7 @@ CONF_DETACHED_SWITCHES = "detached_switches"
 CONF_INPUT_CHANNEL = "input_channel"
 CONF_TARGET_FAN_DEVICE_ID = "target_fan_device_id"
 CONF_TARGET_LIGHT_ENTITY_ID = "target_light_entity_id"
+CONF_VISIBLE_SHELLYS_SENSOR = "visible_shellys_sensor"
 
 shelly_ns = cg.esphome_ns.namespace("shelly_ble_bridge")
 ShellyBleBridge = shelly_ns.class_(
@@ -58,6 +65,10 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DETACHED_SWITCHES, default=[]): cv.ensure_list(
             DETACHED_SWITCH_SCHEMA
         ),
+        cv.Optional(CONF_VISIBLE_SHELLYS_SENSOR): text_sensor.text_sensor_schema(
+            entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            icon="mdi:bluetooth-connect",
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -72,6 +83,10 @@ async def to_code(config):
     tracker = await cg.get_variable(config[esp32_ble_tracker.CONF_ESP32_BLE_ID])
     cg.add(var.set_parent(tracker))
     cg.add(var.set_network_key(config[CONF_NETWORK_KEY]))
+
+    if CONF_VISIBLE_SHELLYS_SENSOR in config:
+        sens = await text_sensor.new_text_sensor(config[CONF_VISIBLE_SHELLYS_SENSOR])
+        cg.add(var.set_visible_shellys_sensor(sens))
 
     for item in config.get(CONF_SHELLYS, []):
         cg.add(

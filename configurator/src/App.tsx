@@ -18,6 +18,8 @@ import { HwOverridesDialog } from './components/HwOverridesDialog';
 import { BatchUpdateDialog } from './components/BatchUpdateDialog';
 import { FindBleFansDialog } from './components/FindBleFansDialog';
 import { HeadlessHubsDialog } from './components/HeadlessHubsDialog';
+import { ShellyBackupDialog } from './components/ShellyBackupDialog';
+import { DiscoveredShellyDevice } from './types';
 
 import { useSidebarResizing } from './hooks/useSidebarResizing';
 import { useHaConnection } from './hooks/useHaConnection';
@@ -173,6 +175,23 @@ function App() {
   } = useHaConnection();
   const [isFindBleFansOpen, setIsFindBleFansOpen] = useState(false);
   const [isHeadlessHubsOpen, setIsHeadlessHubsOpen] = useState(false);
+  const [isShellyBackupOpen, setIsShellyBackupOpen] = useState(false);
+  const [discoveredShellys, setDiscoveredShellys] = useState<DiscoveredShellyDevice[]>([]);
+
+  const refreshDiscoveredShellys = () => {
+    apiFetch('/shelly/devices')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (d && Array.isArray(d.devices)) {
+          setDiscoveredShellys(d.devices);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refreshDiscoveredShellys();
+  }, []);
 
   const {
     config, setConfig,
@@ -264,7 +283,8 @@ function App() {
     },
     () => setSidebarKey(prev => prev + 1),
     bleHubs,
-    espnowNetworkKey
+    espnowNetworkKey,
+    discoveredShellys
   );
 
   const handleSaveOrSaveAs = () => {
@@ -569,6 +589,7 @@ function App() {
           currentDevicePath={fileContext?.kind === 'device' ? fileContext.path : undefined}
           onOpenFindBleFans={() => setIsFindBleFansOpen(true)}
           onOpenHeadlessHubs={() => setIsHeadlessHubsOpen(true)}
+          onOpenShellyBackup={() => setIsShellyBackupOpen(true)}
         />
 
       {/* Left Resizer */}
@@ -678,6 +699,24 @@ function App() {
             setIsHeadlessHubsOpen(false);
             setQuickUpdateDevice(filename);
             setIsInstallDeviceOpen(true);
+          }}
+          onOpenShellyBackup={() => {
+            setIsHeadlessHubsOpen(false);
+            setIsShellyBackupOpen(true);
+          }}
+        />
+      )}
+
+      {isShellyBackupOpen && (
+        <ShellyBackupDialog
+          isOpen={isShellyBackupOpen}
+          onClose={() => setIsShellyBackupOpen(false)}
+          config={config}
+          hubs={bleHubs}
+          networkKey={espnowNetworkKey}
+          onSynced={(foundDevices) => {
+            setDiscoveredShellys(foundDevices);
+            refreshBleAndHubs();
           }}
         />
       )}

@@ -13,13 +13,10 @@ import {
   ArrowRightLeft,
   Wind,
   Zap,
-  RefreshCw,
-  Upload,
 } from 'lucide-react';
 import {
   BleFanConfig,
   DetachedSwitchBinding,
-  DiscoveredShellyDevice,
   GreeAcConfig,
   HeadlessHubConfig,
   ShellyBackupItem,
@@ -66,16 +63,6 @@ interface ConflictItem {
   host_file: string;
 }
 
-interface ShellyDeployResult {
-  ip: string;
-  name: string;
-  ok: boolean;
-  script_id?: number;
-  zigbee_warning?: boolean;
-  fw_id?: string;
-  error?: string;
-}
-
 interface HeadlessHubsDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -85,6 +72,7 @@ interface HeadlessHubsDialogProps {
   bleFanHosts: Record<string, string[]>;
   onHubsChanged: () => void;
   onInstallHub?: (filename: string) => void;
+  onOpenShellyBackup?: () => void;
 }
 
 export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
@@ -96,6 +84,7 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
   bleFanHosts,
   onHubsChanged,
   onInstallHub,
+  onOpenShellyBackup,
 }) => {
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -110,11 +99,6 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
   const [greeAc, setGreeAc] = useState<GreeAcConfig>({ ...DEFAULT_GREE_AC });
   const [shellys, setShellys] = useState<ShellyBackupItem[]>([]);
   const [detachedSwitches, setDetachedSwitches] = useState<DetachedSwitchBinding[]>([]);
-  const [discoveredShellys, setDiscoveredShellys] = useState<DiscoveredShellyDevice[]>([]);
-  const [discoveringShellys, setDiscoveringShellys] = useState(false);
-  const [shellyRpcPassword, setShellyRpcPassword] = useState('');
-  const [deployingShellys, setDeployingShellys] = useState(false);
-  const [deployResults, setDeployResults] = useState<ShellyDeployResult[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +110,6 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
       setEditingFilename(null);
       setError(null);
       setConflicts([]);
-      setDeployResults([]);
     }
   }, [isOpen]);
 
@@ -147,7 +130,6 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
     setGreeAc({ ...DEFAULT_GREE_AC });
     setShellys([]);
     setDetachedSwitches([]);
-    setDeployResults([]);
     setError(null);
     setConflicts([]);
   };
@@ -170,7 +152,6 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
     );
     setShellys(hub.shellys ? hub.shellys.map(s => ({ ...s })) : []);
     setDetachedSwitches(hub.detached_switches ? hub.detached_switches.map(d => ({ ...d })) : []);
-    setDeployResults([]);
     setError(null);
     setConflicts([]);
   };
@@ -278,99 +259,6 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
       setError(e?.message || 'Network error saving hub.');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDiscoverShellys = async () => {
-    setDiscoveringShellys(true);
-    setError(null);
-    try {
-      const res = await apiFetch('/shelly/devices');
-      const data = await res.json();
-      if (Array.isArray(data.devices)) {
-        setDiscoveredShellys(data.devices);
-        if (data.devices.length === 0 && data.error) {
-          setError(data.error);
-        }
-      }
-    } catch (e: any) {
-      setError(e?.message || 'Failed to discover Shelly devices from HA.');
-    } finally {
-      setDiscoveringShellys(false);
-    }
-  };
-
-  const toggleDiscoveredShellyEntity = (
-    dev: DiscoveredShellyDevice,
-    ent: DiscoveredShellyDevice['entities'][number]
-  ) => {
-    setShellys(prev => {
-      const idx = prev.findIndex(
-        s => s.mac_address.toLowerCase() === dev.mac_address.toLowerCase() && s.entity_id === ent.entity_id
-      );
-      if (idx >= 0) {
-        return prev.filter((_, i) => i !== idx);
-      }
-      return [
-        ...prev,
-        {
-          name: ent.name || dev.name,
-          mac_address: dev.mac_address,
-          channel: ent.channel,
-          kind: ent.kind,
-          entity_id: ent.entity_id,
-          ip: dev.ip || '',
-        },
-      ];
-    });
-  };
-
-  const handleDeployShellyScripts = async () => {
-    // Collect unique IPs from assigned shellys & discovered devices matching assigned MACs
-    const ipByMac = new Map<string, { ip: string; name: string }>();
-    for (const d of discoveredShellys) {
-      if (d.ip) ipByMac.set(d.mac_address.toLowerCase(), { ip: d.ip, name: d.name });
-    }
-    const targets: Array<{ ip: string; name: string; mac_address: string }> = [];
-    const seen = new Set<string>();
-    const addTarget = (mac: string, fallbackName: string, explicitIp?: string) => {
-      const norm = mac.toLowerCase().replace(/[^0-9a-f]/g, '');
-      const ip = (explicitIp || ipByMac.get(norm)?.ip || '').trim();
-      if (!ip || seen.has(ip)) return;
-      seen.add(ip);
-      targets.push({ ip, name: ipByMac.get(norm)?.name || fallbackName || ip, mac_address: norm });
-    };
-    for (const s of shellys) addTarget(s.mac_address, s.name, s.ip);
-    for (const d of detachedSwitches) addTarget(d.mac_address, d.name);
-
-    if (targets.length === 0) {
-      setError('No Shelly IP addresses found. Click "Discover from HA" or enter an IP on your Shelly row(s) first.');
-      return;
-    }
-
-    setDeployingShellys(true);
-    setDeployResults([]);
-    setError(null);
-    try {
-      const res = await apiFetch('/shelly/deploy_script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targets,
-          network_key: hubNetworkKey.trim() || 'cyd_espnow_default',
-          password: shellyRpcPassword.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Failed to deploy script to Shellys.');
-        return;
-      }
-      setDeployResults(Array.isArray(data.results) ? data.results : []);
-    } catch (e: any) {
-      setError(e?.message || 'Network error deploying Shelly script.');
-    } finally {
-      setDeployingShellys(false);
     }
   };
 
@@ -768,326 +656,23 @@ export const HeadlessHubsDialog: React.FC<HeadlessHubsDialogProps> = ({
                 )}
               </div>
 
-              {/* Shelly Gen3/Gen4 Offline BLE Backup */}
-              <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-900">
-                    <Zap size={14} className="text-emerald-600" />
-                    Shelly Gen3/Gen4 Offline BLE Backup
-                    <span className="text-[10px] font-normal text-emerald-700">
-                      ({shellys.length} entities, {detachedSwitches.length} detached)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleDiscoverShellys}
-                      disabled={discoveringShellys}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold bg-white border border-emerald-300 text-emerald-800 rounded-md hover:bg-emerald-50 disabled:opacity-50"
-                    >
-                      {discoveringShellys ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <RefreshCw size={11} />
-                      )}
-                      Discover from HA
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShellys(prev => [
-                          ...prev,
-                          { name: '', mac_address: '', channel: 0, kind: 'switch', entity_id: '', ip: '' },
-                        ])
-                      }
-                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50"
-                    >
-                      <Plus size={11} /> Manual
-                    </button>
-                  </div>
+              {/* Dynamic Shelly Gen3/Gen4 Offline BLE Backup notice */}
+              <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-3 py-2.5 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-emerald-900">
+                  <Zap size={14} className="text-emerald-600 flex-shrink-0" />
+                  <span>
+                    <strong>Shelly BLE Backup:</strong> Dynamic discovery is enabled automatically
+                    (exposes <code className="bg-white px-1 rounded border border-emerald-200">Visible Shellys</code> in HA).
+                  </span>
                 </div>
-
-                {/* Discovered Shelly checklist from HA */}
-                {discoveredShellys.length > 0 && (
-                  <div className="bg-white border border-emerald-200 rounded-md p-2 max-h-40 overflow-y-auto space-y-1.5">
-                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                      Discovered HA Shelly Entities (click to assign to this hub)
-                    </div>
-                    {discoveredShellys.map(dev => (
-                      <div key={dev.mac_address} className="space-y-1">
-                        <div className="text-[11px] font-semibold text-slate-700 flex items-center justify-between">
-                          <span>
-                            {dev.name}{' '}
-                            <span className="text-[10px] font-normal text-slate-400">
-                              ({dev.model || 'Shelly'} · {dev.mac_address})
-                            </span>
-                          </span>
-                          {dev.ip && <span className="text-[10px] font-mono text-slate-400">{dev.ip}</span>}
-                        </div>
-                        <div className="pl-2 flex flex-wrap gap-1.5">
-                          {dev.entities.map(ent => {
-                            const selected = shellys.some(
-                              s =>
-                                s.mac_address.toLowerCase() === dev.mac_address.toLowerCase() &&
-                                s.entity_id === ent.entity_id
-                            );
-                            return (
-                              <button
-                                key={ent.entity_id}
-                                type="button"
-                                onClick={() => toggleDiscoveredShellyEntity(dev, ent)}
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border transition ${
-                                  selected
-                                    ? 'bg-emerald-600 text-white border-emerald-600'
-                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50'
-                                }`}
-                              >
-                                {selected && <Check size={10} />}
-                                {ent.entity_id} (ch {ent.channel})
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Assigned Shelly entities */}
-                {shellys.length > 0 && (
-                  <div className="space-y-1.5">
-                    {shellys.map((sh, idx) => (
-                      <div
-                        key={idx}
-                        className="grid grid-cols-12 gap-1.5 items-center bg-white border rounded-md p-1.5 text-[11px]"
-                      >
-                        <input
-                          type="text"
-                          value={sh.entity_id}
-                          onChange={e =>
-                            setShellys(prev =>
-                              prev.map((item, i) =>
-                                i === idx ? { ...item, entity_id: e.target.value, name: item.name || e.target.value } : item
-                              )
-                            )
-                          }
-                          placeholder="switch.living_light"
-                          className="col-span-4 px-1.5 py-1 border rounded font-mono text-[11px]"
-                        />
-                        <input
-                          type="text"
-                          value={sh.mac_address}
-                          onChange={e =>
-                            setShellys(prev =>
-                              prev.map((item, i) => (i === idx ? { ...item, mac_address: e.target.value } : item))
-                            )
-                          }
-                          placeholder="aabbccddee01"
-                          className="col-span-3 px-1.5 py-1 border rounded font-mono text-[11px]"
-                        />
-                        <select
-                          value={sh.kind}
-                          onChange={e =>
-                            setShellys(prev =>
-                              prev.map((item, i) =>
-                                i === idx ? { ...item, kind: e.target.value as 'switch' | 'light' | 'cover' } : item
-                              )
-                            )
-                          }
-                          className="col-span-2 px-1 py-1 border rounded text-[11px]"
-                        >
-                          <option value="switch">switch</option>
-                          <option value="light">light</option>
-                          <option value="cover">cover</option>
-                        </select>
-                        <input
-                          type="number"
-                          min={0}
-                          max={3}
-                          value={sh.channel}
-                          onChange={e =>
-                            setShellys(prev =>
-                              prev.map((item, i) => (i === idx ? { ...item, channel: Number(e.target.value) || 0 } : item))
-                            )
-                          }
-                          title="Shelly channel (0 or 1)"
-                          className="col-span-1 px-1 py-1 border rounded text-[11px] text-center"
-                        />
-                        <input
-                          type="text"
-                          value={sh.ip || ''}
-                          onChange={e =>
-                            setShellys(prev =>
-                              prev.map((item, i) => (i === idx ? { ...item, ip: e.target.value } : item))
-                            )
-                          }
-                          placeholder="IP (deploy)"
-                          className="col-span-1 px-1 py-1 border rounded font-mono text-[10px]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShellys(prev => prev.filter((_, i) => i !== idx))}
-                          className="col-span-1 text-slate-400 hover:text-red-600 flex justify-center"
-                          title="Remove Shelly"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Detached Wall-Switch Bindings (Shelly input -> Tuya BLE fan light) */}
-                <div className="pt-1 border-t border-emerald-200/70 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-emerald-900">
-                      Detached Wall Switches → Fan Light (offline fallback)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDetachedSwitches(prev => [
-                          ...prev,
-                          {
-                            name: '',
-                            mac_address: '',
-                            input_channel: 0,
-                            target_fan_device_id: Array.from(selectedFanIds)[0] || '',
-                            target_light_entity_id: '',
-                          },
-                        ])
-                      }
-                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-50"
-                    >
-                      <Plus size={10} /> Add Binding
-                    </button>
-                  </div>
-                  {detachedSwitches.map((ds, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-12 gap-1.5 items-center bg-white border rounded-md p-1.5 text-[11px]"
-                    >
-                      <input
-                        type="text"
-                        value={ds.name}
-                        onChange={e =>
-                          setDetachedSwitches(prev =>
-                            prev.map((item, i) => (i === idx ? { ...item, name: e.target.value } : item))
-                          )
-                        }
-                        placeholder="Bedroom wall switch"
-                        className="col-span-3 px-1.5 py-1 border rounded text-[11px]"
-                      />
-                      <input
-                        type="text"
-                        value={ds.mac_address}
-                        onChange={e =>
-                          setDetachedSwitches(prev =>
-                            prev.map((item, i) => (i === idx ? { ...item, mac_address: e.target.value } : item))
-                          )
-                        }
-                        placeholder="Shelly MAC"
-                        className="col-span-3 px-1.5 py-1 border rounded font-mono text-[11px]"
-                      />
-                      <select
-                        value={ds.input_channel}
-                        onChange={e =>
-                          setDetachedSwitches(prev =>
-                            prev.map((item, i) => (i === idx ? { ...item, input_channel: Number(e.target.value) } : item))
-                          )
-                        }
-                        className="col-span-2 px-1 py-1 border rounded text-[11px]"
-                      >
-                        <option value={0}>input:0</option>
-                        <option value={1}>input:1</option>
-                      </select>
-                      <select
-                        value={ds.target_fan_device_id}
-                        onChange={e => {
-                          const fid = e.target.value;
-                          const fan = tuyaBleCandidates.find(f => f.device_id === fid);
-                          setDetachedSwitches(prev =>
-                            prev.map((item, i) =>
-                              i === idx
-                                ? {
-                                    ...item,
-                                    target_fan_device_id: fid,
-                                    target_light_entity_id: fan?.light_entity_id || item.target_light_entity_id,
-                                  }
-                                : item
-                            )
-                          );
-                        }}
-                        className="col-span-3 px-1 py-1 border rounded text-[11px]"
-                      >
-                        <option value="">Select BLE Fan...</option>
-                        {tuyaBleCandidates.map(f => (
-                          <option key={f.device_id} value={f.device_id}>
-                            {f.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setDetachedSwitches(prev => prev.filter((_, i) => i !== idx))}
-                        className="col-span-1 text-slate-400 hover:text-red-600 flex justify-center"
-                        title="Remove binding"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                {/* 1-Click Deploy Script to Shellys */}
-                {(shellys.length > 0 || detachedSwitches.length > 0) && (
-                  <div className="pt-2 border-t border-emerald-200/70 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <input
-                        type="password"
-                        value={shellyRpcPassword}
-                        onChange={e => setShellyRpcPassword(e.target.value)}
-                        placeholder="Shelly RPC password (optional)"
-                        className="flex-1 min-w-[160px] px-2 py-1 text-[11px] bg-white border border-slate-300 rounded-md"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleDeployShellyScripts}
-                        disabled={deployingShellys}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        {deployingShellys ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <Upload size={12} />
-                        )}
-                        Deploy Script to Shellys
-                      </button>
-                    </div>
-                    {deployResults.length > 0 && (
-                      <div className="space-y-1 text-[11px]">
-                        {deployResults.map((r, i) => (
-                          <div
-                            key={i}
-                            className={`px-2 py-1 rounded border ${
-                              !r.ok
-                                ? 'bg-red-50 border-red-200 text-red-800'
-                                : r.zigbee_warning
-                                ? 'bg-amber-50 border-amber-200 text-amber-900'
-                                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                            }`}
-                          >
-                            <strong>{r.name}</strong> ({r.ip}):{' '}
-                            {r.ok
-                              ? r.zigbee_warning
-                                ? `Script #${r.script_id} started — Zigbee (*ZB) firmware detected: outbound beacons work, but BLE.Scanner is unavailable for receiving hub commands.`
-                                : `Script #${r.script_id} deployed & running.`
-                              : r.error}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                {onOpenShellyBackup && (
+                  <button
+                    type="button"
+                    onClick={onOpenShellyBackup}
+                    className="text-[11px] font-semibold text-emerald-700 bg-white border border-emerald-200 px-2.5 py-1 rounded-md hover:bg-emerald-50 flex-shrink-0"
+                  >
+                    Open Shelly Backup →
+                  </button>
                 )}
               </div>
 

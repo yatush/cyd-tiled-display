@@ -764,6 +764,8 @@ def test_shelly_ha_discovery_template_renders_in_sandbox():
             "model": "S4SW-002P16EU",
             "connections": {("mac", "AA:BB:CC:DD:EE:01")},
             "configuration_url": "http://192.168.1.40",
+            "area_id": "office",
+            "area_name": "Office",
             "entities": ["cover.office_blind", "sensor.office_blind_power"],
         },
         "dev_detached": {
@@ -772,6 +774,8 @@ def test_shelly_ha_discovery_template_renders_in_sandbox():
             "model": "S4SW-001X16EU",
             "connections": {("mac", "AA:BB:CC:DD:EE:02")},
             "configuration_url": "http://192.168.1.41",
+            "area_id": "office",
+            "area_name": "Office",
             "entities": ["event.office_wall_switch_input_0"],
         },
     }
@@ -785,13 +789,103 @@ def test_shelly_ha_discovery_template_renders_in_sandbox():
         device_attr=lambda did, attr: devices_meta[did].get(attr),
         device_entities=lambda did: devices_meta[did]["entities"],
         state_attr=lambda eid, attr: f"Friendly {eid}" if attr == "friendly_name" else None,
+        area_id=lambda did: devices_meta[did].get("area_id"),
+        area_name=lambda did: devices_meta[did].get("area_name"),
     )
     parsed = json.loads(rendered)
     assert len(parsed) == 2
     by_mac = {d["mac"]: d for d in parsed}
     assert by_mac["AA:BB:CC:DD:EE:01"]["name"] == "Office Blind"
+    assert by_mac["AA:BB:CC:DD:EE:01"]["area_name"] == "Office"
     assert len(by_mac["AA:BB:CC:DD:EE:01"]["entities"]) == 1
-    assert by_mac["AA:BB:CC:DD:EE:01"]["entities"][0]["entity_id"] == "cover.office_blind"
     assert by_mac["AA:BB:CC:DD:EE:02"]["name"] == "Office Wall Switch"
-    assert by_mac["AA:BB:CC:DD:EE:02"]["entities"] == []
+    assert by_mac["AA:BB:CC:DD:EE:02"]["input_entities"] == ["event.office_wall_switch_input_0"]
+
+
+def test_detect_detached_switch_suggestions_and_sync_hubs(tmp_path):
+    autos_file = tmp_path / "automations.yaml"
+    autos_file.write_text(
+        "- alias: Bedroom Wall Switch Toggles Fan Light\n"
+        "  triggers:\n"
+        "    - trigger: state\n"
+        "      entity_id: event.bedroom_wall_switch_input_1\n"
+        "  actions:\n"
+        "    - action: light.toggle\n"
+        "      target:\n"
+        "        entity_id: light.bedroom_fan_light\n",
+        encoding="utf-8",
+    )
+
+    devices = [
+        {
+            "ha_device_id": "ha_dev_1",
+            "name": "Bedroom Wall Switch",
+            "mac_address": "aabbccddee01",
+            "area_name": "Bedroom",
+            "entities": [],
+            "input_entities": ["event.bedroom_wall_switch_input_1"],
+        },
+        {
+            "ha_device_id": "ha_dev_2",
+            "name": "Office Wall Switch",
+            "mac_address": "aabbccddee02",
+            "area_name": "Office",
+            "entities": [],
+            "input_entities": ["event.office_wall_switch_input_0"],
+        },
+    ]
+    fans = [
+        {
+            "name": "Bedroom Fan",
+            "device_id": "bf_bedroom_01",
+            "fan_entity_id": "fan.bedroom_fan",
+            "light_entity_id": "light.bedroom_fan_light",
+        },
+        {
+            "name": "Office Fan",
+            "device_id": "bf_office_01",
+            "fan_entity_id": "fan.office_fan",
+            "light_entity_id": "light.office_fan_light",
+        },
+    ]
+
+    sug = server.detect_detached_switch_suggestions(devices, fans, automations_path=str(autos_file))
+    assert len(sug) == 2
+    by_mac = {s["mac_address"]: s for s in sug}
+    # Tier 1: exact automation match with input_channel=1
+    assert by_mac["aabbccddee01"]["source"] == "automation"
+    assert by_mac["aabbccddee01"]["input_channel"] == 1
+    assert by_mac["aabbccddee01"]["target_light_entity_id"] == "light.bedroom_fan_light"
+    # Tier 2: same HA area fallback
+    assert by_mac["aabbccddee02"]["source"] == "area"
+    assert by_mac["aabbccddee02"]["target_light_entity_id"] == "light.office_fan_light"
+
+    # Sync detached switches across two hubs and verify visible_shellys_sensor is emitted
+    server.save_ble_hub_yaml(
+        {"name": "Hub A", "board": "seeed_xiao_esp32c3", "fans": [fans[0] | {"local_key": "0123456789abcdef"}]},
+        esphome_dir=str(tmp_path),
+    )
+    server.save_ble_hub_yaml(
+        {"name": "Hub B", "board": "seeed_xiao_esp32c3", "fans": [fans[1] | {"local_key": "fedcba9876543210"}]},
+        esphome_dir=str(tmp_path),
+    )
+    updated = server.sync_detached_switches_to_all_hubs(
+        [
+            {
+                "name": "Bedroom Wall Switch",
+                "mac_address": "aabbccddee01",
+                "input_channel": 1,
+                "target_fan_device_id": "bf_bedroom_01",
+                "target_light_entity_id": "light.bedroom_fan_light",
+            }
+        ],
+        esphome_dir=str(tmp_path),
+    )
+    assert set(updated) == {"hub-a.yaml", "hub-b.yaml"}
+    for fname in ("hub-a.yaml", "hub-b.yaml"):
+        txt = (tmp_path / fname).read_text(encoding="utf-8")
+        assert "visible_shellys_sensor:" in txt
+        assert "Visible Shellys" in txt
+        assert "aabbccddee01" in txt
+
 

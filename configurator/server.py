@@ -3677,32 +3677,36 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
 
     shelly_list = shellys or []
     detached_list = detached_switches or []
-    if shelly_list or detached_list:
-        sb_cfg = {'network_key': network_key}
-        if shelly_list:
-            sb_cfg['shellys'] = [
-                {
-                    'name': s['name'],
-                    'mac_address': s['mac_address'],
-                    'channel': int(s.get('channel') or 0),
-                    'kind': s.get('kind') or 'switch',
-                    'entity_id': s.get('entity_id') or '',
-                }
-                for s in shelly_list
-            ]
-        if detached_list:
-            sb_cfg['detached_switches'] = [
-                {
-                    'name': d['name'],
-                    'mac_address': d['mac_address'],
-                    'input_channel': int(d.get('input_channel') or 0),
-                    'target_fan_device_id': d.get('target_fan_device_id') or '',
-                    'target_light_entity_id': d.get('target_light_entity_id') or '',
-                }
-                for d in detached_list
-            ]
-        lines.append(yaml.safe_dump({'shelly_ble_bridge': sb_cfg}, sort_keys=False, default_flow_style=False).rstrip())
-        lines.append('')
+    sb_cfg = {
+        'network_key': network_key,
+        'visible_shellys_sensor': {
+            'name': 'Visible Shellys',
+        },
+    }
+    if shelly_list:
+        sb_cfg['shellys'] = [
+            {
+                'name': s['name'],
+                'mac_address': s['mac_address'],
+                'channel': int(s.get('channel') or 0),
+                'kind': s.get('kind') or 'switch',
+                'entity_id': s.get('entity_id') or '',
+            }
+            for s in shelly_list
+        ]
+    if detached_list:
+        sb_cfg['detached_switches'] = [
+            {
+                'name': d['name'],
+                'mac_address': d['mac_address'],
+                'input_channel': int(d.get('input_channel') or 0),
+                'target_fan_device_id': d.get('target_fan_device_id') or '',
+                'target_light_entity_id': d.get('target_light_entity_id') or '',
+            }
+            for d in detached_list
+        ]
+    lines.append(yaml.safe_dump({'shelly_ble_bridge': sb_cfg}, sort_keys=False, default_flow_style=False).rstrip())
+    lines.append('')
 
     return '\n'.join(lines)
 
@@ -3886,19 +3890,25 @@ _SHELLY_HA_DISCOVERY_TEMPLATE = (
     "{% set conns = device_attr(did, 'connections') or [] %}"
     "{% set m = namespace(v='') %}"
     "{% for c in conns %}{% if c[0] == 'mac' %}{% set m.v = c[1] %}{% endif %}{% endfor %}"
-    "{% set ents = namespace(items=[]) %}"
+    "{% set ents = namespace(items=[], inputs=[]) %}"
     "{% for deid in device_entities(did) %}"
     "{% set dom = deid.split('.')[0] %}"
     "{% if dom in ['switch', 'light', 'cover'] %}"
     "{% set ents.items = ents.items + [{'entity_id': deid, 'name': state_attr(deid, 'friendly_name') or deid, 'domain': dom}] %}"
+    "{% elif dom in ['event', 'binary_sensor'] %}"
+    "{% set ents.inputs = ents.inputs + [deid] %}"
     "{% endif %}"
     "{% endfor %}"
     "{% set ns.devs = ns.devs + [{"
+    "'ha_device_id': did,"
     "'name': device_attr(did, 'name_by_user') or device_attr(did, 'name') or did,"
     "'model': device_attr(did, 'model') or '',"
     "'mac': m.v,"
     "'config_url': device_attr(did, 'configuration_url') or '',"
-    "'entities': ents.items"
+    "'area_id': area_id(did) or '',"
+    "'area_name': area_name(did) or '',"
+    "'entities': ents.items,"
+    "'input_entities': ents.inputs"
     "}] %}"
     "{% endif %}"
     "{% endfor %}"
@@ -3906,11 +3916,236 @@ _SHELLY_HA_DISCOVERY_TEMPLATE = (
 )
 
 
+def _walk_nested_dicts(obj):
+    if isinstance(obj, dict):
+        yield obj
+        for v in obj.values():
+            yield from _walk_nested_dicts(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _walk_nested_dicts(item)
+
+
+def _extract_entity_ids(obj):
+    out = set()
+    if isinstance(obj, str) and '.' in obj:
+        out.add(obj.strip())
+    elif isinstance(obj, list):
+        for item in obj:
+            out.update(_extract_entity_ids(item))
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == 'entity_id':
+                out.update(_extract_entity_ids(v))
+            else:
+                out.update(_extract_entity_ids(v))
+    return out
+
+
+def _infer_input_channel_from_trigger(trig, matched_eids):
+    for eid in matched_eids:
+        m = re.search(r'(?:input|button)_(\d+)', eid)
+        if m:
+            return max(0, min(3, int(m.group(1))))
+    subtype = str(trig.get('subtype') or '').lower()
+    m_sub = re.search(r'(?:button|input)[_\s-]?(\d+)', subtype)
+    if m_sub:
+        val = int(m_sub.group(1))
+        # HA Shelly device triggers use button1/button2 (1-based)
+        return max(0, min(3, val - 1 if 'button' in subtype and val >= 1 else val))
+    ev_data = trig.get('event_data') if isinstance(trig.get('event_data'), dict) else {}
+    if 'channel' in ev_data:
+        try:
+            ch = int(ev_data['channel'])
+            return max(0, min(3, ch - 1 if ch >= 1 else ch))
+        except Exception:
+            pass
+    return 0
+
+
+def detect_detached_switch_suggestions(devices, fans, automations_path='/config/automations.yaml'):
+    """Auto-detect detached Shelly wall switch -> Tuya BLE fan light bindings.
+
+    Tier 1: Parse HA automations.yaml for triggers on a discovered Shelly + light actions on a fan.
+    Tier 2: Fallback suggestion when a Shelly with input entities shares an HA area with a fan.
+    """
+    if not devices or not fans:
+        return []
+
+    fan_by_light = {}
+    for f in fans:
+        le = str(f.get('light_entity_id') or '').strip()
+        if le:
+            fan_by_light[le] = f
+
+    dev_by_ha_id = {str(d.get('ha_device_id') or ''): d for d in devices if d.get('ha_device_id')}
+    dev_by_input_eid = {}
+    for d in devices:
+        for ie in (d.get('input_entities') or []):
+            dev_by_input_eid[str(ie)] = d
+
+    suggestions = []
+    seen_keys = set()
+
+    # Tier 1: Parse /config/automations.yaml
+    if automations_path and os.path.isfile(automations_path):
+        try:
+            with open(automations_path, 'r', encoding='utf-8') as f:
+                autos = yaml.safe_load(f) or []
+        except Exception:
+            autos = []
+        if isinstance(autos, list):
+            for auto in autos:
+                if not isinstance(auto, dict):
+                    continue
+                triggers = auto.get('triggers') or auto.get('trigger') or []
+                actions = auto.get('actions') or auto.get('action') or []
+                if isinstance(triggers, dict):
+                    triggers = [triggers]
+                if isinstance(actions, dict):
+                    actions = [actions]
+
+                matched_fans = []
+                for act in _walk_nested_dicts(actions):
+                    svc = str(act.get('action') or act.get('service') or '').strip().lower()
+                    if svc not in ('light.toggle', 'light.turn_on', 'light.turn_off'):
+                        continue
+                    target_eids = _extract_entity_ids(act.get('target') or act.get('entity_id'))
+                    for eid in target_eids:
+                        if eid in fan_by_light:
+                            matched_fans.append((eid, fan_by_light[eid]))
+                if not matched_fans:
+                    continue
+
+                alias = str(auto.get('alias') or auto.get('id') or 'HA automation')
+                for trig in triggers:
+                    if not isinstance(trig, dict):
+                        continue
+                    matched_dev = None
+                    matched_eids = []
+                    tdid = str(trig.get('device_id') or '')
+                    if tdid and tdid in dev_by_ha_id:
+                        matched_dev = dev_by_ha_id[tdid]
+                    if matched_dev is None:
+                        for eid in _extract_entity_ids(trig):
+                            if eid in dev_by_input_eid:
+                                matched_dev = dev_by_input_eid[eid]
+                                matched_eids.append(eid)
+                    if matched_dev is None:
+                        continue
+                    ch = _infer_input_channel_from_trigger(trig, matched_eids)
+                    mac = matched_dev.get('mac_address') or ''
+                    for light_eid, fan in matched_fans:
+                        key = (mac, ch, light_eid)
+                        if key in seen_keys:
+                            continue
+                        seen_keys.add(key)
+                        suggestions.append({
+                            'name': matched_dev.get('name') or mac,
+                            'mac_address': mac,
+                            'input_channel': ch,
+                            'target_fan_device_id': str(fan.get('device_id') or ''),
+                            'target_light_entity_id': light_eid,
+                            'source': 'automation',
+                            'reason': f"Automation: {alias}",
+                        })
+
+    # Tier 2: Same HA area fallback
+    matched_macs = {s['mac_address'] for s in suggestions}
+    for d in devices:
+        mac = d.get('mac_address') or ''
+        area_name = str(d.get('area_name') or '').strip().lower()
+        if not mac or mac in matched_macs or not area_name:
+            continue
+        if not (d.get('input_entities') or []) and (d.get('entities') or []):
+            continue
+        for f in fans:
+            le = str(f.get('light_entity_id') or '').strip()
+            if not le:
+                continue
+            fan_hay = f"{f.get('name', '')} {f.get('fan_entity_id', '')} {le}".lower()
+            if area_name in fan_hay:
+                key = (mac, 0, le)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    suggestions.append({
+                        'name': d.get('name') or mac,
+                        'mac_address': mac,
+                        'input_channel': 0,
+                        'target_fan_device_id': str(f.get('device_id') or ''),
+                        'target_light_entity_id': le,
+                        'source': 'area',
+                        'reason': f"Same area: {d.get('area_name')}",
+                    })
+                break
+
+    return suggestions
+
+
+def _collect_all_detached_switches(esphome_dir=None):
+    hubs = list_ble_hubs(esphome_dir)
+    seen = set()
+    out = []
+    for h in hubs:
+        for ds in (h.get('detached_switches') or []):
+            key = (
+                _normalize_shelly_mac(ds.get('mac_address') or ''),
+                int(ds.get('input_channel') or 0),
+                str(ds.get('target_light_entity_id') or ''),
+                str(ds.get('target_fan_device_id') or ''),
+            )
+            if not key[0] or key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                'name': str(ds.get('name') or key[0]),
+                'mac_address': key[0],
+                'input_channel': key[1],
+                'target_fan_device_id': key[3],
+                'target_light_entity_id': key[2],
+            })
+    return out
+
+
+def sync_detached_switches_to_all_hubs(detached_switches, esphome_dir=None):
+    """Sync house-wide detached wall switch rules onto every headless hub YAML."""
+    root_dir = esphome_dir or BASE_DIR
+    hubs = list_ble_hubs(root_dir)
+    updated = []
+    for hub in hubs:
+        payload = {
+            'filename': hub['filename'],
+            'name': hub['name'],
+            'board': hub['board'],
+            'fallback_channel': hub.get('fallback_channel', 1),
+            'network_key': hub.get('network_key') or get_or_create_espnow_network_key(root_dir),
+            'fans': hub.get('fans') or [],
+            'gree_ac': hub.get('gree_ac'),
+            'shellys': [],  # Dynamic zero-config Shelly discovery on all hubs
+            'detached_switches': detached_switches,
+        }
+        res, err, status = save_ble_hub_yaml(payload, esphome_dir=root_dir)
+        if status == 200 and res:
+            updated.append(hub['filename'])
+    return updated
+
+
 @app.route('/api/shelly/devices', methods=['GET'])
 def api_discover_shelly_devices():
-    """Auto-discover Shelly devices and their switch/light/cover entities from Home Assistant."""
+    """Auto-discover Shelly devices, entities, areas, and detached-switch suggestions from HA."""
+    hubs = list_ble_hubs()
+    all_fans = [f for h in hubs for f in (h.get('fans') or [])]
+    detached_switches = _collect_all_detached_switches()
+    network_key = get_or_create_espnow_network_key()
+
     if not SUPERVISOR_TOKEN:
-        return jsonify({'devices': [], 'error': 'Home Assistant Supervisor API not available in local dev mode'}), 200
+        return jsonify({
+            'devices': [],
+            'suggestions': [],
+            'detached_switches': detached_switches,
+            'network_key': network_key,
+            'error': 'Home Assistant Supervisor API not available in local dev mode',
+        }), 200
     try:
         resp = requests.post(
             f"{HA_URL}/api/template",
@@ -3936,7 +4171,6 @@ def api_discover_shelly_devices():
             for idx, ent in enumerate(ents_sorted):
                 eid = str(ent.get('entity_id') or '').strip()
                 dom = str(ent.get('domain') or 'switch').strip().lower()
-                # Infer channel from trailing _0/_1 or _switch_0/_switch_1 when present
                 ch = idx if dom != 'cover' else 0
                 m_ch = re.search(r'(?:switch|light|cover)_(\d+)$', eid)
                 if m_ch:
@@ -3948,15 +4182,51 @@ def api_discover_shelly_devices():
                     'channel': ch,
                 })
             devices.append({
+                'ha_device_id': str(d.get('ha_device_id') or ''),
                 'name': str(d.get('name') or mac),
                 'model': str(d.get('model') or ''),
                 'mac_address': mac,
                 'ip': ip,
+                'area_id': str(d.get('area_id') or ''),
+                'area_name': str(d.get('area_name') or ''),
                 'entities': parsed_entities,
+                'input_entities': [str(x) for x in (d.get('input_entities') or [])],
             })
-        return jsonify({'devices': devices})
+        suggestions = detect_detached_switch_suggestions(devices, all_fans)
+        return jsonify({
+            'devices': devices,
+            'suggestions': suggestions,
+            'detached_switches': detached_switches,
+            'network_key': network_key,
+        })
     except Exception as e:
         return jsonify({'devices': [], 'error': str(e)}), 500
+
+
+@app.route('/api/shelly/sync_detached_switches', methods=['POST'])
+def api_sync_detached_switches():
+    """Sync house-wide detached wall switch bindings to all headless hubs."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        raw_list = payload.get('detached_switches') if isinstance(payload.get('detached_switches'), list) else []
+        cleaned = []
+        for item in raw_list:
+            if not isinstance(item, dict):
+                continue
+            mac = _normalize_shelly_mac(item.get('mac_address') or '')
+            if len(mac) != 12:
+                continue
+            cleaned.append({
+                'name': str(item.get('name') or mac).strip() or mac,
+                'mac_address': mac,
+                'input_channel': max(0, min(3, int(item.get('input_channel') or 0))),
+                'target_fan_device_id': str(item.get('target_fan_device_id') or '').strip(),
+                'target_light_entity_id': str(item.get('target_light_entity_id') or '').strip(),
+            })
+        updated = sync_detached_switches_to_all_hubs(cleaned)
+        return jsonify({'ok': True, 'updated_hubs': updated, 'detached_switches': cleaned})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @app.route('/api/shelly/deploy_script', methods=['POST'])

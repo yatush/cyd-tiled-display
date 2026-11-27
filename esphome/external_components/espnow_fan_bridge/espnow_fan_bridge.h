@@ -80,6 +80,7 @@ class EspNowFanBridge : public Component {
 
   struct PendingCmd {
     uint16_t seq{0};
+    uint32_t origin_override{0};
     CmdPayload cmd{};
     uint32_t fan_key_hash{0};
     uint32_t created_ms{0};
@@ -122,7 +123,8 @@ class EspNowFanBridge : public Component {
   void publish_channel_if_changed(bool force = false);
 
   bool broadcast_frame(MsgType type, uint16_t seq, const std::vector<uint8_t> &payload,
-                       uint8_t ttl = DEFAULT_RELAY_TTL, uint8_t hop_nonce = 0);
+                       uint8_t ttl = DEFAULT_RELAY_TTL, uint8_t hop_nonce = 0,
+                       uint32_t origin_override = 0);
   void send_ping();
   void send_pong(uint16_t req_seq);
   void send_sync_req();
@@ -135,7 +137,8 @@ class EspNowFanBridge : public Component {
                           uint32_t now_ms);
   void hub_tick_relays(uint32_t now_ms);
   bool hub_send_remote_light_toggle(const std::string &target_fan_device_id,
-                                    const std::string &target_light_entity_id);
+                                    const std::string &target_light_entity_id, uint32_t source_id,
+                                    uint16_t source_seq);
 
   // Hub-side device helpers
 #ifdef USE_TUYA_BLE_FAN

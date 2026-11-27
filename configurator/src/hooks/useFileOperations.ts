@@ -33,7 +33,8 @@ export function useFileOperations(
   onSaveSuccess?: () => void,
   onLoadSuccess?: () => void,
   bleHubs: HeadlessHubConfig[] = [],
-  espnowNetworkKey: string = ''
+  espnowNetworkKey: string = '',
+  discoveredShellys: import('../types').DiscoveredShellyDevice[] = []
 ) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileContext, setFileContextState] = useState<FileContext | null>(() => loadStoredFileContext());
@@ -367,7 +368,11 @@ export function useFileOperations(
       const hasBleProxy = configHasBleProxy(config);
       const tuyaBle = buildTuyaBleFanYamlSections(config.ble_fans, hasBleProxy);
       const effectiveEspNowFans = resolveEffectiveEspNowFans(config, bleHubs);
-      const effectiveEspNowShellys = resolveEffectiveEspNowShellys(config, bleHubs);
+      const effectiveEspNowShellys = resolveEffectiveEspNowShellys(
+        config,
+        bleHubs,
+        discoveredShellys
+      );
       const espnowCyd = buildEspNowCydYamlSections(
         effectiveEspNowFans,
         config.espnow_network_key || espnowNetworkKey,

@@ -105,11 +105,20 @@ export interface DiscoveredShellyEntity {
 }
 
 export interface DiscoveredShellyDevice {
+  ha_device_id?: string;
   name: string;
   model: string;
   mac_address: string;
   ip: string;
+  area_id?: string;
+  area_name?: string;
   entities: DiscoveredShellyEntity[];
+  input_entities?: string[];
+}
+
+export interface DetachedSwitchSuggestion extends DetachedSwitchBinding {
+  source: 'automation' | 'area';
+  reason: string;
 }
 
 export interface HeadlessHubConfig {
