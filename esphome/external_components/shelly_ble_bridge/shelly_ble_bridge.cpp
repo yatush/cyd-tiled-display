@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #include "esphome/core/application.h"
 #include "esphome/core/hal.h"
@@ -69,6 +71,53 @@ void ShellyBleBridge::add_detached_switch(const std::string &name, const std::st
   detached_switches_.push_back(std::move(binding));
 }
 
+void ShellyBleBridge::apply_detached_switches_blob(const std::string &rules) {
+  detached_switches_.clear();
+  size_t pos = 0;
+  while (pos < rules.size()) {
+    size_t nl = rules.find('\n', pos);
+    std::string line = (nl == std::string::npos) ? rules.substr(pos) : rules.substr(pos, nl - pos);
+    pos = (nl == std::string::npos) ? rules.size() : (nl + 1);
+    if (line.empty()) continue;
+
+    // Format: name|mac|input_channel|target_fan_device_id|target_light_entity_id
+    std::vector<std::string> parts;
+    size_t p = 0;
+    while (true) {
+      size_t bar = line.find('|', p);
+      if (bar == std::string::npos) {
+        parts.push_back(line.substr(p));
+        break;
+      }
+      parts.push_back(line.substr(p, bar - p));
+      p = bar + 1;
+    }
+    if (parts.size() < 5) continue;
+    std::string norm_mac = normalize_mac_hex(parts[1]);
+    if (norm_mac.size() != 12) continue;
+    int ch = std::atoi(parts[2].c_str());
+    if (ch < 0) ch = 0;
+    if (ch > 3) ch = 3;
+    add_detached_switch(parts[0].empty() ? norm_mac : parts[0], norm_mac,
+                        static_cast<uint8_t>(ch), parts[3], parts[4]);
+  }
+}
+
+void ShellyBleBridge::on_sync_detached_switches(std::string rules) {
+  apply_detached_switches_blob(rules);
+  PersistedDetachedBlob blob{};
+  blob.valid = 1;
+  size_t copy_len = rules.size() < (sizeof(blob.data) - 1) ? rules.size() : (sizeof(blob.data) - 1);
+  if (copy_len > 0) {
+    std::memcpy(blob.data, rules.data(), copy_len);
+  }
+  blob.data[copy_len] = '\0';
+  detached_pref_.save(&blob);
+  global_preferences->sync();
+  ESP_LOGI(TAG, "Live-synced %u detached switch rules from HA and persisted to NVS",
+           static_cast<unsigned>(detached_switches_.size()));
+}
+
 void ShellyBleBridge::setup() {
   ShellyBleBridgeRegistry::instance().set_cmd_handler(
       [this](uint32_t device_id, uint8_t channel, uint8_t opcode, uint8_t arg, uint8_t flags,
@@ -79,6 +128,22 @@ void ShellyBleBridge::setup() {
       [this](uint32_t device_id) { return this->handles_device(device_id); });
   ShellyBleBridgeRegistry::instance().set_snapshot_provider(
       [this]() { return this->get_cached_states(); });
+
+  detached_pref_ = global_preferences->make_preference<PersistedDetachedBlob>(
+      fnv1a_32(std::string("shelly_ds_v1")));
+  PersistedDetachedBlob saved{};
+  if (detached_pref_.load(&saved) && saved.valid == 1) {
+    saved.data[sizeof(saved.data) - 1] = '\0';
+    apply_detached_switches_blob(std::string(saved.data));
+    ESP_LOGI(TAG, "Restored %u live-synced detached switch rules from NVS",
+             static_cast<unsigned>(detached_switches_.size()));
+  }
+
+#ifdef USE_API_CUSTOM_SERVICES
+  register_service(&ShellyBleBridge::on_sync_detached_switches, "sync_shelly_detached_switches",
+                   {"rules"});
+#endif
+
   const uint32_t now = millis();
   last_scan_check_ms_ = now;
   last_visible_publish_ms_ = now;

@@ -824,6 +824,7 @@ def test_detect_detached_switch_suggestions_and_sync_hubs(tmp_path):
             "area_name": "Bedroom",
             "entities": [],
             "input_entities": ["event.bedroom_wall_switch_input_1"],
+            "detached_channels": [1],
         },
         {
             "ha_device_id": "ha_dev_2",
@@ -832,6 +833,25 @@ def test_detect_detached_switch_suggestions_and_sync_hubs(tmp_path):
             "area_name": "Office",
             "entities": [],
             "input_entities": ["event.office_wall_switch_input_0"],
+            "detached_channels": [0],
+        },
+        {
+            "ha_device_id": "ha_dev_3",
+            "name": "Office Attached Light Switch",
+            "mac_address": "aabbccddee03",
+            "area_name": "Office",
+            "entities": [{"entity_id": "switch.office_desk", "kind": "switch", "channel": 0}],
+            "input_entities": ["event.office_attached_input_0"],
+            "detached_channels": [],
+        },
+        {
+            "ha_device_id": "ha_dev_4",
+            "name": "Office Roller Blind",
+            "mac_address": "aabbccddee04",
+            "area_name": "Office",
+            "entities": [{"entity_id": "cover.office_blind", "kind": "cover", "channel": 0}],
+            "input_entities": [],
+            "detached_channels": [0],
         },
     ]
     fans = [
@@ -856,9 +876,13 @@ def test_detect_detached_switch_suggestions_and_sync_hubs(tmp_path):
     assert by_mac["aabbccddee01"]["source"] == "automation"
     assert by_mac["aabbccddee01"]["input_channel"] == 1
     assert by_mac["aabbccddee01"]["target_light_entity_id"] == "light.bedroom_fan_light"
-    # Tier 2: same HA area fallback
+    # Tier 2: same HA area fallback ONLY for verified detached switch
     assert by_mac["aabbccddee02"]["source"] == "area"
+    assert by_mac["aabbccddee02"]["input_channel"] == 0
     assert by_mac["aabbccddee02"]["target_light_entity_id"] == "light.office_fan_light"
+    # Attached switches and covers MUST NOT be suggested
+    assert "aabbccddee03" not in by_mac
+    assert "aabbccddee04" not in by_mac
 
     # Sync detached switches across two hubs and verify visible_shellys_sensor is emitted
     server.save_ble_hub_yaml(
@@ -887,6 +911,42 @@ def test_detect_detached_switch_suggestions_and_sync_hubs(tmp_path):
         assert "visible_shellys_sensor:" in txt
         assert "Visible Shellys" in txt
         assert "aabbccddee01" in txt
+
+
+def test_probe_shelly_detached_channels_and_encode_blob(monkeypatch):
+    responses = {
+        "192.168.1.10": {
+            "sys": {"device": {"profile": "switch"}},
+            "switch:0": {"in_mode": "detached"},
+            "switch:1": {"in_mode": "flip"},
+        },
+        "192.168.1.11": {
+            "sys": {"device": {"profile": "cover"}},
+            "input:0": {"type": "button"},
+            "input:1": {"type": "button"},
+        },
+        "192.168.1.12": {
+            "sys": {"device": {}},
+            "input:0": {"type": "button"},
+            "input:2": {"type": "switch"},
+        },
+    }
+    monkeypatch.setattr(server, "_shelly_rpc_call", lambda ip, method, timeout=1.2: responses[ip])
+    assert server._probe_shelly_detached_channels("192.168.1.10") == [0]
+    assert server._probe_shelly_detached_channels("192.168.1.11") == []
+    assert server._probe_shelly_detached_channels("192.168.1.12") == [0, 2]
+
+    blob = server._encode_detached_switches_blob([
+        {
+            "name": "Office | Switch",
+            "mac_address": "AA:BB:CC:DD:EE:01",
+            "input_channel": 1,
+            "target_fan_device_id": "bf_office_01",
+            "target_light_entity_id": "light.office_fan_light",
+        }
+    ])
+    assert blob == "Office   Switch|aabbccddee01|1|bf_office_01|light.office_fan_light"
+
 
 
 def test_collect_entity_to_cyds_map(tmp_path):

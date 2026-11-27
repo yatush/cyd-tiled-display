@@ -4109,14 +4109,19 @@ def detect_detached_switch_suggestions(devices, fans, automations_path='/config/
                             'reason': f"Automation: {alias}",
                         })
 
-    # Tier 2: Same HA area fallback
+    # Tier 2: Same HA area fallback — ONLY for Shellys with verified detached inputs
+    # (never suggest covers or attached light switches).
     matched_macs = {s['mac_address'] for s in suggestions}
     for d in devices:
         mac = d.get('mac_address') or ''
         area_name = str(d.get('area_name') or '').strip().lower()
         if not mac or mac in matched_macs or not area_name:
             continue
-        if not (d.get('input_entities') or []) and (d.get('entities') or []):
+        # Never suggest a cover/blind controller as a detached wall switch
+        if any((e.get('kind') == 'cover') for e in (d.get('entities') or [])):
+            continue
+        detached_chs = d.get('detached_channels')
+        if not isinstance(detached_chs, list) or len(detached_chs) == 0:
             continue
         for f in fans:
             le = str(f.get('light_entity_id') or '').strip()
@@ -4124,21 +4129,92 @@ def detect_detached_switch_suggestions(devices, fans, automations_path='/config/
                 continue
             fan_hay = f"{f.get('name', '')} {f.get('fan_entity_id', '')} {le}".lower()
             if area_name in fan_hay:
-                key = (mac, 0, le)
+                ch = int(detached_chs[0])
+                key = (mac, ch, le)
                 if key not in seen_keys:
                     seen_keys.add(key)
                     suggestions.append({
                         'name': d.get('name') or mac,
                         'mac_address': mac,
-                        'input_channel': 0,
+                        'input_channel': ch,
                         'target_fan_device_id': str(f.get('device_id') or ''),
                         'target_light_entity_id': le,
                         'source': 'area',
-                        'reason': f"Same area: {d.get('area_name')}",
+                        'reason': f"Detached input:{ch} in {d.get('area_name')}",
                     })
                 break
 
     return suggestions
+
+
+def _probe_shelly_detached_channels(ip, timeout=1.2):
+    """Query Shelly.GetConfig over local HTTP RPC and return list of detached input channels."""
+    if not ip:
+        return []
+    try:
+        cfg = _shelly_rpc_call(ip, 'Shelly.GetConfig', timeout=timeout)
+    except Exception:
+        return []
+    if not isinstance(cfg, dict):
+        return []
+    sys_dev = (cfg.get('sys') or {}).get('device') if isinstance(cfg.get('sys'), dict) else {}
+    if isinstance(sys_dev, dict) and str(sys_dev.get('profile') or '').lower() == 'cover':
+        return []
+
+    detached = []
+    for ch in range(4):
+        sw = cfg.get(f'switch:{ch}')
+        lt = cfg.get(f'light:{ch}')
+        if isinstance(sw, dict):
+            if str(sw.get('in_mode') or '').lower() == 'detached':
+                detached.append(ch)
+        elif isinstance(lt, dict):
+            if str(lt.get('in_mode') or '').lower() == 'detached':
+                detached.append(ch)
+        elif isinstance(cfg.get(f'input:{ch}'), dict):
+            # Standalone input without a relay (e.g. Shelly i4) is inherently detached
+            detached.append(ch)
+    return detached
+
+
+def _encode_detached_switches_blob(detached_switches):
+    lines = []
+    for ds in (detached_switches or []):
+        name = str(ds.get('name') or '').replace('|', ' ').replace('\n', ' ').strip()
+        mac = _normalize_shelly_mac(ds.get('mac_address') or '')
+        if len(mac) != 12:
+            continue
+        ch = max(0, min(3, int(ds.get('input_channel') or 0)))
+        fan_id = str(ds.get('target_fan_device_id') or '').replace('|', '').strip()
+        light_id = str(ds.get('target_light_entity_id') or '').replace('|', '').strip()
+        lines.append(f"{name}|{mac}|{ch}|{fan_id}|{light_id}")
+    return '\n'.join(lines)
+
+
+def push_detached_switches_live_to_hubs(detached_switches, esphome_dir=None):
+    """Push detached switch rules live to all online headless hubs via HA ESPHome API service."""
+    if not SUPERVISOR_TOKEN:
+        return []
+    hubs = list_ble_hubs(esphome_dir)
+    blob = _encode_detached_switches_blob(detached_switches)
+    pushed = []
+    for hub in hubs:
+        hub_slug = re.sub(r'[^a-z0-9]+', '_', str(hub.get('name') or '').lower()).strip('_')
+        if not hub_slug:
+            continue
+        svc = f"{hub_slug}_sync_shelly_detached_switches"
+        try:
+            r = requests.post(
+                f"{HA_URL}/api/services/esphome/{svc}",
+                headers={'Authorization': f'Bearer {SUPERVISOR_TOKEN}', 'Content-Type': 'application/json'},
+                json={'rules': blob},
+                timeout=5,
+            )
+            if r.ok:
+                pushed.append(hub['name'])
+        except Exception:
+            pass
+    return pushed
 
 
 def _collect_all_detached_switches(esphome_dir=None):
@@ -4328,6 +4404,22 @@ def api_discover_shelly_devices():
         for dev in devices:
             if dev.get('mac_address') and dev.get('name'):
                 _CACHED_SHELLY_KNOWN_NAMES[dev['mac_address']] = str(dev['name'])[:32]
+        # Probe Shelly.GetConfig in parallel for non-cover devices to detect truly detached inputs
+        from concurrent.futures import ThreadPoolExecutor
+        probe_targets = [
+            dev for dev in devices
+            if dev.get('ip') and not any(e.get('kind') == 'cover' for e in (dev.get('entities') or []))
+        ]
+        for dev in devices:
+            dev['detached_channels'] = []
+        if probe_targets:
+            with ThreadPoolExecutor(max_workers=12) as pool:
+                futs = {pool.submit(_probe_shelly_detached_channels, dev['ip']): dev for dev in probe_targets}
+                for fut, dev in futs.items():
+                    try:
+                        dev['detached_channels'] = fut.result()
+                    except Exception:
+                        dev['detached_channels'] = []
         # Put Shellys referenced by any CYD first, then alphabetically
         devices.sort(key=lambda x: (0 if x['used_by_cyds'] else 1, x['name'].lower()))
         suggestions = detect_detached_switch_suggestions(devices, all_fans)
@@ -4343,7 +4435,7 @@ def api_discover_shelly_devices():
 
 @app.route('/api/shelly/sync_detached_switches', methods=['POST'])
 def api_sync_detached_switches():
-    """Sync house-wide detached wall switch bindings to all headless hubs."""
+    """Sync house-wide detached wall switch bindings to all headless hubs (YAML + live HA service)."""
     try:
         payload = request.get_json(silent=True) or {}
         raw_list = payload.get('detached_switches') if isinstance(payload.get('detached_switches'), list) else []
@@ -4362,7 +4454,13 @@ def api_sync_detached_switches():
                 'target_light_entity_id': str(item.get('target_light_entity_id') or '').strip(),
             })
         updated = sync_detached_switches_to_all_hubs(cleaned)
-        return jsonify({'ok': True, 'updated_hubs': updated, 'detached_switches': cleaned})
+        live_pushed = push_detached_switches_live_to_hubs(cleaned)
+        return jsonify({
+            'ok': True,
+            'updated_hubs': updated,
+            'live_pushed_hubs': live_pushed,
+            'detached_switches': cleaned,
+        })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
