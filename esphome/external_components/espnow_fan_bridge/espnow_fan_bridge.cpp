@@ -2,6 +2,8 @@
 
 #ifdef USE_ESP32
 
+#include <esp_random.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -145,6 +147,11 @@ void EspNowFanBridge::setup() {
         [this](const shelly_ble_bridge::ShellyCachedState &st) {
           this->hub_broadcast_shelly_state(st);
         });
+    shelly_ble_bridge::ShellyBleBridgeRegistry::instance().set_remote_light_toggle_handler(
+        [this](const std::string &target_fan_device_id,
+               const std::string &target_light_entity_id) {
+          return this->hub_send_remote_light_toggle(target_fan_device_id, target_light_entity_id);
+        });
   }
 #endif
 
@@ -154,6 +161,8 @@ void EspNowFanBridge::setup() {
 void EspNowFanBridge::dump_config() {
   ESP_LOGCONFIG(TAG, "ESP-NOW Fan Bridge:");
   ESP_LOGCONFIG(TAG, "  Role: %s", role_ == BridgeRole::HUB ? "HUB" : "CYD");
+  ESP_LOGCONFIG(TAG, "  Origin ID: 0x%08X (relay TTL=%u)", static_cast<unsigned>(local_origin_id_),
+                static_cast<unsigned>(DEFAULT_RELAY_TTL));
   ESP_LOGCONFIG(TAG, "  Fallback Channel: %u", fallback_channel_);
   ESP_LOGCONFIG(TAG, "  Current Channel: %u", current_wifi_channel());
   if (role_ == BridgeRole::CYD) {
@@ -181,6 +190,14 @@ void EspNowFanBridge::ensure_espnow_initialized() {
     return;  // Wi-Fi driver not started yet; will retry in loop()
   }
 
+  uint8_t mac[6]{};
+  if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK) {
+    local_origin_id_ = fnv1a_32(mac, sizeof(mac));
+  }
+  if (local_origin_id_ == 0) {
+    local_origin_id_ = 1;
+  }
+
   esp_err_t err = esp_now_init();
   if (err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
     ESP_LOGW(TAG, "esp_now_init failed: %s", esp_err_to_name(err));
@@ -194,8 +211,9 @@ void EspNowFanBridge::ensure_espnow_initialized() {
   }
 
   espnow_ready_ = true;
-  ESP_LOGI(TAG, "ESP-NOW initialized (role=%s, ch=%u)",
-           role_ == BridgeRole::HUB ? "HUB" : "CYD", current_wifi_channel());
+  ESP_LOGI(TAG, "ESP-NOW initialized (role=%s, origin=0x%08X, ch=%u)",
+           role_ == BridgeRole::HUB ? "HUB" : "CYD", static_cast<unsigned>(local_origin_id_),
+           current_wifi_channel());
 }
 
 bool EspNowFanBridge::ensure_broadcast_peer() {
@@ -273,10 +291,11 @@ void EspNowFanBridge::espnow_recv_cb(const esp_now_recv_info_t *recv_info, const
 }
 
 bool EspNowFanBridge::broadcast_frame(MsgType type, uint16_t seq,
-                                      const std::vector<uint8_t> &payload) {
+                                      const std::vector<uint8_t> &payload, uint8_t ttl,
+                                      uint8_t hop_nonce) {
   if (!espnow_ready_) return false;
   auto frame = encode_frame(network_key_, type, seq, payload.empty() ? nullptr : payload.data(),
-                            payload.size());
+                            payload.size(), local_origin_id_, ttl, hop_nonce);
   if (frame.empty()) return false;
   esp_err_t err = esp_now_send(BROADCAST_MAC, frame.data(), frame.size());
   return err == ESP_OK;
@@ -291,7 +310,7 @@ void EspNowFanBridge::send_ping() {
 #else
   p.fan_count = static_cast<uint8_t>(remote_fans_.size());
 #endif
-  broadcast_frame(MsgType::PING, next_seq_++, encode_ping(p));
+  broadcast_frame(MsgType::PING, next_seq_++, encode_ping(p), 0);
 }
 
 void EspNowFanBridge::send_pong(uint16_t req_seq) {
@@ -303,7 +322,7 @@ void EspNowFanBridge::send_pong(uint16_t req_seq) {
 #else
   p.fan_count = static_cast<uint8_t>(remote_fans_.size());
 #endif
-  broadcast_frame(MsgType::PONG, req_seq, encode_ping(p));
+  broadcast_frame(MsgType::PONG, req_seq, encode_ping(p), 0);
 }
 
 void EspNowFanBridge::send_sync_req() {
@@ -431,10 +450,15 @@ void EspNowFanBridge::loop() {
     publish_channel_if_changed();
   }
 
-  // 5. CYD pending command retries & peer reachability timeout
+  // 5. Hub relay queue & pending command retries (both CYD and cross-hub detached toggles)
+  const uint32_t check_now = millis();
+  if (role_ == BridgeRole::HUB) {
+    hub_tick_relays(check_now);
+  }
+  cyd_tick_pending_cmds(check_now);
+
+  // 6. CYD peer reachability timeout & UI redraw
   if (role_ == BridgeRole::CYD) {
-    const uint32_t check_now = millis();
-    cyd_tick_pending_cmds(check_now);
     for (auto &rf : remote_fans_) {
       if (rf.espnow_reachable &&
           static_cast<int32_t>(check_now - rf.last_seen_ms) >
@@ -470,6 +494,17 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
   const uint32_t now = millis();
   const uint8_t rx_ch =
       (pkt.rx_channel >= 1 && pkt.rx_channel <= 13) ? pkt.rx_channel : current_wifi_channel();
+
+  // Drop our own relayed echoes and duplicate multi-hop frames
+  if (hdr.origin_id != 0 && hdr.origin_id == local_origin_id_) {
+    return;
+  }
+  if (hdr.type != MsgType::PING && hdr.type != MsgType::PONG) {
+    if (!relay_dedup_.accept(hdr.origin_id, hdr.type, hdr.seq, hdr.hop_nonce, now,
+                             RELAY_DEDUP_TTL_MS)) {
+      return;
+    }
+  }
 
   switch (hdr.type) {
     case MsgType::PING: {
@@ -529,16 +564,15 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       if (!wifi_connected_.load()) {
         hunt_.record_peer_channel(req.channel ? req.channel : rx_ch);
       }
-#ifdef USE_TUYA_BLE_FAN
       if (role_ == BridgeRole::HUB) {
+#ifdef USE_TUYA_BLE_FAN
         hub_broadcast_all_states();
-      }
 #endif
 #ifdef USE_SHELLY_BLE_BRIDGE
-      if (role_ == BridgeRole::HUB) {
         hub_broadcast_all_shelly_states();
-      }
 #endif
+        hub_schedule_relay(hdr, payload, now);
+      }
       break;
     }
 
@@ -546,19 +580,27 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       CmdPayload cmd;
       if (!decode_cmd(payload.data(), payload.size(), cmd)) return;
       upsert_peer(pkt.src_mac, BridgeRole::CYD, rx_ch, now);
-#ifdef USE_TUYA_BLE_FAN
       if (role_ == BridgeRole::HUB) {
-        hub_handle_cmd(cmd, hdr.seq);
-      }
+        bool handled = false;
+#ifdef USE_TUYA_BLE_FAN
+        handled = hub_handle_cmd(cmd, hdr.origin_id, hdr.seq, now);
 #endif
+        if (!handled) {
+          hub_schedule_relay(hdr, payload, now);
+        }
+      }
       break;
     }
 
     case MsgType::ACK: {
       AckPayload ack;
       if (!decode_ack(payload.data(), payload.size(), ack)) return;
-      if (role_ == BridgeRole::CYD) {
-        cyd_handle_ack(ack, now);
+      const size_t before_cmds = pending_cmds_.size() + pending_shelly_cmds_.size();
+      cyd_handle_ack(ack, now);
+      const bool consumed_locally =
+          (pending_cmds_.size() + pending_shelly_cmds_.size()) < before_cmds;
+      if (role_ == BridgeRole::HUB && !consumed_locally) {
+        hub_schedule_relay(hdr, payload, now);
       }
       break;
     }
@@ -572,6 +614,8 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       }
       if (role_ == BridgeRole::CYD) {
         cyd_handle_state(st, now);
+      } else if (role_ == BridgeRole::HUB) {
+        hub_schedule_relay(hdr, payload, now);
       }
       break;
     }
@@ -580,11 +624,15 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       ShellyCmdPayload scmd;
       if (!decode_shelly_cmd(payload.data(), payload.size(), scmd)) return;
       upsert_peer(pkt.src_mac, BridgeRole::CYD, rx_ch, now);
-#ifdef USE_SHELLY_BLE_BRIDGE
       if (role_ == BridgeRole::HUB) {
-        hub_handle_shelly_cmd(scmd, hdr.seq);
-      }
+        bool handled = false;
+#ifdef USE_SHELLY_BLE_BRIDGE
+        handled = hub_handle_shelly_cmd(scmd, hdr.origin_id, hdr.seq, now);
 #endif
+        if (!handled) {
+          hub_schedule_relay(hdr, payload, now);
+        }
+      }
       break;
     }
 
@@ -597,6 +645,8 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       }
       if (role_ == BridgeRole::CYD) {
         cyd_handle_shelly_state(sst, now);
+      } else if (role_ == BridgeRole::HUB) {
+        hub_schedule_relay(hdr, payload, now);
       }
       break;
     }
@@ -607,6 +657,58 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
 // Hub-side implementation
 // ============================================================================
 
+void EspNowFanBridge::hub_schedule_relay(const FrameHeader &hdr,
+                                         const std::vector<uint8_t> &payload, uint32_t now_ms) {
+  if (!espnow_ready_ || role_ != BridgeRole::HUB) return;
+  if (hdr.ttl == 0) return;
+  if (hdr.origin_id != 0 && hdr.origin_id == local_origin_id_) return;
+
+  auto relayed = encode_frame(network_key_, hdr.type, hdr.seq,
+                              payload.empty() ? nullptr : payload.data(), payload.size(),
+                              hdr.origin_id, static_cast<uint8_t>(hdr.ttl - 1), hdr.hop_nonce);
+  if (relayed.empty()) return;
+
+  if (pending_relays_.size() >= MAX_PENDING_RELAYS) {
+    pending_relays_.pop_front();
+  }
+  const uint32_t jitter_ms = 10u + (esp_random() % 21u);  // 10..30 ms collision avoidance
+  pending_relays_.push_back(PendingRelay{std::move(relayed), now_ms + jitter_ms});
+  ESP_LOGV(TAG, "Queued ESP-NOW relay type=%u origin=0x%08X seq=%u next_ttl=%u (+%ums)",
+           static_cast<unsigned>(hdr.type), static_cast<unsigned>(hdr.origin_id), hdr.seq,
+           static_cast<unsigned>(hdr.ttl - 1), static_cast<unsigned>(jitter_ms));
+}
+
+void EspNowFanBridge::hub_tick_relays(uint32_t now_ms) {
+  if (!espnow_ready_ || pending_relays_.empty()) return;
+  for (auto it = pending_relays_.begin(); it != pending_relays_.end();) {
+    if (static_cast<int32_t>(now_ms - it->send_at_ms) >= 0) {
+      esp_now_send(BROADCAST_MAC, it->frame.data(), it->frame.size());
+      it = pending_relays_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+bool EspNowFanBridge::hub_send_remote_light_toggle(const std::string &target_fan_device_id,
+                                                   const std::string &target_light_entity_id) {
+  if (!espnow_ready_ || role_ != BridgeRole::HUB) return false;
+  uint32_t target_hash = 0;
+  if (!target_light_entity_id.empty()) {
+    target_hash = fnv1a_32(target_light_entity_id);
+  } else if (!target_fan_device_id.empty()) {
+    target_hash = fnv1a_32(target_fan_device_id);
+  } else {
+    return false;
+  }
+
+  CmdPayload cmd;
+  cmd.fan_key_hash = target_hash;
+  cmd.opcode = CmdOpcode::LIGHT_TOGGLE;
+  cyd_queue_cmd(cmd, millis());
+  return true;
+}
+
 #ifdef USE_TUYA_BLE_FAN
 
 tuya_ble_fan::TuyaBleFanDevice *EspNowFanBridge::hub_find_device(uint32_t fan_key_hash) {
@@ -614,21 +716,35 @@ tuya_ble_fan::TuyaBleFanDevice *EspNowFanBridge::hub_find_device(uint32_t fan_ke
     if (dev == nullptr) continue;
     uint32_t h = compute_fan_key(dev->fan_entity_id(), dev->light_entity_id(), dev->name());
     if (h == fan_key_hash) return dev;
+    if (!dev->light_entity_id().empty() && fnv1a_32(dev->light_entity_id()) == fan_key_hash) {
+      return dev;
+    }
+    if (!dev->device_id().empty() && fnv1a_32(dev->device_id()) == fan_key_hash) {
+      return dev;
+    }
   }
   return nullptr;
 }
 
-void EspNowFanBridge::hub_handle_cmd(const CmdPayload &cmd, uint16_t seq) {
+bool EspNowFanBridge::hub_handle_cmd(const CmdPayload &cmd, uint32_t origin_id, uint16_t seq,
+                                     uint32_t now_ms) {
   auto *dev = hub_find_device(cmd.fan_key_hash);
+  if (dev == nullptr) {
+    return false;  // Not managed by this hub — let multi-hop relay forward it
+  }
+
   AckPayload ack;
   ack.ack_seq = seq;
 
-  if (dev == nullptr) {
-    ESP_LOGW(TAG, "RX CMD seq=%u for unknown fan hash=0x%08X", seq,
-             static_cast<unsigned>(cmd.fan_key_hash));
-    ack.status = AckStatus::UNKNOWN_FAN;
+  // Deduplicate command execution across retries when an ACK was lost,
+  // so non-idempotent opcodes (like LIGHT_TOGGLE) never double-fire.
+  if (origin_id != 0 &&
+      !cmd_exec_dedup_.accept(origin_id, MsgType::CMD, seq, 0, now_ms, RELAY_DEDUP_TTL_MS)) {
+    ESP_LOGD(TAG, "[%s] Duplicate CMD seq=%u from origin=0x%08X (re-ACKing only)",
+             dev->name().c_str(), seq, static_cast<unsigned>(origin_id));
+    ack.status = AckStatus::OK;
     broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
-    return;
+    return true;
   }
 
   ESP_LOGI(TAG, "[%s] RX ESP-NOW CMD seq=%u opcode=%u args=(%d,%d,%d)", dev->name().c_str(), seq,
@@ -666,14 +782,18 @@ void EspNowFanBridge::hub_handle_cmd(const CmdPayload &cmd, uint16_t seq) {
       dev->set_light_state(cmd.arg0 != 0, clamp_int(cmd.arg1, 10, 1000),
                            clamp_int(cmd.arg2, 0, 1000));
       break;
+    case CmdOpcode::LIGHT_TOGGLE:
+      dev->set_light_power(!dev->light_on());
+      break;
     default:
       ack.status = AckStatus::INVALID_CMD;
       broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
-      return;
+      return true;
   }
 
   ack.status = AckStatus::OK;
   broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
+  return true;
 }
 
 void EspNowFanBridge::hub_broadcast_device_state(tuya_ble_fan::TuyaBleFanDevice *dev) {
@@ -704,16 +824,30 @@ void EspNowFanBridge::hub_broadcast_all_states() {
 
 #ifdef USE_SHELLY_BLE_BRIDGE
 
-void EspNowFanBridge::hub_handle_shelly_cmd(const ShellyCmdPayload &cmd, uint16_t seq) {
-  bool accepted = shelly_ble_bridge::ShellyBleBridgeRegistry::instance().enqueue_command(
-      cmd.device_id, cmd.channel, static_cast<uint8_t>(cmd.opcode), cmd.arg, cmd.flags);
+bool EspNowFanBridge::hub_handle_shelly_cmd(const ShellyCmdPayload &cmd, uint32_t origin_id,
+                                            uint16_t seq, uint32_t now_ms) {
+  auto &reg = shelly_ble_bridge::ShellyBleBridgeRegistry::instance();
+  if (!reg.handles_device(cmd.device_id)) {
+    return false;  // Not managed by this hub — let multi-hop relay forward it
+  }
+  if (origin_id != 0 &&
+      !cmd_exec_dedup_.accept(origin_id, MsgType::SHELLY_CMD, seq, 0, now_ms, RELAY_DEDUP_TTL_MS)) {
+    AckPayload ack;
+    ack.ack_seq = seq;
+    ack.status = AckStatus::OK;
+    broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
+    return true;
+  }
+  bool accepted = reg.enqueue_command(cmd.device_id, cmd.channel, static_cast<uint8_t>(cmd.opcode),
+                                      cmd.arg, cmd.flags);
   if (!accepted) {
-    return;  // Not managed by this hub — let another hub handle & ACK it
+    return false;
   }
   AckPayload ack;
   ack.ack_seq = seq;
   ack.status = AckStatus::OK;
   broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
+  return true;
 }
 
 void EspNowFanBridge::hub_broadcast_shelly_state(const shelly_ble_bridge::ShellyCachedState &st) {
@@ -943,7 +1077,7 @@ void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
     }
     it->attempts++;
     it->last_tx_ms = now_ms;
-    broadcast_frame(MsgType::CMD, it->seq, encode_cmd(it->cmd));
+    broadcast_frame(MsgType::CMD, it->seq, encode_cmd(it->cmd), DEFAULT_RELAY_TTL, it->attempts);
     ++it;
   }
 
@@ -966,7 +1100,8 @@ void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
     }
     it->attempts++;
     it->last_tx_ms = now_ms;
-    broadcast_frame(MsgType::SHELLY_CMD, it->seq, encode_shelly_cmd(it->cmd));
+    broadcast_frame(MsgType::SHELLY_CMD, it->seq, encode_shelly_cmd(it->cmd), DEFAULT_RELAY_TTL,
+                    it->attempts);
     ++it;
   }
 }

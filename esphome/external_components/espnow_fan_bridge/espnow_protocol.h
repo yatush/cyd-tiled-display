@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -10,9 +11,10 @@ namespace espnow_fan_bridge {
 
 static constexpr uint8_t PROTOCOL_MAGIC_0 = 0x43;  // 'C'
 static constexpr uint8_t PROTOCOL_MAGIC_1 = 0x46;  // 'F'
-static constexpr uint8_t PROTOCOL_VERSION = 1;
-static constexpr size_t FRAME_HEADER_SIZE = 12;
+static constexpr uint8_t PROTOCOL_VERSION = 2;
+static constexpr size_t FRAME_HEADER_SIZE = 18;
 static constexpr size_t MAX_FRAME_SIZE = 128;
+static constexpr uint8_t DEFAULT_RELAY_TTL = 5;
 
 enum class MsgType : uint8_t {
   PING = 1,
@@ -41,6 +43,7 @@ enum class CmdOpcode : uint8_t {
   LIGHT_BRIGHTNESS = 11,
   LIGHT_COLOR_TEMP = 12,
   LIGHT_STATE = 13,
+  LIGHT_TOGGLE = 14,
 };
 
 enum class ShellyOpcode : uint8_t {
@@ -76,6 +79,9 @@ struct FrameHeader {
   uint16_t seq{0};
   uint32_t net_tag{0};
   uint16_t payload_len{0};
+  uint32_t origin_id{0};
+  uint8_t ttl{0};
+  uint8_t hop_nonce{0};
 };
 
 struct PingPayload {
@@ -141,15 +147,41 @@ uint32_t fnv1a_32(const std::string &s, uint32_t seed = 2166136261u);
 std::string normalize_mac_hex(const std::string &mac);
 uint32_t shelly_device_id_from_mac(const std::string &mac);
 
-// Compute keyed authentication tag over (network_key, type, seq, payload)
+// Compute keyed authentication tag over (network_key, type, seq, origin_id, ttl, hop_nonce, payload)
 uint32_t compute_net_tag(const std::string &network_key, MsgType type, uint16_t seq,
+                         uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
                          const uint8_t *payload, size_t payload_len);
 
 // Encode/decode full ESP-NOW frames
 std::vector<uint8_t> encode_frame(const std::string &network_key, MsgType type, uint16_t seq,
-                                  const uint8_t *payload, size_t payload_len);
+                                  const uint8_t *payload, size_t payload_len,
+                                  uint32_t origin_id = 0, uint8_t ttl = DEFAULT_RELAY_TTL,
+                                  uint8_t hop_nonce = 0);
 bool decode_frame(const std::string &network_key, const uint8_t *data, size_t len,
                   FrameHeader &out_header, std::vector<uint8_t> &out_payload);
+
+// Bounded TTL-expiring dedup ring for multi-hop relay & command execution deduplication
+class FrameDedupRing {
+ public:
+  static constexpr size_t CAPACITY = 64;
+
+  // Returns true if (origin_id, type, seq, hop_nonce) was NOT seen within ttl_ms and records it.
+  bool accept(uint32_t origin_id, MsgType type, uint16_t seq, uint8_t hop_nonce, uint32_t now_ms,
+              uint32_t ttl_ms);
+  void clear();
+
+ private:
+  struct Entry {
+    uint32_t origin_id{0};
+    uint16_t seq{0};
+    uint8_t type{0};
+    uint8_t hop_nonce{0};
+    uint32_t seen_ms{0};
+    bool valid{false};
+  };
+  std::array<Entry, CAPACITY> entries_{};
+  size_t write_idx_{0};
+};
 
 // Payload encoders / decoders
 std::vector<uint8_t> encode_ping(const PingPayload &p);

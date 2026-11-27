@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace esphome {
@@ -22,8 +23,12 @@ class ShellyBleBridgeRegistry {
  public:
   using CmdHandler = std::function<bool(uint32_t device_id, uint8_t channel, uint8_t opcode,
                                         uint8_t arg, uint8_t flags)>;
+  using DevicePredicate = std::function<bool(uint32_t device_id)>;
   using StateCallback = std::function<void(const ShellyCachedState &)>;
   using SnapshotProvider = std::function<std::vector<ShellyCachedState>()>;
+  using RemoteLightToggleHandler =
+      std::function<bool(const std::string &target_fan_device_id,
+                         const std::string &target_light_entity_id)>;
 
   static ShellyBleBridgeRegistry &instance() {
     static ShellyBleBridgeRegistry inst;
@@ -31,8 +36,17 @@ class ShellyBleBridgeRegistry {
   }
 
   void set_cmd_handler(CmdHandler handler) { cmd_handler_ = std::move(handler); }
+  void set_device_predicate(DevicePredicate pred) { device_predicate_ = std::move(pred); }
   void set_state_callback(StateCallback cb) { state_cb_ = std::move(cb); }
   void set_snapshot_provider(SnapshotProvider provider) { snapshot_provider_ = std::move(provider); }
+  void set_remote_light_toggle_handler(RemoteLightToggleHandler handler) {
+    remote_light_toggle_handler_ = std::move(handler);
+  }
+
+  bool handles_device(uint32_t device_id) const {
+    if (!device_predicate_) return false;
+    return device_predicate_(device_id);
+  }
 
   bool enqueue_command(uint32_t device_id, uint8_t channel, uint8_t opcode, uint8_t arg,
                        uint8_t flags) const {
@@ -51,10 +65,18 @@ class ShellyBleBridgeRegistry {
     return snapshot_provider_();
   }
 
+  bool toggle_remote_light(const std::string &target_fan_device_id,
+                           const std::string &target_light_entity_id) const {
+    if (!remote_light_toggle_handler_) return false;
+    return remote_light_toggle_handler_(target_fan_device_id, target_light_entity_id);
+  }
+
  private:
   CmdHandler cmd_handler_;
+  DevicePredicate device_predicate_;
   StateCallback state_cb_;
   SnapshotProvider snapshot_provider_;
+  RemoteLightToggleHandler remote_light_toggle_handler_;
 };
 
 }  // namespace shelly_ble_bridge

@@ -50,13 +50,20 @@ uint32_t fnv1a_32(const std::string &s, uint32_t seed) {
 }
 
 uint32_t compute_net_tag(const std::string &network_key, MsgType type, uint16_t seq,
+                         uint32_t origin_id, uint8_t ttl, uint8_t hop_nonce,
                          const uint8_t *payload, size_t payload_len) {
   uint32_t h = fnv1a_32(network_key);
-  uint8_t meta[4] = {
+  uint8_t meta[10] = {
       PROTOCOL_VERSION,
       static_cast<uint8_t>(type),
       static_cast<uint8_t>(seq & 0xFF),
       static_cast<uint8_t>((seq >> 8) & 0xFF),
+      static_cast<uint8_t>(origin_id & 0xFF),
+      static_cast<uint8_t>((origin_id >> 8) & 0xFF),
+      static_cast<uint8_t>((origin_id >> 16) & 0xFF),
+      static_cast<uint8_t>((origin_id >> 24) & 0xFF),
+      ttl,
+      hop_nonce,
   };
   h = fnv1a_32(meta, sizeof(meta), h);
   if (payload != nullptr && payload_len > 0) {
@@ -68,7 +75,8 @@ uint32_t compute_net_tag(const std::string &network_key, MsgType type, uint16_t 
 }
 
 std::vector<uint8_t> encode_frame(const std::string &network_key, MsgType type, uint16_t seq,
-                                  const uint8_t *payload, size_t payload_len) {
+                                  const uint8_t *payload, size_t payload_len, uint32_t origin_id,
+                                  uint8_t ttl, uint8_t hop_nonce) {
   std::vector<uint8_t> out;
   if (payload_len > MAX_FRAME_SIZE - FRAME_HEADER_SIZE) {
     return out;
@@ -79,9 +87,13 @@ std::vector<uint8_t> encode_frame(const std::string &network_key, MsgType type, 
   out.push_back(PROTOCOL_VERSION);
   out.push_back(static_cast<uint8_t>(type));
   push_u16(out, seq);
-  uint32_t tag = compute_net_tag(network_key, type, seq, payload, payload_len);
+  uint32_t tag =
+      compute_net_tag(network_key, type, seq, origin_id, ttl, hop_nonce, payload, payload_len);
   push_u32(out, tag);
   push_u16(out, static_cast<uint16_t>(payload_len));
+  push_u32(out, origin_id);
+  out.push_back(ttl);
+  out.push_back(hop_nonce);
   if (payload != nullptr && payload_len > 0) {
     out.insert(out.end(), payload, payload + payload_len);
   }
@@ -98,16 +110,23 @@ bool decode_frame(const std::string &network_key, const uint8_t *data, size_t le
   uint16_t seq = read_u16(data + 4);
   uint32_t tag = read_u32(data + 6);
   uint16_t payload_len = read_u16(data + 10);
-
   if (len != FRAME_HEADER_SIZE + payload_len) return false;
+
+  uint32_t origin_id = read_u32(data + 12);
+  uint8_t ttl = data[16];
+  uint8_t hop_nonce = data[17];
   const uint8_t *payload_ptr = payload_len > 0 ? (data + FRAME_HEADER_SIZE) : nullptr;
-  uint32_t expected_tag = compute_net_tag(network_key, type, seq, payload_ptr, payload_len);
+  uint32_t expected_tag =
+      compute_net_tag(network_key, type, seq, origin_id, ttl, hop_nonce, payload_ptr, payload_len);
   if (tag != expected_tag) return false;
 
   out_header.type = type;
   out_header.seq = seq;
   out_header.net_tag = tag;
   out_header.payload_len = payload_len;
+  out_header.origin_id = origin_id;
+  out_header.ttl = ttl;
+  out_header.hop_nonce = hop_nonce;
   out_payload.assign(data + FRAME_HEADER_SIZE, data + len);
   return true;
 }
@@ -377,6 +396,31 @@ void ChannelHuntState::clear_active_channels() {
   tracked_.clear();
   rr_index_ = 0;
   rr_last_switch_ms_ = 0;
+}
+
+bool FrameDedupRing::accept(uint32_t origin_id, MsgType type, uint16_t seq, uint8_t hop_nonce,
+                            uint32_t now_ms, uint32_t ttl_ms) {
+  const uint8_t t = static_cast<uint8_t>(type);
+  for (auto &e : entries_) {
+    if (!e.valid) continue;
+    if (ttl_ms > 0 && static_cast<uint32_t>(now_ms - e.seen_ms) >= ttl_ms) {
+      e.valid = false;
+      continue;
+    }
+    if (e.origin_id == origin_id && e.type == t && e.seq == seq && e.hop_nonce == hop_nonce) {
+      return false;
+    }
+  }
+  entries_[write_idx_] = Entry{origin_id, seq, t, hop_nonce, now_ms, true};
+  write_idx_ = (write_idx_ + 1) % CAPACITY;
+  return true;
+}
+
+void FrameDedupRing::clear() {
+  for (auto &e : entries_) {
+    e.valid = false;
+  }
+  write_idx_ = 0;
 }
 
 }  // namespace espnow_fan_bridge
