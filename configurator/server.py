@@ -4150,29 +4150,32 @@ def detect_detached_switch_suggestions(devices, fans, automations_path='/config/
 
 
 def _probe_shelly_input_info(ip, timeout=1.2):
-    """Query Shelly.GetConfig over local HTTP RPC and return (detached_switch_channels, button_channels).
+    """Query Shelly.GetConfig over local HTTP RPC and return (detached_switch_channels, button_channels, available_inputs).
 
     Inputs configured in button mode (input:N.type == 'button') are excluded from
     detached_switch_channels and recorded in button_channels so they are not suggested.
     """
     if not ip:
-        return [], []
+        return [], [], []
     try:
         cfg = _shelly_rpc_call(ip, 'Shelly.GetConfig', timeout=timeout)
     except Exception:
-        return [], []
+        return [], [], []
     if not isinstance(cfg, dict):
-        return [], []
+        return [], [], []
     sys_dev = (cfg.get('sys') or {}).get('device') if isinstance(cfg.get('sys'), dict) else {}
     if isinstance(sys_dev, dict) and str(sys_dev.get('profile') or '').lower() == 'cover':
-        return [], []
+        return [], [], []
 
     detached = []
     buttons = []
+    available = []
     for ch in range(4):
         sw = cfg.get(f'switch:{ch}')
         lt = cfg.get(f'light:{ch}')
         inp = cfg.get(f'input:{ch}')
+        if isinstance(inp, dict) or isinstance(sw, dict) or isinstance(lt, dict):
+            available.append(ch)
         if isinstance(inp, dict) and str(inp.get('type') or '').lower() == 'button':
             buttons.append(ch)
             continue
@@ -4185,12 +4188,12 @@ def _probe_shelly_input_info(ip, timeout=1.2):
         elif isinstance(inp, dict):
             # Standalone switch-mode input without a relay (e.g. Shelly i4 in switch mode)
             detached.append(ch)
-    return detached, buttons
+    return detached, buttons, available
 
 
 def _probe_shelly_detached_channels(ip, timeout=1.2):
     """Query Shelly.GetConfig over local HTTP RPC and return list of detached switch-mode input channels."""
-    detached, _ = _probe_shelly_input_info(ip, timeout=timeout)
+    detached, _, _ = _probe_shelly_input_info(ip, timeout=timeout)
     return detached
 
 
@@ -4430,17 +4433,20 @@ def api_discover_shelly_devices():
         for dev in devices:
             dev['detached_channels'] = []
             dev['button_channels'] = []
+            dev['available_inputs'] = []
         if probe_targets:
             with ThreadPoolExecutor(max_workers=12) as pool:
                 futs = {pool.submit(_probe_shelly_input_info, dev['ip']): dev for dev in probe_targets}
                 for fut, dev in futs.items():
                     try:
-                        det_chs, btn_chs = fut.result()
+                        det_chs, btn_chs, avail_chs = fut.result()
                         dev['detached_channels'] = det_chs
                         dev['button_channels'] = btn_chs
+                        dev['available_inputs'] = avail_chs
                     except Exception:
                         dev['detached_channels'] = []
                         dev['button_channels'] = []
+                        dev['available_inputs'] = []
         # Put Shellys referenced by any CYD first, then alphabetically
         devices.sort(key=lambda x: (0 if x['used_by_cyds'] else 1, x['name'].lower()))
         suggestions = detect_detached_switch_suggestions(devices, all_fans)

@@ -117,6 +117,7 @@ export interface DiscoveredShellyDevice {
   input_entities?: string[];
   used_by_cyds?: string[];
   detached_channels?: number[];
+  available_inputs?: number[];
 }
 
 export interface DetachedSwitchSuggestion extends DetachedSwitchBinding {

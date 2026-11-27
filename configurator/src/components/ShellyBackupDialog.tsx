@@ -681,10 +681,17 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                       onChange={e => {
                         const mac = e.target.value;
                         const found = devices.find(d => d.mac_address === mac);
+                        const defaultCh =
+                          found?.detached_channels?.[0] ?? found?.available_inputs?.[0] ?? 0;
                         setDetachedSwitches(prev =>
                           prev.map((x, i) =>
                             i === idx
-                              ? { ...x, mac_address: mac, name: found ? found.name : x.name }
+                              ? {
+                                  ...x,
+                                  mac_address: mac,
+                                  name: found ? found.name : x.name,
+                                  input_channel: defaultCh,
+                                }
                               : x
                           )
                         );
@@ -704,28 +711,41 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                       ))}
                     </select>
 
-                    <select
-                      value={ds.input_channel}
-                      title="Physical Shelly SW input terminal (SW1 = input:0, SW2 = input:1, etc.)"
-                      onChange={e =>
-                        setDetachedSwitches(prev =>
-                          prev.map((x, i) =>
-                            i === idx ? { ...x, input_channel: Number(e.target.value) } : x
-                          )
-                        )
-                      }
-                      className="col-span-2 text-xs px-2 py-1.5 border border-slate-300 rounded-md bg-white"
-                    >
-                      {[0, 1, 2, 3].map(ch => {
-                        const selDev = devices.find(d => d.mac_address === ds.mac_address);
-                        const isDet = selDev?.detached_channels?.includes(ch);
-                        return (
-                          <option key={ch} value={ch}>
-                            SW{ch + 1} (in:{ch}){isDet ? ' ★' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
+                    {(() => {
+                      const selDev = devices.find(d => d.mac_address === ds.mac_address);
+                      const baseChs =
+                        selDev?.detached_channels && selDev.detached_channels.length > 0
+                          ? selDev.detached_channels
+                          : selDev?.available_inputs && selDev.available_inputs.length > 0
+                          ? selDev.available_inputs
+                          : selDev
+                          ? [0]
+                          : [0, 1, 2, 3];
+                      const channelOptions = Array.from(new Set([...baseChs, ds.input_channel])).sort(
+                        (a, b) => a - b
+                      );
+                      return (
+                        <select
+                          value={ds.input_channel}
+                          disabled={channelOptions.length <= 1}
+                          title="Physical Shelly SW input terminal (SW1 = input:0, SW2 = input:1, etc.)"
+                          onChange={e =>
+                            setDetachedSwitches(prev =>
+                              prev.map((x, i) =>
+                                i === idx ? { ...x, input_channel: Number(e.target.value) } : x
+                              )
+                            )
+                          }
+                          className="col-span-2 text-xs px-2 py-1.5 border border-slate-300 rounded-md bg-white disabled:bg-slate-100 disabled:text-slate-600"
+                        >
+                          {channelOptions.map(ch => (
+                            <option key={ch} value={ch}>
+                              SW{ch + 1} (in:{ch})
+                            </option>
+                          ))}
+                        </select>
+                      );
+                    })()}
 
                     <select
                       value={ds.target_light_entity_id || ds.target_fan_device_id}
