@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth, AlertTriangle, Radio } from 'lucide-react';
+import { ChevronDown, ChevronRight, Box, LayoutGrid, FileText, Trash2, ImageIcon, Copy, Home, Bluetooth, AlertTriangle, Radio, Zap } from 'lucide-react';
 import { Config, Tile, ImageEntry, ScreenImageEntry, HaEntity, BleFanConfig, EspNowFanLink, HeadlessHubConfig, TuyaBleCandidate } from '../types';
 import { DynamicEntitiesEditor, ImageManagerPanel, ScreenImageManagerPanel, BleFansManagerPanel } from './FormInputs';
 import { applyDynamicEntityListChange, updateDynamicEntityFixedValues } from '../utils/tileUtils';
@@ -46,6 +46,7 @@ interface LeftSidebarProps {
   currentDevicePath?: string;
   onOpenFindBleFans?: () => void;
   onOpenHeadlessHubs?: () => void;
+  onOpenShellyBackup?: () => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -89,6 +90,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   currentDevicePath,
   onOpenFindBleFans,
   onOpenHeadlessHubs,
+  onOpenShellyBackup,
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set([activePageId]));
   const [isBleFansOpen, setIsBleFansOpen] = useState(false);
@@ -263,7 +265,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           {isBleFansOpen && (
               <div className="p-3 pt-0 border-t border-slate-100 mt-2 space-y-3">
                   {onOpenHeadlessHubs && (
-                    <div className="pt-2">
+                    <div className="pt-2 space-y-1.5">
                       <button
                         onClick={onOpenHeadlessHubs}
                         className="w-full flex items-center justify-between px-2.5 py-2 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-100 transition-colors"
@@ -275,6 +277,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           {bleHubs.length}
                         </span>
                       </button>
+                      {onOpenShellyBackup && (
+                        <button
+                          onClick={onOpenShellyBackup}
+                          className="w-full flex items-center justify-between px-2.5 py-2 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <Zap size={13} /> Shelly Offline Backup (BLE)
+                          </span>
+                        </button>
+                      )}
                     </div>
                   )}
 

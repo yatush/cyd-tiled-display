@@ -149,8 +149,10 @@ void EspNowFanBridge::setup() {
         });
     shelly_ble_bridge::ShellyBleBridgeRegistry::instance().set_remote_light_toggle_handler(
         [this](const std::string &target_fan_device_id,
-               const std::string &target_light_entity_id) {
-          return this->hub_send_remote_light_toggle(target_fan_device_id, target_light_entity_id);
+               const std::string &target_light_entity_id, uint32_t source_id,
+               uint16_t source_seq) {
+          return this->hub_send_remote_light_toggle(target_fan_device_id, target_light_entity_id,
+                                                    source_id, source_seq);
         });
   }
 #endif
@@ -292,10 +294,14 @@ void EspNowFanBridge::espnow_recv_cb(const esp_now_recv_info_t *recv_info, const
 
 bool EspNowFanBridge::broadcast_frame(MsgType type, uint16_t seq,
                                       const std::vector<uint8_t> &payload, uint8_t ttl,
-                                      uint8_t hop_nonce) {
+                                      uint8_t hop_nonce, uint32_t origin_override) {
   if (!espnow_ready_) return false;
+  const uint32_t origin = origin_override != 0 ? origin_override : local_origin_id_;
+  if (origin_override != 0) {
+    relay_dedup_.accept(origin, type, seq, hop_nonce, millis(), RELAY_DEDUP_TTL_MS);
+  }
   auto frame = encode_frame(network_key_, type, seq, payload.empty() ? nullptr : payload.data(),
-                            payload.size(), local_origin_id_, ttl, hop_nonce);
+                            payload.size(), origin, ttl, hop_nonce);
   if (frame.empty()) return false;
   esp_err_t err = esp_now_send(BROADCAST_MAC, frame.data(), frame.size());
   return err == ESP_OK;
@@ -691,7 +697,8 @@ void EspNowFanBridge::hub_tick_relays(uint32_t now_ms) {
 }
 
 bool EspNowFanBridge::hub_send_remote_light_toggle(const std::string &target_fan_device_id,
-                                                   const std::string &target_light_entity_id) {
+                                                   const std::string &target_light_entity_id,
+                                                   uint32_t source_id, uint16_t source_seq) {
   if (!espnow_ready_ || role_ != BridgeRole::HUB) return false;
   uint32_t target_hash = 0;
   if (!target_light_entity_id.empty()) {
@@ -702,10 +709,23 @@ bool EspNowFanBridge::hub_send_remote_light_toggle(const std::string &target_fan
     return false;
   }
 
+  const uint32_t now_ms = millis();
   CmdPayload cmd;
   cmd.fan_key_hash = target_hash;
   cmd.opcode = CmdOpcode::LIGHT_TOGGLE;
-  cyd_queue_cmd(cmd, millis());
+
+  PendingCmd pending;
+  pending.seq = source_seq != 0 ? source_seq : next_seq_++;
+  pending.origin_override = source_id;
+  pending.cmd = cmd;
+  pending.fan_key_hash = target_hash;
+  pending.created_ms = now_ms;
+  pending.last_tx_ms = now_ms;
+  pending.attempts = 1;
+
+  broadcast_frame(MsgType::CMD, pending.seq, encode_cmd(pending.cmd), DEFAULT_RELAY_TTL, 0,
+                  pending.origin_override);
+  pending_cmds_.push_back(pending);
   return true;
 }
 
@@ -839,7 +859,7 @@ bool EspNowFanBridge::hub_handle_shelly_cmd(const ShellyCmdPayload &cmd, uint32_
     return true;
   }
   bool accepted = reg.enqueue_command(cmd.device_id, cmd.channel, static_cast<uint8_t>(cmd.opcode),
-                                      cmd.arg, cmd.flags);
+                                      cmd.arg, cmd.flags, seq);
   if (!accepted) {
     return false;
   }
@@ -1077,7 +1097,8 @@ void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
     }
     it->attempts++;
     it->last_tx_ms = now_ms;
-    broadcast_frame(MsgType::CMD, it->seq, encode_cmd(it->cmd), DEFAULT_RELAY_TTL, it->attempts);
+    broadcast_frame(MsgType::CMD, it->seq, encode_cmd(it->cmd), DEFAULT_RELAY_TTL, it->attempts,
+                    it->origin_override);
     ++it;
   }
 

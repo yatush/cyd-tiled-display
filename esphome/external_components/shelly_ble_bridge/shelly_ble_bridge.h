@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "shelly_ble_protocol.h"
 #include "shelly_ble_registry.h"
 
@@ -26,6 +27,7 @@ struct ManagedShelly {
   uint8_t channel{0};
   ShellyBleKind kind{ShellyBleKind::SWITCH};
   std::string entity_id;
+  bool static_configured{false};
 
   bool has_state{false};
   uint8_t state_flags{0};
@@ -47,6 +49,9 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
  public:
   void set_parent(esp32_ble_tracker::ESP32BLETracker *parent) { parent_ = parent; }
   void set_network_key(const std::string &key) { network_key_ = key; }
+  void set_visible_shellys_sensor(text_sensor::TextSensor *sensor) {
+    visible_shellys_sensor_ = sensor;
+  }
 
   void add_shelly(const std::string &name, const std::string &mac_address, uint8_t channel,
                   ShellyBleKind kind, const std::string &entity_id);
@@ -70,9 +75,9 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   void connect() override {}
   void disconnect() override {}
 
-  // Enqueue a command from ESP-NOW (returns true if target_id is managed by this hub)
+  // Enqueue a command from ESP-NOW (returns true if target_id is in BLE range / managed)
   bool enqueue_command(uint32_t device_id, uint8_t channel, uint8_t opcode, uint8_t arg,
-                       uint8_t flags);
+                       uint8_t flags, uint16_t cmd_seq = 0);
   std::vector<ShellyCachedState> get_cached_states() const;
 
  protected:
@@ -87,15 +92,22 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   static constexpr uint32_t TX_CONFIG_TIMEOUT_MS = 60;
   static constexpr uint32_t SCAN_RESTART_DELAY_MS = 2000;
   static constexpr uint32_t DEDUP_TTL_MS = 5000;
+  static constexpr uint32_t SHELLY_BLE_STALE_MS = 120000;
+  static constexpr uint32_t VISIBLE_PUBLISH_INTERVAL_MS = 30000;
+  static constexpr size_t MAX_DYNAMIC_SHELLYS = 32;
 
   ManagedShelly *find_shelly(uint32_t device_id, uint8_t channel);
+  ManagedShelly *find_or_create_shelly(uint32_t device_id, uint8_t channel, ShellyBleKind kind,
+                                       uint32_t now_ms);
   bool handles_device(uint32_t device_id) const;
   void handle_state_beacon(const ShellyBleBeacon &beacon, int rssi);
   void handle_input_beacon(const ShellyBleBeacon &beacon, int rssi);
+  void publish_visible_shellys(uint32_t now_ms, bool force = false);
   void tick_tx(uint32_t now_ms);
   void start_next_tx(uint32_t now_ms);
 
   esp32_ble_tracker::ESP32BLETracker *parent_{nullptr};
+  text_sensor::TextSensor *visible_shellys_sensor_{nullptr};
   std::string network_key_{"cyd_espnow_default"};
 
   std::vector<ManagedShelly> shellys_;
@@ -111,6 +123,8 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   uint16_t next_seq_{1};
   std::atomic<bool> adv_raw_ready_{false};
   uint32_t last_scan_check_ms_{0};
+  uint32_t last_visible_publish_ms_{0};
+  std::string last_visible_summary_;
 };
 
 }  // namespace shelly_ble_bridge

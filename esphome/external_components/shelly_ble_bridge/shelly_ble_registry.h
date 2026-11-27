@@ -22,13 +22,14 @@ struct ShellyCachedState {
 class ShellyBleBridgeRegistry {
  public:
   using CmdHandler = std::function<bool(uint32_t device_id, uint8_t channel, uint8_t opcode,
-                                        uint8_t arg, uint8_t flags)>;
+                                        uint8_t arg, uint8_t flags, uint16_t cmd_seq)>;
   using DevicePredicate = std::function<bool(uint32_t device_id)>;
   using StateCallback = std::function<void(const ShellyCachedState &)>;
   using SnapshotProvider = std::function<std::vector<ShellyCachedState>()>;
   using RemoteLightToggleHandler =
       std::function<bool(const std::string &target_fan_device_id,
-                         const std::string &target_light_entity_id)>;
+                         const std::string &target_light_entity_id, uint32_t source_id,
+                         uint16_t source_seq)>;
 
   static ShellyBleBridgeRegistry &instance() {
     static ShellyBleBridgeRegistry inst;
@@ -49,9 +50,9 @@ class ShellyBleBridgeRegistry {
   }
 
   bool enqueue_command(uint32_t device_id, uint8_t channel, uint8_t opcode, uint8_t arg,
-                       uint8_t flags) const {
+                       uint8_t flags, uint16_t cmd_seq = 0) const {
     if (!cmd_handler_) return false;
-    return cmd_handler_(device_id, channel, opcode, arg, flags);
+    return cmd_handler_(device_id, channel, opcode, arg, flags, cmd_seq);
   }
 
   void notify_state_updated(const ShellyCachedState &st) const {
@@ -66,9 +67,11 @@ class ShellyBleBridgeRegistry {
   }
 
   bool toggle_remote_light(const std::string &target_fan_device_id,
-                           const std::string &target_light_entity_id) const {
+                           const std::string &target_light_entity_id, uint32_t source_id,
+                           uint16_t source_seq) const {
     if (!remote_light_toggle_handler_) return false;
-    return remote_light_toggle_handler_(target_fan_device_id, target_light_entity_id);
+    return remote_light_toggle_handler_(target_fan_device_id, target_light_entity_id, source_id,
+                                        source_seq);
   }
 
  private:

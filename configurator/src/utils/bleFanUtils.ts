@@ -505,43 +505,32 @@ export function resolveEffectiveEspNowFans(
 
 export function resolveEffectiveEspNowShellys(
   config: Config,
-  bleHubs: HeadlessHubConfig[] = []
+  bleHubs: HeadlessHubConfig[] = [],
+  discoveredShellys: import('../types').DiscoveredShellyDevice[] = []
 ): import('../types').ShellyBackupItem[] {
-  const referenced = new Set<string>();
-  const addRef = (raw: any) => {
-    if (typeof raw !== 'string') return;
-    const base = raw.split('|')[0].trim();
-    if (base) referenced.add(base);
-  };
-
-  for (const page of config.pages || []) {
-    for (const tile of page.tiles || []) {
-      const ents = (tile as any).entities;
-      if (Array.isArray(ents)) {
-        for (const e of ents) {
-          if (typeof e === 'string') addRef(e);
-          else if (e && typeof e === 'object') {
-            addRef(e.entity);
-            addRef(e.entity_id);
-          }
-        }
-      }
-      addRef((tile as any).entity);
-      addRef((tile as any).dynamic_entity);
-    }
-  }
-  for (const vals of Object.values(config.dynamic_entity_values || {})) {
-    for (const v of vals || []) {
-      if (typeof v === 'string') addRef(v);
-      else if (v && typeof v === 'object') {
-        addRef((v as any).entity);
-        addRef((v as any).entity_id);
-      }
-    }
-  }
+  const referenced = collectReferencedEntityIds(config);
 
   const out: import('../types').ShellyBackupItem[] = [];
   const seen = new Set<string>();
+
+  // 1. Auto-match against HA-discovered Shelly devices (zero hub assignment required)
+  for (const dev of discoveredShellys || []) {
+    for (const ent of dev.entities || []) {
+      const eid = (ent.entity_id || '').trim();
+      if (!eid || !referenced.has(eid) || seen.has(eid)) continue;
+      seen.add(eid);
+      out.push({
+        name: ent.name || dev.name || eid,
+        mac_address: dev.mac_address,
+        channel: ent.channel || 0,
+        kind: ent.kind || 'switch',
+        entity_id: eid,
+        ip: dev.ip || '',
+      });
+    }
+  }
+
+  // 2. Include any legacy hub-assigned Shellys as fallback
   for (const hub of bleHubs || []) {
     for (const sh of hub.shellys || []) {
       const eid = (sh.entity_id || '').trim();
