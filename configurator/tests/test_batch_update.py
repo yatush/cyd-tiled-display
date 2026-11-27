@@ -151,12 +151,12 @@ ota:
                 dev['online'] = (dev['address'] == 'cyd_online.local')
                 return dev
 
-            server.batch_update_state = None
+            server._esphome_mod.batch_update_state = None
             client = server.app.test_client()
 
-            with mock.patch.object(server, 'BASE_DIR', tmp), \
-                 mock.patch.object(server, '_check_device_online', side_effect=fake_check_online), \
-                 mock.patch.object(server.subprocess, 'Popen', return_value=FakeProc()) as popen_mock:
+            with mock.patch.object(server._esphome_mod, 'BASE_DIR', tmp), \
+                 mock.patch.object(server._esphome_mod, '_check_device_online', side_effect=fake_check_online), \
+                 mock.patch.object(server._esphome_mod.subprocess, 'Popen', return_value=FakeProc()) as popen_mock:
                 res = client.post('/api/esphome/batch_update/start')
                 self.assertEqual(res.status_code, 200)
 

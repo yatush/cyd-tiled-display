@@ -16,6 +16,7 @@ tar -C .. -cf - --exclude='esphome/lib/.esphome' esphome | docker exec -i $CONTA
 
 echo "Updating Python backend scripts..."
 docker cp ../configurator/server.py "${CONTAINER_NAME}:/app/configurator/"
+docker cp ../configurator/backend "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/generate_tiles_api.py "${CONTAINER_NAME}:/app/configurator/"
 docker cp ../configurator/run_emulator.sh "${CONTAINER_NAME}:/app/configurator/"
 docker exec $CONTAINER_NAME chmod +x /app/configurator/run_emulator.sh
