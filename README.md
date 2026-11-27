@@ -30,6 +30,11 @@ The project transforms a visual design into a working device through three stage
 3.  **C++ Implementation**:
     Under the hood, the ESPHome YAML utilizes a custom C++ component (`tile_ui`) included in this repository. This C++ code handles the actual drawing on the screen, touch events, and page navigation, ensuring high performance on the ESP32.
 
+### Documentation Guides
+*   **[Headless Hubs & Offline Backup Guide](HUBS_AND_OFFLINE_BACKUP.md)** — Headless BLE/IR hubs, ESP-NOW multi-hop mesh, Tuya BLE ceiling fans, Gree IR AC, Shelly Gen3/Gen4 offline BLE backup, and detached wall switches with live NVS sync.
+*   **[Tile Configuration Reference](TILE_CONFIGURATION.md)** — Tile types, dynamic entities, scripts, and styling options.
+*   **[Script Validation Reference](SCRIPT_VALIDATION.md)** — ESPHome script and action validation rules.
+
 # Installation
 
 ## Option 1: Home Assistant Add-on (Recommended)
