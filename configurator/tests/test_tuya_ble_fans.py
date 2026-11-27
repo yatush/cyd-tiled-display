@@ -666,3 +666,88 @@ def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
     hubs2 = server.list_ble_hubs(str(tmp_path))
     assert hubs2[0]["gree_ac"]["rx_pin"] == ""
     assert hubs2[0]["gree_ac"]["supports_heat"] is False
+
+
+def test_headless_hub_with_shelly_ble_bridge_and_detached_switches(tmp_path):
+    res, err, status = server.save_ble_hub_yaml(
+        {
+            "name": "Living Hub",
+            "board": "seeed_xiao_esp32c3",
+            "fans": [],
+            "shellys": [
+                {
+                    "name": "Living Ceiling",
+                    "mac_address": "AA:BB:CC:DD:EE:01",
+                    "channel": 0,
+                    "kind": "light",
+                    "entity_id": "light.living_ceiling",
+                },
+                {
+                    "name": "Living Blind",
+                    "mac_address": "AA:BB:CC:DD:EE:02",
+                    "channel": 0,
+                    "kind": "cover",
+                    "entity_id": "cover.living_blind",
+                },
+            ],
+            "detached_switches": [
+                {
+                    "name": "Living Wall Switch",
+                    "mac_address": "AA:BB:CC:DD:EE:03",
+                    "input_channel": 1,
+                    "target_fan_device_id": "bf_living_fan_001",
+                    "target_light_entity_id": "light.living_fan_light",
+                }
+            ],
+        },
+        esphome_dir=str(tmp_path),
+    )
+    assert status == 200 and err is None
+    text = (tmp_path / "living-hub.yaml").read_text(encoding="utf-8")
+    assert "shelly_ble_bridge:" in text
+    assert "aabbccddee01" in text
+    assert "cover.living_blind" in text
+    assert "detached_switches:" in text
+    assert "bf_living_fan_001" in text
+
+    hubs = server.list_ble_hubs(str(tmp_path))
+    assert len(hubs) == 1
+    assert len(hubs[0]["shellys"]) == 2
+    assert hubs[0]["shellys"][0]["mac_address"] == "aabbccddee01"
+    assert hubs[0]["shellys"][1]["kind"] == "cover"
+    assert len(hubs[0]["detached_switches"]) == 1
+    assert hubs[0]["detached_switches"][0]["input_channel"] == 1
+
+
+def test_deploy_shelly_script_chunking_and_zigbee_warning(monkeypatch):
+    calls = []
+
+    def fake_rpc(ip, method, params=None, password=None, timeout=6):
+        calls.append((ip, method, params))
+        if method == "Shelly.GetDeviceInfo":
+            return {"fw_id": "20260101-123456/2.2.1-g4-ZB", "app": "S1G4ZB", "model": "S4SW-001X16EU", "mac": "AABBCCDDEE01"}
+        if method == "Script.List":
+            return {"scripts": []}
+        if method == "Script.Create":
+            return {"id": 3}
+        return {}
+
+    monkeypatch.setattr(server, "_shelly_rpc_call", fake_rpc)
+    script = "x" * 2500
+    res = server.deploy_shelly_script_to_device("192.168.1.50", script)
+    assert res["ok"] is True
+    assert res["script_id"] == 3
+    assert res["zigbee_warning"] is True
+
+    put_calls = [p for (_, m, p) in calls if m == "Script.PutCode"]
+    assert len(put_calls) == 3
+    assert put_calls[0]["append"] is False
+    assert put_calls[1]["append"] is True
+    assert put_calls[2]["append"] is True
+    assert "".join(p["code"] for p in put_calls) == script
+    assert any(m == "Script.Start" and p == {"id": 3} for (_, m, p) in calls)
+
+    # Verify shipped shelly/cyd_ble_backup.js is pure ASCII (Shelly 2.2.1 rejects \uXXXX)
+    tpl = server._load_shelly_script_template()
+    assert tpl is not None and tpl.isascii()
+    assert "BLE.AdvBuilder.reset()" in tpl

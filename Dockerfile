@@ -111,6 +111,7 @@ RUN chmod +x /app/configurator/run_emulator.sh
 
 # Copy ESPHome files (needed for schema and scripts)
 COPY esphome /app/esphome
+COPY shelly /app/shelly
 
 # Note: emulator pre-compilation is done on first container start (see vnc_startup.sh)
 

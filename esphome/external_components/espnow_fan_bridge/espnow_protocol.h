@@ -21,6 +21,8 @@ enum class MsgType : uint8_t {
   ACK = 4,
   STATE = 5,
   SYNC_REQ = 6,
+  SHELLY_CMD = 0x10,
+  SHELLY_STATE = 0x11,
 };
 
 enum class BridgeRole : uint8_t {
@@ -40,6 +42,28 @@ enum class CmdOpcode : uint8_t {
   LIGHT_COLOR_TEMP = 12,
   LIGHT_STATE = 13,
 };
+
+enum class ShellyOpcode : uint8_t {
+  SW_OFF = 1,
+  SW_ON = 2,
+  SW_TOGGLE = 3,
+  COV_OPEN = 4,
+  COV_CLOSE = 5,
+  COV_STOP = 6,
+  COV_POS = 7,
+  QUERY_STATE = 8,
+};
+
+enum class ShellyKind : uint8_t {
+  SWITCH = 1,
+  COVER = 2,
+  INPUT_TOGGLE = 3,
+};
+
+static constexpr uint8_t SHELLY_FLAG_ON_OR_OPEN = 0x01;
+static constexpr uint8_t SHELLY_FLAG_MOTION_MASK = 0x06;  // bits 1..2: 0=stopped, 1=opening, 2=closing
+static constexpr uint8_t SHELLY_FLAG_MOTION_SHIFT = 1;
+static constexpr uint8_t SHELLY_FLAG_WIFI_DOWN = 0x80;
 
 enum class AckStatus : uint8_t {
   OK = 0,
@@ -92,9 +116,30 @@ struct SyncReqPayload {
   uint8_t channel{1};
 };
 
-// Deterministic 32-bit FNV-1a hash used for fan entity keys and network auth tags
+struct ShellyCmdPayload {
+  uint32_t device_id{0};
+  uint8_t channel{0};
+  ShellyOpcode opcode{ShellyOpcode::SW_TOGGLE};
+  uint8_t arg{0};    // 0..100 for COV_POS; 0 otherwise
+  uint8_t flags{0};  // Reserved (0)
+};
+
+struct ShellyStatePayload {
+  uint32_t device_id{0};
+  uint8_t channel{0};
+  ShellyKind kind{ShellyKind::SWITCH};
+  uint8_t state_flags{0};  // bit0=on/open, bits1-2=motion, bit7=wifi_down
+  uint8_t position{255};   // 0..100 for cover; 255 otherwise
+  int8_t ble_rssi{-127};
+};
+
+// Deterministic 32-bit FNV-1a hash used for fan entity keys, Shelly device IDs, and auth tags
 uint32_t fnv1a_32(const uint8_t *data, size_t len, uint32_t seed = 2166136261u);
 uint32_t fnv1a_32(const std::string &s, uint32_t seed = 2166136261u);
+
+// Normalize MAC string to lowercase hex without colons/dashes and compute Shelly device_id
+std::string normalize_mac_hex(const std::string &mac);
+uint32_t shelly_device_id_from_mac(const std::string &mac);
 
 // Compute keyed authentication tag over (network_key, type, seq, payload)
 uint32_t compute_net_tag(const std::string &network_key, MsgType type, uint16_t seq,
@@ -121,6 +166,12 @@ bool decode_state(const uint8_t *data, size_t len, StatePayload &out);
 
 std::vector<uint8_t> encode_sync_req(const SyncReqPayload &p);
 bool decode_sync_req(const uint8_t *data, size_t len, SyncReqPayload &out);
+
+std::vector<uint8_t> encode_shelly_cmd(const ShellyCmdPayload &p);
+bool decode_shelly_cmd(const uint8_t *data, size_t len, ShellyCmdPayload &out);
+
+std::vector<uint8_t> encode_shelly_state(const ShellyStatePayload &p);
+bool decode_shelly_state(const uint8_t *data, size_t len, ShellyStatePayload &out);
 
 // Pure state machine for offline channel hunting, 2-miss pruning, and multi-channel round-robin
 class ChannelHuntState {

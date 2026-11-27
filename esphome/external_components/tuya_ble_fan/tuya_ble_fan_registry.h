@@ -80,6 +80,14 @@ class TuyaBleFanRegistry {
     return fan_entities_.count(base) > 0 || light_entities_.count(base) > 0;
   }
 
+  void set_in_flight_connect_provider(std::function<bool()> provider) {
+    in_flight_connect_provider_ = std::move(provider);
+  }
+
+  bool has_in_flight_connect() const {
+    return in_flight_connect_provider_ ? in_flight_connect_provider_() : false;
+  }
+
   bool get_connection_status(const std::string &entity_or_key, BleConnStatus &out) const;
   bool get_text_state(const std::string &key, std::string &out) const;
   bool get_binary_state(const std::string &key, bool &out) const;
@@ -102,6 +110,7 @@ class TuyaBleFanRegistry {
   std::map<std::string, TuyaBleFanDevice *> light_entities_;
   std::function<void(const std::string &, const std::string &)> state_change_cb_;
   std::vector<std::function<void(TuyaBleFanDevice *)>> device_change_listeners_;
+  std::function<bool()> in_flight_connect_provider_;
 };
 
 }  // namespace tuya_ble_fan

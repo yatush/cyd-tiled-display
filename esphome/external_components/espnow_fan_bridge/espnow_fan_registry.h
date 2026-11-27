@@ -54,6 +54,22 @@ struct RemoteFanState {
   }
 };
 
+struct RemoteShellyState {
+  std::string name;
+  std::string entity_id;
+  std::string mac_address;
+  uint32_t device_id{0};
+  uint8_t channel{0};
+  bool is_cover{false};
+
+  bool has_state{false};
+  bool espnow_reachable{false};
+  uint32_t last_seen_ms{0};
+  uint8_t state_flags{0};  // bit0=on/open, bits1-2=motion (0=stopped,1=opening,2=closing), bit7=wifi_down
+  uint8_t position{255};   // 0..100 for cover; 255 otherwise
+  int8_t ble_rssi{-127};
+};
+
 class EspNowFanBridge;
 
 class EspNowFanRegistry {
@@ -76,6 +92,11 @@ class EspNowFanRegistry {
     }
   }
 
+  void register_remote_shelly(RemoteShellyState *sh) {
+    if (sh == nullptr || sh->entity_id.empty()) return;
+    shelly_entities_[sh->entity_id] = sh;
+  }
+
   void set_state_change_callback(std::function<void(const std::string &, const std::string &)> cb) {
     state_change_cb_ = std::move(cb);
   }
@@ -96,30 +117,51 @@ class EspNowFanRegistry {
 
   bool handles_entity(const std::string &entity_or_key) const {
     const std::string base = base_entity(entity_or_key);
-    return fan_entities_.count(base) > 0 || light_entities_.count(base) > 0;
+    return fan_entities_.count(base) > 0 || light_entities_.count(base) > 0 ||
+           shelly_entities_.count(base) > 0;
   }
 
-  // Returns whether this entity's ESP-NOW hub is reachable or should show 'no hub'
-  EspNowDisplayMode get_display_mode(const std::string &entity_or_key, bool /*ha_connected*/,
+  bool handles_shelly_entity(const std::string &entity_or_key) const {
+    return shelly_entities_.count(base_entity(entity_or_key)) > 0;
+  }
+
+  // Returns whether this entity's ESP-NOW hub is reachable or should show 'no hub'.
+  // For Shelly backup entities: returns NONE when HA has a valid state for this entity
+  // (normal HA tier), and ACTIVE / OFFLINE_DISCONNECTED when routed via ESP-NOW backup.
+  EspNowDisplayMode get_display_mode(const std::string &entity_or_key, bool ha_entity_available,
                                      RemoteBleConnStatus &out_ble_status) const {
     const RemoteFanState *fan = find_fan(entity_or_key);
-    if (fan == nullptr) return EspNowDisplayMode::NONE;
-    if (fan->espnow_reachable) {
-      out_ble_status = fan->ble_status;
-      return EspNowDisplayMode::ACTIVE;
+    if (fan != nullptr) {
+      if (fan->espnow_reachable) {
+        out_ble_status = fan->ble_status;
+        return EspNowDisplayMode::ACTIVE;
+      }
+      out_ble_status = RemoteBleConnStatus::DISCONNECTED;
+      return EspNowDisplayMode::OFFLINE_DISCONNECTED;
     }
-    out_ble_status = RemoteBleConnStatus::DISCONNECTED;
-    return EspNowDisplayMode::OFFLINE_DISCONNECTED;
+    const RemoteShellyState *sh = find_shelly(entity_or_key);
+    if (sh != nullptr) {
+      if (ha_entity_available) {
+        return EspNowDisplayMode::NONE;  // Normal HA tier — no badge
+      }
+      if (sh->espnow_reachable) {
+        out_ble_status = RemoteBleConnStatus::CONNECTED;
+        return EspNowDisplayMode::ACTIVE;
+      }
+      out_ble_status = RemoteBleConnStatus::DISCONNECTED;
+      return EspNowDisplayMode::OFFLINE_DISCONNECTED;
+    }
+    return EspNowDisplayMode::NONE;
   }
 
-  bool get_text_state(const std::string &key, bool ha_connected, std::string &out) const {
+  bool get_text_state(const std::string &key, bool ha_entity_available, std::string &out) const {
     const std::string base = base_entity(key);
     const std::string attr = attr_name(key);
 
     auto fit = fan_entities_.find(base);
     if (fit != fan_entities_.end()) {
       const RemoteFanState *f = fit->second;
-      if (!f->has_state || (!f->espnow_reachable && ha_connected)) return false;
+      if (!f->has_state || (!f->espnow_reachable && ha_entity_available)) return false;
       if (attr.empty()) {
         out = f->fan_on ? "on" : "off";
         return true;
@@ -142,7 +184,7 @@ class EspNowFanRegistry {
     auto lit = light_entities_.find(base);
     if (lit != light_entities_.end()) {
       const RemoteFanState *f = lit->second;
-      if (!f->has_state || (!f->espnow_reachable && ha_connected)) return false;
+      if (!f->has_state || (!f->espnow_reachable && ha_entity_available)) return false;
       if (attr.empty()) {
         out = f->light_on ? "on" : "off";
         return true;
@@ -160,23 +202,61 @@ class EspNowFanRegistry {
       return false;
     }
 
+    auto sit = shelly_entities_.find(base);
+    if (sit != shelly_entities_.end()) {
+      const RemoteShellyState *sh = sit->second;
+      if (ha_entity_available || !sh->has_state) return false;
+      if (!sh->is_cover) {
+        if (attr.empty() || attr == "state") {
+          out = (sh->state_flags & 0x01) ? "on" : "off";
+          return true;
+        }
+        return false;
+      }
+      if (attr == "current_position") {
+        int pos = sh->position <= 100 ? static_cast<int>(sh->position)
+                                      : ((sh->state_flags & 0x01) ? 100 : 0);
+        out = std::to_string(pos);
+        return true;
+      }
+      if (attr.empty() || attr == "state") {
+        uint8_t motion = (sh->state_flags >> 1) & 0x03;
+        if (motion == 1) {
+          out = "opening";
+        } else if (motion == 2) {
+          out = "closing";
+        } else {
+          out = (sh->state_flags & 0x01) ? "open" : "closed";
+        }
+        return true;
+      }
+      return false;
+    }
+
     return false;
   }
 
-  bool get_binary_state(const std::string &key, bool ha_connected, bool &out) const {
+  bool get_binary_state(const std::string &key, bool ha_entity_available, bool &out) const {
     const std::string base = base_entity(key);
     auto fit = fan_entities_.find(base);
     if (fit != fan_entities_.end()) {
       const RemoteFanState *f = fit->second;
-      if (!f->has_state || (!f->espnow_reachable && ha_connected)) return false;
+      if (!f->has_state || (!f->espnow_reachable && ha_entity_available)) return false;
       out = f->fan_on;
       return true;
     }
     auto lit = light_entities_.find(base);
     if (lit != light_entities_.end()) {
       const RemoteFanState *f = lit->second;
-      if (!f->has_state || (!f->espnow_reachable && ha_connected)) return false;
+      if (!f->has_state || (!f->espnow_reachable && ha_entity_available)) return false;
       out = f->light_on;
+      return true;
+    }
+    auto sit = shelly_entities_.find(base);
+    if (sit != shelly_entities_.end()) {
+      const RemoteShellyState *sh = sit->second;
+      if (ha_entity_available || !sh->has_state || sh->is_cover) return false;
+      out = (sh->state_flags & 0x01) != 0;
       return true;
     }
     return false;
@@ -184,7 +264,7 @@ class EspNowFanRegistry {
 
   bool handle_action(const std::string &entity_id, const std::string &action,
                      const std::vector<std::pair<std::string, std::string>> &data,
-                     bool ha_connected) const;
+                     bool ha_entity_available) const;
 
  private:
   const RemoteFanState *find_fan(const std::string &entity_or_key) const {
@@ -194,6 +274,11 @@ class EspNowFanRegistry {
     auto lit = light_entities_.find(base);
     if (lit != light_entities_.end()) return lit->second;
     return nullptr;
+  }
+
+  const RemoteShellyState *find_shelly(const std::string &entity_or_key) const {
+    auto sit = shelly_entities_.find(base_entity(entity_or_key));
+    return sit != shelly_entities_.end() ? sit->second : nullptr;
   }
 
   static std::string base_entity(const std::string &key) {
@@ -209,6 +294,7 @@ class EspNowFanRegistry {
   EspNowFanBridge *bridge_{nullptr};
   std::map<std::string, RemoteFanState *> fan_entities_;
   std::map<std::string, RemoteFanState *> light_entities_;
+  std::map<std::string, RemoteShellyState *> shelly_entities_;
   std::function<void(const std::string &, const std::string &)> state_change_cb_;
   std::function<void()> redraw_cb_;
 };

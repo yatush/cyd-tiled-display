@@ -2585,8 +2585,8 @@ def update_lib():
             elif os.path.exists(hw_source):
                 shutil.copy2(hw_source, hw_target)
             
-        # Update external components (tile_ui, tuya_ble_fan, and espnow_fan_bridge) without backup
-        for comp_name in ('tile_ui', 'tuya_ble_fan', 'espnow_fan_bridge'):
+        # Update external components (tile_ui, tuya_ble_fan, espnow_fan_bridge, and shelly_ble_bridge) without backup
+        for comp_name in ('tile_ui', 'tuya_ble_fan', 'espnow_fan_bridge', 'shelly_ble_bridge'):
             source_comp = os.path.join(APP_DIR, 'esphome/external_components', comp_name)
             target_comp = os.path.join(BASE_DIR, 'external_components', comp_name)
             if os.path.exists(source_comp):
@@ -2689,7 +2689,7 @@ def check_lib_status():
         target_ui_hashes = get_directory_hashes(target_ui)
         ui_diff = get_diff(source_ui_hashes, target_ui_hashes)
 
-        for comp_name in ('tuya_ble_fan', 'espnow_fan_bridge'):
+        for comp_name in ('tuya_ble_fan', 'espnow_fan_bridge', 'shelly_ble_bridge'):
             source_comp = os.path.join(APP_DIR, 'esphome/external_components', comp_name)
             target_comp = os.path.join(BASE_DIR, 'external_components', comp_name)
             if os.path.exists(source_comp):
@@ -3162,6 +3162,7 @@ def list_ble_hubs(esphome_dir=None):
             })
 
         gree_ac = _extract_gree_ac_from_yaml(parsed)
+        shellys, detached_switches = _extract_shelly_bridge_from_yaml(parsed)
 
         hubs.append({
             'filename': fname,
@@ -3172,11 +3173,103 @@ def list_ble_hubs(esphome_dir=None):
             'network_key': str(bridge_cfg.get('network_key') or ''),
             'fans': fans,
             'gree_ac': gree_ac,
+            'shellys': shellys,
+            'detached_switches': detached_switches,
         })
     return hubs
 
 
 GREE_AC_MODELS = ('generic', 'yan', 'yaa', 'yac', 'yac1fb9', 'yx1ff', 'yag', 'ybofb')
+
+
+def _normalize_shelly_mac(mac):
+    return re.sub(r'[^0-9a-f]', '', str(mac or '').lower())
+
+
+def _normalize_shellys_config(raw_list):
+    if not isinstance(raw_list, list):
+        return []
+    out = []
+    seen = set()
+    for item in raw_list:
+        if not isinstance(item, dict):
+            continue
+        mac = _normalize_shelly_mac(item.get('mac_address') or item.get('mac'))
+        if len(mac) != 12:
+            continue
+        try:
+            channel = max(0, min(3, int(item.get('channel') or 0)))
+        except (TypeError, ValueError):
+            channel = 0
+        entity_id = str(item.get('entity_id') or '').strip()
+        kind = str(item.get('kind') or '').strip().lower()
+        if kind not in ('switch', 'light', 'cover'):
+            if entity_id.startswith('cover.'):
+                kind = 'cover'
+            elif entity_id.startswith('light.'):
+                kind = 'light'
+            else:
+                kind = 'switch'
+        key = (mac, channel, entity_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        entry = {
+            'name': str(item.get('name') or entity_id or mac).strip(),
+            'mac_address': mac,
+            'channel': channel,
+            'kind': kind,
+            'entity_id': entity_id,
+        }
+        if str(item.get('ip') or '').strip():
+            entry['ip'] = str(item['ip']).strip()
+        out.append(entry)
+    return out
+
+
+def _normalize_detached_switches_config(raw_list):
+    if not isinstance(raw_list, list):
+        return []
+    out = []
+    seen = set()
+    for item in raw_list:
+        if not isinstance(item, dict):
+            continue
+        mac = _normalize_shelly_mac(item.get('mac_address') or item.get('mac'))
+        if len(mac) != 12:
+            continue
+        try:
+            in_ch = max(0, min(3, int(item.get('input_channel') or 0)))
+        except (TypeError, ValueError):
+            in_ch = 0
+        target_fan_id = str(item.get('target_fan_device_id') or '').strip()
+        target_light = str(item.get('target_light_entity_id') or '').strip()
+        if not target_fan_id and not target_light:
+            continue
+        key = (mac, in_ch, target_fan_id, target_light)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            'name': str(item.get('name') or f'{mac} in:{in_ch}').strip(),
+            'mac_address': mac,
+            'input_channel': in_ch,
+            'target_fan_device_id': target_fan_id,
+            'target_light_entity_id': target_light,
+        })
+    return out
+
+
+def _extract_shelly_bridge_from_yaml(parsed):
+    if not isinstance(parsed, dict):
+        return [], []
+    sb = parsed.get('shelly_ble_bridge')
+    if not isinstance(sb, dict):
+        return [], []
+    return (
+        _normalize_shellys_config(sb.get('shellys')),
+        _normalize_detached_switches_config(sb.get('detached_switches')),
+    )
 
 
 def _normalize_gree_ac_config(raw):
@@ -3389,7 +3482,7 @@ def _remove_fans_from_host_yaml(filepath, fans_to_remove):
     return True
 
 
-def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, network_key, fans, gree_ac=None):
+def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, network_key, fans, gree_ac=None, shellys=None, detached_switches=None):
     fan_count = len(fans)
     max_conns = min(3, max(1, fan_count))
     idle_disconnect_s = 0 if (fan_count > 0 and fan_count <= max_conns) else 30
@@ -3582,6 +3675,35 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
             lines.append(yaml.safe_dump(debug_sensor_block, sort_keys=False, default_flow_style=False).rstrip())
             lines.append('')
 
+    shelly_list = shellys or []
+    detached_list = detached_switches or []
+    if shelly_list or detached_list:
+        sb_cfg = {'network_key': network_key}
+        if shelly_list:
+            sb_cfg['shellys'] = [
+                {
+                    'name': s['name'],
+                    'mac_address': s['mac_address'],
+                    'channel': int(s.get('channel') or 0),
+                    'kind': s.get('kind') or 'switch',
+                    'entity_id': s.get('entity_id') or '',
+                }
+                for s in shelly_list
+            ]
+        if detached_list:
+            sb_cfg['detached_switches'] = [
+                {
+                    'name': d['name'],
+                    'mac_address': d['mac_address'],
+                    'input_channel': int(d.get('input_channel') or 0),
+                    'target_fan_device_id': d.get('target_fan_device_id') or '',
+                    'target_light_entity_id': d.get('target_light_entity_id') or '',
+                }
+                for d in detached_list
+            ]
+        lines.append(yaml.safe_dump({'shelly_ble_bridge': sb_cfg}, sort_keys=False, default_flow_style=False).rstrip())
+        lines.append('')
+
     return '\n'.join(lines)
 
 
@@ -3617,6 +3739,8 @@ def save_ble_hub_yaml(payload, esphome_dir=None):
         if isinstance(f, dict) and str(f.get('device_id') or '').strip() and str(f.get('local_key') or '').strip()
     ]
     gree_ac = _normalize_gree_ac_config(payload.get('gree_ac'))
+    valid_shellys = _normalize_shellys_config(payload.get('shellys'))
+    valid_detached = _normalize_detached_switches_config(payload.get('detached_switches'))
 
     conflicts = _find_fan_ownership_conflicts(filename, valid_fans, root_dir)
     if conflicts and not payload.get('reassign'):
@@ -3644,6 +3768,8 @@ def save_ble_hub_yaml(payload, esphome_dir=None):
         network_key=network_key,
         fans=valid_fans,
         gree_ac=gree_ac,
+        shellys=valid_shellys,
+        detached_switches=valid_detached,
     )
 
     target_path = os.path.join(root_dir, filename)
@@ -3662,8 +3788,213 @@ def save_ble_hub_yaml(payload, esphome_dir=None):
         'network_key': network_key,
         'fans': valid_fans,
         'gree_ac': gree_ac,
+        'shellys': valid_shellys,
+        'detached_switches': valid_detached,
         'migrated_from': migrated_from,
     }, None, 200
+
+
+def _load_shelly_script_template():
+    candidates = [
+        os.path.join(APP_DIR, 'shelly', 'cyd_ble_backup.js'),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'shelly', 'cyd_ble_backup.js'),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                return f.read()
+    return None
+
+
+def _shelly_rpc_call(ip, method, params=None, password=None, timeout=6):
+    url = f"http://{ip}/rpc"
+    body = {'id': 1, 'method': method}
+    if params is not None:
+        body['params'] = params
+    auth = requests.auth.HTTPDigestAuth('admin', password) if password else None
+    resp = requests.post(url, json=body, auth=auth, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    if isinstance(data, dict) and data.get('error'):
+        raise RuntimeError(str(data['error']))
+    return data.get('result') if isinstance(data, dict) else data
+
+
+def deploy_shelly_script_to_device(ip, script_code, password=None, script_name='cyd_ble_backup'):
+    """Deploy and enable cyd_ble_backup.js on a Shelly Gen2/3/4 device over local HTTP RPC."""
+    info = _shelly_rpc_call(ip, 'Shelly.GetDeviceInfo', password=password) or {}
+    fw_id = str(info.get('fw_id') or '')
+    app_name = str(info.get('app') or '')
+    model = str(info.get('model') or '')
+    mac = _normalize_shelly_mac(info.get('mac') or '')
+    zigbee_warning = ('ZB' in fw_id.upper()) or ('ZB' in app_name.upper()) or ('ZIGBEE' in fw_id.upper())
+
+    scripts_res = _shelly_rpc_call(ip, 'Script.List', password=password) or {}
+    scripts = scripts_res.get('scripts') if isinstance(scripts_res, dict) else []
+    script_id = None
+    was_running = False
+    for sc in (scripts or []):
+        if isinstance(sc, dict) and sc.get('name') == script_name:
+            script_id = sc.get('id')
+            was_running = bool(sc.get('running'))
+            break
+
+    if script_id is None:
+        created = _shelly_rpc_call(ip, 'Script.Create', {'name': script_name}, password=password) or {}
+        script_id = created.get('id')
+        if script_id is None:
+            raise RuntimeError('Script.Create did not return a script id')
+    elif was_running:
+        _shelly_rpc_call(ip, 'Script.Stop', {'id': script_id}, password=password)
+
+    # Chunk Script.PutCode to stay well under Shelly's HTTP RPC payload limit
+    chunk_size = 1024
+    for offset in range(0, len(script_code), chunk_size):
+        chunk = script_code[offset:offset + chunk_size]
+        _shelly_rpc_call(
+            ip,
+            'Script.PutCode',
+            {'id': script_id, 'code': chunk, 'append': offset > 0},
+            password=password,
+        )
+
+    _shelly_rpc_call(
+        ip,
+        'Script.SetConfig',
+        {'id': script_id, 'config': {'name': script_name, 'enable': True}},
+        password=password,
+    )
+    _shelly_rpc_call(ip, 'Script.Start', {'id': script_id}, password=password)
+
+    return {
+        'ip': ip,
+        'ok': True,
+        'mac_address': mac,
+        'model': model,
+        'fw_id': fw_id,
+        'script_id': script_id,
+        'zigbee_warning': zigbee_warning,
+    }
+
+
+@app.route('/api/shelly/devices', methods=['GET'])
+def api_discover_shelly_devices():
+    """Auto-discover Shelly devices and their switch/light/cover entities from Home Assistant."""
+    if not SUPERVISOR_TOKEN:
+        return jsonify({'devices': [], 'error': 'Home Assistant Supervisor API not available in local dev mode'}), 200
+    template = (
+        "{% set ns = namespace(devs={}) %}"
+        "{% for eid in integration_entities('shelly') %}"
+        "{% set dom = eid.split('.')[0] %}"
+        "{% if dom in ['switch', 'light', 'cover'] %}"
+        "{% set did = device_id(eid) %}"
+        "{% if did %}"
+        "{% if did not in ns.devs %}"
+        "{% set conns = device_attr(did, 'connections') or [] %}"
+        "{% set mac_ns = namespace(v='') %}"
+        "{% for c in conns %}{% if c[0] == 'mac' %}{% set mac_ns.v = c[1] %}{% endif %}{% endfor %}"
+        "{% set ns.devs = dict(ns.devs, **{did: {"
+        "'name': device_attr(did, 'name_by_user') or device_attr(did, 'name') or did,"
+        "'model': device_attr(did, 'model') or '',"
+        "'mac': mac_ns.v,"
+        "'config_url': device_attr(did, 'configuration_url') or '',"
+        "'entities': []"
+        "}}) %}"
+        "{% endif %}"
+        "{% set _ = ns.devs[did]['entities'].append({'entity_id': eid, 'name': state_attr(eid, 'friendly_name') or eid, 'domain': dom}) %}"
+        "{% endif %}"
+        "{% endif %}"
+        "{% endfor %}"
+        "{{ ns.devs.values() | list | tojson }}"
+    )
+    try:
+        resp = requests.post(
+            f"{HA_URL}/api/template",
+            headers={'Authorization': f'Bearer {SUPERVISOR_TOKEN}', 'Content-Type': 'application/json'},
+            json={'template': template},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        raw_devs = json.loads(resp.text or '[]')
+        devices = []
+        for d in (raw_devs if isinstance(raw_devs, list) else []):
+            mac = _normalize_shelly_mac(d.get('mac') or '')
+            if len(mac) != 12:
+                continue
+            cfg_url = str(d.get('config_url') or '')
+            m_ip = re.search(r'https?://([^/:]+)', cfg_url)
+            ip = m_ip.group(1) if m_ip else ''
+            ents = d.get('entities') if isinstance(d.get('entities'), list) else []
+            ents_sorted = sorted(ents, key=lambda e: str(e.get('entity_id') or ''))
+            parsed_entities = []
+            for idx, ent in enumerate(ents_sorted):
+                eid = str(ent.get('entity_id') or '').strip()
+                dom = str(ent.get('domain') or 'switch').strip().lower()
+                # Infer channel from trailing _0/_1 or _switch_0/_switch_1 when present
+                ch = idx if dom != 'cover' else 0
+                m_ch = re.search(r'(?:switch|light|cover)_(\d+)$', eid)
+                if m_ch:
+                    ch = max(0, min(3, int(m_ch.group(1))))
+                parsed_entities.append({
+                    'entity_id': eid,
+                    'name': str(ent.get('name') or eid),
+                    'kind': dom if dom in ('switch', 'light', 'cover') else 'switch',
+                    'channel': ch,
+                })
+            devices.append({
+                'name': str(d.get('name') or mac),
+                'model': str(d.get('model') or ''),
+                'mac_address': mac,
+                'ip': ip,
+                'entities': parsed_entities,
+            })
+        return jsonify({'devices': devices})
+    except Exception as e:
+        return jsonify({'devices': [], 'error': str(e)}), 500
+
+
+@app.route('/api/shelly/deploy_script', methods=['POST'])
+def api_deploy_shelly_script():
+    """Deploy cyd_ble_backup.js to one or more Shelly Gen3/Gen4 devices via local HTTP RPC."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        targets = payload.get('targets') if isinstance(payload.get('targets'), list) else []
+        if not targets:
+            return jsonify({'error': 'At least one Shelly target with an IP address is required'}), 400
+        network_key = str(payload.get('network_key') or '').strip() or get_or_create_espnow_network_key()
+        password = str(payload.get('password') or '').strip() or None
+
+        template = _load_shelly_script_template()
+        if not template:
+            return jsonify({'error': 'shelly/cyd_ble_backup.js not found in add-on'}), 500
+        safe_key = network_key.replace('\\', '\\\\').replace('"', '\\"')
+        script_code = template.replace('__NETWORK_KEY__', safe_key)
+
+        results = []
+        seen_ips = set()
+        for t in targets:
+            if not isinstance(t, dict):
+                continue
+            ip = str(t.get('ip') or '').strip()
+            name = str(t.get('name') or ip).strip()
+            if not ip or ip in seen_ips:
+                continue
+            seen_ips.add(ip)
+            try:
+                res = deploy_shelly_script_to_device(ip, script_code, password=password)
+                res['name'] = name
+                results.append(res)
+            except Exception as e:
+                results.append({
+                    'ip': ip,
+                    'name': name,
+                    'ok': False,
+                    'error': str(e),
+                })
+
+        return jsonify({'results': results})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/ble_hubs', methods=['GET'])

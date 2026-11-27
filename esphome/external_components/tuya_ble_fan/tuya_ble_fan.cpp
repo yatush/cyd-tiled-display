@@ -749,6 +749,8 @@ void TuyaBleFanDevice::set_conn_status(BleConnStatus status) {
 
 void TuyaBleFanHub::setup() {
   sessions_.assign(max_connections_, FanSession{});
+  TuyaBleFanRegistry::instance().set_in_flight_connect_provider(
+      [this]() { return this->has_in_flight_connect(); });
   for (auto *fan : fans_) {
     fan->set_hub(this);
     fan->setup();

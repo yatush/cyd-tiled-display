@@ -27,6 +27,10 @@
 #include "esphome/components/tuya_ble_fan/tuya_ble_fan.h"
 #endif
 
+#ifdef USE_SHELLY_BLE_BRIDGE
+#include "esphome/components/shelly_ble_bridge/shelly_ble_registry.h"
+#endif
+
 namespace esphome {
 namespace espnow_fan_bridge {
 
@@ -44,6 +48,10 @@ class EspNowFanBridge : public Component {
   void add_remote_fan(const std::string &name, const std::string &fan_entity_id,
                       const std::string &light_entity_id);
 
+  // CYD role: register a backup-enabled Shelly entity reachable via headless hubs
+  void add_remote_shelly(const std::string &name, const std::string &mac_address, uint8_t channel,
+                         bool is_cover, const std::string &entity_id);
+
   void setup() override;
   void loop() override;
   void dump_config() override;
@@ -53,6 +61,8 @@ class EspNowFanBridge : public Component {
   // CYD role: dispatch an action from PerformHaAction()
   bool send_fan_action(RemoteFanState *fan, bool is_light, const std::string &action,
                        const std::vector<std::pair<std::string, std::string>> &data);
+  bool send_shelly_action(RemoteShellyState *sh, const std::string &action,
+                          const std::vector<std::pair<std::string, std::string>> &data);
 
  protected:
   struct RxPacket {
@@ -72,6 +82,14 @@ class EspNowFanBridge : public Component {
     uint16_t seq{0};
     CmdPayload cmd{};
     uint32_t fan_key_hash{0};
+    uint32_t created_ms{0};
+    uint32_t last_tx_ms{0};
+    uint8_t attempts{0};
+  };
+
+  struct PendingShellyCmd {
+    uint16_t seq{0};
+    ShellyCmdPayload cmd{};
     uint32_t created_ms{0};
     uint32_t last_tx_ms{0};
     uint8_t attempts{0};
@@ -112,12 +130,21 @@ class EspNowFanBridge : public Component {
   tuya_ble_fan::TuyaBleFanDevice *hub_find_device(uint32_t fan_key_hash);
 #endif
 
+#ifdef USE_SHELLY_BLE_BRIDGE
+  void hub_handle_shelly_cmd(const ShellyCmdPayload &cmd, uint16_t seq);
+  void hub_broadcast_shelly_state(const shelly_ble_bridge::ShellyCachedState &st);
+  void hub_broadcast_all_shelly_states();
+#endif
+
   // CYD-side helpers
   void cyd_handle_state(const StatePayload &st, uint32_t now_ms);
+  void cyd_handle_shelly_state(const ShellyStatePayload &st, uint32_t now_ms);
   void cyd_handle_ack(const AckPayload &ack, uint32_t now_ms);
   void cyd_tick_pending_cmds(uint32_t now_ms);
   RemoteFanState *cyd_find_remote_fan(uint32_t fan_key_hash);
+  RemoteShellyState *cyd_find_remote_shelly(uint32_t device_id, uint8_t channel);
   void cyd_queue_cmd(const CmdPayload &cmd, uint32_t now_ms);
+  void cyd_queue_shelly_cmd(const ShellyCmdPayload &cmd, uint32_t now_ms);
 
   BridgeRole role_{BridgeRole::CYD};
   std::string network_key_{"cyd_espnow_default"};
@@ -143,7 +170,9 @@ class EspNowFanBridge : public Component {
 
   std::vector<PeerInfo> peers_;
   std::vector<RemoteFanState> remote_fans_;
+  std::vector<RemoteShellyState> remote_shellys_;
   std::vector<PendingCmd> pending_cmds_;
+  std::vector<PendingShellyCmd> pending_shelly_cmds_;
   bool ui_dirty_{false};
 };
 

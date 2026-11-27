@@ -24,14 +24,14 @@ EspNowFanBridge *EspNowFanBridge::active_instance_ = nullptr;
 
 bool EspNowFanRegistry::handle_action(const std::string &entity_id, const std::string &action,
                                       const std::vector<std::pair<std::string, std::string>> &data,
-                                      bool ha_connected) const {
+                                      bool ha_entity_available) const {
   if (bridge_ == nullptr) return false;
   const std::string base = base_entity(entity_id);
 
   auto fit = fan_entities_.find(base);
   if (fit != fan_entities_.end()) {
     RemoteFanState *fan = fit->second;
-    if (!fan->espnow_reachable && ha_connected) {
+    if (!fan->espnow_reachable && ha_entity_available) {
       return false;  // Seamless HA fallback (e.g. different mesh channels)
     }
     return bridge_->send_fan_action(fan, false, action, data);
@@ -40,10 +40,18 @@ bool EspNowFanRegistry::handle_action(const std::string &entity_id, const std::s
   auto lit = light_entities_.find(base);
   if (lit != light_entities_.end()) {
     RemoteFanState *fan = lit->second;
-    if (!fan->espnow_reachable && ha_connected) {
+    if (!fan->espnow_reachable && ha_entity_available) {
       return false;  // Seamless HA fallback
     }
     return bridge_->send_fan_action(fan, true, action, data);
+  }
+
+  auto sit = shelly_entities_.find(base);
+  if (sit != shelly_entities_.end()) {
+    if (ha_entity_available) {
+      return false;  // Normal HA tier — let HA handle it
+    }
+    return bridge_->send_shelly_action(sit->second, action, data);
   }
 
   return false;
@@ -88,12 +96,28 @@ void EspNowFanBridge::add_remote_fan(const std::string &name, const std::string 
   remote_fans_.push_back(std::move(st));
 }
 
+void EspNowFanBridge::add_remote_shelly(const std::string &name, const std::string &mac_address,
+                                        uint8_t channel, bool is_cover,
+                                        const std::string &entity_id) {
+  RemoteShellyState st;
+  st.name = name;
+  st.mac_address = normalize_mac_hex(mac_address);
+  st.device_id = shelly_device_id_from_mac(st.mac_address);
+  st.channel = channel;
+  st.is_cover = is_cover;
+  st.entity_id = entity_id;
+  remote_shellys_.push_back(std::move(st));
+}
+
 void EspNowFanBridge::setup() {
   active_instance_ = this;
   EspNowFanRegistry::instance().set_bridge(this);
 
   for (auto &rf : remote_fans_) {
     EspNowFanRegistry::instance().register_remote_fan(&rf);
+  }
+  for (auto &rs : remote_shellys_) {
+    EspNowFanRegistry::instance().register_remote_shelly(&rs);
   }
 
   // Register Wi-Fi event hooks to track connect/disconnect and background scan completion
@@ -115,6 +139,15 @@ void EspNowFanBridge::setup() {
   }
 #endif
 
+#ifdef USE_SHELLY_BLE_BRIDGE
+  if (role_ == BridgeRole::HUB) {
+    shelly_ble_bridge::ShellyBleBridgeRegistry::instance().set_state_callback(
+        [this](const shelly_ble_bridge::ShellyCachedState &st) {
+          this->hub_broadcast_shelly_state(st);
+        });
+  }
+#endif
+
   publish_channel_if_changed(true);
 }
 
@@ -129,6 +162,13 @@ void EspNowFanBridge::dump_config() {
       ESP_LOGCONFIG(TAG, "    - %s (fan=%s, light=%s, hash=0x%08X)", rf.name.c_str(),
                     rf.fan_entity_id.c_str(), rf.light_entity_id.c_str(),
                     static_cast<unsigned>(rf.fan_key_hash));
+    }
+    ESP_LOGCONFIG(TAG, "  Remote Shellys: %u", static_cast<unsigned>(remote_shellys_.size()));
+    for (const auto &rs : remote_shellys_) {
+      ESP_LOGCONFIG(TAG, "    - %s (entity=%s, mac=%s, ch=%u, id=0x%08X, cover=%d)",
+                    rs.name.c_str(), rs.entity_id.c_str(), rs.mac_address.c_str(),
+                    static_cast<unsigned>(rs.channel), static_cast<unsigned>(rs.device_id),
+                    rs.is_cover ? 1 : 0);
     }
   }
 }
@@ -404,6 +444,15 @@ void EspNowFanBridge::loop() {
         ui_dirty_ = true;
       }
     }
+    for (auto &rs : remote_shellys_) {
+      if (rs.espnow_reachable &&
+          static_cast<int32_t>(check_now - rs.last_seen_ms) >
+              static_cast<int32_t>(PEER_TIMEOUT_MS)) {
+        ESP_LOGW(TAG, "[%s] ESP-NOW Shelly hub timed out (unreachable)", rs.name.c_str());
+        rs.espnow_reachable = false;
+        ui_dirty_ = true;
+      }
+    }
     if (ui_dirty_) {
       ui_dirty_ = false;
       EspNowFanRegistry::instance().notify_redraw();
@@ -432,10 +481,22 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       if (!wifi_connected_.load()) {
         hunt_.record_peer_channel(peer_ch);
       }
+      if (role_ == BridgeRole::CYD && p.role == BridgeRole::HUB) {
+        for (auto &rs : remote_shellys_) {
+          if (!rs.espnow_reachable) ui_dirty_ = true;
+          rs.espnow_reachable = true;
+          rs.last_seen_ms = now;
+        }
+      }
       send_pong(hdr.seq);
 #ifdef USE_TUYA_BLE_FAN
       if (role_ == BridgeRole::HUB && p.role == BridgeRole::CYD) {
         hub_broadcast_all_states();
+      }
+#endif
+#ifdef USE_SHELLY_BLE_BRIDGE
+      if (role_ == BridgeRole::HUB && p.role == BridgeRole::CYD) {
+        hub_broadcast_all_shelly_states();
       }
 #endif
       break;
@@ -451,6 +512,11 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
         hunt_.record_peer_channel(peer_ch);
       }
       if (role_ == BridgeRole::CYD && p.role == BridgeRole::HUB) {
+        for (auto &rs : remote_shellys_) {
+          if (!rs.espnow_reachable) ui_dirty_ = true;
+          rs.espnow_reachable = true;
+          rs.last_seen_ms = now;
+        }
         send_sync_req();
       }
       break;
@@ -466,6 +532,11 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
 #ifdef USE_TUYA_BLE_FAN
       if (role_ == BridgeRole::HUB) {
         hub_broadcast_all_states();
+      }
+#endif
+#ifdef USE_SHELLY_BLE_BRIDGE
+      if (role_ == BridgeRole::HUB) {
+        hub_broadcast_all_shelly_states();
       }
 #endif
       break;
@@ -501,6 +572,31 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       }
       if (role_ == BridgeRole::CYD) {
         cyd_handle_state(st, now);
+      }
+      break;
+    }
+
+    case MsgType::SHELLY_CMD: {
+      ShellyCmdPayload scmd;
+      if (!decode_shelly_cmd(payload.data(), payload.size(), scmd)) return;
+      upsert_peer(pkt.src_mac, BridgeRole::CYD, rx_ch, now);
+#ifdef USE_SHELLY_BLE_BRIDGE
+      if (role_ == BridgeRole::HUB) {
+        hub_handle_shelly_cmd(scmd, hdr.seq);
+      }
+#endif
+      break;
+    }
+
+    case MsgType::SHELLY_STATE: {
+      ShellyStatePayload sst;
+      if (!decode_shelly_state(payload.data(), payload.size(), sst)) return;
+      upsert_peer(pkt.src_mac, BridgeRole::HUB, rx_ch, now);
+      if (!wifi_connected_.load()) {
+        hunt_.record_peer_channel(rx_ch);
+      }
+      if (role_ == BridgeRole::CYD) {
+        cyd_handle_shelly_state(sst, now);
       }
       break;
     }
@@ -606,6 +702,40 @@ void EspNowFanBridge::hub_broadcast_all_states() {
 
 #endif  // USE_TUYA_BLE_FAN
 
+#ifdef USE_SHELLY_BLE_BRIDGE
+
+void EspNowFanBridge::hub_handle_shelly_cmd(const ShellyCmdPayload &cmd, uint16_t seq) {
+  bool accepted = shelly_ble_bridge::ShellyBleBridgeRegistry::instance().enqueue_command(
+      cmd.device_id, cmd.channel, static_cast<uint8_t>(cmd.opcode), cmd.arg, cmd.flags);
+  if (!accepted) {
+    return;  // Not managed by this hub — let another hub handle & ACK it
+  }
+  AckPayload ack;
+  ack.ack_seq = seq;
+  ack.status = AckStatus::OK;
+  broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
+}
+
+void EspNowFanBridge::hub_broadcast_shelly_state(const shelly_ble_bridge::ShellyCachedState &st) {
+  if (!espnow_ready_ || !st.has_state) return;
+  ShellyStatePayload out;
+  out.device_id = st.device_id;
+  out.channel = st.channel;
+  out.kind = static_cast<ShellyKind>(st.kind);
+  out.state_flags = st.state_flags;
+  out.position = st.position;
+  out.ble_rssi = st.ble_rssi;
+  broadcast_frame(MsgType::SHELLY_STATE, next_seq_++, encode_shelly_state(out));
+}
+
+void EspNowFanBridge::hub_broadcast_all_shelly_states() {
+  for (const auto &st : shelly_ble_bridge::ShellyBleBridgeRegistry::instance().all_cached_states()) {
+    hub_broadcast_shelly_state(st);
+  }
+}
+
+#endif  // USE_SHELLY_BLE_BRIDGE
+
 // ============================================================================
 // CYD-side implementation
 // ============================================================================
@@ -615,6 +745,40 @@ RemoteFanState *EspNowFanBridge::cyd_find_remote_fan(uint32_t fan_key_hash) {
     if (rf.fan_key_hash == fan_key_hash) return &rf;
   }
   return nullptr;
+}
+
+RemoteShellyState *EspNowFanBridge::cyd_find_remote_shelly(uint32_t device_id, uint8_t channel) {
+  for (auto &rs : remote_shellys_) {
+    if (rs.device_id == device_id && rs.channel == channel) return &rs;
+  }
+  return nullptr;
+}
+
+void EspNowFanBridge::cyd_handle_shelly_state(const ShellyStatePayload &st, uint32_t now_ms) {
+  auto *rs = cyd_find_remote_shelly(st.device_id, st.channel);
+  if (rs == nullptr) return;
+
+  const bool prev_has = rs->has_state;
+  const bool prev_reach = rs->espnow_reachable;
+  const uint8_t prev_flags = rs->state_flags;
+  const uint8_t prev_pos = rs->position;
+
+  rs->has_state = true;
+  rs->espnow_reachable = true;
+  rs->last_seen_ms = now_ms;
+  rs->state_flags = st.state_flags;
+  rs->position = st.position;
+  rs->ble_rssi = st.ble_rssi;
+
+  if (!prev_reach) {
+    ESP_LOGI(TAG, "[%s] Shelly ESP-NOW state received (flags=0x%02X pos=%u rssi=%d)",
+             rs->name.c_str(), static_cast<unsigned>(rs->state_flags),
+             static_cast<unsigned>(rs->position), static_cast<int>(rs->ble_rssi));
+  }
+
+  if (!prev_has || !prev_reach || prev_flags != rs->state_flags || prev_pos != rs->position) {
+    ui_dirty_ = true;
+  }
 }
 
 void EspNowFanBridge::cyd_handle_state(const StatePayload &st, uint32_t now_ms) {
@@ -694,6 +858,21 @@ void EspNowFanBridge::cyd_handle_ack(const AckPayload &ack, uint32_t now_ms) {
       return;
     }
   }
+  for (auto it = pending_shelly_cmds_.begin(); it != pending_shelly_cmds_.end(); ++it) {
+    if (it->seq == ack.ack_seq) {
+      ESP_LOGD(TAG, "RX ESP-NOW Shelly ACK seq=%u status=%u", ack.ack_seq,
+               static_cast<unsigned>(ack.status));
+      if (auto *rs = cyd_find_remote_shelly(it->cmd.device_id, it->cmd.channel)) {
+        if (!rs->espnow_reachable) {
+          rs->espnow_reachable = true;
+          ui_dirty_ = true;
+        }
+        rs->last_seen_ms = now_ms;
+      }
+      pending_shelly_cmds_.erase(it);
+      return;
+    }
+  }
 }
 
 void EspNowFanBridge::cyd_queue_cmd(const CmdPayload &cmd, uint32_t now_ms) {
@@ -720,6 +899,30 @@ void EspNowFanBridge::cyd_queue_cmd(const CmdPayload &cmd, uint32_t now_ms) {
   pending_cmds_.push_back(pending);
 }
 
+void EspNowFanBridge::cyd_queue_shelly_cmd(const ShellyCmdPayload &cmd, uint32_t now_ms) {
+  PendingShellyCmd pending;
+  pending.seq = next_seq_++;
+  pending.cmd = cmd;
+  pending.created_ms = now_ms;
+  pending.last_tx_ms = now_ms;
+  pending.attempts = 1;
+
+  ESP_LOGD(TAG, "TX ESP-NOW SHELLY_CMD seq=%u dev=0x%08X ch=%u op=%u arg=%u", pending.seq,
+           static_cast<unsigned>(cmd.device_id), static_cast<unsigned>(cmd.channel),
+           static_cast<unsigned>(cmd.opcode), static_cast<unsigned>(cmd.arg));
+  broadcast_frame(MsgType::SHELLY_CMD, pending.seq, encode_shelly_cmd(pending.cmd));
+
+  // Coalesce older pending commands for the same (device_id, channel)
+  for (auto it = pending_shelly_cmds_.begin(); it != pending_shelly_cmds_.end();) {
+    if (it->cmd.device_id == cmd.device_id && it->cmd.channel == cmd.channel) {
+      it = pending_shelly_cmds_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  pending_shelly_cmds_.push_back(pending);
+}
+
 void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
   for (auto it = pending_cmds_.begin(); it != pending_cmds_.end();) {
     if (static_cast<int32_t>(now_ms - it->last_tx_ms) <
@@ -741,6 +944,29 @@ void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
     it->attempts++;
     it->last_tx_ms = now_ms;
     broadcast_frame(MsgType::CMD, it->seq, encode_cmd(it->cmd));
+    ++it;
+  }
+
+  for (auto it = pending_shelly_cmds_.begin(); it != pending_shelly_cmds_.end();) {
+    if (static_cast<int32_t>(now_ms - it->last_tx_ms) <
+        static_cast<int32_t>(CMD_RETRY_INTERVAL_MS)) {
+      ++it;
+      continue;
+    }
+    if (it->attempts >= CMD_MAX_ATTEMPTS) {
+      ESP_LOGW(TAG, "ESP-NOW Shelly cmd seq=%u timed out after %u attempts", it->seq, it->attempts);
+      if (auto *rs = cyd_find_remote_shelly(it->cmd.device_id, it->cmd.channel)) {
+        if (rs->espnow_reachable) {
+          rs->espnow_reachable = false;
+          ui_dirty_ = true;
+        }
+      }
+      it = pending_shelly_cmds_.erase(it);
+      continue;
+    }
+    it->attempts++;
+    it->last_tx_ms = now_ms;
+    broadcast_frame(MsgType::SHELLY_CMD, it->seq, encode_shelly_cmd(it->cmd));
     ++it;
   }
 }
@@ -892,6 +1118,76 @@ bool EspNowFanBridge::send_fan_action(RemoteFanState *fan, bool is_light,
     EspNowFanRegistry::instance().notify_state_changed(fan->light_entity_id,
                                                        fan->light_on ? "on" : "off");
   }
+  ui_dirty_ = true;
+  return true;
+}
+
+bool EspNowFanBridge::send_shelly_action(
+    RemoteShellyState *sh, const std::string &action,
+    const std::vector<std::pair<std::string, std::string>> &data) {
+  if (sh == nullptr) return false;
+  const uint32_t now = millis();
+
+  // Strip domain prefix if present (e.g. "switch.toggle" -> "toggle")
+  std::string act = action;
+  size_t dot = act.find('.');
+  if (dot != std::string::npos) act = act.substr(dot + 1);
+
+  ShellyCmdPayload cmd;
+  cmd.device_id = sh->device_id;
+  cmd.channel = sh->channel;
+  cmd.arg = 0;
+  cmd.flags = 0;
+
+  if (!sh->is_cover) {
+    if (act == "toggle") {
+      cmd.opcode = ShellyOpcode::SW_TOGGLE;
+      sh->state_flags ^= SHELLY_FLAG_ON_OR_OPEN;
+    } else if (act == "turn_on") {
+      cmd.opcode = ShellyOpcode::SW_ON;
+      sh->state_flags |= SHELLY_FLAG_ON_OR_OPEN;
+    } else if (act == "turn_off") {
+      cmd.opcode = ShellyOpcode::SW_OFF;
+      sh->state_flags &= static_cast<uint8_t>(~SHELLY_FLAG_ON_OR_OPEN);
+    } else {
+      return false;
+    }
+  } else {
+    if (act == "open_cover") {
+      cmd.opcode = ShellyOpcode::COV_OPEN;
+      sh->state_flags = static_cast<uint8_t>((sh->state_flags & ~SHELLY_FLAG_MOTION_MASK) |
+                                             (1u << SHELLY_FLAG_MOTION_SHIFT) |
+                                             SHELLY_FLAG_ON_OR_OPEN);
+    } else if (act == "close_cover") {
+      cmd.opcode = ShellyOpcode::COV_CLOSE;
+      sh->state_flags = static_cast<uint8_t>((sh->state_flags & ~SHELLY_FLAG_MOTION_MASK) |
+                                             (2u << SHELLY_FLAG_MOTION_SHIFT));
+    } else if (act == "stop_cover") {
+      cmd.opcode = ShellyOpcode::COV_STOP;
+      sh->state_flags &= static_cast<uint8_t>(~SHELLY_FLAG_MOTION_MASK);
+    } else if (act == "set_cover_position") {
+      const auto *pos_s = find_data_value(data, "position");
+      int pos = pos_s ? clamp_int(std::atoi(pos_s->c_str()), 0, 100) : 50;
+      cmd.opcode = ShellyOpcode::COV_POS;
+      cmd.arg = static_cast<uint8_t>(pos);
+      if (sh->has_state && sh->position <= 100) {
+        uint8_t motion = (pos > sh->position) ? 1 : ((pos < sh->position) ? 2 : 0);
+        sh->state_flags = static_cast<uint8_t>((sh->state_flags & ~SHELLY_FLAG_MOTION_MASK) |
+                                               (motion << SHELLY_FLAG_MOTION_SHIFT));
+      }
+      if (pos > 0) {
+        sh->state_flags |= SHELLY_FLAG_ON_OR_OPEN;
+      } else {
+        sh->state_flags &= static_cast<uint8_t>(~SHELLY_FLAG_ON_OR_OPEN);
+      }
+      sh->position = static_cast<uint8_t>(pos);
+    } else {
+      return false;
+    }
+  }
+
+  sh->has_state = true;
+  cyd_queue_shelly_cmd(cmd, now);
   ui_dirty_ = true;
   return true;
 }

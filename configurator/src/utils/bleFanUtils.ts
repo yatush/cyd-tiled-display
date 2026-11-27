@@ -503,6 +503,56 @@ export function resolveEffectiveEspNowFans(
   return Array.from(byKey.values());
 }
 
+export function resolveEffectiveEspNowShellys(
+  config: Config,
+  bleHubs: HeadlessHubConfig[] = []
+): import('../types').ShellyBackupItem[] {
+  const referenced = new Set<string>();
+  const addRef = (raw: any) => {
+    if (typeof raw !== 'string') return;
+    const base = raw.split('|')[0].trim();
+    if (base) referenced.add(base);
+  };
+
+  for (const page of config.pages || []) {
+    for (const tile of page.tiles || []) {
+      const ents = (tile as any).entities;
+      if (Array.isArray(ents)) {
+        for (const e of ents) {
+          if (typeof e === 'string') addRef(e);
+          else if (e && typeof e === 'object') {
+            addRef(e.entity);
+            addRef(e.entity_id);
+          }
+        }
+      }
+      addRef((tile as any).entity);
+      addRef((tile as any).dynamic_entity);
+    }
+  }
+  for (const vals of Object.values(config.dynamic_entity_values || {})) {
+    for (const v of vals || []) {
+      if (typeof v === 'string') addRef(v);
+      else if (v && typeof v === 'object') {
+        addRef((v as any).entity);
+        addRef((v as any).entity_id);
+      }
+    }
+  }
+
+  const out: import('../types').ShellyBackupItem[] = [];
+  const seen = new Set<string>();
+  for (const hub of bleHubs || []) {
+    for (const sh of hub.shellys || []) {
+      const eid = (sh.entity_id || '').trim();
+      if (!eid || !referenced.has(eid) || seen.has(eid)) continue;
+      seen.add(eid);
+      out.push(sh);
+    }
+  }
+  return out;
+}
+
 export interface EspNowCydYamlSections {
   packageLine: string;
   componentSection: string;
@@ -511,12 +561,16 @@ export interface EspNowCydYamlSections {
 export function buildEspNowCydYamlSections(
   espnowFans: EspNowFanLink[] = [],
   networkKey?: string,
-  fallbackChannel: number = 1
+  fallbackChannel: number = 1,
+  espnowShellys: import('../types').ShellyBackupItem[] = []
 ): EspNowCydYamlSections {
   const validFans = (espnowFans || []).filter(
     f => f && (f.fan_entity_id?.trim() || f.light_entity_id?.trim())
   );
-  if (validFans.length === 0) {
+  const validShellys = (espnowShellys || []).filter(
+    s => s && s.mac_address?.trim() && s.entity_id?.trim()
+  );
+  if (validFans.length === 0 && validShellys.length === 0) {
     return { packageLine: '', componentSection: '' };
   }
 
@@ -529,14 +583,29 @@ export function buildEspNowCydYamlSections(
     return entry;
   });
 
+  const serializedShellys = validShellys.map(s => ({
+    name: (s.name || s.entity_id).trim(),
+    mac_address: s.mac_address.trim().toLowerCase().replace(/[^0-9a-f]/g, ''),
+    channel: Number.isFinite(s.channel) ? s.channel : 0,
+    kind: s.kind || (s.entity_id.startsWith('cover.') ? 'cover' : 'switch'),
+    entity_id: s.entity_id.trim(),
+  }));
+
   const effectiveKey = networkKey?.trim() || DEFAULT_ESPNOW_NETWORK_KEY;
+  const bridgeInner: Record<string, any> = {
+    role: 'cyd',
+    network_key: effectiveKey,
+    fallback_channel: Math.max(1, Math.min(13, Math.floor(fallbackChannel || 1))),
+  };
+  if (serializedFans.length > 0) {
+    bridgeInner.fans = serializedFans;
+  }
+  if (serializedShellys.length > 0) {
+    bridgeInner.shellys = serializedShellys;
+  }
+
   const bridgeBlock: Record<string, any> = {
-    espnow_fan_bridge: {
-      role: 'cyd',
-      network_key: effectiveKey,
-      fallback_channel: Math.max(1, Math.min(13, Math.floor(fallbackChannel || 1))),
-      fans: serializedFans,
-    },
+    espnow_fan_bridge: bridgeInner,
   };
 
   return {

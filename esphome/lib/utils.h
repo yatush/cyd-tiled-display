@@ -482,6 +482,20 @@ void InitSensor(const std::string& sensor) {
   if (entity.find("climate.") == 0 || entity.find("fan.") == 0) {
     InitSensor(entity, entity);
   }
+#ifdef USE_ESPNOW_FAN_BRIDGE
+  // For Shelly backup switch/light entities, also subscribe a raw text sensor so we can
+  // detect per-entity "unavailable"/"unknown" while HA is connected (HomeassistantBinarySensor
+  // ignores "unavailable" and retains its previous bool state).
+  if (IsBinSensor(entity) &&
+      esphome::espnow_fan_bridge::EspNowFanRegistry::instance().handles_shelly_entity(entity) &&
+      id(text_sensors).count(entity) == 0) {
+    auto* avail_sensor = new esphome::homeassistant::HomeassistantTextSensor();
+    avail_sensor->set_entity_id(Repository::instance().ptr(entity)->c_str());
+    avail_sensor->add_on_state_callback([](std::string) { id(disp).update(); });
+    avail_sensor->setup();
+    id(text_sensors)[entity] = avail_sensor;
+  }
+#endif
   for (const std::string& att : getRequiredAttributes(entity)) {
     InitSensor(entity + "|" + att, entity, att);
   }
@@ -510,6 +524,18 @@ inline bool IsHaApiConnected() {
 #endif
 }
 
+inline bool IsEntityHaAvailable(const std::string& entity_or_key) {
+  if (!IsHaApiConnected()) return false;
+  const std::string base = GetSensor(entity_or_key);
+  auto it = id(text_sensors).find(base);
+  if (it != id(text_sensors).end() && it->second != nullptr) {
+    if (!it->second->has_state()) return false;
+    const std::string& st = it->second->state;
+    return !st.empty() && st != "unavailable" && st != "unknown";
+  }
+  return true;
+}
+
 // Retrieves the value of a text sensor.
 std::string GetTextSensorValue(const std::string& key) {
 #ifdef USE_TUYA_BLE_FAN
@@ -521,7 +547,7 @@ std::string GetTextSensorValue(const std::string& key) {
 #ifdef USE_ESPNOW_FAN_BRIDGE
   std::string espnow_val;
   if (esphome::espnow_fan_bridge::EspNowFanRegistry::instance().get_text_state(
-          key, IsHaApiConnected(), espnow_val)) {
+          key, IsEntityHaAvailable(key), espnow_val)) {
     return espnow_val;
   }
 #endif
@@ -557,7 +583,7 @@ bool GetBinSensorValue(const std::string& key) {
 #ifdef USE_ESPNOW_FAN_BRIDGE
   bool espnow_val = false;
   if (esphome::espnow_fan_bridge::EspNowFanRegistry::instance().get_binary_state(
-          key, IsHaApiConnected(), espnow_val)) {
+          key, IsEntityHaAvailable(key), espnow_val)) {
     return espnow_val;
   }
 #endif
@@ -665,7 +691,8 @@ bool GetWorstEspNowStatus(const std::vector<std::string>& entities,
   auto worst = RemoteBleConnStatus::CONNECTED;
   for (const auto& item : entities) {
     RemoteBleConnStatus ble_st = RemoteBleConnStatus::DISCONNECTED;
-    auto mode = EspNowFanRegistry::instance().get_display_mode(GetSensor(item), false, ble_st);
+    auto mode = EspNowFanRegistry::instance().get_display_mode(
+        GetSensor(item), IsEntityHaAvailable(item), ble_st);
     if (mode == EspNowDisplayMode::NONE) continue;
     if (mode == EspNowDisplayMode::OFFLINE_DISCONNECTED) {
       any_offline = true;
@@ -748,7 +775,7 @@ void PerformHaAction(
 #endif
 #ifdef USE_ESPNOW_FAN_BRIDGE
   if (esphome::espnow_fan_bridge::EspNowFanRegistry::instance().handle_action(
-          entity, action, data, IsHaApiConnected())) {
+          entity, action, data, IsEntityHaAvailable(entity))) {
     ESP_LOGI("espnow_action", "Action: %s, Entity: %s (routed over ESP-NOW)", action.c_str(),
              entity.c_str());
     return;
