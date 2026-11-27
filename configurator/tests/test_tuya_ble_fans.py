@@ -917,6 +917,8 @@ def test_probe_shelly_detached_channels_and_encode_blob(monkeypatch):
     responses = {
         "192.168.1.10": {
             "sys": {"device": {"profile": "switch"}},
+            "input:0": {"type": "switch"},
+            "input:1": {"type": "switch"},
             "switch:0": {"in_mode": "detached"},
             "switch:1": {"in_mode": "flip"},
         },
@@ -930,11 +932,19 @@ def test_probe_shelly_detached_channels_and_encode_blob(monkeypatch):
             "input:0": {"type": "button"},
             "input:2": {"type": "switch"},
         },
+        "192.168.1.13": {
+            "sys": {"device": {"profile": "switch"}},
+            "input:0": {"type": "button"},
+            "switch:0": {"in_mode": "detached"},
+        },
     }
     monkeypatch.setattr(server, "_shelly_rpc_call", lambda ip, method, timeout=1.2: responses[ip])
     assert server._probe_shelly_detached_channels("192.168.1.10") == [0]
     assert server._probe_shelly_detached_channels("192.168.1.11") == []
-    assert server._probe_shelly_detached_channels("192.168.1.12") == [0, 2]
+    # input:0 is button mode (excluded), input:2 is switch mode (included)
+    assert server._probe_shelly_input_info("192.168.1.12") == ([2], [0])
+    # detached switch in button mode is excluded
+    assert server._probe_shelly_input_info("192.168.1.13") == ([], [0])
 
     blob = server._encode_detached_switches_blob([
         {

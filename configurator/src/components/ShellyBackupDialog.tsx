@@ -706,6 +706,7 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
 
                     <select
                       value={ds.input_channel}
+                      title="Physical Shelly SW input terminal (SW1 = input:0, SW2 = input:1, etc.)"
                       onChange={e =>
                         setDetachedSwitches(prev =>
                           prev.map((x, i) =>
@@ -715,11 +716,15 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                       }
                       className="col-span-2 text-xs px-2 py-1.5 border border-slate-300 rounded-md bg-white"
                     >
-                      {[0, 1, 2, 3].map(ch => (
-                        <option key={ch} value={ch}>
-                          input:{ch}
-                        </option>
-                      ))}
+                      {[0, 1, 2, 3].map(ch => {
+                        const selDev = devices.find(d => d.mac_address === ds.mac_address);
+                        const isDet = selDev?.detached_channels?.includes(ch);
+                        return (
+                          <option key={ch} value={ch}>
+                            SW{ch + 1} (in:{ch}){isDet ? ' ★' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
 
                     <select
