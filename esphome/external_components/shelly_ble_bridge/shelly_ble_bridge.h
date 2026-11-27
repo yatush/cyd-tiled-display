@@ -86,6 +86,7 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   static constexpr uint32_t TX_GAP_MS = 20;
   static constexpr uint32_t TX_CONFIG_TIMEOUT_MS = 60;
   static constexpr uint32_t SCAN_RESTART_DELAY_MS = 2000;
+  static constexpr uint32_t DEDUP_TTL_MS = 5000;
 
   ManagedShelly *find_shelly(uint32_t device_id, uint8_t channel);
   bool handles_device(uint32_t device_id) const;
@@ -109,8 +110,7 @@ class ShellyBleBridge : public Component, public esp32_ble_tracker::ESPBTClient 
   uint32_t last_tx_done_ms_{0};
   uint16_t next_seq_{1};
   std::atomic<bool> adv_raw_ready_{false};
-  bool scan_kick_pending_{true};
-  uint32_t last_scan_end_ms_{0};
+  uint32_t last_scan_check_ms_{0};
 };
 
 }  // namespace shelly_ble_bridge

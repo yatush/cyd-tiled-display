@@ -69,12 +69,14 @@ int main() {
   assert(raw[3] == 0x11 && raw[4] == 0x16);
   assert(raw[5] == 0x53 && raw[6] == 0xC7);  // Little-endian 0xC753
 
-  // 5. SeqDedupRing deduplication
+  // 5. SeqDedupRing deduplication + TTL expiration
   SeqDedupRing dedup;
-  assert(dedup.accept(dev_id, 10));
-  assert(!dedup.accept(dev_id, 10));  // duplicate rejected
-  assert(dedup.accept(dev_id, 11));   // new seq accepted
-  assert(dedup.accept(dev_id + 1, 10));  // different device accepted
+  assert(dedup.accept(dev_id, 10, 1000, 5000));
+  assert(!dedup.accept(dev_id, 10, 2000, 5000));  // duplicate within 5s TTL rejected
+  assert(!dedup.accept(dev_id, 10, 5999, 5000));  // still within 5s TTL
+  assert(dedup.accept(dev_id, 10, 6000, 5000));   // expired at 5s TTL -> accepted again
+  assert(dedup.accept(dev_id, 11, 6100, 5000));   // new seq accepted
+  assert(dedup.accept(dev_id + 1, 10, 6100, 5000));  // different device accepted
 
   // 6. ShellyTxQueue FIFO + coalescing by (target_id, channel)
   ShellyTxQueue q;

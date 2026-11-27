@@ -92,7 +92,9 @@ function computeAuthTag(payload10) {
 var DEV_INFO = Shelly.getDeviceInfo();
 var MY_MAC = normalizeMac(DEV_INFO.mac);
 var MY_ID = fnv1aStr(MY_MAC, 2166136261);
-var txSeq = 1;
+var txSeq = (typeof Math !== "undefined" && typeof Math.random === "function")
+  ? ((Math.floor(Math.random() * 65534) + 1) & 0xffff)
+  : 1;
 var wifiDown = false;
 
 // Dedup ring buffer for incoming (target_id, seq)

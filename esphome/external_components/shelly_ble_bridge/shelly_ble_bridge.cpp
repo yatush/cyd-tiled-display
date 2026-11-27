@@ -66,8 +66,7 @@ void ShellyBleBridge::setup() {
       });
   ShellyBleBridgeRegistry::instance().set_snapshot_provider(
       [this]() { return this->get_cached_states(); });
-  scan_kick_pending_ = (!shellys_.empty() || !detached_switches_.empty());
-  last_scan_end_ms_ = millis();
+  last_scan_check_ms_ = millis();
   ESP_LOGI(TAG, "Shelly BLE Bridge initialized: %u shellys, %u detached switches",
            static_cast<unsigned>(shellys_.size()),
            static_cast<unsigned>(detached_switches_.size()));
@@ -97,29 +96,26 @@ void ShellyBleBridge::loop() {
   tick_tx(now);
 
   // Keep passive BLE scanning running for Shelly state/input beacons even when
-  // headless_hub_base.yaml configures esp32_ble_tracker with continuous: false,
-  // but never interrupt an in-flight Tuya BLE GATT connect/handshake.
-  if (scan_kick_pending_ && parent_ != nullptr && tx_state_ == TxState::IDLE) {
+  // headless_hub_base.yaml configures esp32_ble_tracker with continuous: false.
+  // ESP32BLETracker::notify_scan_end_() only notifies listeners_ (not ESPBTClient
+  // clients_), so we periodically check and call start_scan_if_idle() (which is
+  // a no-op when scanning is already active), while deferring whenever a Tuya
+  // BLE GATT connect/handshake is in flight.
+  if ((!shellys_.empty() || !detached_switches_.empty()) && parent_ != nullptr &&
+      tx_state_ == TxState::IDLE &&
+      static_cast<int32_t>(now - last_scan_check_ms_) >=
+          static_cast<int32_t>(SCAN_RESTART_DELAY_MS)) {
+    last_scan_check_ms_ = now;
 #ifdef USE_TUYA_BLE_FAN
     if (tuya_ble_fan::TuyaBleFanRegistry::instance().has_in_flight_connect()) {
-      last_scan_end_ms_ = now;
       return;
     }
 #endif
-    if (static_cast<int32_t>(now - last_scan_end_ms_) >=
-        static_cast<int32_t>(SCAN_RESTART_DELAY_MS)) {
-      scan_kick_pending_ = false;
-      parent_->start_scan();
-    }
+    parent_->start_scan_if_idle();
   }
 }
 
-void ShellyBleBridge::on_scan_end() {
-  if (!shellys_.empty() || !detached_switches_.empty()) {
-    scan_kick_pending_ = true;
-    last_scan_end_ms_ = millis();
-  }
-}
+void ShellyBleBridge::on_scan_end() { last_scan_check_ms_ = millis(); }
 
 bool ShellyBleBridge::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
   const auto uuid_state = esp32_ble_tracker::ESPBTUUID::from_uint16(UUID_SHELLY_STATE);
@@ -172,7 +168,7 @@ bool ShellyBleBridge::handles_device(uint32_t device_id) const {
 }
 
 void ShellyBleBridge::handle_state_beacon(const ShellyBleBeacon &beacon, int rssi) {
-  if (!state_dedup_.accept(beacon.source_id, beacon.seq)) {
+  if (!state_dedup_.accept(beacon.source_id, beacon.seq, millis(), DEDUP_TTL_MS)) {
     return;
   }
   auto *s = find_shelly(beacon.source_id, beacon.channel);
@@ -206,7 +202,7 @@ void ShellyBleBridge::handle_state_beacon(const ShellyBleBeacon &beacon, int rss
 
 void ShellyBleBridge::handle_input_beacon(const ShellyBleBeacon &beacon, int rssi) {
   if (beacon.kind != ShellyBleKind::INPUT_TOGGLE) return;
-  if (!input_dedup_.accept(beacon.source_id, beacon.seq)) {
+  if (!input_dedup_.accept(beacon.source_id, beacon.seq, millis(), DEDUP_TTL_MS)) {
     return;
   }
 

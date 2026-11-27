@@ -88,15 +88,16 @@ class SeqDedupRing {
  public:
   static constexpr size_t CAPACITY = 16;
 
-  // Returns true if (device_id, seq) was NOT recently seen and records it.
-  // Returns false if it is a duplicate.
-  bool accept(uint32_t device_id, uint16_t seq);
+  // Returns true if (device_id, seq) was NOT recently seen (within ttl_ms when ttl_ms > 0)
+  // and records it. Returns false if it is a duplicate.
+  bool accept(uint32_t device_id, uint16_t seq, uint32_t now_ms = 0, uint32_t ttl_ms = 0);
   void clear();
 
  private:
   struct Entry {
     uint32_t device_id{0};
     uint16_t seq{0};
+    uint32_t seen_ms{0};
     bool valid{false};
   };
   std::array<Entry, CAPACITY> entries_{};

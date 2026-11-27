@@ -143,13 +143,18 @@ std::array<uint8_t, SHELLY_BLE_ADV_RAW_SIZE> build_service_data_adv_raw(
   return raw;
 }
 
-bool SeqDedupRing::accept(uint32_t device_id, uint16_t seq) {
-  for (const auto &e : entries_) {
-    if (e.valid && e.device_id == device_id && e.seq == seq) {
+bool SeqDedupRing::accept(uint32_t device_id, uint16_t seq, uint32_t now_ms, uint32_t ttl_ms) {
+  for (auto &e : entries_) {
+    if (!e.valid) continue;
+    if (ttl_ms > 0 && static_cast<uint32_t>(now_ms - e.seen_ms) >= ttl_ms) {
+      e.valid = false;
+      continue;
+    }
+    if (e.device_id == device_id && e.seq == seq) {
       return false;
     }
   }
-  entries_[write_idx_] = Entry{device_id, seq, true};
+  entries_[write_idx_] = Entry{device_id, seq, now_ms, true};
   write_idx_ = (write_idx_ + 1) % CAPACITY;
   return true;
 }
