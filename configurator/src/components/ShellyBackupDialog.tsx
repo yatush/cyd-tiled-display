@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -51,6 +51,16 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [deployResults, setDeployResults] = useState<any[]>([]);
+  const [deployProgress, setDeployProgress] = useState<{
+    done: number;
+    total: number;
+    currentName: string;
+    currentIp: string;
+    okCount: number;
+    failCount: number;
+    cancelled: boolean;
+  } | null>(null);
+  const deployCancelRef = useRef(false);
 
   const cydReferencedEntities = useMemo(() => collectReferencedEntityIds(config), [config]);
 
@@ -151,27 +161,74 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
       setError('Select at least one Shelly device with an IP address to deploy the script.');
       return;
     }
+    deployCancelRef.current = false;
     setIsDeploying(true);
     setError(null);
     setDeployResults([]);
+    let okCount = 0;
+    let failCount = 0;
+
     try {
-      const res = await apiFetch('/shelly/deploy_script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targets,
-          network_key: networkKey || 'cyd_espnow_default',
-          password: rpcPassword || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Failed to deploy Shelly script');
-      } else {
-        setDeployResults(data.results || []);
+      for (let i = 0; i < targets.length; i++) {
+        if (deployCancelRef.current) {
+          setDeployProgress(prev => (prev ? { ...prev, cancelled: true, currentName: '', currentIp: '' } : null));
+          break;
+        }
+        const target = targets[i];
+        setDeployProgress({
+          done: i,
+          total: targets.length,
+          currentName: target.name || target.ip,
+          currentIp: target.ip,
+          okCount,
+          failCount,
+          cancelled: false,
+        });
+        try {
+          const res = await apiFetch('/shelly/deploy_script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              targets: [target],
+              network_key: networkKey || 'cyd_espnow_default',
+              password: rpcPassword || undefined,
+            }),
+          });
+          const data = await res.json();
+          const item =
+            res.ok && Array.isArray(data.results) && data.results[0]
+              ? data.results[0]
+              : {
+                  ip: target.ip,
+                  name: target.name,
+                  ok: false,
+                  error: data.error || `HTTP ${res.status}`,
+                };
+          if (item.ok) okCount += 1;
+          else failCount += 1;
+          setDeployResults(prev => [...prev, item]);
+        } catch (e: any) {
+          failCount += 1;
+          setDeployResults(prev => [
+            ...prev,
+            {
+              ip: target.ip,
+              name: target.name,
+              ok: false,
+              error: e?.message || 'Request failed',
+            },
+          ]);
+        }
+        setDeployProgress({
+          done: i + 1,
+          total: targets.length,
+          currentName: i + 1 < targets.length ? targets[i + 1].name || targets[i + 1].ip : '',
+          currentIp: i + 1 < targets.length ? targets[i + 1].ip : '',
+          okCount,
+          failCount,
+          cancelled: false,
+        });
       }
-    } catch (e: any) {
-      setError(e?.message || 'Failed to deploy Shelly script');
     } finally {
       setIsDeploying(false);
     }
@@ -444,21 +501,71 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
                 value={rpcPassword}
                 onChange={e => setRpcPassword(e.target.value)}
                 placeholder="Shelly RPC password (optional)"
-                className="flex-1 min-w-[180px] text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
+                disabled={isDeploying}
+                className="flex-1 min-w-[180px] text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white disabled:opacity-50"
               />
-              <button
-                type="button"
-                onClick={handleDeployScript}
-                disabled={isDeploying || selectedMacs.size === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {isDeploying ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-                Deploy Script to {selectedMacs.size} Selected
-              </button>
+              {isDeploying ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    deployCancelRef.current = true;
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
+                >
+                  <X size={13} />
+                  Cancel ({deployProgress?.done ?? 0}/{deployProgress?.total ?? 0})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleDeployScript}
+                  disabled={selectedMacs.size === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Upload size={13} />
+                  Deploy Script to {selectedMacs.size} Selected
+                </button>
+              )}
             </div>
 
+            {deployProgress && (
+              <div className="bg-white border border-emerald-200 rounded-lg p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-medium text-slate-700 flex items-center gap-1.5 min-w-0 truncate">
+                    {isDeploying && <Loader2 size={12} className="animate-spin text-emerald-600 flex-shrink-0" />}
+                    {isDeploying
+                      ? `Deploying ${deployProgress.done + 1} / ${deployProgress.total}: ${deployProgress.currentName} (${deployProgress.currentIp})`
+                      : deployProgress.cancelled
+                      ? `Cancelled at ${deployProgress.done} / ${deployProgress.total}`
+                      : `Completed ${deployProgress.done} / ${deployProgress.total}`}
+                  </span>
+                  <span className="font-mono text-[10px] text-slate-500 flex-shrink-0 ml-2">
+                    <span className="text-emerald-700 font-semibold">{deployProgress.okCount} ok</span>
+                    {deployProgress.failCount > 0 && (
+                      <>
+                        {' · '}
+                        <span className="text-red-600 font-semibold">{deployProgress.failCount} failed</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-200 ${
+                      deployProgress.failCount > 0 && !isDeploying ? 'bg-amber-500' : 'bg-emerald-500'
+                    }`}
+                    style={{
+                      width: `${Math.round(
+                        (deployProgress.done / Math.max(1, deployProgress.total)) * 100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             {deployResults.length > 0 && (
-              <div className="space-y-1">
+              <div className="space-y-1 max-h-40 overflow-y-auto">
                 {deployResults.map((r, i) => (
                   <div
                     key={i}
