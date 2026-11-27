@@ -50,6 +50,8 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const syncStatusRef = useRef<HTMLDivElement | null>(null);
   const [deployResults, setDeployResults] = useState<any[]>([]);
   const [deployProgress, setDeployProgress] = useState<{
     done: number;
@@ -88,6 +90,7 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
     setIsLoading(true);
     setError(null);
     setSyncMessage(null);
+    setSyncError(null);
     try {
       const res = await apiFetch('/shelly/devices');
       const data = await res.json();
@@ -264,7 +267,7 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
 
   const handleSyncHubs = async () => {
     setIsSyncing(true);
-    setError(null);
+    setSyncError(null);
     setSyncMessage(null);
     try {
       const res = await apiFetch('/shelly/sync_detached_switches', {
@@ -274,7 +277,7 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        setError(data.error || 'Failed to sync detached switches to hubs');
+        setSyncError(data.error || 'Failed to sync detached switches to hubs');
       } else {
         const updatedHubs: string[] = Array.isArray(data.updated_hubs) ? data.updated_hubs : [];
         const liveHubs: string[] = Array.isArray(data.live_pushed_hubs) ? data.live_pushed_hubs : [];
@@ -296,9 +299,10 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
         onSynced?.(devices);
       }
     } catch (e: any) {
-      setError(e?.message || 'Failed to sync detached switches');
+      setSyncError(e?.message || 'Failed to sync detached switches');
     } finally {
       setIsSyncing(false);
+      setTimeout(() => syncStatusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
     }
   };
 
@@ -336,13 +340,6 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-800">
               <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
               <span>{error}</span>
-            </div>
-          )}
-
-          {syncMessage && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-2 text-xs text-emerald-800">
-              <CheckCircle2 size={15} className="mt-0.5 flex-shrink-0" />
-              <span>{syncMessage}</span>
             </div>
           )}
 
@@ -772,16 +769,30 @@ export const ShellyBackupDialog: React.FC<ShellyBackupDialogProps> = ({
               </div>
             )}
 
-            <div className="flex justify-end pt-1">
-              <button
-                type="button"
-                onClick={handleSyncHubs}
-                disabled={isSyncing}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {isSyncing ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                Save &amp; Sync to All Hubs ({hubs.length})
-              </button>
+            <div ref={syncStatusRef} className="space-y-2 pt-1">
+              {syncError && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-800">
+                  <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{syncError}</span>
+                </div>
+              )}
+              {syncMessage && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-2 text-xs text-emerald-800">
+                  <CheckCircle2 size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{syncMessage}</span>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSyncHubs}
+                  disabled={isSyncing}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {isSyncing ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  Save &amp; Sync to All Hubs ({hubs.length})
+                </button>
+              </div>
             </div>
           </div>
         </div>
