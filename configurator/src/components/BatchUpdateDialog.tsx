@@ -12,6 +12,7 @@ import {
   ChevronRight,
   UploadCloud,
   Monitor,
+  Radio,
   Terminal,
   AlertTriangle,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ export interface BatchDeviceEntry {
   screen_type: string | null;
   address: string;
   is_cyd: boolean;
+  is_headless_hub?: boolean;
   has_ota: boolean;
   online: boolean | null;
   status: BatchDeviceStatus;
@@ -310,9 +312,9 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
           <div className="flex items-center gap-2.5 min-w-0">
             <UploadCloud className="text-blue-600 flex-shrink-0" size={20} />
             <div className="min-w-0">
-              <h2 className="font-bold text-slate-800 text-base">Update All CYD Devices (OTA)</h2>
+              <h2 className="font-bold text-slate-800 text-base">Update All CYD Devices &amp; Hubs (OTA)</h2>
               <p className="text-xs text-slate-500 truncate">
-                {state?.message || 'Scans drive configs and updates all online CYD devices with OTA.'}
+                {state?.message || 'Scans drive configs and updates all online CYD displays and headless hubs with OTA.'}
               </p>
             </div>
           </div>
@@ -409,12 +411,16 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
                 >
                   <div className="p-3 flex items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                      <Monitor
-                        size={16}
-                        className={`mt-0.5 flex-shrink-0 ${
-                          dev.is_cyd ? 'text-blue-500' : 'text-slate-300'
-                        }`}
-                      />
+                      {dev.is_headless_hub ? (
+                        <Radio size={16} className="mt-0.5 flex-shrink-0 text-emerald-600" />
+                      ) : (
+                        <Monitor
+                          size={16}
+                          className={`mt-0.5 flex-shrink-0 ${
+                            dev.is_cyd ? 'text-blue-500' : 'text-slate-300'
+                          }`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-sm text-slate-800 truncate">
@@ -423,6 +429,11 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
                           <span className="text-[11px] font-mono text-slate-400 truncate">
                             {dev.filename}
                           </span>
+                          {dev.is_headless_hub && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">
+                              BLE Hub
+                            </span>
+                          )}
                           {dev.screen_type && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono">
                               {dev.screen_type}

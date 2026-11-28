@@ -133,6 +133,16 @@ esphome:
 ota:
   - platform: esphome
 """)
+            with open(os.path.join(tmp, 'office_hub.yaml'), 'w') as f:
+                f.write("""
+substitutions:
+  device_name: office-hub
+  friendly_name: Office Hub
+packages:
+  hub_base: !include lib/headless_hub_base.yaml
+espnow_fan_bridge:
+  role: hub
+""")
 
             class FakeProc:
                 def __init__(self, rc=0, output="Compiling...\nSuccessfully uploaded program.\n"):
@@ -148,7 +158,7 @@ ota:
                     pass
 
             def fake_check_online(dev):
-                dev['online'] = (dev['address'] == 'cyd_online.local')
+                dev['online'] = dev['address'] in ('cyd_online.local', 'office-hub.local')
                 return dev
 
             server._esphome_mod.batch_update_state = None
@@ -172,19 +182,21 @@ ota:
                     time.sleep(0.05)
 
                 self.assertEqual(data['phase'], 'completed')
-                self.assertEqual(data['summary']['total'], 3)
-                self.assertEqual(data['summary']['updated'], 1)
+                self.assertEqual(data['summary']['total'], 4)
+                self.assertEqual(data['summary']['updated'], 2)
                 self.assertEqual(data['summary']['skipped'], 2)
                 self.assertEqual(data['summary']['failed'], 0)
 
                 by_file = {d['filename']: d for d in data['devices']}
                 self.assertEqual(by_file['cyd_online.yaml']['status'], 'updated')
                 self.assertIn('Successfully uploaded program.', by_file['cyd_online.yaml']['logs'])
+                self.assertEqual(by_file['office_hub.yaml']['status'], 'updated')
+                self.assertTrue(by_file['office_hub.yaml']['is_headless_hub'])
                 self.assertEqual(by_file['cyd_offline.yaml']['status'], 'skipped')
                 self.assertIn('offline', by_file['cyd_offline.yaml']['reason'].lower())
                 self.assertEqual(by_file['plug.yaml']['status'], 'skipped')
                 self.assertIn('CYD', by_file['plug.yaml']['reason'])
-                popen_mock.assert_called_once()
+                self.assertEqual(popen_mock.call_count, 2)
 
 
 if __name__ == '__main__':
