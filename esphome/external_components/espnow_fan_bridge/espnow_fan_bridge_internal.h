@@ -4,7 +4,10 @@
 
 #ifdef USE_ESP32
 
+#include <esp_netif.h>
 #include <esp_random.h>
+#include <fcntl.h>
+#include <lwip/sockets.h>
 
 #include <algorithm>
 #include <cmath>
