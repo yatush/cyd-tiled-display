@@ -5,6 +5,8 @@
 namespace esphome {
 namespace espnow_fan_bridge {
 
+EspNowFanBridge *EspNowFanBridge::active_instance_ = nullptr;
+
 // ============================================================================
 // EspNowFanRegistry::handle_action
 // ============================================================================
