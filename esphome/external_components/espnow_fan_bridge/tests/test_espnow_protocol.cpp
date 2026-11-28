@@ -1,4 +1,5 @@
 #include "espnow_protocol.h"
+#include "espnow_fan_registry.h"
 
 #include <cassert>
 #include <cstdio>
@@ -209,11 +210,47 @@ static void test_v2_multihop_and_dedup() {
   assert(dedup.accept(origin, MsgType::CMD, 77, 0, 6000, 5000));   // expired at 5s TTL
 }
 
+static void test_shelly_wifi_down_instant_fallback() {
+  EspNowFanRegistry reg;
+  RemoteShellyState sh;
+  sh.name = "Office Light";
+  sh.entity_id = "light.office";
+  sh.has_state = true;
+  sh.espnow_reachable = true;
+  sh.state_flags = 0x01;  // ON, Wi-Fi UP (bit 7 = 0)
+  reg.register_remote_shelly(&sh);
+
+  RemoteBleConnStatus ble_st = RemoteBleConnStatus::DISCONNECTED;
+  std::string text;
+  bool bin = false;
+
+  // HA available + Shelly Wi-Fi UP -> normal HA tier (NONE)
+  assert(!sh.wifi_down_fallback());
+  assert(reg.get_display_mode("light.office", true, ble_st) == EspNowDisplayMode::NONE);
+  assert(!reg.get_text_state("light.office", true, text));
+  assert(!reg.get_binary_state("light.office", true, bin));
+
+  // Shelly drops off Wi-Fi (bit 7 = 0x80) while HA still thinks entity is available -> instant backup!
+  sh.state_flags = 0x81;  // ON + WIFI_DOWN
+  assert(sh.wifi_down_fallback());
+  assert(reg.get_display_mode("light.office", true, ble_st) == EspNowDisplayMode::ACTIVE);
+  assert(ble_st == RemoteBleConnStatus::CONNECTED);
+  assert(reg.get_text_state("light.office", true, text) && text == "on");
+  assert(reg.get_binary_state("light.office", true, bin) && bin == true);
+
+  // Shelly reconnects to Wi-Fi (bit 7 clears) -> instant return to normal HA tier
+  sh.state_flags = 0x00;  // OFF, Wi-Fi UP
+  assert(!sh.wifi_down_fallback());
+  assert(reg.get_display_mode("light.office", true, ble_st) == EspNowDisplayMode::NONE);
+  assert(!reg.get_text_state("light.office", true, text));
+}
+
 int main() {
   test_frame_roundtrip_and_auth();
   test_state_and_ack_codecs();
   test_channel_hunt_single_multi_and_pruning();
   test_v2_multihop_and_dedup();
+  test_shelly_wifi_down_instant_fallback();
   std::cout << "All espnow_protocol tests passed!\n";
   return 0;
 }

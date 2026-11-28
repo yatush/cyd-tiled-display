@@ -156,7 +156,7 @@ function probeComponents() {
 }
 
 var advBurstTimer = null;
-function advertiseBurst(uuidHex, payload14) {
+function advertiseBurst(uuidHex, payload14, repeats) {
   if (typeof BLE === "undefined" || typeof BLE.AdvBuilder === "undefined") return;
   BLE.AdvBuilder.reset();
   if (!BLE.AdvBuilder.addServiceData(uuidHex, payload14)) return;
@@ -167,7 +167,7 @@ function advertiseBurst(uuidHex, payload14) {
     advBurstTimer = null;
   }
   BLE.advertiseOnce(pkt, "");
-  var rem = 2;
+  var rem = (typeof repeats === "number" && repeats > 1) ? (repeats - 1) : 2;
   advBurstTimer = Timer.set(60, true, function () {
     BLE.advertiseOnce(pkt, "");
     rem--;
@@ -178,14 +178,14 @@ function advertiseBurst(uuidHex, payload14) {
   });
 }
 
-function sendBeacon(uuidHex, ch, kind, stateFlags, position) {
+function sendBeacon(uuidHex, ch, kind, stateFlags, position, repeats) {
   var seq = nextSeq();
   var body =
     u32le(MY_ID) +
     String.fromCharCode(ch & 0xff, kind & 0xff, stateFlags & 0xff, position & 0xff) +
     u16le(seq);
   var tag = computeAuthTag(body);
-  advertiseBurst(uuidHex, body + u32le(tag));
+  advertiseBurst(uuidHex, body + u32le(tag), repeats);
 }
 
 function broadcastCoverState(ch) {
@@ -326,7 +326,7 @@ Shelly.addStatusHandler(function (ev) {
     var ich = ev.id || 0;
     if (detachedInputTypes[ich] === "switch") {
       var flags = (ev.delta.state ? 1 : 0) | (wifiDown ? 0x80 : 0);
-      sendBeacon(UUID_INPUT, ich, KIND_INPUT_TOGGLE, flags, 255);
+      sendBeacon(UUID_INPUT, ich, KIND_INPUT_TOGGLE, flags, 255, 6);
     }
   }
 });
@@ -337,7 +337,7 @@ Shelly.addEventHandler(function (ev) {
     var ich = ev.id || 0;
     if (detachedInputTypes[ich] === "button") {
       var flags = 1 | (wifiDown ? 0x80 : 0);
-      sendBeacon(UUID_INPUT, ich, KIND_INPUT_TOGGLE, flags, 255);
+      sendBeacon(UUID_INPUT, ich, KIND_INPUT_TOGGLE, flags, 255, 6);
     }
   }
 });

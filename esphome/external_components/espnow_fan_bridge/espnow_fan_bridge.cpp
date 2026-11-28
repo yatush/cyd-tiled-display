@@ -35,7 +35,8 @@ bool EspNowFanRegistry::handle_action(const std::string &entity_id, const std::s
 
   auto sit = shelly_entities_.find(base);
   if (sit != shelly_entities_.end()) {
-    if (ha_entity_available) {
+    const bool use_backup = !ha_entity_available || sit->second->wifi_down_fallback();
+    if (!use_backup) {
       return false;  // Normal HA tier — let HA handle it
     }
     return bridge_->send_shelly_action(sit->second, action, data);
