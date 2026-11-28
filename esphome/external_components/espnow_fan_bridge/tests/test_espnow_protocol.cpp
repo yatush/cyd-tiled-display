@@ -156,6 +156,13 @@ static void test_channel_hunt_single_multi_and_pruning() {
   }
   assert(hunt.active_channels().empty());
   assert(hunt.active_channel(t + 100, 250) == 1);
+
+  // Reconnecting to Wi-Fi must cancel any in-progress offline sweep so heartbeats resume
+  hunt.start_sweep(t + 200);
+  assert(hunt.is_sweeping());
+  hunt.clear_active_channels();
+  assert(!hunt.is_sweeping());
+  assert(hunt.active_channels().empty());
 }
 
 static void test_v2_multihop_and_dedup() {
