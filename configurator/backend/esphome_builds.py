@@ -674,6 +674,7 @@ def _serialize_batch_state(state, include_logs=None):
             'screen_type': d.get('screen_type'),
             'address': d['address'],
             'is_cyd': d['is_cyd'],
+            'is_headless_hub': bool(d.get('is_headless_hub', False)),
             'has_ota': d['has_ota'],
             'online': d.get('online'),
             'status': d['status'],
