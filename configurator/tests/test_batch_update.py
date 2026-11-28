@@ -198,6 +198,28 @@ espnow_fan_bridge:
                 self.assertIn('CYD', by_file['plug.yaml']['reason'])
                 self.assertEqual(popen_mock.call_count, 2)
 
+                # Now verify selective subset: only update office_hub.yaml
+                popen_mock.reset_mock()
+                res2 = client.post(
+                    '/api/esphome/batch_update/start',
+                    json={'filenames': ['office_hub.yaml']},
+                )
+                self.assertEqual(res2.status_code, 200)
+                deadline = time.time() + 5
+                data2 = None
+                while time.time() < deadline:
+                    st_res = client.get('/api/esphome/batch_update/status')
+                    self.assertEqual(st_res.status_code, 200)
+                    data2 = st_res.get_json()
+                    if data2['phase'] in ('completed', 'cancelled'):
+                        break
+                    time.sleep(0.05)
+                self.assertEqual(data2['phase'], 'completed')
+                self.assertEqual(data2['summary']['total'], 1)
+                self.assertEqual(data2['summary']['updated'], 1)
+                self.assertEqual([d['filename'] for d in data2['devices']], ['office_hub.yaml'])
+                popen_mock.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

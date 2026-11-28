@@ -217,8 +217,8 @@ export const FileManagementDialog: React.FC<FileManagementDialogProps> = ({
                     <UploadCloud size={16} className="text-indigo-600" />
                   </div>
                   <div>
-                    <div className="font-bold text-xs">Update All Online CYDs &amp; Hubs (OTA)</div>
-                    <div className="text-[10px] text-indigo-600/80">Compile &amp; OTA-flash all online CYD displays and headless BLE hubs</div>
+                    <div className="font-bold text-xs">Update CYDs &amp; Hubs (OTA)</div>
+                    <div className="text-[10px] text-indigo-600/80">Choose &amp; OTA-flash online CYD displays and headless BLE hubs</div>
                   </div>
                 </button>
               )}

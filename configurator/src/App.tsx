@@ -786,7 +786,7 @@ function App() {
       <BatchUpdateDialog
         isOpen={isBatchUpdateOpen}
         onClose={() => setIsBatchUpdateOpen(false)}
-        autoStart={true}
+        autoStart={false}
         stayMounted={batchUpdateActive}
         onActiveChange={(active, label) => {
           setBatchUpdateActive(active);
