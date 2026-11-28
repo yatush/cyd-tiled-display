@@ -68,6 +68,10 @@ struct RemoteShellyState {
   uint8_t state_flags{0};  // bit0=on/open, bits1-2=motion (0=stopped,1=opening,2=closing), bit7=wifi_down
   uint8_t position{255};   // 0..100 for cover; 255 otherwise
   int8_t ble_rssi{-127};
+
+  bool wifi_down_fallback() const {
+    return espnow_reachable && has_state && ((state_flags & 0x80) != 0);
+  }
 };
 
 class EspNowFanBridge;
@@ -127,7 +131,7 @@ class EspNowFanRegistry {
 
   // Returns whether this entity's ESP-NOW hub is reachable or should show 'no hub'.
   // For Shelly backup entities: returns NONE when HA has a valid state for this entity
-  // (normal HA tier), and ACTIVE / OFFLINE_DISCONNECTED when routed via ESP-NOW backup.
+  // and the Shelly has not reported Wi-Fi down; otherwise ACTIVE / OFFLINE_DISCONNECTED.
   EspNowDisplayMode get_display_mode(const std::string &entity_or_key, bool ha_entity_available,
                                      RemoteBleConnStatus &out_ble_status) const {
     const RemoteFanState *fan = find_fan(entity_or_key);
@@ -141,7 +145,8 @@ class EspNowFanRegistry {
     }
     const RemoteShellyState *sh = find_shelly(entity_or_key);
     if (sh != nullptr) {
-      if (ha_entity_available) {
+      const bool use_backup = !ha_entity_available || sh->wifi_down_fallback();
+      if (!use_backup) {
         return EspNowDisplayMode::NONE;  // Normal HA tier — no badge
       }
       if (sh->espnow_reachable) {
@@ -205,7 +210,8 @@ class EspNowFanRegistry {
     auto sit = shelly_entities_.find(base);
     if (sit != shelly_entities_.end()) {
       const RemoteShellyState *sh = sit->second;
-      if (ha_entity_available || !sh->has_state) return false;
+      const bool use_backup = !ha_entity_available || sh->wifi_down_fallback();
+      if (!use_backup || !sh->has_state) return false;
       if (!sh->is_cover) {
         if (attr.empty() || attr == "state") {
           out = (sh->state_flags & 0x01) ? "on" : "off";
@@ -255,7 +261,8 @@ class EspNowFanRegistry {
     auto sit = shelly_entities_.find(base);
     if (sit != shelly_entities_.end()) {
       const RemoteShellyState *sh = sit->second;
-      if (ha_entity_available || !sh->has_state || sh->is_cover) return false;
+      const bool use_backup = !ha_entity_available || sh->wifi_down_fallback();
+      if (!use_backup || !sh->has_state || sh->is_cover) return false;
       out = (sh->state_flags & 0x01) != 0;
       return true;
     }
