@@ -663,6 +663,9 @@ def test_headless_hub_with_gree_ir_ac_roundtrip_and_tx_only(tmp_path):
     assert "remote_receiver:" not in text2
     assert "receiver_id:" not in text2
     assert "gree_ir_debug_protocol" not in text2
+    assert "climates:" in text2
+    assert "entity_id: climate.office_ac" in text2
+    assert "climate_id: gree_ac" in text2
     hubs2 = server.list_ble_hubs(str(tmp_path))
     assert hubs2[0]["gree_ac"]["rx_pin"] == ""
     assert hubs2[0]["gree_ac"]["supports_heat"] is False

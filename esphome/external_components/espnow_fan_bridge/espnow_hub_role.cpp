@@ -267,6 +267,198 @@ void EspNowFanBridge::hub_broadcast_all_shelly_states() {
 
 #endif  // USE_SHELLY_BLE_BRIDGE
 
+#ifdef USE_ESPNOW_CLIMATE
+
+namespace {
+
+uint8_t esphome_mode_to_wire(climate::ClimateMode mode) {
+  switch (mode) {
+    case climate::CLIMATE_MODE_COOL:
+      return static_cast<uint8_t>(ClimateHvacMode::COOL);
+    case climate::CLIMATE_MODE_HEAT:
+      return static_cast<uint8_t>(ClimateHvacMode::HEAT);
+    case climate::CLIMATE_MODE_DRY:
+      return static_cast<uint8_t>(ClimateHvacMode::DRY);
+    case climate::CLIMATE_MODE_FAN_ONLY:
+      return static_cast<uint8_t>(ClimateHvacMode::FAN_ONLY);
+    case climate::CLIMATE_MODE_HEAT_COOL:
+    case climate::CLIMATE_MODE_AUTO:
+      return static_cast<uint8_t>(ClimateHvacMode::AUTO);
+    case climate::CLIMATE_MODE_OFF:
+    default:
+      return static_cast<uint8_t>(ClimateHvacMode::OFF);
+  }
+}
+
+climate::ClimateMode wire_mode_to_esphome(uint8_t m) {
+  switch (static_cast<ClimateHvacMode>(m)) {
+    case ClimateHvacMode::COOL:
+      return climate::CLIMATE_MODE_COOL;
+    case ClimateHvacMode::HEAT:
+      return climate::CLIMATE_MODE_HEAT;
+    case ClimateHvacMode::DRY:
+      return climate::CLIMATE_MODE_DRY;
+    case ClimateHvacMode::FAN_ONLY:
+      return climate::CLIMATE_MODE_FAN_ONLY;
+    case ClimateHvacMode::AUTO:
+      return climate::CLIMATE_MODE_HEAT_COOL;
+    case ClimateHvacMode::OFF:
+    default:
+      return climate::CLIMATE_MODE_OFF;
+  }
+}
+
+uint8_t esphome_fan_mode_to_wire(const optional<climate::ClimateFanMode> &fm) {
+  if (!fm.has_value()) return static_cast<uint8_t>(ClimateFanMode::AUTO);
+  switch (*fm) {
+    case climate::CLIMATE_FAN_LOW:
+      return static_cast<uint8_t>(ClimateFanMode::LOW);
+    case climate::CLIMATE_FAN_MEDIUM:
+    case climate::CLIMATE_FAN_MIDDLE:
+      return static_cast<uint8_t>(ClimateFanMode::MEDIUM);
+    case climate::CLIMATE_FAN_HIGH:
+      return static_cast<uint8_t>(ClimateFanMode::HIGH);
+    case climate::CLIMATE_FAN_QUIET:
+      return static_cast<uint8_t>(ClimateFanMode::QUIET);
+    case climate::CLIMATE_FAN_FOCUS:
+      return static_cast<uint8_t>(ClimateFanMode::TURBO);
+    case climate::CLIMATE_FAN_AUTO:
+    default:
+      return static_cast<uint8_t>(ClimateFanMode::AUTO);
+  }
+}
+
+climate::ClimateFanMode wire_fan_mode_to_esphome(uint8_t m) {
+  switch (static_cast<ClimateFanMode>(m)) {
+    case ClimateFanMode::LOW:
+      return climate::CLIMATE_FAN_LOW;
+    case ClimateFanMode::MEDIUM:
+      return climate::CLIMATE_FAN_MEDIUM;
+    case ClimateFanMode::HIGH:
+      return climate::CLIMATE_FAN_HIGH;
+    case ClimateFanMode::QUIET:
+      return climate::CLIMATE_FAN_QUIET;
+    case ClimateFanMode::TURBO:
+      return climate::CLIMATE_FAN_FOCUS;
+    case ClimateFanMode::AUTO:
+    default:
+      return climate::CLIMATE_FAN_AUTO;
+  }
+}
+
+uint8_t esphome_swing_mode_to_wire(climate::ClimateSwingMode sm) {
+  switch (sm) {
+    case climate::CLIMATE_SWING_VERTICAL:
+      return static_cast<uint8_t>(ClimateSwingMode::VERTICAL);
+    case climate::CLIMATE_SWING_HORIZONTAL:
+      return static_cast<uint8_t>(ClimateSwingMode::HORIZONTAL);
+    case climate::CLIMATE_SWING_BOTH:
+      return static_cast<uint8_t>(ClimateSwingMode::BOTH);
+    case climate::CLIMATE_SWING_OFF:
+    default:
+      return static_cast<uint8_t>(ClimateSwingMode::OFF);
+  }
+}
+
+climate::ClimateSwingMode wire_swing_mode_to_esphome(uint8_t m) {
+  switch (static_cast<ClimateSwingMode>(m)) {
+    case ClimateSwingMode::VERTICAL:
+      return climate::CLIMATE_SWING_VERTICAL;
+    case ClimateSwingMode::HORIZONTAL:
+      return climate::CLIMATE_SWING_HORIZONTAL;
+    case ClimateSwingMode::BOTH:
+      return climate::CLIMATE_SWING_BOTH;
+    case ClimateSwingMode::OFF:
+    default:
+      return climate::CLIMATE_SWING_OFF;
+  }
+}
+
+}  // namespace
+
+bool EspNowFanBridge::hub_handle_climate_cmd(const ClimateCmdPayload &cmd, uint32_t origin_id,
+                                             uint16_t seq, uint32_t now_ms) {
+  LocalClimateEntry *target = nullptr;
+  for (auto &lc : local_climates_) {
+    if (lc.climate_key_hash == cmd.climate_key_hash && lc.clim != nullptr) {
+      target = &lc;
+      break;
+    }
+  }
+  if (target == nullptr) {
+    return false;  // Not managed by this hub — let multi-hop relay forward it
+  }
+
+  AckPayload ack;
+  ack.ack_seq = seq;
+  ack.status = AckStatus::OK;
+
+  if (origin_id != 0 &&
+      !cmd_exec_dedup_.accept(origin_id, MsgType::CLIMATE_CMD, seq, 0, now_ms,
+                              RELAY_DEDUP_TTL_MS)) {
+    ESP_LOGD(TAG, "[%s] Duplicate CLIMATE_CMD seq=%u from origin=0x%08X (re-ACKing only)",
+             target->name.c_str(), seq, static_cast<unsigned>(origin_id));
+    broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
+    return true;
+  }
+
+  ESP_LOGI(TAG, "[%s] RX ESP-NOW CLIMATE_CMD seq=%u mask=0x%02X mode=%u temp=%.1f fan=%u swing=%u",
+           target->name.c_str(), seq, static_cast<unsigned>(cmd.field_mask),
+           static_cast<unsigned>(cmd.hvac_mode), cmd.target_temp_x2 * 0.5f,
+           static_cast<unsigned>(cmd.fan_mode), static_cast<unsigned>(cmd.swing_mode));
+
+  auto call = target->clim->make_call();
+  if ((cmd.field_mask & CLIMATE_FIELD_HVAC_MODE) != 0) {
+    call.set_mode(wire_mode_to_esphome(cmd.hvac_mode));
+  }
+  if ((cmd.field_mask & CLIMATE_FIELD_TARGET_TEMP) != 0) {
+    call.set_target_temperature(static_cast<float>(cmd.target_temp_x2) * 0.5f);
+  }
+  if ((cmd.field_mask & CLIMATE_FIELD_FAN_MODE) != 0) {
+    call.set_fan_mode(wire_fan_mode_to_esphome(cmd.fan_mode));
+  }
+  if ((cmd.field_mask & CLIMATE_FIELD_SWING_MODE) != 0) {
+    call.set_swing_mode(wire_swing_mode_to_esphome(cmd.swing_mode));
+  }
+  call.perform();
+
+  broadcast_frame(MsgType::ACK, seq, encode_ack(ack));
+  // Note: call.perform() triggers publish_state() -> add_on_state_callback -> hub_broadcast_climate_state
+  return true;
+}
+
+void EspNowFanBridge::hub_broadcast_climate_state(const LocalClimateEntry &entry) {
+  if (!espnow_ready_ || entry.clim == nullptr) return;
+  ClimateStatePayload st;
+  st.climate_key_hash = entry.climate_key_hash;
+  st.hvac_mode = esphome_mode_to_wire(entry.clim->mode);
+  if (!std::isnan(entry.clim->target_temperature)) {
+    int t2 = clamp_int(static_cast<int>(entry.clim->target_temperature * 2.0f + 0.5f), 20, 80);
+    st.target_temp_x2 = static_cast<uint8_t>(t2);
+  } else {
+    st.target_temp_x2 = 48;  // 24.0C fallback
+  }
+  st.fan_mode = esphome_fan_mode_to_wire(entry.clim->fan_mode);
+  st.swing_mode = esphome_swing_mode_to_wire(entry.clim->swing_mode);
+  if (!std::isnan(entry.clim->current_temperature)) {
+    int c10 = clamp_int(static_cast<int>(entry.clim->current_temperature * 10.0f +
+                                         (entry.clim->current_temperature >= 0.0f ? 0.5f : -0.5f)),
+                        -500, 1000);
+    st.current_temp_x10 = static_cast<int16_t>(c10);
+  } else {
+    st.current_temp_x10 = CLIMATE_TEMP_INVALID;
+  }
+  broadcast_frame(MsgType::CLIMATE_STATE, next_seq_++, encode_climate_state(st));
+}
+
+void EspNowFanBridge::hub_broadcast_all_climate_states() {
+  for (const auto &lc : local_climates_) {
+    hub_broadcast_climate_state(lc);
+  }
+}
+
+#endif  // USE_ESPNOW_CLIMATE
+
 
 }  // namespace espnow_fan_bridge
 }  // namespace esphome

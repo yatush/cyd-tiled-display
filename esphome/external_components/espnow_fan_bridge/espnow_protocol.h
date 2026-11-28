@@ -25,6 +25,8 @@ enum class MsgType : uint8_t {
   SYNC_REQ = 6,
   SHELLY_CMD = 0x10,
   SHELLY_STATE = 0x11,
+  CLIMATE_CMD = 0x20,
+  CLIMATE_STATE = 0x21,
 };
 
 enum class BridgeRole : uint8_t {
@@ -139,6 +141,56 @@ struct ShellyStatePayload {
   int8_t ble_rssi{-127};
 };
 
+// Climate field bitmask & compact wire enums (Issue #74)
+static constexpr uint8_t CLIMATE_FIELD_HVAC_MODE = 0x01;
+static constexpr uint8_t CLIMATE_FIELD_TARGET_TEMP = 0x02;
+static constexpr uint8_t CLIMATE_FIELD_FAN_MODE = 0x04;
+static constexpr uint8_t CLIMATE_FIELD_SWING_MODE = 0x08;
+static constexpr int16_t CLIMATE_TEMP_INVALID = -32768;  // INT16_MIN
+
+enum class ClimateHvacMode : uint8_t {
+  OFF = 0,
+  COOL = 1,
+  HEAT = 2,
+  DRY = 3,
+  FAN_ONLY = 4,
+  AUTO = 5,
+};
+
+enum class ClimateFanMode : uint8_t {
+  AUTO = 0,
+  LOW = 1,
+  MEDIUM = 2,
+  HIGH = 3,
+  QUIET = 4,
+  TURBO = 5,
+};
+
+enum class ClimateSwingMode : uint8_t {
+  OFF = 0,
+  VERTICAL = 1,
+  HORIZONTAL = 2,
+  BOTH = 3,
+};
+
+struct ClimateCmdPayload {
+  uint32_t climate_key_hash{0};
+  uint8_t field_mask{0};
+  uint8_t hvac_mode{0};
+  uint8_t target_temp_x2{48};  // 0.5C steps (e.g., 24.0C = 48)
+  uint8_t fan_mode{0};
+  uint8_t swing_mode{0};
+};
+
+struct ClimateStatePayload {
+  uint32_t climate_key_hash{0};
+  uint8_t hvac_mode{0};
+  uint8_t target_temp_x2{48};
+  uint8_t fan_mode{0};
+  uint8_t swing_mode{0};
+  int16_t current_temp_x10{CLIMATE_TEMP_INVALID};
+};
+
 // Deterministic 32-bit FNV-1a hash used for fan entity keys, Shelly device IDs, and auth tags
 uint32_t fnv1a_32(const uint8_t *data, size_t len, uint32_t seed = 2166136261u);
 uint32_t fnv1a_32(const std::string &s, uint32_t seed = 2166136261u);
@@ -204,6 +256,12 @@ bool decode_shelly_cmd(const uint8_t *data, size_t len, ShellyCmdPayload &out);
 
 std::vector<uint8_t> encode_shelly_state(const ShellyStatePayload &p);
 bool decode_shelly_state(const uint8_t *data, size_t len, ShellyStatePayload &out);
+
+std::vector<uint8_t> encode_climate_cmd(const ClimateCmdPayload &p);
+bool decode_climate_cmd(const uint8_t *data, size_t len, ClimateCmdPayload &out);
+
+std::vector<uint8_t> encode_climate_state(const ClimateStatePayload &p);
+bool decode_climate_state(const uint8_t *data, size_t len, ClimateStatePayload &out);
 
 // Pure state machine for offline channel hunting, 2-miss pruning, and multi-channel round-robin
 class ChannelHuntState {

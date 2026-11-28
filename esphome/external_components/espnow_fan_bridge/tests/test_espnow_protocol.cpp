@@ -252,12 +252,125 @@ static void test_shelly_wifi_down_instant_fallback() {
   assert(!reg.get_text_state("light.office", true, text));
 }
 
+static void test_climate_codecs_and_registry() {
+  // 1. ClimateCmdPayload round-trip
+  ClimateCmdPayload cmd;
+  cmd.climate_key_hash = fnv1a_32("climate.office_ac");
+  cmd.field_mask = CLIMATE_FIELD_HVAC_MODE | CLIMATE_FIELD_TARGET_TEMP | CLIMATE_FIELD_FAN_MODE |
+                   CLIMATE_FIELD_SWING_MODE;
+  cmd.hvac_mode = static_cast<uint8_t>(ClimateHvacMode::COOL);
+  cmd.target_temp_x2 = 45;  // 22.5C
+  cmd.fan_mode = static_cast<uint8_t>(ClimateFanMode::HIGH);
+  cmd.swing_mode = static_cast<uint8_t>(ClimateSwingMode::VERTICAL);
+
+  auto raw_cmd = encode_climate_cmd(cmd);
+  assert(raw_cmd.size() == 9);
+  ClimateCmdPayload dec_cmd;
+  assert(decode_climate_cmd(raw_cmd.data(), raw_cmd.size(), dec_cmd));
+  assert(dec_cmd.climate_key_hash == cmd.climate_key_hash);
+  assert(dec_cmd.field_mask == cmd.field_mask);
+  assert(dec_cmd.hvac_mode == cmd.hvac_mode);
+  assert(dec_cmd.target_temp_x2 == 45);
+  assert(dec_cmd.fan_mode == cmd.fan_mode);
+  assert(dec_cmd.swing_mode == cmd.swing_mode);
+
+  // Full frame round-trip with MsgType::CLIMATE_CMD
+  auto frame = encode_frame("k_ac", MsgType::CLIMATE_CMD, 101, raw_cmd.data(), raw_cmd.size());
+  FrameHeader hdr;
+  std::vector<uint8_t> payload;
+  assert(decode_frame("k_ac", frame.data(), frame.size(), hdr, payload));
+  assert(hdr.type == MsgType::CLIMATE_CMD);
+  assert(hdr.seq == 101);
+  assert(payload == raw_cmd);
+
+  // 2. ClimateStatePayload round-trip (valid temp & CLIMATE_TEMP_INVALID)
+  ClimateStatePayload st;
+  st.climate_key_hash = cmd.climate_key_hash;
+  st.hvac_mode = static_cast<uint8_t>(ClimateHvacMode::HEAT);
+  st.target_temp_x2 = 48;  // 24.0C
+  st.fan_mode = static_cast<uint8_t>(ClimateFanMode::QUIET);
+  st.swing_mode = static_cast<uint8_t>(ClimateSwingMode::BOTH);
+  st.current_temp_x10 = 235;  // 23.5C
+
+  auto raw_st = encode_climate_state(st);
+  assert(raw_st.size() == 10);
+  ClimateStatePayload dec_st;
+  assert(decode_climate_state(raw_st.data(), raw_st.size(), dec_st));
+  assert(dec_st.climate_key_hash == st.climate_key_hash);
+  assert(dec_st.hvac_mode == st.hvac_mode);
+  assert(dec_st.target_temp_x2 == 48);
+  assert(dec_st.fan_mode == st.fan_mode);
+  assert(dec_st.swing_mode == st.swing_mode);
+  assert(dec_st.current_temp_x10 == 235);
+
+  st.current_temp_x10 = CLIMATE_TEMP_INVALID;
+  auto raw_st2 = encode_climate_state(st);
+  ClimateStatePayload dec_st2;
+  assert(decode_climate_state(raw_st2.data(), raw_st2.size(), dec_st2));
+  assert(dec_st2.current_temp_x10 == CLIMATE_TEMP_INVALID);
+
+  // 3. EspNowFanRegistry 2-tier climate fallback
+  EspNowFanRegistry reg;
+  RemoteClimateState cl;
+  cl.name = "Office AC";
+  cl.entity_id = "climate.office_ac";
+  cl.climate_key_hash = fnv1a_32("climate.office_ac");
+  cl.has_state = true;
+  cl.espnow_reachable = true;
+  cl.hvac_mode = static_cast<uint8_t>(ClimateHvacMode::COOL);
+  cl.target_temp_x2 = 45;  // 22.5C
+  cl.fan_mode = static_cast<uint8_t>(ClimateFanMode::HIGH);
+  cl.swing_mode = static_cast<uint8_t>(ClimateSwingMode::VERTICAL);
+  cl.current_temp_x10 = 254;  // 25.4C
+  reg.register_remote_climate(&cl);
+
+  assert(reg.handles_entity("climate.office_ac"));
+  assert(reg.handles_entity("climate.office_ac|temperature"));
+  assert(reg.handles_climate_entity("climate.office_ac"));
+
+  RemoteBleConnStatus ble_st = RemoteBleConnStatus::DISCONNECTED;
+  std::string text;
+  bool bin = false;
+
+  // HA available -> normal HA tier (NONE)
+  assert(reg.get_display_mode("climate.office_ac", true, ble_st) == EspNowDisplayMode::NONE);
+  assert(!reg.get_text_state("climate.office_ac", true, text));
+  assert(!reg.get_binary_state("climate.office_ac", true, bin));
+
+  // HA unavailable + hub reachable -> ACTIVE backup tier
+  assert(reg.get_display_mode("climate.office_ac", false, ble_st) == EspNowDisplayMode::ACTIVE);
+  assert(ble_st == RemoteBleConnStatus::CONNECTED);
+  assert(reg.get_text_state("climate.office_ac", false, text) && text == "cool");
+  assert(reg.get_text_state("climate.office_ac|hvac_mode", false, text) && text == "cool");
+  assert(reg.get_text_state("climate.office_ac|temperature", false, text) && text == "22.5");
+  assert(reg.get_text_state("climate.office_ac|fan_mode", false, text) && text == "high");
+  assert(reg.get_text_state("climate.office_ac|swing_mode", false, text) && text == "vertical");
+  assert(reg.get_text_state("climate.office_ac|current_temperature", false, text) && text == "25.4");
+  assert(reg.get_binary_state("climate.office_ac", false, bin) && bin == true);
+
+  // Integer target temperature formats without .0
+  cl.target_temp_x2 = 48;  // 24.0C
+  assert(reg.get_text_state("climate.office_ac|temperature", false, text) && text == "24");
+
+  // Off state -> binary false; unavailable current_temp -> false
+  cl.hvac_mode = static_cast<uint8_t>(ClimateHvacMode::OFF);
+  cl.current_temp_x10 = CLIMATE_TEMP_INVALID;
+  assert(reg.get_binary_state("climate.office_ac", false, bin) && bin == false);
+  assert(!reg.get_text_state("climate.office_ac|current_temperature", false, text));
+
+  // Both HA and hub unreachable -> OFFLINE_DISCONNECTED
+  cl.espnow_reachable = false;
+  assert(reg.get_display_mode("climate.office_ac", false, ble_st) ==
+         EspNowDisplayMode::OFFLINE_DISCONNECTED);
+}
+
 int main() {
   test_frame_roundtrip_and_auth();
   test_state_and_ack_codecs();
   test_channel_hunt_single_multi_and_pruning();
   test_v2_multihop_and_dedup();
   test_shelly_wifi_down_instant_fallback();
+  test_climate_codecs_and_registry();
   std::cout << "All espnow_protocol tests passed!\n";
   return 0;
 }

@@ -542,6 +542,30 @@ export function resolveEffectiveEspNowShellys(
   return out;
 }
 
+export function resolveEffectiveEspNowClimates(
+  config: Config,
+  bleHubs: HeadlessHubConfig[] = []
+): import('../types').EspNowClimateLink[] {
+  const referenced = collectReferencedEntityIds(config);
+  const out: import('../types').EspNowClimateLink[] = [];
+  const seen = new Set<string>();
+
+  for (const hub of bleHubs || []) {
+    const ac = hub.gree_ac;
+    if (!ac || !ac.enabled || !ac.name?.trim()) continue;
+    const slug = slugifyEspHomeId(ac.name);
+    if (!slug) continue;
+    const eid = `climate.${slug}`;
+    if (!referenced.has(eid) || seen.has(eid)) continue;
+    seen.add(eid);
+    out.push({
+      name: ac.name.trim(),
+      entity_id: eid,
+    });
+  }
+  return out;
+}
+
 export interface EspNowCydYamlSections {
   packageLine: string;
   componentSection: string;
@@ -551,7 +575,8 @@ export function buildEspNowCydYamlSections(
   espnowFans: EspNowFanLink[] = [],
   networkKey?: string,
   fallbackChannel: number = 1,
-  espnowShellys: import('../types').ShellyBackupItem[] = []
+  espnowShellys: import('../types').ShellyBackupItem[] = [],
+  espnowClimates: import('../types').EspNowClimateLink[] = []
 ): EspNowCydYamlSections {
   const validFans = (espnowFans || []).filter(
     f => f && (f.fan_entity_id?.trim() || f.light_entity_id?.trim())
@@ -559,7 +584,10 @@ export function buildEspNowCydYamlSections(
   const validShellys = (espnowShellys || []).filter(
     s => s && s.mac_address?.trim() && s.entity_id?.trim()
   );
-  if (validFans.length === 0 && validShellys.length === 0) {
+  const validClimates = (espnowClimates || []).filter(
+    c => c && c.entity_id?.trim()
+  );
+  if (validFans.length === 0 && validShellys.length === 0 && validClimates.length === 0) {
     return { packageLine: '', componentSection: '' };
   }
 
@@ -580,6 +608,11 @@ export function buildEspNowCydYamlSections(
     entity_id: s.entity_id.trim(),
   }));
 
+  const serializedClimates = validClimates.map(c => ({
+    name: (c.name || c.entity_id).trim(),
+    entity_id: c.entity_id.trim(),
+  }));
+
   const effectiveKey = networkKey?.trim() || DEFAULT_ESPNOW_NETWORK_KEY;
   const bridgeInner: Record<string, any> = {
     role: 'cyd',
@@ -591,6 +624,9 @@ export function buildEspNowCydYamlSections(
   }
   if (serializedShellys.length > 0) {
     bridgeInner.shellys = serializedShellys;
+  }
+  if (serializedClimates.length > 0) {
+    bridgeInner.climates = serializedClimates;
   }
 
   const bridgeBlock: Record<string, any> = {

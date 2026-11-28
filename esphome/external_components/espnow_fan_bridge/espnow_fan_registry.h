@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <string>
@@ -74,6 +75,54 @@ struct RemoteShellyState {
   }
 };
 
+struct RemoteClimateState {
+  std::string name;
+  std::string entity_id;
+  uint32_t climate_key_hash{0};
+
+  bool has_state{false};
+  bool espnow_reachable{false};
+  uint32_t last_seen_ms{0};
+
+  uint8_t hvac_mode{0};            // 0=off, 1=cool, 2=heat, 3=dry, 4=fan_only, 5=auto
+  uint8_t last_active_mode{1};     // Remembered non-off mode for turn_on (default cool)
+  uint8_t target_temp_x2{48};      // 0.5C steps (24.0C = 48)
+  uint8_t fan_mode{0};             // 0=auto, 1=low, 2=medium, 3=high, 4=quiet, 5=turbo
+  uint8_t swing_mode{0};           // 0=off, 1=vertical, 2=horizontal, 3=both
+  int16_t current_temp_x10{-32768};  // INT16_MIN if unavailable
+
+  static const char *hvac_mode_str(uint8_t m) {
+    switch (m) {
+      case 1: return "cool";
+      case 2: return "heat";
+      case 3: return "dry";
+      case 4: return "fan_only";
+      case 5: return "auto";
+      default: return "off";
+    }
+  }
+
+  static const char *fan_mode_str(uint8_t m) {
+    switch (m) {
+      case 1: return "low";
+      case 2: return "medium";
+      case 3: return "high";
+      case 4: return "quiet";
+      case 5: return "turbo";
+      default: return "auto";
+    }
+  }
+
+  static const char *swing_mode_str(uint8_t m) {
+    switch (m) {
+      case 1: return "vertical";
+      case 2: return "horizontal";
+      case 3: return "both";
+      default: return "off";
+    }
+  }
+};
+
 class EspNowFanBridge;
 
 class EspNowFanRegistry {
@@ -101,6 +150,11 @@ class EspNowFanRegistry {
     shelly_entities_[sh->entity_id] = sh;
   }
 
+  void register_remote_climate(RemoteClimateState *cl) {
+    if (cl == nullptr || cl->entity_id.empty()) return;
+    climate_entities_[cl->entity_id] = cl;
+  }
+
   void set_state_change_callback(std::function<void(const std::string &, const std::string &)> cb) {
     state_change_cb_ = std::move(cb);
   }
@@ -122,16 +176,20 @@ class EspNowFanRegistry {
   bool handles_entity(const std::string &entity_or_key) const {
     const std::string base = base_entity(entity_or_key);
     return fan_entities_.count(base) > 0 || light_entities_.count(base) > 0 ||
-           shelly_entities_.count(base) > 0;
+           shelly_entities_.count(base) > 0 || climate_entities_.count(base) > 0;
   }
 
   bool handles_shelly_entity(const std::string &entity_or_key) const {
     return shelly_entities_.count(base_entity(entity_or_key)) > 0;
   }
 
+  bool handles_climate_entity(const std::string &entity_or_key) const {
+    return climate_entities_.count(base_entity(entity_or_key)) > 0;
+  }
+
   // Returns whether this entity's ESP-NOW hub is reachable or should show 'no hub'.
-  // For Shelly backup entities: returns NONE when HA has a valid state for this entity
-  // and the Shelly has not reported Wi-Fi down; otherwise ACTIVE / OFFLINE_DISCONNECTED.
+  // For Shelly/Climate backup entities: returns NONE when HA has a valid state for this entity
+  // (and Shelly Wi-Fi is up); otherwise ACTIVE / OFFLINE_DISCONNECTED.
   EspNowDisplayMode get_display_mode(const std::string &entity_or_key, bool ha_entity_available,
                                      RemoteBleConnStatus &out_ble_status) const {
     const RemoteFanState *fan = find_fan(entity_or_key);
@@ -150,6 +208,18 @@ class EspNowFanRegistry {
         return EspNowDisplayMode::NONE;  // Normal HA tier — no badge
       }
       if (sh->espnow_reachable) {
+        out_ble_status = RemoteBleConnStatus::CONNECTED;
+        return EspNowDisplayMode::ACTIVE;
+      }
+      out_ble_status = RemoteBleConnStatus::DISCONNECTED;
+      return EspNowDisplayMode::OFFLINE_DISCONNECTED;
+    }
+    const RemoteClimateState *cl = find_climate(entity_or_key);
+    if (cl != nullptr) {
+      if (ha_entity_available) {
+        return EspNowDisplayMode::NONE;  // Normal HA tier — no badge
+      }
+      if (cl->espnow_reachable) {
         out_ble_status = RemoteBleConnStatus::CONNECTED;
         return EspNowDisplayMode::ACTIVE;
       }
@@ -239,6 +309,42 @@ class EspNowFanRegistry {
       return false;
     }
 
+    auto cit = climate_entities_.find(base);
+    if (cit != climate_entities_.end()) {
+      const RemoteClimateState *cl = cit->second;
+      if (ha_entity_available || !cl->has_state) return false;
+      if (attr.empty() || attr == "state" || attr == "hvac_mode") {
+        out = RemoteClimateState::hvac_mode_str(cl->hvac_mode);
+        return true;
+      }
+      if (attr == "temperature") {
+        char buf[16];
+        if ((cl->target_temp_x2 & 1) == 0) {
+          std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(cl->target_temp_x2 / 2));
+        } else {
+          std::snprintf(buf, sizeof(buf), "%.1f", static_cast<double>(cl->target_temp_x2) * 0.5);
+        }
+        out = buf;
+        return true;
+      }
+      if (attr == "fan_mode") {
+        out = RemoteClimateState::fan_mode_str(cl->fan_mode);
+        return true;
+      }
+      if (attr == "swing_mode") {
+        out = RemoteClimateState::swing_mode_str(cl->swing_mode);
+        return true;
+      }
+      if (attr == "current_temperature") {
+        if (cl->current_temp_x10 == -32768) return false;
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%.1f", static_cast<double>(cl->current_temp_x10) * 0.1);
+        out = buf;
+        return true;
+      }
+      return false;
+    }
+
     return false;
   }
 
@@ -266,6 +372,13 @@ class EspNowFanRegistry {
       out = (sh->state_flags & 0x01) != 0;
       return true;
     }
+    auto cit = climate_entities_.find(base);
+    if (cit != climate_entities_.end()) {
+      const RemoteClimateState *cl = cit->second;
+      if (ha_entity_available || !cl->has_state) return false;
+      out = cl->hvac_mode != 0;
+      return true;
+    }
     return false;
   }
 
@@ -288,6 +401,11 @@ class EspNowFanRegistry {
     return sit != shelly_entities_.end() ? sit->second : nullptr;
   }
 
+  const RemoteClimateState *find_climate(const std::string &entity_or_key) const {
+    auto cit = climate_entities_.find(base_entity(entity_or_key));
+    return cit != climate_entities_.end() ? cit->second : nullptr;
+  }
+
   static std::string base_entity(const std::string &key) {
     size_t pos = key.find('|');
     return pos == std::string::npos ? key : key.substr(0, pos);
@@ -302,6 +420,7 @@ class EspNowFanRegistry {
   std::map<std::string, RemoteFanState *> fan_entities_;
   std::map<std::string, RemoteFanState *> light_entities_;
   std::map<std::string, RemoteShellyState *> shelly_entities_;
+  std::map<std::string, RemoteClimateState *> climate_entities_;
   std::function<void(const std::string &, const std::string &)> state_change_cb_;
   std::function<void()> redraw_cb_;
 };
