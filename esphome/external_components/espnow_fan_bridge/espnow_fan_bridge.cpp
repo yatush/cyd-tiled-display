@@ -90,17 +90,29 @@ void EspNowFanBridge::setup() {
     EspNowFanRegistry::instance().register_remote_shelly(&rs);
   }
 
-  // Register Wi-Fi event hooks to track connect/disconnect and background scan completion
+  // Register Wi-Fi & IP event hooks to track connect/disconnect, IPv4 readiness, and scan completion
   esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &EspNowFanBridge::wifi_event_handler,
                              this);
+  esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &EspNowFanBridge::wifi_event_handler,
+                             this);
 
-  // Check initial Wi-Fi association state
+  // Check initial Wi-Fi association & IPv4 state
   wifi_ap_record_t ap_info{};
   if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
     wifi_connected_.store(true);
   }
+  esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (sta_netif != nullptr) {
+    esp_netif_ip_info_t ip_info{};
+    if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
+      has_ip_.store(true);
+    }
+  }
 
   ensure_espnow_initialized();
+  if (has_ip_.load()) {
+    ensure_udp_initialized();
+  }
 
 #ifdef USE_TUYA_BLE_FAN
   if (role_ == BridgeRole::HUB) {
@@ -135,6 +147,8 @@ void EspNowFanBridge::dump_config() {
                 static_cast<unsigned>(DEFAULT_RELAY_TTL));
   ESP_LOGCONFIG(TAG, "  Fallback Channel: %u", fallback_channel_);
   ESP_LOGCONFIG(TAG, "  Current Channel: %u", current_wifi_channel());
+  ESP_LOGCONFIG(TAG, "  LAN UDP Mirror Port: %u%s", static_cast<unsigned>(udp_port_),
+                udp_port_ == 0 ? " (disabled)" : "");
   if (role_ == BridgeRole::CYD) {
     ESP_LOGCONFIG(TAG, "  Remote Fans: %u", static_cast<unsigned>(remote_fans_.size()));
     for (const auto &rf : remote_fans_) {
@@ -227,16 +241,108 @@ void EspNowFanBridge::publish_channel_if_changed(bool force) {
 void EspNowFanBridge::wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                          void * /*event_data*/) {
   auto *self = static_cast<EspNowFanBridge *>(arg);
-  if (self == nullptr || event_base != WIFI_EVENT) return;
+  if (self == nullptr) return;
 
-  if (event_id == WIFI_EVENT_STA_CONNECTED) {
-    self->wifi_connected_.store(true);
-    self->wifi_event_dirty_.store(true);
-  } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    self->wifi_connected_.store(false);
-    self->wifi_event_dirty_.store(true);
-  } else if (event_id == WIFI_EVENT_SCAN_DONE) {
-    self->wifi_scan_done_flag_.store(true);
+  if (event_base == WIFI_EVENT) {
+    if (event_id == WIFI_EVENT_STA_CONNECTED) {
+      self->wifi_connected_.store(true);
+      self->wifi_event_dirty_.store(true);
+    } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
+      self->wifi_connected_.store(false);
+      self->has_ip_.store(false);
+      self->wifi_event_dirty_.store(true);
+    } else if (event_id == WIFI_EVENT_SCAN_DONE) {
+      self->wifi_scan_done_flag_.store(true);
+    }
+  } else if (event_base == IP_EVENT) {
+    if (event_id == IP_EVENT_STA_GOT_IP) {
+      self->wifi_connected_.store(true);
+      self->has_ip_.store(true);
+      self->wifi_event_dirty_.store(true);
+    } else if (event_id == IP_EVENT_STA_LOST_IP) {
+      self->has_ip_.store(false);
+    }
+  }
+}
+
+void EspNowFanBridge::ensure_udp_initialized() {
+  if (udp_port_ == 0 || udp_sock_ >= 0 || !has_ip_.load()) return;
+
+  int sock = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (sock < 0) {
+    ESP_LOGW(TAG, "Failed to create LAN UDP mirror socket");
+    return;
+  }
+
+  int yes = 1;
+  ::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+  ::setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
+
+  int flags = ::fcntl(sock, F_GETFL, 0);
+  if (flags >= 0) {
+    ::fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+  }
+
+  struct sockaddr_in bind_addr{};
+  bind_addr.sin_family = AF_INET;
+  bind_addr.sin_port = htons(udp_port_);
+  bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  if (::bind(sock, reinterpret_cast<struct sockaddr *>(&bind_addr), sizeof(bind_addr)) < 0) {
+    ESP_LOGW(TAG, "Failed to bind LAN UDP mirror socket on port %u",
+             static_cast<unsigned>(udp_port_));
+    ::close(sock);
+    return;
+  }
+
+  udp_sock_ = sock;
+  ESP_LOGI(TAG, "LAN UDP broadcast mirror listening on port %u", static_cast<unsigned>(udp_port_));
+}
+
+void EspNowFanBridge::close_udp() {
+  if (udp_sock_ >= 0) {
+    ::close(udp_sock_);
+    udp_sock_ = -1;
+  }
+}
+
+bool EspNowFanBridge::send_udp_broadcast(const std::vector<uint8_t> &frame) {
+  if (udp_port_ == 0 || frame.empty() || !has_ip_.load()) return false;
+  if (udp_sock_ < 0) {
+    ensure_udp_initialized();
+    if (udp_sock_ < 0) return false;
+  }
+
+  struct sockaddr_in dest{};
+  dest.sin_family = AF_INET;
+  dest.sin_port = htons(udp_port_);
+  dest.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+  ssize_t sent = ::sendto(udp_sock_, frame.data(), frame.size(), 0,
+                          reinterpret_cast<struct sockaddr *>(&dest), sizeof(dest));
+  return sent == static_cast<ssize_t>(frame.size());
+}
+
+void EspNowFanBridge::poll_udp_rx() {
+  if (udp_sock_ < 0) return;
+
+  uint8_t buf[MAX_FRAME_SIZE];
+  for (int i = 0; i < 16; i++) {
+    struct sockaddr_in from{};
+    socklen_t from_len = sizeof(from);
+    ssize_t n = ::recvfrom(udp_sock_, buf, sizeof(buf), 0,
+                           reinterpret_cast<struct sockaddr *>(&from), &from_len);
+    if (n <= 0) break;
+
+    RxPacket pkt;
+    uint32_t ip_be = from.sin_addr.s_addr;
+    pkt.src_mac = {0x02,
+                   0x55,
+                   static_cast<uint8_t>(ip_be & 0xFF),
+                   static_cast<uint8_t>((ip_be >> 8) & 0xFF),
+                   static_cast<uint8_t>((ip_be >> 16) & 0xFF),
+                   static_cast<uint8_t>((ip_be >> 24) & 0xFF)};
+    pkt.rx_channel = current_wifi_channel();
+    pkt.data.assign(buf, buf + n);
+    process_rx_packet(pkt);
   }
 }
 
@@ -272,7 +378,8 @@ bool EspNowFanBridge::broadcast_frame(MsgType type, uint16_t seq,
                             payload.size(), origin, ttl, hop_nonce);
   if (frame.empty()) return false;
   esp_err_t err = esp_now_send(BROADCAST_MAC, frame.data(), frame.size());
-  return err == ESP_OK;
+  bool udp_ok = send_udp_broadcast(frame);
+  return err == ESP_OK || udp_ok;
 }
 
 void EspNowFanBridge::send_ping() {
@@ -335,7 +442,7 @@ void EspNowFanBridge::loop() {
     if (!espnow_ready_) return;
   }
 
-  // 1. Drain RX queue safely on main thread
+  // 1. Drain ESP-NOW RX queue safely on main thread
   std::deque<RxPacket> batch;
   portENTER_CRITICAL(&rx_mux_);
   batch.swap(rx_queue_);
@@ -343,6 +450,14 @@ void EspNowFanBridge::loop() {
 
   for (const auto &pkt : batch) {
     process_rx_packet(pkt);
+  }
+
+  // 1b. Poll LAN UDP broadcast mirror when Wi-Fi has an IPv4 address
+  if (has_ip_.load()) {
+    ensure_udp_initialized();
+    poll_udp_rx();
+  } else if (udp_sock_ >= 0) {
+    close_udp();
   }
 
   // 2. React to Wi-Fi connect/disconnect/scan events
@@ -469,15 +584,13 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
   const uint8_t rx_ch =
       (pkt.rx_channel >= 1 && pkt.rx_channel <= 13) ? pkt.rx_channel : current_wifi_channel();
 
-  // Drop our own relayed echoes and duplicate multi-hop frames
+  // Drop our own echoes (ESP-NOW relay or UDP broadcast loopback) and duplicate frames
   if (hdr.origin_id != 0 && hdr.origin_id == local_origin_id_) {
     return;
   }
-  if (hdr.type != MsgType::PING && hdr.type != MsgType::PONG) {
-    if (!relay_dedup_.accept(hdr.origin_id, hdr.type, hdr.seq, hdr.hop_nonce, now,
-                             RELAY_DEDUP_TTL_MS)) {
-      return;
-    }
+  if (!relay_dedup_.accept(hdr.origin_id, hdr.type, hdr.seq, hdr.hop_nonce, now,
+                           RELAY_DEDUP_TTL_MS)) {
+    return;
   }
 
   switch (hdr.type) {

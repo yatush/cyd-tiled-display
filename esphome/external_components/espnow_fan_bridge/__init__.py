@@ -14,6 +14,7 @@ AUTO_LOAD = ["sensor"]
 CONF_ROLE = "role"
 CONF_NETWORK_KEY = "network_key"
 CONF_FALLBACK_CHANNEL = "fallback_channel"
+CONF_UDP_PORT = "udp_port"
 CONF_CHANNEL_SENSOR = "channel_sensor"
 CONF_FANS = "fans"
 CONF_FAN_ENTITY_ID = "fan_entity_id"
@@ -66,6 +67,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_ROLE): cv.enum(ROLES, lower=True),
         cv.Optional(CONF_NETWORK_KEY, default="cyd_espnow_default"): cv.string,
         cv.Optional(CONF_FALLBACK_CHANNEL, default=1): cv.int_range(min=1, max=13),
+        cv.Optional(CONF_UDP_PORT, default=42110): cv.int_range(min=0, max=65535),
         cv.Optional(CONF_CHANNEL_SENSOR): CHANNEL_SENSOR_SCHEMA,
         cv.Optional(CONF_FANS, default=[]): cv.ensure_list(FAN_LINK_SCHEMA),
         cv.Optional(CONF_SHELLYS, default=[]): cv.ensure_list(SHELLY_LINK_SCHEMA),
@@ -87,6 +89,7 @@ async def to_code(config):
 
     cg.add(var.set_network_key(config[CONF_NETWORK_KEY]))
     cg.add(var.set_fallback_channel(config[CONF_FALLBACK_CHANNEL]))
+    cg.add(var.set_udp_port(config[CONF_UDP_PORT]))
 
     if CONF_CHANNEL_SENSOR in config:
         sens = await sensor.new_sensor(config[CONF_CHANNEL_SENSOR])

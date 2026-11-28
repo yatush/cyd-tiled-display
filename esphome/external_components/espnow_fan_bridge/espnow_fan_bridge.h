@@ -42,6 +42,7 @@ class EspNowFanBridge : public Component {
     fallback_channel_ = ch < 1 ? 1 : (ch > 13 ? 13 : ch);
     hunt_.set_fallback_channel(fallback_channel_);
   }
+  void set_udp_port(uint16_t port) { udp_port_ = port; }
   void set_channel_sensor(sensor::Sensor *sensor) { channel_sensor_ = sensor; }
 
   // CYD role: register a remote fan hosted on a headless hub
@@ -119,6 +120,10 @@ class EspNowFanBridge : public Component {
 
   void ensure_espnow_initialized();
   bool ensure_broadcast_peer();
+  void ensure_udp_initialized();
+  void close_udp();
+  bool send_udp_broadcast(const std::vector<uint8_t> &frame);
+  void poll_udp_rx();
   uint8_t current_wifi_channel() const;
   void set_radio_channel(uint8_t ch);
   void publish_channel_if_changed(bool force = false);
@@ -169,6 +174,8 @@ class EspNowFanBridge : public Component {
   BridgeRole role_{BridgeRole::CYD};
   std::string network_key_{"cyd_espnow_default"};
   uint8_t fallback_channel_{1};
+  uint16_t udp_port_{42110};
+  int udp_sock_{-1};
   sensor::Sensor *channel_sensor_{nullptr};
 
   bool espnow_ready_{false};
@@ -177,6 +184,7 @@ class EspNowFanBridge : public Component {
   uint16_t next_seq_{1};
 
   std::atomic<bool> wifi_connected_{false};
+  std::atomic<bool> has_ip_{false};
   std::atomic<bool> wifi_event_dirty_{false};
   std::atomic<bool> wifi_scan_done_flag_{false};
 
