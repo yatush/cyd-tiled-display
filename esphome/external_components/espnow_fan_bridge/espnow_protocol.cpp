@@ -396,6 +396,8 @@ void ChannelHuntState::clear_active_channels() {
   tracked_.clear();
   rr_index_ = 0;
   rr_last_switch_ms_ = 0;
+  sweeping_ = false;
+  sweep_step_started_ms_ = 0;
 }
 
 bool FrameDedupRing::accept(uint32_t origin_id, MsgType type, uint16_t seq, uint8_t hop_nonce,

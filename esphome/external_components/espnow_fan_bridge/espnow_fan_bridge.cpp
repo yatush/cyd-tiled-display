@@ -526,7 +526,7 @@ void EspNowFanBridge::loop() {
   // 4. Periodic heartbeat & channel sensor refresh
   if (now - last_heartbeat_ms_ >= HEARTBEAT_INTERVAL_MS) {
     last_heartbeat_ms_ = now;
-    if (!hunt_.is_sweeping()) {
+    if (online || !hunt_.is_sweeping()) {
       send_ping();
       if (role_ == BridgeRole::CYD) {
         send_sync_req();
