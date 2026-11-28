@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor
+from esphome.components import climate, sensor
 from esphome.const import (
     CONF_ID,
     CONF_NAME,
@@ -24,6 +24,8 @@ CONF_MAC_ADDRESS = "mac_address"
 CONF_CHANNEL = "channel"
 CONF_KIND = "kind"
 CONF_ENTITY_ID = "entity_id"
+CONF_CLIMATES = "climates"
+CONF_CLIMATE_ID = "climate_id"
 
 espnow_ns = cg.esphome_ns.namespace("espnow_fan_bridge")
 EspNowFanBridge = espnow_ns.class_("EspNowFanBridge", cg.Component)
@@ -54,6 +56,14 @@ SHELLY_LINK_SCHEMA = cv.Schema(
     }
 )
 
+CLIMATE_LINK_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_NAME): cv.string,
+        cv.Required(CONF_ENTITY_ID): cv.string,
+        cv.Optional(CONF_CLIMATE_ID): cv.use_id(climate.Climate),
+    }
+)
+
 CHANNEL_SENSOR_SCHEMA = sensor.sensor_schema(
     accuracy_decimals=0,
     entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -71,6 +81,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_CHANNEL_SENSOR): CHANNEL_SENSOR_SCHEMA,
         cv.Optional(CONF_FANS, default=[]): cv.ensure_list(FAN_LINK_SCHEMA),
         cv.Optional(CONF_SHELLYS, default=[]): cv.ensure_list(SHELLY_LINK_SCHEMA),
+        cv.Optional(CONF_CLIMATES, default=[]): cv.ensure_list(CLIMATE_LINK_SCHEMA),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -115,3 +126,22 @@ async def to_code(config):
                 sh_cfg[CONF_ENTITY_ID],
             )
         )
+
+    for cl_cfg in config.get(CONF_CLIMATES, []):
+        if role_key == "hub" and CONF_CLIMATE_ID in cl_cfg:
+            cg.add_define("USE_ESPNOW_CLIMATE")
+            clim_var = await cg.get_variable(cl_cfg[CONF_CLIMATE_ID])
+            cg.add(
+                var.add_local_climate(
+                    cl_cfg[CONF_NAME],
+                    cl_cfg[CONF_ENTITY_ID],
+                    clim_var,
+                )
+            )
+        elif role_key == "cyd":
+            cg.add(
+                var.add_remote_climate(
+                    cl_cfg[CONF_NAME],
+                    cl_cfg[CONF_ENTITY_ID],
+                )
+            )

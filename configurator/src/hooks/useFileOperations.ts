@@ -20,6 +20,7 @@ import {
   configHasBleProxy,
   extractBleFansFromDeviceYaml,
   extractEspNowFansFromDeviceYaml,
+  resolveEffectiveEspNowClimates,
   resolveEffectiveEspNowFans,
   resolveEffectiveEspNowShellys,
 } from '../utils/bleFanUtils';
@@ -373,11 +374,13 @@ export function useFileOperations(
         bleHubs,
         discoveredShellys
       );
+      const effectiveEspNowClimates = resolveEffectiveEspNowClimates(config, bleHubs);
       const espnowCyd = buildEspNowCydYamlSections(
         effectiveEspNowFans,
         config.espnow_network_key || espnowNetworkKey,
         config.espnow_fallback_channel || 1,
-        effectiveEspNowShellys
+        effectiveEspNowShellys,
+        effectiveEspNowClimates
       );
 
       const blePackageSection = `${tuyaBle.packageLine}${espnowCyd.packageLine}${hasBleProxy ? '\n  ble_proxy: !include lib/ble_proxy.yaml' : ''}`;

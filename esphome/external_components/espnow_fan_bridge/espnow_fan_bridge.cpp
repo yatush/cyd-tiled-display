@@ -44,6 +44,14 @@ bool EspNowFanRegistry::handle_action(const std::string &entity_id, const std::s
     return bridge_->send_shelly_action(sit->second, action, data);
   }
 
+  auto cit = climate_entities_.find(base);
+  if (cit != climate_entities_.end()) {
+    if (ha_entity_available) {
+      return false;  // Normal HA tier — let HA handle it
+    }
+    return bridge_->send_climate_action(cit->second, action, data);
+  }
+
   return false;
 }
 
@@ -79,6 +87,26 @@ void EspNowFanBridge::add_remote_shelly(const std::string &name, const std::stri
   remote_shellys_.push_back(std::move(st));
 }
 
+void EspNowFanBridge::add_remote_climate(const std::string &name, const std::string &entity_id) {
+  RemoteClimateState st;
+  st.name = name;
+  st.entity_id = entity_id;
+  st.climate_key_hash = fnv1a_32(entity_id);
+  remote_climates_.push_back(std::move(st));
+}
+
+#ifdef USE_ESPNOW_CLIMATE
+void EspNowFanBridge::add_local_climate(const std::string &name, const std::string &entity_id,
+                                        climate::Climate *clim) {
+  LocalClimateEntry entry;
+  entry.name = name;
+  entry.entity_id = entity_id;
+  entry.climate_key_hash = fnv1a_32(entity_id);
+  entry.clim = clim;
+  local_climates_.push_back(std::move(entry));
+}
+#endif
+
 void EspNowFanBridge::setup() {
   active_instance_ = this;
   EspNowFanRegistry::instance().set_bridge(this);
@@ -88,6 +116,9 @@ void EspNowFanBridge::setup() {
   }
   for (auto &rs : remote_shellys_) {
     EspNowFanRegistry::instance().register_remote_shelly(&rs);
+  }
+  for (auto &rc : remote_climates_) {
+    EspNowFanRegistry::instance().register_remote_climate(&rc);
   }
 
   // Register Wi-Fi & IP event hooks to track connect/disconnect, IPv4 readiness, and scan completion
@@ -137,6 +168,18 @@ void EspNowFanBridge::setup() {
   }
 #endif
 
+#ifdef USE_ESPNOW_CLIMATE
+  if (role_ == BridgeRole::HUB) {
+    for (size_t i = 0; i < local_climates_.size(); i++) {
+      if (local_climates_[i].clim != nullptr) {
+        local_climates_[i].clim->add_on_state_callback([this, i](climate::Climate &) {
+          this->hub_broadcast_climate_state(this->local_climates_[i]);
+        });
+      }
+    }
+  }
+#endif
+
   publish_channel_if_changed(true);
 }
 
@@ -163,7 +206,21 @@ void EspNowFanBridge::dump_config() {
                     static_cast<unsigned>(rs.channel), static_cast<unsigned>(rs.device_id),
                     rs.is_cover ? 1 : 0);
     }
+    ESP_LOGCONFIG(TAG, "  Remote Climates: %u", static_cast<unsigned>(remote_climates_.size()));
+    for (const auto &rc : remote_climates_) {
+      ESP_LOGCONFIG(TAG, "    - %s (entity=%s, hash=0x%08X)", rc.name.c_str(), rc.entity_id.c_str(),
+                    static_cast<unsigned>(rc.climate_key_hash));
+    }
   }
+#ifdef USE_ESPNOW_CLIMATE
+  if (role_ == BridgeRole::HUB && !local_climates_.empty()) {
+    ESP_LOGCONFIG(TAG, "  Local Climates: %u", static_cast<unsigned>(local_climates_.size()));
+    for (const auto &lc : local_climates_) {
+      ESP_LOGCONFIG(TAG, "    - %s (entity=%s, hash=0x%08X)", lc.name.c_str(), lc.entity_id.c_str(),
+                    static_cast<unsigned>(lc.climate_key_hash));
+    }
+  }
+#endif
 }
 
 void EspNowFanBridge::ensure_espnow_initialized() {
@@ -566,6 +623,15 @@ void EspNowFanBridge::loop() {
         ui_dirty_ = true;
       }
     }
+    for (auto &rc : remote_climates_) {
+      if (rc.espnow_reachable &&
+          static_cast<int32_t>(check_now - rc.last_seen_ms) >
+              static_cast<int32_t>(PEER_TIMEOUT_MS)) {
+        ESP_LOGW(TAG, "[%s] ESP-NOW climate hub timed out (unreachable)", rc.name.c_str());
+        rc.espnow_reachable = false;
+        ui_dirty_ = true;
+      }
+    }
     if (ui_dirty_) {
       ui_dirty_ = false;
       EspNowFanRegistry::instance().notify_redraw();
@@ -621,6 +687,11 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
         hub_broadcast_all_shelly_states();
       }
 #endif
+#ifdef USE_ESPNOW_CLIMATE
+      if (role_ == BridgeRole::HUB && p.role == BridgeRole::CYD) {
+        hub_broadcast_all_climate_states();
+      }
+#endif
       break;
     }
 
@@ -658,6 +729,9 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
 #ifdef USE_SHELLY_BLE_BRIDGE
         hub_broadcast_all_shelly_states();
 #endif
+#ifdef USE_ESPNOW_CLIMATE
+        hub_broadcast_all_climate_states();
+#endif
         hub_schedule_relay(hdr, payload, now);
       }
       break;
@@ -682,10 +756,12 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
     case MsgType::ACK: {
       AckPayload ack;
       if (!decode_ack(payload.data(), payload.size(), ack)) return;
-      const size_t before_cmds = pending_cmds_.size() + pending_shelly_cmds_.size();
+      const size_t before_cmds =
+          pending_cmds_.size() + pending_shelly_cmds_.size() + pending_climate_cmds_.size();
       cyd_handle_ack(ack, now);
       const bool consumed_locally =
-          (pending_cmds_.size() + pending_shelly_cmds_.size()) < before_cmds;
+          (pending_cmds_.size() + pending_shelly_cmds_.size() + pending_climate_cmds_.size()) <
+          before_cmds;
       if (role_ == BridgeRole::HUB && !consumed_locally) {
         hub_schedule_relay(hdr, payload, now);
       }
@@ -732,6 +808,37 @@ void EspNowFanBridge::process_rx_packet(const RxPacket &pkt) {
       }
       if (role_ == BridgeRole::CYD) {
         cyd_handle_shelly_state(sst, now);
+      } else if (role_ == BridgeRole::HUB) {
+        hub_schedule_relay(hdr, payload, now);
+      }
+      break;
+    }
+
+    case MsgType::CLIMATE_CMD: {
+      ClimateCmdPayload ccmd;
+      if (!decode_climate_cmd(payload.data(), payload.size(), ccmd)) return;
+      upsert_peer(pkt.src_mac, BridgeRole::CYD, rx_ch, now);
+      if (role_ == BridgeRole::HUB) {
+        bool handled = false;
+#ifdef USE_ESPNOW_CLIMATE
+        handled = hub_handle_climate_cmd(ccmd, hdr.origin_id, hdr.seq, now);
+#endif
+        if (!handled) {
+          hub_schedule_relay(hdr, payload, now);
+        }
+      }
+      break;
+    }
+
+    case MsgType::CLIMATE_STATE: {
+      ClimateStatePayload cst;
+      if (!decode_climate_state(payload.data(), payload.size(), cst)) return;
+      upsert_peer(pkt.src_mac, BridgeRole::HUB, rx_ch, now);
+      if (!wifi_connected_.load()) {
+        hunt_.record_peer_channel(rx_ch);
+      }
+      if (role_ == BridgeRole::CYD) {
+        cyd_handle_climate_state(cst, now);
       } else if (role_ == BridgeRole::HUB) {
         hub_schedule_relay(hdr, payload, now);
       }

@@ -286,6 +286,52 @@ bool decode_shelly_state(const uint8_t *data, size_t len, ShellyStatePayload &ou
   return true;
 }
 
+std::vector<uint8_t> encode_climate_cmd(const ClimateCmdPayload &p) {
+  std::vector<uint8_t> buf;
+  buf.reserve(9);
+  push_u32(buf, p.climate_key_hash);
+  buf.push_back(p.field_mask);
+  buf.push_back(p.hvac_mode);
+  buf.push_back(p.target_temp_x2);
+  buf.push_back(p.fan_mode);
+  buf.push_back(p.swing_mode);
+  return buf;
+}
+
+bool decode_climate_cmd(const uint8_t *data, size_t len, ClimateCmdPayload &out) {
+  if (data == nullptr || len < 9) return false;
+  out.climate_key_hash = read_u32(data);
+  out.field_mask = data[4];
+  out.hvac_mode = data[5];
+  out.target_temp_x2 = data[6];
+  out.fan_mode = data[7];
+  out.swing_mode = data[8];
+  return true;
+}
+
+std::vector<uint8_t> encode_climate_state(const ClimateStatePayload &p) {
+  std::vector<uint8_t> buf;
+  buf.reserve(10);
+  push_u32(buf, p.climate_key_hash);
+  buf.push_back(p.hvac_mode);
+  buf.push_back(p.target_temp_x2);
+  buf.push_back(p.fan_mode);
+  buf.push_back(p.swing_mode);
+  push_u16(buf, static_cast<uint16_t>(p.current_temp_x10));
+  return buf;
+}
+
+bool decode_climate_state(const uint8_t *data, size_t len, ClimateStatePayload &out) {
+  if (data == nullptr || len < 10) return false;
+  out.climate_key_hash = read_u32(data);
+  out.hvac_mode = data[4];
+  out.target_temp_x2 = data[5];
+  out.fan_mode = data[6];
+  out.swing_mode = data[7];
+  out.current_temp_x10 = static_cast<int16_t>(read_u16(data + 8));
+  return true;
+}
+
 // ============================================================================
 // ChannelHuntState
 // ============================================================================

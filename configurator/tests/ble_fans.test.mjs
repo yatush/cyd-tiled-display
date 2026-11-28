@@ -15,6 +15,7 @@ import {
   buildEspNowCydYamlSections,
   extractEspNowFansFromDeviceYaml,
   mergeHubFansIntoHaEntities,
+  resolveEffectiveEspNowClimates,
   resolveEffectiveEspNowFans,
 } from '../src/utils/bleFanUtils.ts';
 import { getConfigSnapshot } from '../src/utils/fileContext.ts';
@@ -272,4 +273,71 @@ test('ESP-NOW hub fans are explicitly configured (stateless across computers) an
   assert.equal(extracted.fans.length, 1);
   assert.equal(extracted.networkKey, 'deadbeef12345678');
   assert.equal(extracted.fallbackChannel, 6);
+});
+
+test('ESP-NOW offline IR climate auto-wiring matches referenced hub Gree AC tiles', () => {
+  const hubs = [
+    {
+      filename: 'office-hub.yaml',
+      name: 'office-hub',
+      friendly_name: 'Office Hub',
+      board: 'seeed_xiao_esp32c3',
+      fallback_channel: 1,
+      network_key: 'cyd_espnow_default',
+      fans: [],
+      gree_ac: {
+        enabled: true,
+        name: 'Office AC',
+        model: 'yaa',
+        tx_pin: 'GPIO4',
+        rx_pin: '',
+        supports_cool: true,
+        supports_heat: true,
+        dump_ir: false,
+      },
+    },
+    {
+      filename: 'bedroom-hub.yaml',
+      name: 'bedroom-hub',
+      friendly_name: 'Bedroom Hub',
+      board: 'seeed_xiao_esp32c3',
+      fallback_channel: 1,
+      network_key: 'cyd_espnow_default',
+      fans: [],
+      gree_ac: {
+        enabled: true,
+        name: 'Bedroom AC',
+        model: 'yaa',
+        tx_pin: 'GPIO4',
+        rx_pin: '',
+        supports_cool: true,
+        supports_heat: true,
+        dump_ir: false,
+      },
+    },
+  ];
+
+  const cydConfig = {
+    pages: [
+      {
+        id: 'main',
+        rows: 2,
+        cols: 3,
+        tiles: [
+          { id: 't1', type: 'ha_action', x: 0, y: 0, entities: ['climate.office_ac|temperature'] },
+        ],
+      },
+    ],
+  };
+
+  const climates = resolveEffectiveEspNowClimates(cydConfig, hubs);
+  assert.deepEqual(climates, [{ name: 'Office AC', entity_id: 'climate.office_ac' }]);
+
+  const sections = buildEspNowCydYamlSections([], 'cyd_espnow_default', 1, [], climates);
+  assert.match(sections.packageLine, /espnow_cyd: !include lib\/espnow_cyd\.yaml/);
+  const parsed = load(sections.componentSection);
+  assert.equal(parsed.espnow_fan_bridge.role, 'cyd');
+  assert.deepEqual(parsed.espnow_fan_bridge.climates, [
+    { name: 'Office AC', entity_id: 'climate.office_ac' },
+  ]);
 });

@@ -69,6 +69,11 @@ export interface EspNowFanLink {
   light_entity_id?: string;
 }
 
+export interface EspNowClimateLink {
+  name: string;
+  entity_id: string;
+}
+
 export interface GreeAcConfig {
   enabled: boolean;
   name: string;

@@ -789,6 +789,16 @@ def _render_headless_hub_yaml(name, friendly_name, board, fallback_channel, netw
             },
         }
     }
+    if gree_ac and gree_ac.get('enabled') and gree_ac.get('name'):
+        ac_slug = re.sub(r'[^a-z0-9]+', '_', str(gree_ac['name']).strip().lower()).strip('_')
+        if ac_slug:
+            bridge_block['espnow_fan_bridge']['climates'] = [
+                {
+                    'name': str(gree_ac['name']).strip(),
+                    'entity_id': f'climate.{ac_slug}',
+                    'climate_id': 'gree_ac',
+                }
+            ]
     lines.append(yaml.safe_dump(bridge_block, sort_keys=False, default_flow_style=False).rstrip())
     lines.append('')
 

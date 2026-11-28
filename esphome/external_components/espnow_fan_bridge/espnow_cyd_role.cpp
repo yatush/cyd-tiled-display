@@ -23,6 +23,13 @@ RemoteShellyState *EspNowFanBridge::cyd_find_remote_shelly(uint32_t device_id, u
   return nullptr;
 }
 
+RemoteClimateState *EspNowFanBridge::cyd_find_remote_climate(uint32_t climate_key_hash) {
+  for (auto &rc : remote_climates_) {
+    if (rc.climate_key_hash == climate_key_hash) return &rc;
+  }
+  return nullptr;
+}
+
 void EspNowFanBridge::cyd_handle_shelly_state(const ShellyStatePayload &st, uint32_t now_ms) {
   auto *rs = cyd_find_remote_shelly(st.device_id, st.channel);
   if (rs == nullptr) return;
@@ -48,6 +55,49 @@ void EspNowFanBridge::cyd_handle_shelly_state(const ShellyStatePayload &st, uint
   if (!prev_has || !prev_reach || prev_flags != rs->state_flags || prev_pos != rs->position) {
     ui_dirty_ = true;
   }
+}
+
+void EspNowFanBridge::cyd_handle_climate_state(const ClimateStatePayload &st, uint32_t now_ms) {
+  auto *rc = cyd_find_remote_climate(st.climate_key_hash);
+  if (rc == nullptr) return;
+
+  const bool prev_has = rc->has_state;
+  const bool prev_reach = rc->espnow_reachable;
+  const uint8_t prev_mode = rc->hvac_mode;
+  const uint8_t prev_temp = rc->target_temp_x2;
+  const uint8_t prev_fan = rc->fan_mode;
+  const uint8_t prev_swing = rc->swing_mode;
+  const int16_t prev_cur = rc->current_temp_x10;
+
+  rc->has_state = true;
+  rc->espnow_reachable = true;
+  rc->last_seen_ms = now_ms;
+  rc->hvac_mode = st.hvac_mode;
+  if (st.hvac_mode != 0) {
+    rc->last_active_mode = st.hvac_mode;
+  }
+  rc->target_temp_x2 = st.target_temp_x2;
+  rc->fan_mode = st.fan_mode;
+  rc->swing_mode = st.swing_mode;
+  rc->current_temp_x10 = st.current_temp_x10;
+
+  if (!prev_reach) {
+    ESP_LOGI(TAG, "[%s] Climate ESP-NOW state received (mode=%s temp=%.1f fan=%s swing=%s)",
+             rc->name.c_str(), RemoteClimateState::hvac_mode_str(rc->hvac_mode),
+             rc->target_temp_x2 * 0.5f, RemoteClimateState::fan_mode_str(rc->fan_mode),
+             RemoteClimateState::swing_mode_str(rc->swing_mode));
+  }
+
+  const bool changed = !prev_has || !prev_reach || prev_mode != rc->hvac_mode ||
+                       prev_temp != rc->target_temp_x2 || prev_fan != rc->fan_mode ||
+                       prev_swing != rc->swing_mode || prev_cur != rc->current_temp_x10;
+  if (!changed) return;
+
+  if (!rc->entity_id.empty()) {
+    EspNowFanRegistry::instance().notify_state_changed(
+        rc->entity_id, RemoteClimateState::hvac_mode_str(rc->hvac_mode));
+  }
+  ui_dirty_ = true;
 }
 
 void EspNowFanBridge::cyd_handle_state(const StatePayload &st, uint32_t now_ms) {
@@ -142,6 +192,21 @@ void EspNowFanBridge::cyd_handle_ack(const AckPayload &ack, uint32_t now_ms) {
       return;
     }
   }
+  for (auto it = pending_climate_cmds_.begin(); it != pending_climate_cmds_.end(); ++it) {
+    if (it->seq == ack.ack_seq) {
+      ESP_LOGD(TAG, "RX ESP-NOW Climate ACK seq=%u status=%u", ack.ack_seq,
+               static_cast<unsigned>(ack.status));
+      if (auto *rc = cyd_find_remote_climate(it->cmd.climate_key_hash)) {
+        if (!rc->espnow_reachable) {
+          rc->espnow_reachable = true;
+          ui_dirty_ = true;
+        }
+        rc->last_seen_ms = now_ms;
+      }
+      pending_climate_cmds_.erase(it);
+      return;
+    }
+  }
 }
 
 void EspNowFanBridge::cyd_queue_cmd(const CmdPayload &cmd, uint32_t now_ms) {
@@ -192,6 +257,32 @@ void EspNowFanBridge::cyd_queue_shelly_cmd(const ShellyCmdPayload &cmd, uint32_t
   pending_shelly_cmds_.push_back(pending);
 }
 
+void EspNowFanBridge::cyd_queue_climate_cmd(const ClimateCmdPayload &cmd, uint32_t now_ms) {
+  PendingClimateCmd pending;
+  pending.seq = next_seq_++;
+  pending.cmd = cmd;
+  pending.created_ms = now_ms;
+  pending.last_tx_ms = now_ms;
+  pending.attempts = 1;
+
+  ESP_LOGD(TAG, "TX ESP-NOW CLIMATE_CMD seq=%u key=0x%08X mask=0x%02X mode=%u temp=%.1f",
+           pending.seq, static_cast<unsigned>(cmd.climate_key_hash),
+           static_cast<unsigned>(cmd.field_mask), static_cast<unsigned>(cmd.hvac_mode),
+           cmd.target_temp_x2 * 0.5f);
+  broadcast_frame(MsgType::CLIMATE_CMD, pending.seq, encode_climate_cmd(pending.cmd));
+
+  // Coalesce older pending commands for the same climate + field_mask
+  for (auto it = pending_climate_cmds_.begin(); it != pending_climate_cmds_.end();) {
+    if (it->cmd.climate_key_hash == cmd.climate_key_hash &&
+        it->cmd.field_mask == cmd.field_mask) {
+      it = pending_climate_cmds_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  pending_climate_cmds_.push_back(pending);
+}
+
 void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
   for (auto it = pending_cmds_.begin(); it != pending_cmds_.end();) {
     if (static_cast<int32_t>(now_ms - it->last_tx_ms) <
@@ -237,6 +328,31 @@ void EspNowFanBridge::cyd_tick_pending_cmds(uint32_t now_ms) {
     it->attempts++;
     it->last_tx_ms = now_ms;
     broadcast_frame(MsgType::SHELLY_CMD, it->seq, encode_shelly_cmd(it->cmd), DEFAULT_RELAY_TTL,
+                    it->attempts, it->origin_override);
+    ++it;
+  }
+
+  for (auto it = pending_climate_cmds_.begin(); it != pending_climate_cmds_.end();) {
+    if (static_cast<int32_t>(now_ms - it->last_tx_ms) <
+        static_cast<int32_t>(CMD_RETRY_INTERVAL_MS)) {
+      ++it;
+      continue;
+    }
+    if (it->attempts >= CMD_MAX_ATTEMPTS) {
+      ESP_LOGW(TAG, "ESP-NOW Climate cmd seq=%u timed out after %u attempts", it->seq,
+               it->attempts);
+      if (auto *rc = cyd_find_remote_climate(it->cmd.climate_key_hash)) {
+        if (rc->espnow_reachable) {
+          rc->espnow_reachable = false;
+          ui_dirty_ = true;
+        }
+      }
+      it = pending_climate_cmds_.erase(it);
+      continue;
+    }
+    it->attempts++;
+    it->last_tx_ms = now_ms;
+    broadcast_frame(MsgType::CLIMATE_CMD, it->seq, encode_climate_cmd(it->cmd), DEFAULT_RELAY_TTL,
                     it->attempts, it->origin_override);
     ++it;
   }
@@ -459,6 +575,144 @@ bool EspNowFanBridge::send_shelly_action(
 
   sh->has_state = true;
   cyd_queue_shelly_cmd(cmd, now);
+  ui_dirty_ = true;
+  return true;
+}
+
+namespace {
+
+uint8_t parse_hvac_mode(const std::string &s, bool &valid) {
+  valid = true;
+  if (s == "off") return static_cast<uint8_t>(ClimateHvacMode::OFF);
+  if (s == "cool") return static_cast<uint8_t>(ClimateHvacMode::COOL);
+  if (s == "heat") return static_cast<uint8_t>(ClimateHvacMode::HEAT);
+  if (s == "dry") return static_cast<uint8_t>(ClimateHvacMode::DRY);
+  if (s == "fan_only") return static_cast<uint8_t>(ClimateHvacMode::FAN_ONLY);
+  if (s == "auto" || s == "heat_cool") return static_cast<uint8_t>(ClimateHvacMode::AUTO);
+  valid = false;
+  return 0;
+}
+
+uint8_t parse_fan_mode(const std::string &s, bool &valid) {
+  valid = true;
+  if (s == "auto") return static_cast<uint8_t>(ClimateFanMode::AUTO);
+  if (s == "low") return static_cast<uint8_t>(ClimateFanMode::LOW);
+  if (s == "medium" || s == "middle") return static_cast<uint8_t>(ClimateFanMode::MEDIUM);
+  if (s == "high") return static_cast<uint8_t>(ClimateFanMode::HIGH);
+  if (s == "quiet") return static_cast<uint8_t>(ClimateFanMode::QUIET);
+  if (s == "turbo" || s == "focus") return static_cast<uint8_t>(ClimateFanMode::TURBO);
+  valid = false;
+  return 0;
+}
+
+uint8_t parse_swing_mode(const std::string &s, bool &valid) {
+  valid = true;
+  if (s == "off") return static_cast<uint8_t>(ClimateSwingMode::OFF);
+  if (s == "vertical") return static_cast<uint8_t>(ClimateSwingMode::VERTICAL);
+  if (s == "horizontal") return static_cast<uint8_t>(ClimateSwingMode::HORIZONTAL);
+  if (s == "both") return static_cast<uint8_t>(ClimateSwingMode::BOTH);
+  valid = false;
+  return 0;
+}
+
+}  // namespace
+
+bool EspNowFanBridge::send_climate_action(
+    RemoteClimateState *cl, const std::string &action,
+    const std::vector<std::pair<std::string, std::string>> &data) {
+  if (cl == nullptr) return false;
+  const uint32_t now = millis();
+
+  // Strip domain prefix if present (e.g. "climate.set_hvac_mode" -> "set_hvac_mode")
+  std::string act = action;
+  size_t dot = act.find('.');
+  if (dot != std::string::npos) act = act.substr(dot + 1);
+
+  ClimateCmdPayload cmd;
+  cmd.climate_key_hash = cl->climate_key_hash;
+  cmd.field_mask = 0;
+  cmd.hvac_mode = cl->hvac_mode;
+  cmd.target_temp_x2 = cl->target_temp_x2;
+  cmd.fan_mode = cl->fan_mode;
+  cmd.swing_mode = cl->swing_mode;
+
+  if (act == "turn_off") {
+    cmd.field_mask |= CLIMATE_FIELD_HVAC_MODE;
+    cmd.hvac_mode = static_cast<uint8_t>(ClimateHvacMode::OFF);
+    cl->hvac_mode = cmd.hvac_mode;
+  } else if (act == "turn_on") {
+    cmd.field_mask |= CLIMATE_FIELD_HVAC_MODE;
+    cmd.hvac_mode = cl->last_active_mode != 0 ? cl->last_active_mode
+                                              : static_cast<uint8_t>(ClimateHvacMode::COOL);
+    cl->hvac_mode = cmd.hvac_mode;
+  } else if (act == "toggle") {
+    cmd.field_mask |= CLIMATE_FIELD_HVAC_MODE;
+    if (cl->hvac_mode == 0) {
+      cmd.hvac_mode = cl->last_active_mode != 0 ? cl->last_active_mode
+                                                : static_cast<uint8_t>(ClimateHvacMode::COOL);
+    } else {
+      cmd.hvac_mode = static_cast<uint8_t>(ClimateHvacMode::OFF);
+    }
+    cl->hvac_mode = cmd.hvac_mode;
+  } else if (act == "set_hvac_mode") {
+    const auto *mode_s = find_data_value(data, "hvac_mode");
+    if (mode_s == nullptr) return false;
+    bool ok = false;
+    uint8_t m = parse_hvac_mode(*mode_s, ok);
+    if (!ok) return false;
+    cmd.field_mask |= CLIMATE_FIELD_HVAC_MODE;
+    cmd.hvac_mode = m;
+    cl->hvac_mode = m;
+    if (m != 0) cl->last_active_mode = m;
+  } else if (act == "set_temperature") {
+    const auto *temp_s = find_data_value(data, "temperature");
+    if (temp_s != nullptr) {
+      float temp = static_cast<float>(std::atof(temp_s->c_str()));
+      int t2 = clamp_int(static_cast<int>(temp * 2.0f + 0.5f), 20, 80);
+      cmd.field_mask |= CLIMATE_FIELD_TARGET_TEMP;
+      cmd.target_temp_x2 = static_cast<uint8_t>(t2);
+      cl->target_temp_x2 = cmd.target_temp_x2;
+    }
+    const auto *mode_s = find_data_value(data, "hvac_mode");
+    if (mode_s != nullptr) {
+      bool ok = false;
+      uint8_t m = parse_hvac_mode(*mode_s, ok);
+      if (ok) {
+        cmd.field_mask |= CLIMATE_FIELD_HVAC_MODE;
+        cmd.hvac_mode = m;
+        cl->hvac_mode = m;
+        if (m != 0) cl->last_active_mode = m;
+      }
+    }
+    if (cmd.field_mask == 0) return false;
+  } else if (act == "set_fan_mode") {
+    const auto *fan_s = find_data_value(data, "fan_mode");
+    if (fan_s == nullptr) return false;
+    bool ok = false;
+    uint8_t fm = parse_fan_mode(*fan_s, ok);
+    if (!ok) return false;
+    cmd.field_mask |= CLIMATE_FIELD_FAN_MODE;
+    cmd.fan_mode = fm;
+    cl->fan_mode = fm;
+  } else if (act == "set_swing_mode") {
+    const auto *swing_s = find_data_value(data, "swing_mode");
+    if (swing_s == nullptr) return false;
+    bool ok = false;
+    uint8_t sm = parse_swing_mode(*swing_s, ok);
+    if (!ok) return false;
+    cmd.field_mask |= CLIMATE_FIELD_SWING_MODE;
+    cmd.swing_mode = sm;
+    cl->swing_mode = sm;
+  } else {
+    return false;
+  }
+
+  cl->has_state = true;
+  cyd_queue_climate_cmd(cmd, now);
+  if (!cl->entity_id.empty()) {
+    EspNowFanRegistry::instance().notify_state_changed(
+        cl->entity_id, RemoteClimateState::hvac_mode_str(cl->hvac_mode));
+  }
   ui_dirty_ = true;
   return true;
 }

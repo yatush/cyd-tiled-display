@@ -31,6 +31,10 @@
 #include "esphome/components/shelly_ble_bridge/shelly_ble_registry.h"
 #endif
 
+#ifdef USE_ESPNOW_CLIMATE
+#include "esphome/components/climate/climate.h"
+#endif
+
 namespace esphome {
 namespace espnow_fan_bridge {
 
@@ -53,6 +57,15 @@ class EspNowFanBridge : public Component {
   void add_remote_shelly(const std::string &name, const std::string &mac_address, uint8_t channel,
                          bool is_cover, const std::string &entity_id);
 
+  // CYD role: register a remote IR climate entity hosted on a headless hub
+  void add_remote_climate(const std::string &name, const std::string &entity_id);
+
+#ifdef USE_ESPNOW_CLIMATE
+  // Hub role: bind a local ESPHome climate entity (e.g. Gree IR AC) for offline ESP-NOW control
+  void add_local_climate(const std::string &name, const std::string &entity_id,
+                         climate::Climate *clim);
+#endif
+
   void setup() override;
   void loop() override;
   void dump_config() override;
@@ -64,6 +77,8 @@ class EspNowFanBridge : public Component {
                        const std::vector<std::pair<std::string, std::string>> &data);
   bool send_shelly_action(RemoteShellyState *sh, const std::string &action,
                           const std::vector<std::pair<std::string, std::string>> &data);
+  bool send_climate_action(RemoteClimateState *cl, const std::string &action,
+                           const std::vector<std::pair<std::string, std::string>> &data);
 
  protected:
   struct RxPacket {
@@ -97,6 +112,24 @@ class EspNowFanBridge : public Component {
     uint32_t last_tx_ms{0};
     uint8_t attempts{0};
   };
+
+  struct PendingClimateCmd {
+    uint16_t seq{0};
+    uint32_t origin_override{0};
+    ClimateCmdPayload cmd{};
+    uint32_t created_ms{0};
+    uint32_t last_tx_ms{0};
+    uint8_t attempts{0};
+  };
+
+#ifdef USE_ESPNOW_CLIMATE
+  struct LocalClimateEntry {
+    std::string name;
+    std::string entity_id;
+    uint32_t climate_key_hash{0};
+    climate::Climate *clim{nullptr};
+  };
+#endif
 
   struct PendingRelay {
     std::vector<uint8_t> frame;
@@ -161,15 +194,25 @@ class EspNowFanBridge : public Component {
   void hub_broadcast_all_shelly_states();
 #endif
 
+#ifdef USE_ESPNOW_CLIMATE
+  bool hub_handle_climate_cmd(const ClimateCmdPayload &cmd, uint32_t origin_id, uint16_t seq,
+                              uint32_t now_ms);
+  void hub_broadcast_climate_state(const LocalClimateEntry &entry);
+  void hub_broadcast_all_climate_states();
+#endif
+
   // CYD-side helpers (and shared ACK/retry handling)
   void cyd_handle_state(const StatePayload &st, uint32_t now_ms);
   void cyd_handle_shelly_state(const ShellyStatePayload &st, uint32_t now_ms);
+  void cyd_handle_climate_state(const ClimateStatePayload &st, uint32_t now_ms);
   void cyd_handle_ack(const AckPayload &ack, uint32_t now_ms);
   void cyd_tick_pending_cmds(uint32_t now_ms);
   RemoteFanState *cyd_find_remote_fan(uint32_t fan_key_hash);
   RemoteShellyState *cyd_find_remote_shelly(uint32_t device_id, uint8_t channel);
+  RemoteClimateState *cyd_find_remote_climate(uint32_t climate_key_hash);
   void cyd_queue_cmd(const CmdPayload &cmd, uint32_t now_ms);
   void cyd_queue_shelly_cmd(const ShellyCmdPayload &cmd, uint32_t now_ms);
+  void cyd_queue_climate_cmd(const ClimateCmdPayload &cmd, uint32_t now_ms);
 
   BridgeRole role_{BridgeRole::CYD};
   std::string network_key_{"cyd_espnow_default"};
@@ -204,8 +247,13 @@ class EspNowFanBridge : public Component {
   std::vector<PeerInfo> peers_;
   std::vector<RemoteFanState> remote_fans_;
   std::vector<RemoteShellyState> remote_shellys_;
+  std::vector<RemoteClimateState> remote_climates_;
+#ifdef USE_ESPNOW_CLIMATE
+  std::vector<LocalClimateEntry> local_climates_;
+#endif
   std::vector<PendingCmd> pending_cmds_;
   std::vector<PendingShellyCmd> pending_shelly_cmds_;
+  std::vector<PendingClimateCmd> pending_climate_cmds_;
   bool ui_dirty_{false};
 };
 
