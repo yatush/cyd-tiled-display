@@ -707,6 +707,9 @@ def _run_batch_update_worker(state):
     try:
         # 1. Scan BASE_DIR for all ESPHome device configs
         discovered = _discover_esphome_devices()
+        selected_filenames = state.get('selected_filenames')
+        if selected_filenames is not None:
+            discovered = [m for m in discovered if m.get('filename') in selected_filenames]
         with batch_update_lock:
             state['devices'] = [
                 {
@@ -909,6 +912,14 @@ def start_batch_update():
             if proc and proc.poll() is None:
                 return jsonify({'error': 'A single-device OTA install is currently running. Please wait for it to finish.'}), 409
 
+    payload = request.get_json(silent=True) or {}
+    raw_filenames = payload.get('filenames')
+    selected_filenames = None
+    if isinstance(raw_filenames, list):
+        selected_filenames = {str(f).strip() for f in raw_filenames if str(f).strip()}
+        if not selected_filenames:
+            return jsonify({'error': 'Select at least one device to update.'}), 400
+
     with batch_update_lock:
         if batch_update_state and batch_update_state['phase'] in ('scanning', 'pinging', 'updating'):
             return jsonify({'status': 'already_running', **_serialize_batch_state(batch_update_state)})
@@ -921,6 +932,7 @@ def start_batch_update():
             'cancel_event': threading.Event(),
             'started_at': _time.time(),
             'finished_at': None,
+            'selected_filenames': selected_filenames,
             'devices': [],
         }
         state = batch_update_state

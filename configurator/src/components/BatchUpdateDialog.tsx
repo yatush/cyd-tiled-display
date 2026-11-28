@@ -76,12 +76,24 @@ interface BatchUpdateDialogProps {
   onActiveChange?: (active: boolean, label?: string) => void;
 }
 
+interface SelectableDevice {
+  filename: string;
+  device_name: string;
+  friendly_name: string;
+  screen_type: string | null;
+  address: string;
+  is_cyd: boolean;
+  is_headless_hub?: boolean;
+  has_ota: boolean;
+  online: boolean | null;
+}
+
 const RUNNING_PHASES = new Set(['scanning', 'pinging', 'updating']);
 
 export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
   isOpen,
   onClose,
-  autoStart = true,
+  autoStart = false,
   stayMounted = false,
   onActiveChange,
 }) => {
@@ -89,6 +101,11 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [viewMode, setViewMode] = useState<'select' | 'progress'>('select');
+  const [availableDevices, setAvailableDevices] = useState<SelectableDevice[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [pingingDevices, setPingingDevices] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expandedFileRef = useRef<string | null>(null);
   const onActiveChangeRef = useRef(onActiveChange);
@@ -125,6 +142,63 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
     }
   }, []);
 
+  const loadSelectableDevices = useCallback(async () => {
+    setLoadingDevices(true);
+    setError(null);
+    try {
+      const res = await apiFetch('/esphome/devices');
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || `Failed to list devices (${res.status})`);
+        return;
+      }
+      const all: SelectableDevice[] = (data.devices || []).filter(
+        (d: SelectableDevice) => (d.is_cyd || d.is_headless_hub) && d.has_ota
+      );
+      // Sort CYDs first, then BLE hubs, alphabetically within each group
+      all.sort((a, b) => {
+        const aHub = a.is_headless_hub ? 1 : 0;
+        const bHub = b.is_headless_hub ? 1 : 0;
+        if (aHub !== bHub) return aHub - bHub;
+        return (a.friendly_name || a.filename).localeCompare(b.friendly_name || b.filename);
+      });
+      setAvailableDevices(all);
+      // Pre-select all while pinging, then refine to online devices once ping returns
+      setSelectedFiles(new Set(all.map((d) => d.filename)));
+      setLoadingDevices(false);
+
+      if (all.length > 0) {
+        setPingingDevices(true);
+        try {
+          const pingRes = await apiFetch('/esphome/devices/ping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              devices: all.map((d) => ({ filename: d.filename, address: d.address })),
+            }),
+          });
+          if (pingRes.ok) {
+            const pingData = await pingRes.json();
+            const results: Record<string, boolean> = pingData.results || {};
+            const updated = all.map((d) => ({
+              ...d,
+              online: d.filename in results ? Boolean(results[d.filename]) : false,
+            }));
+            setAvailableDevices(updated);
+            setSelectedFiles(new Set(updated.filter((d) => d.online).map((d) => d.filename)));
+          }
+        } catch {
+          // keep devices selectable even if ping fails
+        } finally {
+          setPingingDevices(false);
+        }
+      }
+    } catch (e) {
+      setError(`Failed to load devices: ${(e as Error).message}`);
+      setLoadingDevices(false);
+    }
+  }, []);
+
   const fetchStatus = useCallback(async () => {
     try {
       const inc = expandedFileRef.current;
@@ -151,24 +225,32 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
     }, 1500);
   }, [fetchStatus, stopPolling]);
 
-  const startBatchUpdate = useCallback(async () => {
-    setError(null);
-    setCancelling(false);
-    setExpandedFile(null);
-    try {
-      const res = await apiFetch('/esphome/batch_update/start', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || `Failed to start batch update (${res.status})`);
-        return;
+  const startBatchUpdate = useCallback(
+    async (filenames?: string[]) => {
+      setError(null);
+      setCancelling(false);
+      setExpandedFile(null);
+      setViewMode('progress');
+      try {
+        const res = await apiFetch('/esphome/batch_update/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(filenames && filenames.length > 0 ? { filenames } : {}),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || `Failed to start batch update (${res.status})`);
+          return;
+        }
+        setState(data);
+        notifyParent(data);
+        startPolling();
+      } catch (e) {
+        setError(`Failed to start batch update: ${(e as Error).message}`);
       }
-      setState(data);
-      notifyParent(data);
-      startPolling();
-    } catch (e) {
-      setError(`Failed to start batch update: ${(e as Error).message}`);
-    }
-  }, [notifyParent, startPolling]);
+    },
+    [notifyParent, startPolling]
+  );
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -183,13 +265,14 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
   useEffect(() => {
     fetchStatus().then((data) => {
       if (data && RUNNING_PHASES.has(data.phase)) {
+        setViewMode('progress');
         startPolling();
       }
     });
     return () => stopPolling();
   }, [fetchStatus, startPolling, stopPolling]);
 
-  // When opened: attach to running job, show existing report, or auto-start from idle
+  // When opened: attach to running job, or open device selector
   useEffect(() => {
     if (!isOpen) {
       hasAutoStartedRef.current = false;
@@ -200,16 +283,20 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
       const current = await fetchStatus();
       if (cancelled) return;
       if (current && RUNNING_PHASES.has(current.phase)) {
+        setViewMode('progress');
         startPolling();
       } else if (autoStart && !hasAutoStartedRef.current && (!current || current.phase === 'idle')) {
         hasAutoStartedRef.current = true;
         await startBatchUpdate();
+      } else {
+        setViewMode('select');
+        await loadSelectableDevices();
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [isOpen, autoStart, fetchStatus, startPolling, startBatchUpdate]);
+  }, [isOpen, autoStart, fetchStatus, startPolling, startBatchUpdate, loadSelectableDevices]);
 
   // Fetch logs immediately when user expands a device row
   useEffect(() => {
@@ -225,6 +312,15 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
       logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [expandedLogsCount, expandedFile, isRunning]);
+
+  const toggleSelectFile = (filename: string) => {
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filename)) next.delete(filename);
+      else next.add(filename);
+      return next;
+    });
+  };
 
   if (!isOpen && !stayMounted) return null;
   if (!isOpen) return null;
@@ -312,9 +408,11 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
           <div className="flex items-center gap-2.5 min-w-0">
             <UploadCloud className="text-blue-600 flex-shrink-0" size={20} />
             <div className="min-w-0">
-              <h2 className="font-bold text-slate-800 text-base">Update All CYD Devices &amp; Hubs (OTA)</h2>
+              <h2 className="font-bold text-slate-800 text-base">Update CYDs &amp; Hubs (OTA)</h2>
               <p className="text-xs text-slate-500 truncate">
-                {state?.message || 'Scans drive configs and updates all online CYD displays and headless hubs with OTA.'}
+                {viewMode === 'select'
+                  ? 'Select which CYD displays and headless BLE hubs to compile & OTA-flash.'
+                  : state?.message || 'Updating selected CYD displays and headless hubs with OTA.'}
               </p>
             </div>
           </div>
@@ -327,72 +425,249 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
           </button>
         </div>
 
-        {/* Progress / Summary Banner */}
-        <div className="px-5 py-3 border-b bg-white space-y-2.5">
-          {error && (
-            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
-              <AlertTriangle size={15} className="flex-shrink-0" />
-              <span>{error}</span>
+        {viewMode === 'select' ? (
+          <>
+            {/* Quick-select toolbar */}
+            <div className="px-5 py-3 border-b bg-white space-y-2">
+              {error && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+                  <AlertTriangle size={15} className="flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+                  <span>
+                    {selectedFiles.size} of {availableDevices.length} selected
+                  </span>
+                  {pingingDevices && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-blue-600">
+                      <Loader2 size={11} className="animate-spin" /> Checking online...
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedFiles(
+                        new Set(availableDevices.filter((d) => d.online).map((d) => d.filename))
+                      )
+                    }
+                    className="text-blue-700 hover:underline"
+                  >
+                    All Online
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedFiles(new Set(availableDevices.map((d) => d.filename)))
+                    }
+                    className="text-slate-600 hover:underline"
+                  >
+                    All
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedFiles(
+                        new Set(
+                          availableDevices
+                            .filter((d) => d.is_cyd && !d.is_headless_hub && d.online !== false)
+                            .map((d) => d.filename)
+                        )
+                      )
+                    }
+                    className="text-slate-600 hover:underline"
+                  >
+                    CYDs Only
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedFiles(
+                        new Set(
+                          availableDevices
+                            .filter((d) => d.is_headless_hub && d.online !== false)
+                            .map((d) => d.filename)
+                        )
+                      )
+                    }
+                    className="text-emerald-700 hover:underline"
+                  >
+                    Hubs Only
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFiles(new Set())}
+                    className="text-slate-500 hover:underline"
+                  >
+                    None
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadSelectableDevices}
+                    disabled={loadingDevices || pingingDevices}
+                    className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    title="Re-scan & ping devices"
+                  >
+                    <RefreshCw size={11} className={pingingDevices ? 'animate-spin' : ''} />
+                    Refresh
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
 
-          {/* Progress Bar */}
-          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 ${
-                state?.phase === 'cancelled'
-                  ? 'bg-amber-500'
-                  : summary.failed > 0 && !isRunning
-                  ? 'bg-red-500'
-                  : state?.phase === 'completed'
-                  ? 'bg-emerald-500'
-                  : 'bg-blue-600'
-              }`}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-
-          {/* Summary Pills */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold">
-              Total: {summary.total}
-            </span>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">
-              Updated: {summary.updated}
-            </span>
-            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold">
-              Skipped: {summary.skipped}
-            </span>
-            {summary.failed > 0 && (
-              <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-semibold">
-                Failed: {summary.failed}
-              </span>
-            )}
-            {summary.cancelled > 0 && (
-              <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold">
-                Cancelled: {summary.cancelled}
-              </span>
-            )}
-            {(summary.pending > 0 || summary.updating > 0) && (
-              <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold">
-                Remaining: {summary.pending + summary.updating}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Per-Device List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/50">
-          {!state || (state.devices.length === 0 && isRunning) ? (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
-              <Loader2 size={24} className="animate-spin text-blue-500" />
-              <span className="text-sm font-medium">{state?.message || 'Scanning devices...'}</span>
+            {/* Selectable device list */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/50">
+              {loadingDevices ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+                  <Loader2 size={24} className="animate-spin text-blue-500" />
+                  <span className="text-sm font-medium">Scanning ESPHome devices...</span>
+                </div>
+              ) : availableDevices.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  No OTA-enabled CYD or BLE Hub configurations found on drive.
+                </div>
+              ) : (
+                availableDevices.map((dev) => {
+                  const checked = selectedFiles.has(dev.filename);
+                  return (
+                    <label
+                      key={dev.filename}
+                      className={`flex items-center justify-between gap-3 p-3 rounded-lg border bg-white cursor-pointer transition-all ${
+                        checked ? 'border-blue-300 ring-1 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSelectFile(dev.filename)}
+                          className="mt-1 rounded text-blue-600"
+                        />
+                        {dev.is_headless_hub ? (
+                          <Radio size={16} className="mt-0.5 flex-shrink-0 text-emerald-600" />
+                        ) : (
+                          <Monitor size={16} className="mt-0.5 flex-shrink-0 text-blue-500" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-slate-800 truncate">
+                              {dev.friendly_name}
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-400 truncate">
+                              {dev.filename}
+                            </span>
+                            {dev.is_headless_hub && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">
+                                BLE Hub
+                              </span>
+                            )}
+                            {dev.screen_type && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono">
+                                {dev.screen_type}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                            {dev.address}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {dev.online === null ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500">
+                            <Loader2 size={11} className="animate-spin" /> Checking
+                          </span>
+                        ) : dev.online ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">
+                            <CheckCircle2 size={11} /> Online
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500">
+                            Offline
+                          </span>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })
+              )}
             </div>
-          ) : state.devices.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-sm">
-              No ESPHome device YAML files found on drive.
+          </>
+        ) : (
+          <>
+            {/* Progress / Summary Banner */}
+            <div className="px-5 py-3 border-b bg-white space-y-2.5">
+              {error && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+                  <AlertTriangle size={15} className="flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Progress Bar */}
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    state?.phase === 'cancelled'
+                      ? 'bg-amber-500'
+                      : summary.failed > 0 && !isRunning
+                      ? 'bg-red-500'
+                      : state?.phase === 'completed'
+                      ? 'bg-emerald-500'
+                      : 'bg-blue-600'
+                  }`}
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+
+              {/* Summary Pills */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold">
+                  Total: {summary.total}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">
+                  Updated: {summary.updated}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-semibold">
+                  Skipped: {summary.skipped}
+                </span>
+                {summary.failed > 0 && (
+                  <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-semibold">
+                    Failed: {summary.failed}
+                  </span>
+                )}
+                {summary.cancelled > 0 && (
+                  <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold">
+                    Cancelled: {summary.cancelled}
+                  </span>
+                )}
+                {(summary.pending > 0 || summary.updating > 0) && (
+                  <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold">
+                    Remaining: {summary.pending + summary.updating}
+                  </span>
+                )}
+              </div>
             </div>
-          ) : (
+
+            {/* Per-Device List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/50">
+              {!state || (state.devices.length === 0 && isRunning) ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+                  <Loader2 size={24} className="animate-spin text-blue-500" />
+                  <span className="text-sm font-medium">{state?.message || 'Scanning devices...'}</span>
+                </div>
+              ) : state.devices.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  No ESPHome device YAML files found on drive.
+                </div>
+              ) : (
             state.devices.map((dev) => {
               const isExpanded = expandedFile === dev.filename;
               const hasLogs = dev.log_count > 0;
@@ -479,19 +754,39 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
               );
             })
           )}
-        </div>
+            </div>
+          </>
+        )}
 
         {/* Footer */}
         <div className="px-5 py-3 border-t bg-slate-50 flex items-center justify-between gap-3">
           <div className="text-xs text-slate-500">
-            {isRunning
+            {viewMode === 'select'
+              ? 'Offline devices will be skipped automatically if selected.'
+              : isRunning
               ? 'You can close this popup — updates continue in the background.'
               : state?.phase === 'completed' || state?.phase === 'cancelled'
               ? 'Final report ready.'
               : ''}
           </div>
           <div className="flex items-center gap-2">
-            {isRunning ? (
+            {viewMode === 'select' ? (
+              <>
+                <button
+                  onClick={() => startBatchUpdate(Array.from(selectedFiles))}
+                  disabled={selectedFiles.size === 0 || loadingDevices}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <UploadCloud size={14} /> Update {selectedFiles.size} Selected (OTA)
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition-colors"
+                >
+                  Close
+                </button>
+              </>
+            ) : isRunning ? (
               <>
                 <button
                   onClick={handleCancel}
@@ -510,7 +805,16 @@ export const BatchUpdateDialog: React.FC<BatchUpdateDialogProps> = ({
             ) : (
               <>
                 <button
-                  onClick={startBatchUpdate}
+                  onClick={() => {
+                    setViewMode('select');
+                    loadSelectableDevices();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold transition-colors"
+                >
+                  Select Devices
+                </button>
+                <button
+                  onClick={() => startBatchUpdate(Array.from(selectedFiles))}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors"
                 >
                   <RefreshCw size={13} /> Run Again
